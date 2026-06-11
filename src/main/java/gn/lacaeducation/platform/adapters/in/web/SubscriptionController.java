@@ -1,0 +1,115 @@
+package gn.lacaeducation.platform.adapters.in.web;
+
+import gn.lacaeducation.common.PageResponse;
+import gn.lacaeducation.platform.adapters.in.web.dto.*;
+import gn.lacaeducation.platform.application.port.in.*;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+import java.net.URI;
+import java.util.List;
+
+@Tag(name = "Subscriptions", description = "SaaS subscription lifecycle management")
+@RestController
+@RequestMapping("/api/v1/platform/subscriptions")
+@RequiredArgsConstructor
+public class SubscriptionController {
+
+    private final SubscriptionUseCase subscriptionUseCase;
+    private final PaymentUseCase paymentUseCase;
+    private final PlanChangeUseCase planChangeUseCase;
+    private final InvoiceUseCase invoiceUseCase;
+
+    @Operation(summary = "Create a new subscription for a tenant")
+    @PostMapping
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<SubscriptionResponse> create(@Valid @RequestBody InitiateSubscriptionRequest req) {
+        var sub = subscriptionUseCase.initiate(new SubscriptionUseCase.InitiateSubscriptionCommand(
+                req.tenantId(), req.planId(), req.billingPeriod(), req.autoRenewal()));
+        return ResponseEntity.created(URI.create("/api/v1/platform/subscriptions/" + sub.getId()))
+                .body(SubscriptionResponse.from(sub));
+    }
+
+    @Operation(summary = "List all subscriptions (SUPER_ADMIN)")
+    @GetMapping
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public PageResponse<SubscriptionResponse> findAll(@PageableDefault(size = 20) Pageable pageable) {
+        List<SubscriptionResponse> list = subscriptionUseCase.findAll()
+                .stream().map(SubscriptionResponse::from).toList();
+        int start = (int) pageable.getOffset();
+        int end = Math.min(start + pageable.getPageSize(), list.size());
+        return PageResponse.of(new PageImpl<>(list.subList(start, end), pageable, list.size()));
+    }
+
+    @Operation(summary = "Get subscription by ID")
+    @GetMapping("/{id}")
+    public SubscriptionResponse findById(@PathVariable Long id) {
+        return SubscriptionResponse.from(subscriptionUseCase.findById(id));
+    }
+
+    @Operation(summary = "Get the active subscription of the current tenant")
+    @GetMapping("/active")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    public ResponseEntity<SubscriptionResponse> findActive() {
+        return subscriptionUseCase.findActiveForCurrentTenant()
+                .map(SubscriptionResponse::from).map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @Operation(summary = "Suspend a subscription")
+    @PatchMapping("/{id}/suspend")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void suspend(@PathVariable Long id) { subscriptionUseCase.suspend(id); }
+
+    @Operation(summary = "Cancel a subscription")
+    @PatchMapping("/{id}/cancel")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void cancel(@PathVariable Long id) { subscriptionUseCase.cancel(id); }
+
+    @Operation(summary = "Toggle auto-renewal")
+    @PatchMapping("/{id}/auto-renewal")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void setAutoRenewal(@PathVariable Long id, @RequestParam boolean enabled) {
+        subscriptionUseCase.setAutoRenewal(id, enabled);
+    }
+
+    @Operation(summary = "Upgrade or downgrade plan")
+    @PostMapping("/{id}/change-plan")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void changePlan(@PathVariable Long id, @Valid @RequestBody ChangePlanRequest req) {
+        planChangeUseCase.changePlan(new PlanChangeUseCase.ChangePlanCommand(
+                id, req.newPlanId(), req.newBillingPeriod()));
+    }
+
+    @Operation(summary = "Initiate a payment for a subscription invoice")
+    @PostMapping("/{id}/payments")
+    @ResponseStatus(HttpStatus.CREATED)
+    public void initiatePayment(@PathVariable Long id, @Valid @RequestBody InitiatePaymentRequest req) {
+        paymentUseCase.initiate(new PaymentUseCase.InitiatePaymentCommand(
+                req.invoiceId(), req.amount(), req.channel(), req.paymentType()));
+    }
+
+    @Operation(summary = "Confirm a payment (callback / manual)")
+    @PutMapping("/payments/{paymentId}/confirm")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void confirmPayment(@PathVariable Long paymentId, @Valid @RequestBody ConfirmPaymentRequest req) {
+        paymentUseCase.confirm(paymentId, req.externalTransactionId());
+    }
+
+    @Operation(summary = "Get invoices for a subscription")
+    @GetMapping("/{id}/invoices")
+    public List<SubscriptionInvoiceResponse> findInvoices(@PathVariable Long id) {
+        return List.of(SubscriptionInvoiceResponse.from(invoiceUseCase.findLatestBySubscription(id)));
+    }
+}

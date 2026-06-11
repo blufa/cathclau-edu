@@ -1,0 +1,4 @@
+package gn.lacaeducation.platform.adapters.in.web.dto;
+public record UpdateTenantRequest(String schoolName, String logo, String brandColor,
+        String address, String city, String country, String phone, String email,
+        String website, String director) {}

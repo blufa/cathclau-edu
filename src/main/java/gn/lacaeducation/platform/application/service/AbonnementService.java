@@ -95,12 +95,38 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
         return subscriptionRepository.findActiveByTenantId(tenantId);
     }
 
+    @Override @Transactional(readOnly = true)
+    public List<Subscription> findAll() { return subscriptionRepository.findAll(); }
+
+    @Override @Transactional(readOnly = true)
+    public Optional<Subscription> findActiveForCurrentTenant() {
+        Long tenantId = gn.lacaeducation.iam.TenantContext.get();
+        if (tenantId == null) return Optional.empty();
+        return subscriptionRepository.findActiveByTenantId(tenantId);
+    }
+
     @Override
     public void suspend(Long subscriptionId) {
-        Subscription subscription = subscriptionRepository.findById(subscriptionId)
+        Subscription s = subscriptionRepository.findById(subscriptionId)
                 .orElseThrow(() -> new IllegalArgumentException("Subscription not found: " + subscriptionId));
-        subscription.setStatus(SubscriptionStatus.SUSPENDED);
-        subscriptionRepository.save(subscription);
+        s.setStatus(SubscriptionStatus.SUSPENDED);
+        subscriptionRepository.save(s);
+    }
+
+    @Override
+    public void cancel(Long subscriptionId) {
+        Subscription s = subscriptionRepository.findById(subscriptionId)
+                .orElseThrow(() -> new IllegalArgumentException("Subscription not found: " + subscriptionId));
+        s.setStatus(SubscriptionStatus.CANCELLED);
+        subscriptionRepository.save(s);
+    }
+
+    @Override
+    public void setAutoRenewal(Long subscriptionId, boolean enabled) {
+        Subscription s = subscriptionRepository.findById(subscriptionId)
+                .orElseThrow(() -> new IllegalArgumentException("Subscription not found: " + subscriptionId));
+        s.setAutoRenewal(enabled);
+        subscriptionRepository.save(s);
     }
 
     // ---- InvoiceUseCase ----
