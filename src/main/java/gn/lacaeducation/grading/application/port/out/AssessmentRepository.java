@@ -7,5 +7,6 @@ public interface AssessmentRepository {
     Optional<Assessment> findById(Long id);
     List<Assessment> findByClassId(Long classId);
     List<Assessment> findByPeriodId(Long periodId);
+    List<Assessment> findByClassIdAndPeriodId(Long classId, Long periodId);
     void deleteById(Long id);
 }

@@ -5,4 +5,5 @@ import java.util.Optional;
 interface ReportCardJpaRepository extends JpaRepository<ReportCardJpaEntity, Long> {
     List<ReportCardJpaEntity> findByClassIdAndPeriodId(Long classId, Long periodId);
     Optional<ReportCardJpaEntity> findByStudentIdAndPeriodId(Long studentId, Long periodId);
+    List<ReportCardJpaEntity> findByStudentId(Long studentId);
 }

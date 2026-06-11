@@ -19,4 +19,8 @@ public class AssessmentService implements AssessmentUseCase {
     @Override @Transactional(readOnly=true) public List<Assessment> findByClass(Long c) { return repo.findByClassId(c); }
     @Override @Transactional(readOnly=true) public List<Assessment> findByPeriod(Long p) { return repo.findByPeriodId(p); }
     @Override public void delete(Long id) { repo.deleteById(id); }
+    private Assessment load(Long id) {
+        return repo.findById(id)
+                .orElseThrow(() -> new gn.lacaeducation.common.ResourceNotFoundException("Assessment", id));
+    }
 }
