@@ -3,34 +3,26 @@ package gn.lacaeducation.iam.adapters.in.web;
 import gn.lacaeducation.iam.adapters.in.web.dto.LoginRequest;
 import gn.lacaeducation.iam.adapters.in.web.dto.LoginResponse;
 import gn.lacaeducation.iam.application.port.in.AuthUseCase;
-import gn.lacaeducation.iam.application.port.in.AuthUseCase.LoginCommand;
-import gn.lacaeducation.iam.application.port.in.AuthUseCase.LoginResult;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
+@Tag(name = "Authentication", description = "Login, token refresh, password management")
 @RestController
-@RequestMapping("/api/auth")
+@RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
 public class AuthController {
 
     private final AuthUseCase authUseCase;
 
+    @Operation(summary = "Authenticate with email and password, returns JWT token")
     @PostMapping("/login")
-    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
-        LoginResult result = authUseCase.authenticate(
-                new LoginCommand(request.email(), request.password())
-        );
+    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest req) {
+        var result = authUseCase.authenticate(new AuthUseCase.LoginCommand(req.email(), req.password()));
         return ResponseEntity.ok(new LoginResponse(
-                result.token(),
-                result.expiresIn(),
-                result.userId(),
-                result.tenantId(),
-                result.roles()
-        ));
+                result.token(), result.expiresIn(), result.userId(), result.tenantId(), result.roles()));
     }
 }

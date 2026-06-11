@@ -1,89 +1,121 @@
 package gn.lacaeducation.iam.adapters.in.web;
 
+import gn.lacaeducation.common.PageResponse;
 import gn.lacaeducation.iam.adapters.in.web.dto.CreateUserRequest;
 import gn.lacaeducation.iam.adapters.in.web.dto.UserResponse;
 import gn.lacaeducation.iam.application.port.in.UserUseCase;
-import gn.lacaeducation.iam.application.port.in.UserUseCase.CreateUserCommand;
-import gn.lacaeducation.iam.domain.User;
+import gn.lacaeducation.iam.domain.Role;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
 import java.util.List;
 
+@Tag(name = "Users", description = "User management within a tenant")
 @RestController
-@RequestMapping("/api/iam/users")
+@RequestMapping("/api/v1/users")
 @RequiredArgsConstructor
 public class UserController {
 
     private final UserUseCase userUseCase;
 
+    @Operation(summary = "Create a new user in the current tenant")
     @PostMapping
     @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN')")
-    public ResponseEntity<UserResponse> create(@Valid @RequestBody CreateUserRequest request) {
-        User user = userUseCase.create(
-                new CreateUserCommand(
-                        request.tenantId(),
-                        request.firstName(),
-                        request.lastName(),
-                        request.email(),
-                        request.password(),
-                        request.phone()
-                )
-        );
-        return ResponseEntity
-                .created(URI.create("/api/iam/users/" + user.getId()))
+    public ResponseEntity<UserResponse> create(@Valid @RequestBody CreateUserRequest req) {
+        var user = userUseCase.create(new UserUseCase.CreateUserCommand(
+                req.tenantId(), req.firstName(), req.lastName(), req.email(), req.password(), req.phone()));
+        return ResponseEntity.created(URI.create("/api/v1/users/" + user.getId()))
                 .body(toResponse(user));
     }
 
+    @Operation(summary = "List all users in the current tenant")
+    @GetMapping
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR')")
+    public PageResponse<UserResponse> findAll(@AuthenticationPrincipal Jwt jwt,
+                                               @PageableDefault(size = 20) Pageable pageable) {
+        Long tenantId = jwt.getClaim("tenant_id") instanceof Number n ? n.longValue() : null;
+        List<UserResponse> list = userUseCase.findByTenantId(tenantId).stream().map(this::toResponse).toList();
+        int start = (int) pageable.getOffset();
+        int end = Math.min(start + pageable.getPageSize(), list.size());
+        return PageResponse.of(new PageImpl<>(list.subList(start, end), pageable, list.size()));
+    }
+
+    @Operation(summary = "Get user by ID")
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR')")
     public ResponseEntity<UserResponse> findById(@PathVariable Long id) {
-        return userUseCase.findById(id)
-                .map(u -> ResponseEntity.ok(toResponse(u)))
+        return userUseCase.findById(id).map(u -> ResponseEntity.ok(toResponse(u)))
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    @Operation(summary = "Get the profile of the authenticated user")
     @GetMapping("/me")
     public ResponseEntity<UserResponse> me(@AuthenticationPrincipal Jwt jwt) {
         Long userId = Long.parseLong(jwt.getSubject());
-        return userUseCase.findById(userId)
-                .map(u -> ResponseEntity.ok(toResponse(u)))
+        return userUseCase.findById(userId).map(u -> ResponseEntity.ok(toResponse(u)))
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    @GetMapping
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR')")
-    public ResponseEntity<List<UserResponse>> findByTenant(@AuthenticationPrincipal Jwt jwt) {
-        Long tenantId = jwt.getClaim("tenantId");
-        List<UserResponse> users = userUseCase.findByTenantId(tenantId)
-                .stream()
-                .map(this::toResponse)
-                .toList();
-        return ResponseEntity.ok(users);
+    @Operation(summary = "Update a user")
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN')")
+    public UserResponse update(@PathVariable Long id, @Valid @RequestBody UpdateUserRequest req) {
+        return toResponse(userUseCase.update(id, new UserUseCase.UpdateUserCommand(
+                req.firstName(), req.lastName(), req.phone(), req.active())));
     }
 
-    private UserResponse toResponse(User u) {
-        return new UserResponse(
-                u.getId(),
-                u.getTenantId(),
-                u.getFirstName(),
-                u.getLastName(),
-                u.getEmail(),
-                u.getPhone(),
-                u.getActive(),
-                u.getLastLoginAt(),
-                u.getCreatedAt()
-        );
+    @Operation(summary = "Deactivate a user account")
+    @PatchMapping("/{id}/deactivate")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deactivate(@PathVariable Long id) {
+        userUseCase.update(id, new UserUseCase.UpdateUserCommand(null, null, null, false));
     }
+
+    @Operation(summary = "Reactivate a user account")
+    @PatchMapping("/{id}/activate")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void activate(@PathVariable Long id) {
+        userUseCase.update(id, new UserUseCase.UpdateUserCommand(null, null, null, true));
+    }
+
+    @Operation(summary = "Delete (soft-delete) a user")
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable Long id) { userUseCase.delete(id); }
+
+    @Operation(summary = "Assign a role to a user")
+    @PostMapping("/{id}/roles")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void assignRole(@PathVariable Long id, @RequestParam Long roleId) {
+        userUseCase.assignRole(id, roleId);
+    }
+
+    @Operation(summary = "Get roles assigned to a user")
+    @GetMapping("/{id}/roles")
+    public List<String> getRoles(@PathVariable Long id) {
+        return userUseCase.findUserRoles(id).stream().map(Role::getName).toList();
+    }
+
+    private UserResponse toResponse(gn.lacaeducation.iam.domain.User u) {
+        return new UserResponse(u.getId(), u.getTenantId(), u.getFirstName(), u.getLastName(),
+                u.getEmail(), u.getPhone(), u.getActive(), u.getLastLoginAt(), u.getCreatedAt());
+    }
+
+    record UpdateUserRequest(String firstName, String lastName, String phone, Boolean active) {}
 }
