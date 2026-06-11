@@ -3,8 +3,10 @@ package gn.lacaeducation.students.application.service;
 import gn.lacaeducation.students.application.port.in.ParentUseCase;
 import gn.lacaeducation.students.application.port.out.ParentRepository;
 import gn.lacaeducation.students.application.port.out.StudentParentRepository;
+import gn.lacaeducation.students.application.port.out.StudentRepository;
 import gn.lacaeducation.students.domain.Parent;
 import gn.lacaeducation.students.domain.Relationship;
+import gn.lacaeducation.students.domain.Student;
 import gn.lacaeducation.students.domain.StudentParent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -17,6 +19,7 @@ public class ParentService implements ParentUseCase {
 
     private final ParentRepository parentRepository;
     private final StudentParentRepository studentParentRepository;
+    private final StudentRepository studentRepository;
 
     @Override
     public Parent create(CreateParentCommand cmd) {
@@ -58,4 +61,10 @@ public class ParentService implements ParentUseCase {
 
     @Override @Transactional(readOnly = true)
     public List<Parent> findByStudent(Long studentId) { return studentParentRepository.findParentsByStudentId(studentId); }
+
+    @Override @Transactional(readOnly = true)
+    public List<Student> findStudentsByParent(Long parentId) {
+        return studentParentRepository.findStudentIdsByParentId(parentId).stream()
+                .flatMap(id -> studentRepository.findById(id).stream()).toList();
+    }
 }

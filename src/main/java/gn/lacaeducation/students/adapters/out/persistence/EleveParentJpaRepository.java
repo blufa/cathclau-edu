@@ -9,4 +9,6 @@ interface EleveParentJpaRepository extends JpaRepository<EleveParentJpaEntity, L
     List<EleveParentJpaEntity> findByStudentId(Long studentId);
     @Query("SELECT p FROM ParentJpaEntity p JOIN EleveParentJpaEntity sp ON sp.parentId = p.id WHERE sp.studentId = :studentId")
     List<ParentJpaEntity> findParentsByStudentId(@Param("studentId") Long studentId);
+
+    List<EleveParentJpaEntity> findByParentId(Long parentId);
 }

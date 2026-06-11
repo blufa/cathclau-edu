@@ -19,4 +19,5 @@ public interface ParentUseCase {
     StudentParent linkStudent(Long studentId, Long parentId, Relationship relationship);
     void unlinkStudent(Long studentParentId);
     List<Parent> findByStudent(Long studentId);
+    List<Student> findStudentsByParent(Long parentId);
 }

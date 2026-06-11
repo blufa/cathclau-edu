@@ -1,61 +1,95 @@
 package gn.lacaeducation.students.adapters.in.web;
 
+import gn.lacaeducation.common.PageResponse;
 import gn.lacaeducation.iam.TenantContext;
 import gn.lacaeducation.students.application.port.in.ParentUseCase;
-import gn.lacaeducation.students.application.port.in.ParentUseCase.CreateParentCommand;
 import gn.lacaeducation.students.domain.Parent;
 import gn.lacaeducation.students.domain.Relationship;
 import gn.lacaeducation.students.domain.StudentParent;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+
 import java.net.URI;
 import java.util.List;
 
-@RestController @RequestMapping("/api/students/parents") @RequiredArgsConstructor
+@Tag(name = "Parents", description = "Parent records and student-parent relationships")
+@RestController
+@RequestMapping("/api/v1/parents")
+@RequiredArgsConstructor
 public class ParentController {
 
     private final ParentUseCase parentUseCase;
 
+    @Operation(summary = "Register a new parent")
     @PostMapping
-    public ResponseEntity<Parent> create(@RequestBody CreateParentCommand cmd) {
-        Parent p = parentUseCase.create(new CreateParentCommand(
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','SECRETARY','DIRECTOR')")
+    public ResponseEntity<Parent> create(@Valid @RequestBody ParentUseCase.CreateParentCommand cmd) {
+        Parent p = parentUseCase.create(new ParentUseCase.CreateParentCommand(
                 TenantContext.get(), cmd.userId(), cmd.firstName(), cmd.lastName(),
                 cmd.phone(), cmd.email(), cmd.occupation(), cmd.address()));
-        return ResponseEntity.created(URI.create("/api/students/parents/" + p.getId())).body(p);
+        return ResponseEntity.created(URI.create("/api/v1/parents/" + p.getId())).body(p);
     }
 
+    @Operation(summary = "List all parents in current tenant (paginated)")
+    @GetMapping
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    public PageResponse<Parent> findAll(@PageableDefault(size = 20) Pageable pageable) {
+        List<Parent> list = parentUseCase.findByTenantId(TenantContext.get());
+        int start = (int) pageable.getOffset();
+        int end = Math.min(start + pageable.getPageSize(), list.size());
+        return PageResponse.of(new PageImpl<>(list.subList(start, end), pageable, list.size()));
+    }
+
+    @Operation(summary = "Get parent by ID")
     @GetMapping("/{id}")
     public ResponseEntity<Parent> findById(@PathVariable Long id) {
         return parentUseCase.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
-    @GetMapping
-    public List<Parent> findAll() { return parentUseCase.findByTenantId(TenantContext.get()); }
-
+    @Operation(summary = "Update parent information")
     @PutMapping("/{id}")
-    public Parent update(@PathVariable Long id, @RequestBody ParentUseCase.UpdateParentCommand cmd) {
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','SECRETARY','DIRECTOR')")
+    public Parent update(@PathVariable Long id, @Valid @RequestBody ParentUseCase.UpdateParentCommand cmd) {
         return parentUseCase.update(id, cmd);
     }
 
+    @Operation(summary = "Delete a parent")
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        parentUseCase.delete(id);
-        return ResponseEntity.noContent().build();
-    }
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable Long id) { parentUseCase.delete(id); }
 
+    @Operation(summary = "Link a parent to a student with relationship type")
     @PostMapping("/{parentId}/students/{studentId}")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','SECRETARY','DIRECTOR')")
+    @ResponseStatus(HttpStatus.CREATED)
     public StudentParent linkStudent(@PathVariable Long parentId, @PathVariable Long studentId,
-                                     @RequestParam Relationship relationship) {
+                                      @RequestParam Relationship relationship) {
         return parentUseCase.linkStudent(studentId, parentId, relationship);
     }
 
-    @DeleteMapping("/student-parents/{id}")
-    public ResponseEntity<Void> unlinkStudent(@PathVariable Long id) {
-        parentUseCase.unlinkStudent(id);
-        return ResponseEntity.noContent().build();
-    }
+    @Operation(summary = "Remove a student-parent link")
+    @DeleteMapping("/links/{linkId}")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void unlinkStudent(@PathVariable Long linkId) { parentUseCase.unlinkStudent(linkId); }
 
+    @Operation(summary = "Get parents of a student")
     @GetMapping("/by-student/{studentId}")
     public List<Parent> findByStudent(@PathVariable Long studentId) { return parentUseCase.findByStudent(studentId); }
+
+    @Operation(summary = "Get children (students) of a parent")
+    @GetMapping("/{id}/students")
+    public List<gn.lacaeducation.students.domain.Student> findChildren(@PathVariable Long id) {
+        return parentUseCase.findStudentsByParent(id);
+    }
 }
