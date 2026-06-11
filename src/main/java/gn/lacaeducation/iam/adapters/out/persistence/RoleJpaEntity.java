@@ -28,7 +28,7 @@ public class RoleJpaEntity {
     private String name;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, unique = true)
+    @Column(unique = true)
     private RoleCode code;
 
     @Column(columnDefinition = "TEXT")

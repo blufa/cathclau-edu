@@ -1,5 +1,6 @@
 package gn.lacaeducation.iam.application.service;
 
+import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.iam.application.port.in.UserUseCase;
 import gn.lacaeducation.iam.application.port.out.PasswordHasher;
 import gn.lacaeducation.iam.application.port.out.RoleRepository;
@@ -53,7 +54,7 @@ public class UserService implements UserUseCase {
     @Override
     public User update(Long id, UpdateUserCommand command) {
         User user = userRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("User not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("User", id));
         user.setFirstName(command.firstName());
         user.setLastName(command.lastName());
         user.setPhone(command.phone());

@@ -1,10 +1,16 @@
 package gn.lacaeducation.iam.application.service;
 
+import gn.lacaeducation.common.BusinessRuleException;
+import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.iam.application.port.in.AuthUseCase;
 import gn.lacaeducation.iam.application.port.out.PasswordHasher;
+import gn.lacaeducation.iam.application.port.out.PasswordResetTokenRepository;
+import gn.lacaeducation.iam.application.port.out.RefreshTokenRepository;
 import gn.lacaeducation.iam.application.port.out.RoleRepository;
 import gn.lacaeducation.iam.application.port.out.TokenGenerator;
 import gn.lacaeducation.iam.application.port.out.UserRepository;
+import gn.lacaeducation.iam.domain.PasswordResetToken;
+import gn.lacaeducation.iam.domain.RefreshToken;
 import gn.lacaeducation.iam.domain.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,16 +21,24 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 @Transactional
 @RequiredArgsConstructor
 public class AuthService implements AuthUseCase {
 
+    private static final int MAX_FAILED_ATTEMPTS = 5;
+    private static final int LOCKOUT_MINUTES = 30;
+    private static final int RESET_TOKEN_EXPIRY_HOURS = 24;
+    private static final long REFRESH_TOKEN_EXPIRY_DAYS = 30;
+
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final TokenGenerator tokenGenerator;
     private final PasswordHasher passwordHasher;
+    private final RefreshTokenRepository refreshTokenRepository;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
 
     @Value("${app.jwt.expiration}")
     private long jwtExpiration;
@@ -34,9 +48,53 @@ public class AuthService implements AuthUseCase {
         User user = userRepository.findByEmail(command.email())
                 .orElseThrow(() -> new BadCredentialsException("Invalid email or password"));
 
+        if (!Boolean.TRUE.equals(user.getActive())) {
+            throw new DisabledException("Account disabled");
+        }
+
+        if (user.getLockedUntil() != null && user.getLockedUntil().isAfter(LocalDateTime.now())) {
+            throw new BusinessRuleException("Account locked until " + user.getLockedUntil());
+        }
+
         if (!passwordHasher.verify(command.password(), user.getPasswordHash())) {
+            int attempts = user.getFailedAttempts() + 1;
+            user.setFailedAttempts(attempts);
+            if (attempts >= MAX_FAILED_ATTEMPTS) {
+                user.setLockedUntil(LocalDateTime.now().plusMinutes(LOCKOUT_MINUTES));
+            }
+            userRepository.save(user);
             throw new BadCredentialsException("Invalid email or password");
         }
+
+        user.setFailedAttempts(0);
+        user.setLockedUntil(null);
+        user.setLastLoginAt(LocalDateTime.now());
+        userRepository.save(user);
+
+        List<String> roles = roleRepository.findUserRoles(user.getId())
+                .stream().map(r -> r.getCode().name()).toList();
+
+        String accessToken = tokenGenerator.generate(user.getId(), user.getTenantId(), roles);
+        String refreshTokenValue = generateRefreshTokenForUser(user.getId());
+
+        return new LoginResult(accessToken, refreshTokenValue, jwtExpiration,
+                user.getId(), user.getTenantId(), roles);
+    }
+
+    @Override
+    public LoginResult refreshToken(String refreshTokenValue) {
+        RefreshToken refreshToken = refreshTokenRepository.findByToken(refreshTokenValue)
+                .orElseThrow(() -> new BusinessRuleException("Invalid refresh token"));
+
+        if (refreshToken.isRevoked()) {
+            throw new BusinessRuleException("Refresh token has been revoked");
+        }
+        if (refreshToken.getExpiresAt().isBefore(LocalDateTime.now())) {
+            throw new BusinessRuleException("Refresh token has expired");
+        }
+
+        User user = userRepository.findById(refreshToken.getUserId())
+                .orElseThrow(() -> new ResourceNotFoundException("User", refreshToken.getUserId()));
 
         if (!Boolean.TRUE.equals(user.getActive())) {
             throw new DisabledException("Account disabled");
@@ -45,11 +103,83 @@ public class AuthService implements AuthUseCase {
         List<String> roles = roleRepository.findUserRoles(user.getId())
                 .stream().map(r -> r.getCode().name()).toList();
 
-        String token = tokenGenerator.generate(user.getId(), user.getTenantId(), roles);
+        String accessToken = tokenGenerator.generate(user.getId(), user.getTenantId(), roles);
+        String newRefreshToken = generateRefreshTokenForUser(user.getId());
+        refreshTokenRepository.revokeByToken(refreshTokenValue);
 
-        user.setLastLoginAt(LocalDateTime.now());
+        return new LoginResult(accessToken, newRefreshToken, jwtExpiration,
+                user.getId(), user.getTenantId(), roles);
+    }
+
+    @Override
+    public void logout(String refreshTokenValue) {
+        refreshTokenRepository.revokeByToken(refreshTokenValue);
+    }
+
+    @Override
+    public void forgotPassword(String email) {
+        // Always return success to avoid user enumeration
+        userRepository.findByEmail(email).ifPresent(user -> {
+            String token = UUID.randomUUID().toString();
+            PasswordResetToken resetToken = PasswordResetToken.builder()
+                    .userId(user.getId())
+                    .token(token)
+                    .expiresAt(LocalDateTime.now().plusHours(RESET_TOKEN_EXPIRY_HOURS))
+                    .used(false)
+                    .build();
+            passwordResetTokenRepository.save(resetToken);
+            // TODO: dispatch PasswordResetRequested event to communication module
+        });
+    }
+
+    @Override
+    public void resetPassword(ResetPasswordCommand command) {
+        PasswordResetToken resetToken = passwordResetTokenRepository.findByToken(command.token())
+                .orElseThrow(() -> new BusinessRuleException("Invalid or expired reset token"));
+
+        if (resetToken.isUsed()) {
+            throw new BusinessRuleException("Reset token has already been used");
+        }
+        if (resetToken.getExpiresAt().isBefore(LocalDateTime.now())) {
+            throw new BusinessRuleException("Reset token has expired");
+        }
+
+        User user = userRepository.findById(resetToken.getUserId())
+                .orElseThrow(() -> new ResourceNotFoundException("User", resetToken.getUserId()));
+
+        user.setPasswordHash(passwordHasher.hash(command.newPassword()));
         userRepository.save(user);
 
-        return new LoginResult(token, jwtExpiration, user.getId(), user.getTenantId(), roles);
+        resetToken.setUsed(true);
+        passwordResetTokenRepository.save(resetToken);
+
+        refreshTokenRepository.revokeAllByUserId(user.getId());
+    }
+
+    @Override
+    public void changePassword(ChangePasswordCommand command) {
+        User user = userRepository.findById(command.userId())
+                .orElseThrow(() -> new ResourceNotFoundException("User", command.userId()));
+
+        if (!passwordHasher.verify(command.currentPassword(), user.getPasswordHash())) {
+            throw new BusinessRuleException("Current password is incorrect");
+        }
+
+        user.setPasswordHash(passwordHasher.hash(command.newPassword()));
+        userRepository.save(user);
+
+        refreshTokenRepository.revokeAllByUserId(user.getId());
+    }
+
+    private String generateRefreshTokenForUser(Long userId) {
+        String tokenValue = UUID.randomUUID().toString();
+        RefreshToken refreshToken = RefreshToken.builder()
+                .userId(userId)
+                .token(tokenValue)
+                .expiresAt(LocalDateTime.now().plusDays(REFRESH_TOKEN_EXPIRY_DAYS))
+                .revoked(false)
+                .build();
+        refreshTokenRepository.save(refreshToken);
+        return tokenValue;
     }
 }

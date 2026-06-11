@@ -24,4 +24,6 @@ public class User {
     private Boolean active;
     private LocalDateTime lastLoginAt;
     private LocalDateTime createdAt;
+    private int failedAttempts;
+    private LocalDateTime lockedUntil;
 }

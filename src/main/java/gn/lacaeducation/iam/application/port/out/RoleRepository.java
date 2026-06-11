@@ -10,4 +10,10 @@ public interface RoleRepository {
     Optional<Role> findById(Long id);
     Optional<Role> findByCode(RoleCode code);
     List<Role> findUserRoles(Long userId);
+    List<Role> findAll();
+    Role save(Role role);
+    void deleteById(Long id);
+    boolean existsById(Long id);
+    void assignPermissions(Long roleId, List<Long> permissionIds);
+    void removeRoleFromUser(Long userId, Long roleId);
 }
