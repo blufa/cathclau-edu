@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="fr">
+<head><meta charset="UTF-8"/>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI',Arial,sans-serif; background:#f4f6f9; color:#333; }
+  .wrapper { max-width:600px; margin:32px auto; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,.08); }
+  .header { background:#8e44ad; color:#fff; padding:28px 32px; }
+  .header h1 { font-size:20px; font-weight:600; }
+  .header p { font-size:13px; opacity:.8; margin-top:4px; }
+  .body { padding:32px; }
+  .body h2 { font-size:18px; color:#8e44ad; margin-bottom:16px; }
+  .average-card { text-align:center; background:linear-gradient(135deg,#8e44ad,#6c3483); color:#fff; border-radius:10px; padding:24px; margin:20px 0; }
+  .average-card .label { font-size:13px; opacity:.8; margin-bottom:8px; }
+  .average-card .value { font-size:42px; font-weight:700; }
+  .average-card .sub { font-size:13px; opacity:.8; margin-top:4px; }
+  .info-box { background:#f9f0ff; border-left:4px solid #8e44ad; border-radius:4px; padding:16px 20px; margin:20px 0; }
+  .info-row { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #e8d5f5; font-size:14px; }
+  .info-row:last-child { border-bottom:none; }
+  .info-label { color:#666; }
+  .info-value { font-weight:600; color:#6c3483; }
+  .footer { background:#f0f4fb; padding:20px 32px; text-align:center; font-size:12px; color:#888; border-top:1px solid #e0e7f0; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="header">
+    <h1 th:text="${schoolName}">École</h1>
+    <p>Bulletin scolaire disponible</p>
+  </div>
+  <div class="body">
+    <h2>📋 Bulletin de <span th:text="${studentName}">l'élève</span></h2>
+    <p>Le bulletin de la période <strong th:text="${period}">—</strong> est maintenant disponible.</p>
+    <div class="average-card">
+      <div class="label">Moyenne générale</div>
+      <div class="value" th:text="${average}">—</div>
+      <div class="sub" th:text="'Mention : ' + ${mention}">Mention : —</div>
+    </div>
+    <div class="info-box">
+      <div class="info-row">
+        <span class="info-label">Élève</span>
+        <span class="info-value" th:text="${studentName}">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Période</span>
+        <span class="info-value" th:text="${period}">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Rang</span>
+        <span class="info-value" th:text="${rank + ' / ' + classSize}">— / —</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Mention</span>
+        <span class="info-value" th:text="${mention}">—</span>
+      </div>
+    </div>
+    <p style="font-size:13px;color:#666;">Connectez-vous à l'espace parent pour consulter le détail du bulletin.</p>
+  </div>
+  <div class="footer">
+    <p>Ce message a été envoyé automatiquement. Merci de ne pas y répondre.</p>
+    <p style="margin-top:6px;" th:text="${schoolName}">École</p>
+  </div>
+</div>
+</body>
+</html>

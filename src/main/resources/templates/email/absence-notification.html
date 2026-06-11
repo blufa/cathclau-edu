@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="fr">
+<head><meta charset="UTF-8"/>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI',Arial,sans-serif; background:#f4f6f9; color:#333; }
+  .wrapper { max-width:600px; margin:32px auto; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,.08); }
+  .header { background:#c0392b; color:#fff; padding:28px 32px; }
+  .header h1 { font-size:20px; font-weight:600; }
+  .header p { font-size:13px; opacity:.8; margin-top:4px; }
+  .body { padding:32px; }
+  .body h2 { font-size:18px; color:#c0392b; margin-bottom:16px; }
+  .alert-box { background:#fff5f5; border:1px solid #f5c6cb; border-radius:6px; padding:20px; margin:20px 0; text-align:center; }
+  .alert-icon { font-size:36px; }
+  .info-box { background:#fff5f5; border-left:4px solid #c0392b; border-radius:4px; padding:16px 20px; margin:20px 0; }
+  .info-row { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #f5c6cb; font-size:14px; }
+  .info-row:last-child { border-bottom:none; }
+  .info-label { color:#666; }
+  .info-value { font-weight:600; color:#c0392b; }
+  .footer { background:#f0f4fb; padding:20px 32px; text-align:center; font-size:12px; color:#888; border-top:1px solid #e0e7f0; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="header">
+    <h1 th:text="${schoolName}">École</h1>
+    <p>Signalement d'absence</p>
+  </div>
+  <div class="body">
+    <div class="alert-box">
+      <div class="alert-icon">⚠️</div>
+      <p style="margin-top:8px;font-weight:600;" th:text="${studentName + ' est absent(e) aujourd\'hui'}">Absence signalée</p>
+    </div>
+    <h2>Absence enregistrée</h2>
+    <p>Bonjour,</p>
+    <p style="margin:12px 0;">Nous vous informons qu'une absence a été enregistrée pour <strong th:text="${studentName}">votre enfant</strong>.</p>
+    <div class="info-box">
+      <div class="info-row">
+        <span class="info-label">Élève</span>
+        <span class="info-value" th:text="${studentName}">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Classe</span>
+        <span class="info-value" th:text="${className}">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Date</span>
+        <span class="info-value" th:text="${date}">—</span>
+      </div>
+    </div>
+    <p style="font-size:13px;color:#666;">Si cette absence est justifiée, merci de fournir un justificatif au secrétariat dans les 48h.</p>
+  </div>
+  <div class="footer">
+    <p>Ce message a été envoyé automatiquement. Merci de ne pas y répondre.</p>
+    <p style="margin-top:6px;" th:text="${schoolName}">École</p>
+  </div>
+</div>
+</body>
+</html>

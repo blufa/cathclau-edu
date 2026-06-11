@@ -1,0 +1,12 @@
+@org.springframework.modulith.ApplicationModule(
+    allowedDependencies = {
+        "students", "students::events",
+        "attendance::events",
+        "billing", "billing::events",
+        "payments", "payments::events",
+        "grading::events",
+        "academics",
+        "iam"
+    }
+)
+package gn.lacaeducation.notification;

@@ -1,0 +1,43 @@
+spring:
+  application:
+    name: lacaeducation
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/lacaeducation}
+    username: ${DB_USER:lacaeducation}
+    password: ${DB_PASSWORD:lacaeducation}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:noreply@lacaeducation.gn}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+    test-connection: false
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:lacaeducation-dev-secret-key-min-32chars!!}
+    expiration: 86400

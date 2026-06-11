@@ -1,0 +1,24 @@
+package gn.lacaeducation.academics.domain;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
+@Getter
+@Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class Classe {
+    private Long id;
+    private Long tenantId;
+    private Long levelId;
+    private Long academicYearId;
+    private Long headTeacherId;
+    private Long roomId;
+    private String label;
+    private Integer headcount;
+    private Integer maxCapacity;
+}

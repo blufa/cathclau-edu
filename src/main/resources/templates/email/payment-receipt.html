@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="fr">
+<head><meta charset="UTF-8"/>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI',Arial,sans-serif; background:#f4f6f9; color:#333; }
+  .wrapper { max-width:600px; margin:32px auto; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,.08); }
+  .header { background:#27ae60; color:#fff; padding:28px 32px; }
+  .header h1 { font-size:20px; font-weight:600; }
+  .header p { font-size:13px; opacity:.8; margin-top:4px; }
+  .body { padding:32px; }
+  .body h2 { font-size:18px; color:#27ae60; margin-bottom:16px; }
+  .checkmark { text-align:center; font-size:48px; margin:16px 0; }
+  .info-box { background:#f0fff4; border-left:4px solid #27ae60; border-radius:4px; padding:16px 20px; margin:20px 0; }
+  .info-row { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #c3e6cb; font-size:14px; }
+  .info-row:last-child { border-bottom:none; }
+  .info-label { color:#666; }
+  .info-value { font-weight:600; color:#155724; }
+  .footer { background:#f0f4fb; padding:20px 32px; text-align:center; font-size:12px; color:#888; border-top:1px solid #e0e7f0; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="header">
+    <h1 th:text="${schoolName}">École</h1>
+    <p>Confirmation de paiement</p>
+  </div>
+  <div class="body">
+    <div class="checkmark">✅</div>
+    <h2 style="text-align:center;">Paiement reçu</h2>
+    <p style="text-align:center;margin:8px 0 20px;">Votre paiement a bien été enregistré.</p>
+    <div class="info-box">
+      <div class="info-row">
+        <span class="info-label">Référence reçu</span>
+        <span class="info-value" th:text="${receiptRef}">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Élève</span>
+        <span class="info-value" th:text="${studentName}">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Montant payé</span>
+        <span class="info-value" th:text="${amount}">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Mode de paiement</span>
+        <span class="info-value" th:text="${channel}">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Date</span>
+        <span class="info-value" th:text="${paymentDate}">—</span>
+      </div>
+    </div>
+    <p style="font-size:13px;color:#666;">Conservez ce reçu comme preuve de paiement.</p>
+  </div>
+  <div class="footer">
+    <p>Ce message a été envoyé automatiquement. Merci de ne pas y répondre.</p>
+    <p style="margin-top:6px;" th:text="${schoolName}">École</p>
+  </div>
+</div>
+</body>
+</html>

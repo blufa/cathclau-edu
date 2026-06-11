@@ -1,0 +1,2 @@
+-- Migrations métier à venir par module.
+-- Ce fichier initialise le versioning Flyway.

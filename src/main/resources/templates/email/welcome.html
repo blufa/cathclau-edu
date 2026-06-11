@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="fr">
+<head><meta charset="UTF-8"/>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI',Arial,sans-serif; background:#f4f6f9; color:#333; }
+  .wrapper { max-width:600px; margin:32px auto; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,.08); }
+  .header { background:#1e4d8c; color:#fff; padding:28px 32px; text-align:center; }
+  .header h1 { font-size:22px; font-weight:700; }
+  .header p { font-size:13px; opacity:.8; margin-top:4px; }
+  .body { padding:32px; }
+  .body h2 { font-size:20px; color:#1e4d8c; margin-bottom:8px; }
+  .welcome-icon { text-align:center; font-size:56px; margin:16px 0; }
+  .info-box { background:#f0f4fb; border-left:4px solid #1e4d8c; border-radius:4px; padding:16px 20px; margin:20px 0; }
+  .info-row { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #e0e7f0; font-size:14px; }
+  .info-row:last-child { border-bottom:none; }
+  .info-label { color:#666; }
+  .info-value { font-weight:600; color:#1e4d8c; }
+  .btn { display:block; text-align:center; background:#1e4d8c; color:#fff; padding:14px 28px; border-radius:6px; text-decoration:none; font-size:15px; font-weight:600; margin:24px auto; max-width:220px; }
+  .footer { background:#f0f4fb; padding:20px 32px; text-align:center; font-size:12px; color:#888; border-top:1px solid #e0e7f0; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="header">
+    <h1 th:text="${schoolName}">École</h1>
+    <p>Bienvenue dans notre établissement</p>
+  </div>
+  <div class="body">
+    <div class="welcome-icon">🎓</div>
+    <h2 th:text="'Bienvenue, ' + ${firstName} + ' ' + ${lastName} + ' !'">Bienvenue !</h2>
+    <p style="margin:12px 0;color:#555;">Votre compte a été créé avec succès sur la plateforme de gestion scolaire de <strong th:text="${schoolName}">l'établissement</strong>.</p>
+    <div class="info-box">
+      <div class="info-row">
+        <span class="info-label">Nom complet</span>
+        <span class="info-value" th:text="${firstName + ' ' + lastName}">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Email de connexion</span>
+        <span class="info-value" th:text="${email}">—</span>
+      </div>
+    </div>
+    <a class="btn" th:href="${loginUrl}">Se connecter</a>
+    <p style="font-size:12px;color:#999;text-align:center;">Si le bouton ne fonctionne pas, copiez ce lien : <span th:text="${loginUrl}">—</span></p>
+  </div>
+  <div class="footer">
+    <p>Ce message a été envoyé automatiquement. Merci de ne pas y répondre.</p>
+    <p style="margin-top:6px;" th:text="${schoolName}">École</p>
+  </div>
+</div>
+</body>
+</html>

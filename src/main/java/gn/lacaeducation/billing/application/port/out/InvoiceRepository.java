@@ -1,0 +1,15 @@
+package gn.lacaeducation.billing.application.port.out;
+import gn.lacaeducation.billing.domain.Invoice;
+import gn.lacaeducation.billing.domain.InvoiceStatus;
+import java.util.List;
+import java.util.Optional;
+public interface InvoiceRepository {
+    Invoice save(Invoice invoice);
+    Optional<Invoice> findById(Long id);
+    Optional<Invoice> findByReference(String reference);
+    List<Invoice> findByStudentId(Long studentId);
+    List<Invoice> findByTenantId(Long tenantId);
+    List<Invoice> findByTenantIdAndStatus(Long tenantId, InvoiceStatus status);
+    void deleteById(Long id);
+    boolean existsById(Long id);
+}
