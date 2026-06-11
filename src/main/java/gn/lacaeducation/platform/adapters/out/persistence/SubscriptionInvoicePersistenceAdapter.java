@@ -4,6 +4,7 @@ import gn.lacaeducation.platform.application.port.out.SubscriptionInvoiceReposit
 import gn.lacaeducation.platform.domain.SubscriptionInvoice;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import java.util.List;
 import java.util.Optional;
 @Component @RequiredArgsConstructor
 class SubscriptionInvoicePersistenceAdapter implements SubscriptionInvoiceRepository {
@@ -13,6 +14,8 @@ class SubscriptionInvoicePersistenceAdapter implements SubscriptionInvoiceReposi
     @Override public Optional<SubscriptionInvoice> findById(Long id) { return jpa.findById(id).map(mapper::toDomain); }
     @Override public Optional<SubscriptionInvoice> findLatestBySubscriptionId(Long subscriptionId) {
         return jpa.findTopBySubscriptionIdOrderByIssuedAtDesc(subscriptionId).map(mapper::toDomain); }
+    @Override public List<SubscriptionInvoice> findBySubscriptionId(Long subscriptionId) {
+        return jpa.findBySubscriptionId(subscriptionId).stream().map(mapper::toDomain).toList(); }
     @Override public void deleteById(Long id) { jpa.deleteById(id); }
     @Override public boolean existsById(Long id) { return jpa.existsById(id); }
 }

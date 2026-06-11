@@ -1,5 +1,6 @@
 package gn.lacaeducation.platform.application.service;
 
+import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.platform.application.event.TenantSuspendedEvent;
 import gn.lacaeducation.platform.application.port.in.CreateTenantUseCase;
 import gn.lacaeducation.platform.application.port.out.SubscriptionRepository;
@@ -34,7 +35,7 @@ public class TenantService implements CreateTenantUseCase {
     @Override @Transactional(readOnly = true)
     public Tenant findById(Long id) {
         return tenantRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Tenant not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Tenant not found: " + id));
     }
 
     @Override @Transactional(readOnly = true)

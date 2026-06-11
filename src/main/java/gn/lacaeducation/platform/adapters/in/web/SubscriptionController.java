@@ -102,14 +102,24 @@ public class SubscriptionController {
 
     @Operation(summary = "Confirm a payment (callback / manual)")
     @PutMapping("/payments/{paymentId}/confirm")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void confirmPayment(@PathVariable Long paymentId, @Valid @RequestBody ConfirmPaymentRequest req) {
         paymentUseCase.confirm(paymentId, req.externalTransactionId());
     }
 
-    @Operation(summary = "Get invoices for a subscription")
+    @Operation(summary = "Mark a payment as failed")
+    @PutMapping("/payments/{paymentId}/fail")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void failPayment(@PathVariable Long paymentId) {
+        paymentUseCase.fail(paymentId);
+    }
+
+    @Operation(summary = "Get all invoices for a subscription")
     @GetMapping("/{id}/invoices")
     public List<SubscriptionInvoiceResponse> findInvoices(@PathVariable Long id) {
-        return List.of(SubscriptionInvoiceResponse.from(invoiceUseCase.findLatestBySubscription(id)));
+        return invoiceUseCase.findAllBySubscription(id)
+                .stream().map(SubscriptionInvoiceResponse::from).toList();
     }
 }

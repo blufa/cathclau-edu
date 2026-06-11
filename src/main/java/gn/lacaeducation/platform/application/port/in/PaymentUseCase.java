@@ -9,6 +9,7 @@ import java.math.BigDecimal;
 public interface PaymentUseCase {
     SubscriptionPayment initiate(InitiatePaymentCommand command);
     SubscriptionPayment confirm(Long paymentId, String externalId);
+    SubscriptionPayment fail(Long paymentId);
     SubscriptionPayment findPaymentById(Long id);
 
     record InitiatePaymentCommand(

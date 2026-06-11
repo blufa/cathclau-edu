@@ -1,5 +1,6 @@
 package gn.lacaeducation.platform.application.service;
 
+import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.platform.application.event.SubscriptionActivatedEvent;
 import gn.lacaeducation.platform.application.port.in.InvoiceUseCase;
 import gn.lacaeducation.platform.application.port.in.PaymentUseCase;
@@ -57,7 +58,7 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
     @Override
     public Subscription initiate(InitiateSubscriptionCommand command) {
         Plan plan = planRepository.findById(command.planId())
-                .orElseThrow(() -> new IllegalArgumentException("Plan not found: " + command.planId()));
+                .orElseThrow(() -> new ResourceNotFoundException("Plan not found: " + command.planId()));
 
         BigDecimal amount = command.billingPeriod() == BillingPeriod.ANNUAL
                 ? plan.getAnnualPrice() : plan.getMonthlyPrice();
@@ -86,7 +87,7 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
     @Transactional(readOnly = true)
     public Subscription findById(Long id) {
         return subscriptionRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Subscription not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Subscription not found: " + id));
     }
 
     @Override
@@ -108,7 +109,7 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
     @Override
     public void suspend(Long subscriptionId) {
         Subscription s = subscriptionRepository.findById(subscriptionId)
-                .orElseThrow(() -> new IllegalArgumentException("Subscription not found: " + subscriptionId));
+                .orElseThrow(() -> new ResourceNotFoundException("Subscription not found: " + subscriptionId));
         s.setStatus(SubscriptionStatus.SUSPENDED);
         subscriptionRepository.save(s);
     }
@@ -116,7 +117,7 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
     @Override
     public void cancel(Long subscriptionId) {
         Subscription s = subscriptionRepository.findById(subscriptionId)
-                .orElseThrow(() -> new IllegalArgumentException("Subscription not found: " + subscriptionId));
+                .orElseThrow(() -> new ResourceNotFoundException("Subscription not found: " + subscriptionId));
         s.setStatus(SubscriptionStatus.CANCELLED);
         subscriptionRepository.save(s);
     }
@@ -124,7 +125,7 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
     @Override
     public void setAutoRenewal(Long subscriptionId, boolean enabled) {
         Subscription s = subscriptionRepository.findById(subscriptionId)
-                .orElseThrow(() -> new IllegalArgumentException("Subscription not found: " + subscriptionId));
+                .orElseThrow(() -> new ResourceNotFoundException("Subscription not found: " + subscriptionId));
         s.setAutoRenewal(enabled);
         subscriptionRepository.save(s);
     }
@@ -134,7 +135,7 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
     @Override
     public SubscriptionInvoice generate(Long subscriptionId, BillingPeriod period, LocalDate start, LocalDate end) {
         Subscription subscription = subscriptionRepository.findById(subscriptionId)
-                .orElseThrow(() -> new IllegalArgumentException("Subscription not found: " + subscriptionId));
+                .orElseThrow(() -> new ResourceNotFoundException("Subscription not found: " + subscriptionId));
 
         BigDecimal net = subscription.getAmount();
         BigDecimal tax = net.multiply(BigDecimal.valueOf(0.18)).setScale(2, RoundingMode.HALF_UP);
@@ -163,14 +164,20 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
     @Transactional(readOnly = true)
     public SubscriptionInvoice findInvoiceById(Long id) {
         return invoiceRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Invoice not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Invoice not found: " + id));
     }
 
     @Override
     @Transactional(readOnly = true)
     public SubscriptionInvoice findLatestBySubscription(Long subscriptionId) {
         return invoiceRepository.findLatestBySubscriptionId(subscriptionId)
-                .orElseThrow(() -> new IllegalArgumentException("No invoice for subscription: " + subscriptionId));
+                .orElseThrow(() -> new ResourceNotFoundException("No invoice for subscription: " + subscriptionId));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<SubscriptionInvoice> findAllBySubscription(Long subscriptionId) {
+        return invoiceRepository.findBySubscriptionId(subscriptionId);
     }
 
     // ---- PaymentUseCase ----
@@ -178,7 +185,7 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
     @Override
     public SubscriptionPayment initiate(InitiatePaymentCommand command) {
         invoiceRepository.findById(command.invoiceId())
-                .orElseThrow(() -> new IllegalArgumentException("Invoice not found: " + command.invoiceId()));
+                .orElseThrow(() -> new ResourceNotFoundException("Invoice not found: " + command.invoiceId()));
 
         SubscriptionPayment payment = SubscriptionPayment.builder()
                 .invoiceId(command.invoiceId())
@@ -196,7 +203,7 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
     @Override
     public SubscriptionPayment confirm(Long paymentId, String externalId) {
         SubscriptionPayment payment = paymentRepository.findById(paymentId)
-                .orElseThrow(() -> new IllegalArgumentException("Payment not found: " + paymentId));
+                .orElseThrow(() -> new ResourceNotFoundException("Payment not found: " + paymentId));
 
         payment.setStatus(PaymentStatus.SUCCESSFUL);
         payment.setExternalTransactionId(externalId);
@@ -207,15 +214,25 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
     }
 
     @Override
+    public SubscriptionPayment fail(Long paymentId) {
+        SubscriptionPayment payment = paymentRepository.findById(paymentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Payment not found: " + paymentId));
+        payment.setStatus(PaymentStatus.FAILED);
+        SubscriptionPayment saved = paymentRepository.save(payment);
+        // Invoice remains UNPAID / PARTIAL — no status change needed
+        return saved;
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public SubscriptionPayment findPaymentById(Long id) {
         return paymentRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Payment not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Payment not found: " + id));
     }
 
     private void processSuccessfulPayment(SubscriptionPayment payment) {
         SubscriptionInvoice invoice = invoiceRepository.findById(payment.getInvoiceId())
-                .orElseThrow(() -> new IllegalArgumentException("Invoice not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Invoice not found"));
 
         BigDecimal newPaid = invoice.getPaidAmount().add(payment.getAmount());
         BigDecimal newBalance = invoice.getTotalAmount().subtract(newPaid).max(BigDecimal.ZERO);
@@ -247,11 +264,11 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
     @Override
     public void changePlan(ChangePlanCommand command) {
         Subscription subscription = subscriptionRepository.findById(command.subscriptionId())
-                .orElseThrow(() -> new IllegalArgumentException("Subscription not found: " + command.subscriptionId()));
+                .orElseThrow(() -> new ResourceNotFoundException("Subscription not found: " + command.subscriptionId()));
         Plan oldPlan = planRepository.findById(subscription.getPlanId())
-                .orElseThrow(() -> new IllegalArgumentException("Plan not found: " + subscription.getPlanId()));
+                .orElseThrow(() -> new ResourceNotFoundException("Plan not found: " + subscription.getPlanId()));
         Plan newPlan = planRepository.findById(command.newPlanId())
-                .orElseThrow(() -> new IllegalArgumentException("New plan not found: " + command.newPlanId()));
+                .orElseThrow(() -> new ResourceNotFoundException("New plan not found: " + command.newPlanId()));
 
         long daysLeft = ChronoUnit.DAYS.between(LocalDate.now(), subscription.getEndDate());
         BigDecimal oldPrice = command.newBillingPeriod() == BillingPeriod.ANNUAL

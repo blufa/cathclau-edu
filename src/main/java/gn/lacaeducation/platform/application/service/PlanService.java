@@ -1,4 +1,5 @@
 package gn.lacaeducation.platform.application.service;
+import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.platform.application.port.in.PlanManagementUseCase;
 import gn.lacaeducation.platform.application.port.in.PlanQueryUseCase;
 import gn.lacaeducation.platform.application.port.out.PlanRepository;
@@ -16,7 +17,7 @@ public class PlanService implements PlanQueryUseCase, PlanManagementUseCase {
     // ── PlanQueryUseCase ──────────────────────────────────────────────
     @Override @Transactional(readOnly=true)
     public Plan findById(Long id) {
-        return repo.findById(id).orElseThrow(() -> new IllegalArgumentException("Plan not found: " + id));
+        return repo.findById(id).orElseThrow(() -> new ResourceNotFoundException("Plan not found: " + id));
     }
     @Override @Transactional(readOnly=true)
     public List<Plan> findAll() { return repo.findAll(); }
@@ -41,5 +42,5 @@ public class PlanService implements PlanQueryUseCase, PlanManagementUseCase {
     @Override @Transactional(readOnly=true)
     public boolean existsById(Long id) { return repo.existsById(id); }
 
-    private Plan load(Long id) { return repo.findById(id).orElseThrow(() -> new IllegalArgumentException("Plan not found: " + id)); }
+    private Plan load(Long id) { return repo.findById(id).orElseThrow(() -> new ResourceNotFoundException("Plan not found: " + id)); }
 }
