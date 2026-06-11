@@ -6,6 +6,8 @@ import gn.lacaeducation.academics.application.port.in.GererReferentielUseCase.Cr
 import gn.lacaeducation.academics.domain.Matiere;
 import gn.lacaeducation.academics.domain.Niveau;
 import gn.lacaeducation.academics.domain.Salle;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -20,13 +22,15 @@ import java.math.BigDecimal;
 import java.net.URI;
 import java.util.List;
 
+@Tag(name = "Academic Referential", description = "Manage reference data: rooms, levels, and subjects")
 @RestController
-@RequestMapping("/api/academics")
+@RequestMapping("/api/v1/academics")
 @RequiredArgsConstructor
 public class ReferentielController {
 
     private final GererReferentielUseCase useCase;
 
+    @Operation(summary = "Create a new room")
     @PostMapping("/rooms")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
     public ResponseEntity<Salle> createRoom(@RequestBody CreateRoomCommand cmd) {
@@ -36,9 +40,11 @@ public class ReferentielController {
         return ResponseEntity.created(URI.create("/api/academics/rooms/" + s.getId())).body(s);
     }
 
+    @Operation(summary = "List all rooms for the current tenant")
     @GetMapping("/rooms")
     public List<Salle> findRooms() { return useCase.findRooms(TenantContext.get()); }
 
+    @Operation(summary = "Create a new school level (grade level)")
     @PostMapping("/levels")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
     public ResponseEntity<Niveau> createLevel(@RequestParam String label, @RequestParam Integer sortOrder) {
@@ -46,9 +52,11 @@ public class ReferentielController {
         return ResponseEntity.created(URI.create("/api/academics/levels/" + n.getId())).body(n);
     }
 
+    @Operation(summary = "List all school levels for the current tenant")
     @GetMapping("/levels")
     public List<Niveau> findLevels() { return useCase.findLevels(TenantContext.get()); }
 
+    @Operation(summary = "Create a new subject")
     @PostMapping("/subjects")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
     public ResponseEntity<Matiere> createSubject(
@@ -59,6 +67,7 @@ public class ReferentielController {
         return ResponseEntity.created(URI.create("/api/academics/subjects/" + m.getId())).body(m);
     }
 
+    @Operation(summary = "List all subjects for the current tenant")
     @GetMapping("/subjects")
     public List<Matiere> findSubjects() { return useCase.findSubjects(TenantContext.get()); }
 }

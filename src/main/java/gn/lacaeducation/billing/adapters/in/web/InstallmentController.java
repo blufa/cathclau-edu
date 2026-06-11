@@ -1,26 +1,38 @@
 package gn.lacaeducation.billing.adapters.in.web;
 import gn.lacaeducation.billing.application.port.in.InstallmentUseCase;
 import gn.lacaeducation.billing.domain.Installment;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
-@RestController @RequestMapping("/api/billing/installments") @RequiredArgsConstructor
+@Tag(name = "Installments", description = "Define payment installment schedules (due dates and amounts) for school fees")
+@RestController @RequestMapping("/api/v1/billing/installments") @RequiredArgsConstructor
 public class InstallmentController {
     private final InstallmentUseCase useCase;
     public record CreateRequest(Long feeId, String label, BigDecimal amount, LocalDate dueDate) {}
     public record UpdateRequest(String label, BigDecimal amount, LocalDate dueDate) {}
+    @Operation(summary = "Create a new installment deadline for a school fee")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
     @PostMapping public ResponseEntity<Installment> create(@RequestBody CreateRequest r) {
         return ResponseEntity.ok(useCase.create(new InstallmentUseCase.CreateInstallmentCommand(r.feeId(), r.label(), r.amount(), r.dueDate())));
     }
+    @Operation(summary = "Update an installment deadline")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
     @PutMapping("/{id}") public ResponseEntity<Installment> update(@PathVariable Long id, @RequestBody UpdateRequest r) {
         return ResponseEntity.ok(useCase.update(id, new InstallmentUseCase.UpdateInstallmentCommand(r.label(), r.amount(), r.dueDate())));
     }
+    @Operation(summary = "Get an installment by ID")
     @GetMapping("/{id}") public ResponseEntity<Installment> findById(@PathVariable Long id) {
         return useCase.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
+    @Operation(summary = "List all installments for a school fee")
     @GetMapping("/fee/{feeId}") public List<Installment> findByFee(@PathVariable Long feeId) { return useCase.findByFeeId(feeId); }
+    @Operation(summary = "Delete an installment deadline")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
     @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id) { useCase.delete(id); return ResponseEntity.noContent().build(); }
 }

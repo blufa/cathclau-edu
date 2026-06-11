@@ -5,6 +5,8 @@ import gn.lacaeducation.academics.application.port.in.GererClasseUseCase;
 import gn.lacaeducation.academics.application.port.in.GererClasseUseCase.CreateClassCommand;
 import gn.lacaeducation.academics.domain.Classe;
 import gn.lacaeducation.academics.domain.ClasseMatiere;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -20,13 +22,15 @@ import org.springframework.web.bind.annotation.RestController;
 import java.net.URI;
 import java.util.List;
 
+@Tag(name = "Classes", description = "Manage school classes, subject assignments, and class rosters")
 @RestController
-@RequestMapping("/api/academics/classes")
+@RequestMapping("/api/v1/academics/classes")
 @RequiredArgsConstructor
 public class ClasseController {
 
     private final GererClasseUseCase useCase;
 
+    @Operation(summary = "Create a new class for an academic year")
     @PostMapping
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
     public ResponseEntity<Classe> create(@Valid @RequestBody CreateClassCommand cmd) {
@@ -37,16 +41,19 @@ public class ClasseController {
         return ResponseEntity.created(URI.create("/api/academics/classes/" + classe.getId())).body(classe);
     }
 
+    @Operation(summary = "Get a class by ID")
     @GetMapping("/{id}")
     public ResponseEntity<Classe> findById(@PathVariable Long id) {
         return useCase.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
+    @Operation(summary = "List all classes for a given academic year")
     @GetMapping
     public List<Classe> findByAcademicYear(@RequestParam Long academicYearId) {
         return useCase.findByAcademicYear(academicYearId);
     }
 
+    @Operation(summary = "Assign a subject (and optionally a teacher) to a class")
     @PostMapping("/{classId}/subjects")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
     public ResponseEntity<ClasseMatiere> assignSubject(
@@ -56,6 +63,7 @@ public class ClasseController {
         return ResponseEntity.ok(useCase.assignSubject(classId, subjectId, teacherId));
     }
 
+    @Operation(summary = "List all subjects assigned to a class")
     @GetMapping("/{classId}/subjects")
     public List<ClasseMatiere> findSubjects(@PathVariable Long classId) {
         return useCase.findSubjects(classId);
