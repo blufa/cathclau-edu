@@ -9,4 +9,5 @@ public interface PermissionRepository {
     List<Permission> findAll();
     Optional<Permission> findById(Long id);
     List<Permission> findByRoleId(Long roleId);
+    List<Permission> findByUserId(Long userId);
 }

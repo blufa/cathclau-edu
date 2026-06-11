@@ -2,18 +2,23 @@ package gn.lacaeducation.iam.application.service;
 
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
+import gn.lacaeducation.iam.application.event.PasswordResetEvent;
+import gn.lacaeducation.iam.application.event.UserLoggedInEvent;
 import gn.lacaeducation.iam.application.port.in.AuthUseCase;
 import gn.lacaeducation.iam.application.port.out.PasswordHasher;
 import gn.lacaeducation.iam.application.port.out.PasswordResetTokenRepository;
+import gn.lacaeducation.iam.application.port.out.PermissionRepository;
 import gn.lacaeducation.iam.application.port.out.RefreshTokenRepository;
 import gn.lacaeducation.iam.application.port.out.RoleRepository;
 import gn.lacaeducation.iam.application.port.out.TokenGenerator;
 import gn.lacaeducation.iam.application.port.out.UserRepository;
+import gn.lacaeducation.iam.domain.Permission;
 import gn.lacaeducation.iam.domain.PasswordResetToken;
 import gn.lacaeducation.iam.domain.RefreshToken;
 import gn.lacaeducation.iam.domain.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.stereotype.Service;
@@ -35,10 +40,12 @@ public class AuthService implements AuthUseCase {
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
+    private final PermissionRepository permissionRepository;
     private final TokenGenerator tokenGenerator;
     private final PasswordHasher passwordHasher;
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Value("${app.jwt.expiration}")
     private long jwtExpiration;
@@ -71,11 +78,13 @@ public class AuthService implements AuthUseCase {
         user.setLastLoginAt(LocalDateTime.now());
         userRepository.save(user);
 
-        List<String> roles = roleRepository.findUserRoles(user.getId())
-                .stream().map(r -> r.getCode().name()).toList();
+        List<String> roles = rolesOf(user.getId());
+        List<String> permissions = permissionsOf(user.getId());
 
-        String accessToken = tokenGenerator.generate(user.getId(), user.getTenantId(), roles);
+        String accessToken = tokenGenerator.generate(user.getId(), user.getTenantId(), roles, permissions);
         String refreshTokenValue = generateRefreshTokenForUser(user.getId());
+
+        eventPublisher.publishEvent(new UserLoggedInEvent(user.getId(), user.getTenantId(), user.getLastLoginAt()));
 
         return new LoginResult(accessToken, refreshTokenValue, jwtExpiration,
                 user.getId(), user.getTenantId(), roles);
@@ -100,10 +109,10 @@ public class AuthService implements AuthUseCase {
             throw new DisabledException("Account disabled");
         }
 
-        List<String> roles = roleRepository.findUserRoles(user.getId())
-                .stream().map(r -> r.getCode().name()).toList();
+        List<String> roles = rolesOf(user.getId());
+        List<String> permissions = permissionsOf(user.getId());
 
-        String accessToken = tokenGenerator.generate(user.getId(), user.getTenantId(), roles);
+        String accessToken = tokenGenerator.generate(user.getId(), user.getTenantId(), roles, permissions);
         String newRefreshToken = generateRefreshTokenForUser(user.getId());
         refreshTokenRepository.revokeByToken(refreshTokenValue);
 
@@ -128,7 +137,6 @@ public class AuthService implements AuthUseCase {
                     .used(false)
                     .build();
             passwordResetTokenRepository.save(resetToken);
-            // TODO: dispatch PasswordResetRequested event to communication module
         });
     }
 
@@ -154,6 +162,8 @@ public class AuthService implements AuthUseCase {
         passwordResetTokenRepository.save(resetToken);
 
         refreshTokenRepository.revokeAllByUserId(user.getId());
+
+        eventPublisher.publishEvent(new PasswordResetEvent(user.getId(), user.getTenantId()));
     }
 
     @Override
@@ -169,6 +179,28 @@ public class AuthService implements AuthUseCase {
         userRepository.save(user);
 
         refreshTokenRepository.revokeAllByUserId(user.getId());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public MeResult me(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", userId));
+        return new MeResult(user.getId(), user.getTenantId(), user.getFirstName(), user.getLastName(),
+                user.getEmail(), user.getPhone(), rolesOf(userId), permissionsOf(userId));
+    }
+
+    private List<String> rolesOf(Long userId) {
+        return roleRepository.findUserRoles(userId).stream()
+                .filter(r -> r.getCode() != null)
+                .map(r -> r.getCode().name())
+                .toList();
+    }
+
+    private List<String> permissionsOf(Long userId) {
+        return permissionRepository.findByUserId(userId).stream()
+                .map(Permission::getCode)
+                .toList();
     }
 
     private String generateRefreshTokenForUser(Long userId) {

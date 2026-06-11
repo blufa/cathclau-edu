@@ -2,12 +2,14 @@ package gn.lacaeducation.iam.application.service;
 
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
+import gn.lacaeducation.iam.application.event.PermissionsModifiedEvent;
 import gn.lacaeducation.iam.application.port.in.RoleUseCase;
 import gn.lacaeducation.iam.application.port.out.PermissionRepository;
 import gn.lacaeducation.iam.application.port.out.RoleRepository;
 import gn.lacaeducation.iam.domain.Permission;
 import gn.lacaeducation.iam.domain.Role;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,6 +22,7 @@ public class RoleService implements RoleUseCase {
 
     private final RoleRepository roleRepository;
     private final PermissionRepository permissionRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional(readOnly = true)
@@ -69,6 +72,7 @@ public class RoleService implements RoleUseCase {
             throw new ResourceNotFoundException("Role", roleId);
         }
         roleRepository.assignPermissions(roleId, permissionIds);
+        eventPublisher.publishEvent(new PermissionsModifiedEvent(roleId));
     }
 
     @Override

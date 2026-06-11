@@ -33,4 +33,9 @@ class PermissionPersistenceAdapter implements PermissionRepository {
                 .stream().map(RolePermissionJpaEntity::getPermissionId).toList();
         return jpaRepository.findAllById(permissionIds).stream().map(mapper::toDomain).toList();
     }
+
+    @Override
+    public List<Permission> findByUserId(Long userId) {
+        return jpaRepository.findByUserId(userId).stream().map(mapper::toDomain).toList();
+    }
 }

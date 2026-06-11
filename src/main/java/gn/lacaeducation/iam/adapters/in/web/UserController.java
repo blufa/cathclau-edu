@@ -32,7 +32,7 @@ public class UserController {
 
     @Operation(summary = "Create a new user in the current tenant")
     @PostMapping
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN')")
+    @PreAuthorize("hasAuthority('user:create')")
     public ResponseEntity<UserResponse> create(@Valid @RequestBody CreateUserRequest req) {
         var user = userUseCase.create(new UserUseCase.CreateUserCommand(
                 req.tenantId(), req.firstName(), req.lastName(), req.email(), req.password(), req.phone()));
@@ -42,7 +42,7 @@ public class UserController {
 
     @Operation(summary = "List all users in the current tenant")
     @GetMapping
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('user:read')")
     public PageResponse<UserResponse> findAll(@AuthenticationPrincipal Jwt jwt,
                                                @PageableDefault(size = 20) Pageable pageable) {
         Long tenantId = jwt.getClaim("tenant_id") instanceof Number n ? n.longValue() : null;
@@ -54,7 +54,7 @@ public class UserController {
 
     @Operation(summary = "Get user by ID")
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('user:read')")
     public ResponseEntity<UserResponse> findById(@PathVariable Long id) {
         return userUseCase.findById(id).map(u -> ResponseEntity.ok(toResponse(u)))
                 .orElse(ResponseEntity.notFound().build());
@@ -70,7 +70,7 @@ public class UserController {
 
     @Operation(summary = "Update a user")
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN')")
+    @PreAuthorize("hasAuthority('user:update')")
     public UserResponse update(@PathVariable Long id, @Valid @RequestBody UpdateUserRequest req) {
         return toResponse(userUseCase.update(id, new UserUseCase.UpdateUserCommand(
                 req.firstName(), req.lastName(), req.phone(), req.active())));
@@ -78,7 +78,7 @@ public class UserController {
 
     @Operation(summary = "Deactivate a user account")
     @PatchMapping("/{id}/deactivate")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN')")
+    @PreAuthorize("hasAuthority('user:update')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deactivate(@PathVariable Long id) {
         userUseCase.update(id, new UserUseCase.UpdateUserCommand(null, null, null, false));
@@ -86,7 +86,7 @@ public class UserController {
 
     @Operation(summary = "Reactivate a user account")
     @PatchMapping("/{id}/activate")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN')")
+    @PreAuthorize("hasAuthority('user:update')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void activate(@PathVariable Long id) {
         userUseCase.update(id, new UserUseCase.UpdateUserCommand(null, null, null, true));
@@ -94,13 +94,13 @@ public class UserController {
 
     @Operation(summary = "Delete (soft-delete) a user")
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN')")
+    @PreAuthorize("hasAuthority('user:delete')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) { userUseCase.delete(id); }
 
     @Operation(summary = "Assign a role to a user")
     @PostMapping("/{id}/roles")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN')")
+    @PreAuthorize("hasAuthority('role:assign')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void assignRole(@PathVariable Long id, @RequestParam Long roleId) {
         userUseCase.assignRole(id, roleId);

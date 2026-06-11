@@ -36,9 +36,9 @@ public class RoleController {
         return toResponse(roleUseCase.findById(id));
     }
 
-    @Operation(summary = "Create a custom role (SCHOOL_ADMIN only)")
+    @Operation(summary = "Create a custom role")
     @PostMapping("/api/v1/roles")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN')")
+    @PreAuthorize("hasAuthority('role:create')")
     public ResponseEntity<RoleResponse> create(@Valid @RequestBody CreateRoleRequest req) {
         Role role = roleUseCase.create(new RoleUseCase.CreateRoleCommand(req.name(), req.description()));
         return ResponseEntity.created(URI.create("/api/v1/roles/" + role.getId()))
@@ -47,14 +47,14 @@ public class RoleController {
 
     @Operation(summary = "Update a role (custom roles only)")
     @PutMapping("/api/v1/roles/{id}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN')")
+    @PreAuthorize("hasAuthority('role:update')")
     public RoleResponse update(@PathVariable Long id, @Valid @RequestBody CreateRoleRequest req) {
         return toResponse(roleUseCase.update(id, new RoleUseCase.UpdateRoleCommand(req.name(), req.description())));
     }
 
     @Operation(summary = "Delete a custom role (system roles cannot be deleted)")
     @DeleteMapping("/api/v1/roles/{id}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN')")
+    @PreAuthorize("hasAuthority('role:delete')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {
         roleUseCase.delete(id);
@@ -68,7 +68,7 @@ public class RoleController {
 
     @Operation(summary = "Assign permissions to a role (replaces existing)")
     @PostMapping("/api/v1/roles/{id}/permissions")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN')")
+    @PreAuthorize("hasAuthority('role:assign_permissions')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void assignPermissions(@PathVariable Long id,
                                    @Valid @RequestBody AssignPermissionsRequest req) {
@@ -77,7 +77,7 @@ public class RoleController {
 
     @Operation(summary = "Remove a role from a user")
     @DeleteMapping("/api/v1/users/{userId}/roles/{roleId}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN')")
+    @PreAuthorize("hasAuthority('role:assign')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void removeRoleFromUser(@PathVariable Long userId, @PathVariable Long roleId) {
         roleUseCase.removeRoleFromUser(userId, roleId);

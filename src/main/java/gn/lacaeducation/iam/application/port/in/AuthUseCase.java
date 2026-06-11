@@ -9,8 +9,20 @@ public interface AuthUseCase {
     void forgotPassword(String email);
     void resetPassword(ResetPasswordCommand command);
     void changePassword(ChangePasswordCommand command);
+    MeResult me(Long userId);
 
     record LoginCommand(String email, String password) {}
+
+    record MeResult(
+        Long userId,
+        Long tenantId,
+        String firstName,
+        String lastName,
+        String email,
+        String phone,
+        List<String> roles,
+        List<String> permissions
+    ) {}
 
     record LoginResult(
         String accessToken,

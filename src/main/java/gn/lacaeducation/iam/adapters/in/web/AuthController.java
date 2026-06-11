@@ -2,6 +2,7 @@ package gn.lacaeducation.iam.adapters.in.web;
 
 import gn.lacaeducation.iam.adapters.in.web.dto.LoginRequest;
 import gn.lacaeducation.iam.adapters.in.web.dto.LoginResponse;
+import gn.lacaeducation.iam.adapters.in.web.dto.MeResponse;
 import gn.lacaeducation.iam.application.port.in.AuthUseCase;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -69,6 +70,15 @@ public class AuthController {
         Long userId = Long.parseLong(jwt.getSubject());
         authUseCase.changePassword(new AuthUseCase.ChangePasswordCommand(userId,
                 req.currentPassword(), req.newPassword()));
+    }
+
+    @Operation(summary = "Profile of the authenticated user: roles, permissions and tenant")
+    @GetMapping("/me")
+    public MeResponse me(@AuthenticationPrincipal Jwt jwt) {
+        Long userId = Long.parseLong(jwt.getSubject());
+        var r = authUseCase.me(userId);
+        return new MeResponse(r.userId(), r.tenantId(), r.firstName(), r.lastName(),
+                r.email(), r.phone(), r.roles(), r.permissions());
     }
 
     // DTO records

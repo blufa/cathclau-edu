@@ -24,7 +24,7 @@ public class JwtService implements TokenGenerator {
     private long expiration;
 
     @Override
-    public String generate(Long userId, Long tenantId, List<String> roles) {
+    public String generate(Long userId, Long tenantId, List<String> roles, List<String> permissions) {
         try {
             Date now = new Date();
             Date exp = new Date(now.getTime() + expiration * 1000);
@@ -32,6 +32,7 @@ public class JwtService implements TokenGenerator {
             JWTClaimsSet.Builder builder = new JWTClaimsSet.Builder()
                     .subject(userId.toString())
                     .claim("roles", roles)
+                    .claim("permissions", permissions)
                     .issueTime(now)
                     .expirationTime(exp);
 

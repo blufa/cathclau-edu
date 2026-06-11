@@ -10,6 +10,7 @@ public interface UserRepository {
     Optional<User> findById(Long id);
     Optional<User> findByEmail(String email);
     Optional<User> findByEmailAndTenantId(String email, Long tenantId);
+    boolean existsByTenantIdAndEmail(Long tenantId, String email);
     List<User> findByTenantId(Long tenantId);
     void deleteById(Long id);
     boolean existsById(Long id);
