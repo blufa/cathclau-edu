@@ -3,8 +3,10 @@ package gn.lacaeducation.academics.adapters.in.web;
 import gn.lacaeducation.iam.TenantContext;
 import gn.lacaeducation.academics.application.port.in.GererClasseUseCase;
 import gn.lacaeducation.academics.application.port.in.GererClasseUseCase.CreateClassCommand;
+import gn.lacaeducation.academics.application.port.in.GererClasseUseCase.EnrollmentCountInfo;
 import gn.lacaeducation.academics.domain.Classe;
 import gn.lacaeducation.academics.domain.ClasseMatiere;
+import gn.lacaeducation.academics.domain.ClassStudent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -51,6 +53,20 @@ public class ClasseController {
     @GetMapping
     public List<Classe> findByAcademicYear(@RequestParam Long academicYearId) {
         return useCase.findByAcademicYear(academicYearId);
+    }
+
+    @Operation(summary = "List all students enrolled in a class (validated enrollments)")
+    @GetMapping("/{id}/students")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER','SECRETARY')")
+    public List<ClassStudent> findStudents(@PathVariable Long id) {
+        return useCase.findStudentsByClassId(id);
+    }
+
+    @Operation(summary = "Get enrollment count vs capacity for a class")
+    @GetMapping("/{id}/enrollment-count")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    public EnrollmentCountInfo getEnrollmentCount(@PathVariable Long id) {
+        return useCase.getEnrollmentCount(id);
     }
 
     @Operation(summary = "Assign a subject (and optionally a teacher) to a class")

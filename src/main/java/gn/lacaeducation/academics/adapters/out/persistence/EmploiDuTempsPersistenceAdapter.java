@@ -18,4 +18,9 @@ class EmploiDuTempsPersistenceAdapter implements EmploiDuTempsRepository {
     @Override public List<EmploiDuTemps> findByTeacherId(Long teacherId) { return edtRepo.findByTeacherId(teacherId).stream().map(mapper::toDomain).toList(); }
     @Override public void deleteById(Long id) { edtRepo.deleteById(id); }
     @Override public boolean existsRoomConflict(Long roomId, JourSemaine day, LocalTime st, LocalTime et) { return edtRepo.existsRoomConflict(roomId, day, st, et); }
+    @Override public boolean existsTeacherConflict(Long teacherId, JourSemaine day, LocalTime st, LocalTime et) { return edtRepo.existsTeacherConflict(teacherId, day, st, et); }
+    @Override public boolean existsClassConflict(Long classId, JourSemaine day, LocalTime st, LocalTime et) { return edtRepo.existsClassConflict(classId, day, st, et); }
+    @Override public boolean existsRoomConflictExcluding(Long roomId, JourSemaine day, LocalTime st, LocalTime et, Long excludeId) { return edtRepo.existsRoomConflictExcluding(roomId, day, st, et, excludeId); }
+    @Override public boolean existsTeacherConflictExcluding(Long teacherId, JourSemaine day, LocalTime st, LocalTime et, Long excludeId) { return edtRepo.existsTeacherConflictExcluding(teacherId, day, st, et, excludeId); }
+    @Override public boolean existsClassConflictExcluding(Long classId, JourSemaine day, LocalTime st, LocalTime et, Long excludeId) { return edtRepo.existsClassConflictExcluding(classId, day, st, et, excludeId); }
 }

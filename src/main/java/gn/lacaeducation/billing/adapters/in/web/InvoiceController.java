@@ -16,10 +16,16 @@ public class InvoiceController {
     private final InvoiceUseCase useCase;
     public record CreateRequest(Long tenantId, Long studentId, Long feeId, String reference, BigDecimal totalAmount) {}
     public record PaymentRequest(BigDecimal amount) {}
+    public record BulkGenerateRequest(Long tenantId, Long classId, Long feeId) {}
     @Operation(summary = "Create a new invoice for a student")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT','SECRETARY')")
     @PostMapping public ResponseEntity<Invoice> create(@RequestBody CreateRequest r) {
         return ResponseEntity.ok(useCase.create(new InvoiceUseCase.CreateInvoiceCommand(r.tenantId(), r.studentId(), r.feeId(), r.reference(), r.totalAmount())));
+    }
+    @Operation(summary = "Generate invoices in bulk for all students enrolled in a class")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PostMapping("/generate-bulk") public ResponseEntity<List<Invoice>> generateBulk(@RequestBody BulkGenerateRequest r) {
+        return ResponseEntity.ok(useCase.generateBulk(new InvoiceUseCase.BulkGenerateCommand(r.tenantId(), r.classId(), r.feeId())));
     }
     @Operation(summary = "Get an invoice by ID")
     @GetMapping("/{id}") public ResponseEntity<Invoice> findById(@PathVariable Long id) {

@@ -9,4 +9,5 @@ public class Installment {
     private String label;
     private BigDecimal amount;
     private LocalDate dueDate;
+    private InstallmentStatus status;
 }

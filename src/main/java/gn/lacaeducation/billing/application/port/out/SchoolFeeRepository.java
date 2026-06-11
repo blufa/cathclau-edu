@@ -1,4 +1,5 @@
 package gn.lacaeducation.billing.application.port.out;
+import gn.lacaeducation.billing.domain.FeeType;
 import gn.lacaeducation.billing.domain.SchoolFee;
 import java.util.List;
 import java.util.Optional;
@@ -7,6 +8,7 @@ public interface SchoolFeeRepository {
     Optional<SchoolFee> findById(Long id);
     List<SchoolFee> findByTenantId(Long tenantId);
     List<SchoolFee> findByClassId(Long classId);
+    List<SchoolFee> findByClassIdAndType(Long classId, FeeType type);
     List<SchoolFee> findByTenantIdAndAcademicYear(Long tenantId, String academicYear);
     void deleteById(Long id);
     boolean existsById(Long id);

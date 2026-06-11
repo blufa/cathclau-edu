@@ -11,4 +11,9 @@ public interface EmploiDuTempsRepository {
     List<EmploiDuTemps> findByTeacherId(Long teacherId);
     void deleteById(Long id);
     boolean existsRoomConflict(Long roomId, JourSemaine day, LocalTime startTime, LocalTime endTime);
+    boolean existsTeacherConflict(Long teacherId, JourSemaine day, LocalTime startTime, LocalTime endTime);
+    boolean existsClassConflict(Long classId, JourSemaine day, LocalTime startTime, LocalTime endTime);
+    boolean existsRoomConflictExcluding(Long roomId, JourSemaine day, LocalTime startTime, LocalTime endTime, Long excludeId);
+    boolean existsTeacherConflictExcluding(Long teacherId, JourSemaine day, LocalTime startTime, LocalTime endTime, Long excludeId);
+    boolean existsClassConflictExcluding(Long classId, JourSemaine day, LocalTime startTime, LocalTime endTime, Long excludeId);
 }

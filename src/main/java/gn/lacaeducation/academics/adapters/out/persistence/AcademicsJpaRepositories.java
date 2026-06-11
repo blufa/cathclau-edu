@@ -51,4 +51,32 @@ interface EmploiDuTempsJpaRepository extends JpaRepository<EmploiDuTempsJpaEntit
            "AND e.startTime < :endTime AND e.endTime > :startTime")
     boolean existsRoomConflict(@Param("roomId") Long roomId, @Param("day") JourSemaine day,
                                 @Param("startTime") LocalTime startTime, @Param("endTime") LocalTime endTime);
+
+    @Query("SELECT COUNT(e) > 0 FROM EmploiDuTempsJpaEntity e WHERE e.teacherId = :teacherId AND e.day = :day " +
+           "AND e.startTime < :endTime AND e.endTime > :startTime")
+    boolean existsTeacherConflict(@Param("teacherId") Long teacherId, @Param("day") JourSemaine day,
+                                   @Param("startTime") LocalTime startTime, @Param("endTime") LocalTime endTime);
+
+    @Query("SELECT COUNT(e) > 0 FROM EmploiDuTempsJpaEntity e WHERE e.schoolClassId = :classId AND e.day = :day " +
+           "AND e.startTime < :endTime AND e.endTime > :startTime")
+    boolean existsClassConflict(@Param("classId") Long classId, @Param("day") JourSemaine day,
+                                 @Param("startTime") LocalTime startTime, @Param("endTime") LocalTime endTime);
+
+    @Query("SELECT COUNT(e) > 0 FROM EmploiDuTempsJpaEntity e WHERE e.roomId = :roomId AND e.day = :day " +
+           "AND e.startTime < :endTime AND e.endTime > :startTime AND e.id <> :excludeId")
+    boolean existsRoomConflictExcluding(@Param("roomId") Long roomId, @Param("day") JourSemaine day,
+                                         @Param("startTime") LocalTime startTime, @Param("endTime") LocalTime endTime,
+                                         @Param("excludeId") Long excludeId);
+
+    @Query("SELECT COUNT(e) > 0 FROM EmploiDuTempsJpaEntity e WHERE e.teacherId = :teacherId AND e.day = :day " +
+           "AND e.startTime < :endTime AND e.endTime > :startTime AND e.id <> :excludeId")
+    boolean existsTeacherConflictExcluding(@Param("teacherId") Long teacherId, @Param("day") JourSemaine day,
+                                            @Param("startTime") LocalTime startTime, @Param("endTime") LocalTime endTime,
+                                            @Param("excludeId") Long excludeId);
+
+    @Query("SELECT COUNT(e) > 0 FROM EmploiDuTempsJpaEntity e WHERE e.schoolClassId = :classId AND e.day = :day " +
+           "AND e.startTime < :endTime AND e.endTime > :startTime AND e.id <> :excludeId")
+    boolean existsClassConflictExcluding(@Param("classId") Long classId, @Param("day") JourSemaine day,
+                                          @Param("startTime") LocalTime startTime, @Param("endTime") LocalTime endTime,
+                                          @Param("excludeId") Long excludeId);
 }

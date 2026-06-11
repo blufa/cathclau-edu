@@ -7,6 +7,8 @@ import gn.lacaeducation.academics.application.port.out.PeriodeRepository;
 import gn.lacaeducation.academics.domain.AnneeScolaire;
 import gn.lacaeducation.academics.domain.Periode;
 import gn.lacaeducation.academics.domain.valueobject.StatutAnneeScolaire;
+import gn.lacaeducation.common.BusinessRuleException;
+import gn.lacaeducation.common.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -42,6 +44,7 @@ public class AnneeScolaireService implements GererAnneeScolaireUseCase {
     @Override
     public AnneeScolaire start(Long academicYearId) {
         AnneeScolaire annee = load(academicYearId);
+        validateTransition(annee.getStatus(), StatutAnneeScolaire.PLANIFIEE, StatutAnneeScolaire.EN_COURS);
         anneeRepository.removeCurrent(annee.getTenantId());
         annee.setStatus(StatutAnneeScolaire.EN_COURS);
         annee.setCurrent(true);
@@ -51,6 +54,18 @@ public class AnneeScolaireService implements GererAnneeScolaireUseCase {
     @Override
     public AnneeScolaire close(Long academicYearId) {
         AnneeScolaire annee = load(academicYearId);
+        validateTransition(annee.getStatus(), StatutAnneeScolaire.EN_COURS, StatutAnneeScolaire.CLOTUREE);
+
+        // Refuse if any open periods remain
+        List<Periode> openPeriods = periodeRepository.findByAcademicYearId(academicYearId).stream()
+                .filter(p -> !Boolean.TRUE.equals(p.getClosed()))
+                .toList();
+        if (!openPeriods.isEmpty()) {
+            throw new BusinessRuleException(
+                    "Cannot close academic year id=" + academicYearId
+                            + ": " + openPeriods.size() + " period(s) are still open. Close all periods first.");
+        }
+
         annee.setStatus(StatutAnneeScolaire.CLOTUREE);
         annee.setCurrent(false);
         return anneeRepository.save(annee);
@@ -59,6 +74,7 @@ public class AnneeScolaireService implements GererAnneeScolaireUseCase {
     @Override
     public AnneeScolaire archive(Long academicYearId) {
         AnneeScolaire annee = load(academicYearId);
+        validateTransition(annee.getStatus(), StatutAnneeScolaire.CLOTUREE, StatutAnneeScolaire.ARCHIVEE);
         annee.setStatus(StatutAnneeScolaire.ARCHIVEE);
         return anneeRepository.save(annee);
     }
@@ -98,17 +114,17 @@ public class AnneeScolaireService implements GererAnneeScolaireUseCase {
     @Override
     public Periode closePeriod(Long periodId) {
         Periode periode = periodeRepository.findById(periodId)
-                .orElseThrow(() -> new IllegalArgumentException("Period not found: " + periodId));
+                .orElseThrow(() -> new ResourceNotFoundException("Period", periodId));
 
         if (Boolean.TRUE.equals(periode.getClosed())) {
-            throw new IllegalStateException("Period already closed: " + periodId);
+            throw new BusinessRuleException("Period is already closed: id=" + periodId);
         }
 
         periode.setClosed(true);
         Periode saved = periodeRepository.save(periode);
 
         AnneeScolaire annee = anneeRepository.findById(periode.getAcademicYearId())
-                .orElseThrow(() -> new IllegalStateException("Academic year missing for period " + periodId));
+                .orElseThrow(() -> new ResourceNotFoundException("Academic year for period id=" + periodId));
 
         eventPublisher.publishEvent(new PeriodeClotureeEvent(
                 annee.getTenantId(), periode.getId(), periode.getAcademicYearId()
@@ -123,8 +139,24 @@ public class AnneeScolaireService implements GererAnneeScolaireUseCase {
         return periodeRepository.findByAcademicYearId(academicYearId);
     }
 
+    /**
+     * Validates that the current status matches the expected source status for a transition.
+     * Throws BusinessRuleException (HTTP 422) on illegal transitions.
+     */
+    private void validateTransition(StatutAnneeScolaire current, StatutAnneeScolaire expectedFrom, StatutAnneeScolaire targetTo) {
+        if (current == StatutAnneeScolaire.ARCHIVEE) {
+            throw new BusinessRuleException(
+                    "Archived academic years cannot change status.");
+        }
+        if (current != expectedFrom) {
+            throw new BusinessRuleException(
+                    "Illegal status transition: cannot move from " + current + " to " + targetTo
+                            + ". Expected current status: " + expectedFrom + ".");
+        }
+    }
+
     private AnneeScolaire load(Long id) {
         return anneeRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Academic year not found: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("AcademicYear", id));
     }
 }
