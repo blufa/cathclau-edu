@@ -1,6 +1,6 @@
 package gn.lacaeducation.academics.adapters.in.web;
 
-import gn.lacaeducation.iam.TenantContext;
+import gn.lacaeducation.common.TenantContext;
 import gn.lacaeducation.academics.application.port.in.GererAnneeScolaireUseCase;
 import gn.lacaeducation.academics.application.port.in.GererAnneeScolaireUseCase.CreateAcademicYearCommand;
 import gn.lacaeducation.academics.application.port.in.GererAnneeScolaireUseCase.CreatePeriodCommand;

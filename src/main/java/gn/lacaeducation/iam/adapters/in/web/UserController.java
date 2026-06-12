@@ -1,6 +1,7 @@
 package gn.lacaeducation.iam.adapters.in.web;
 
 import gn.lacaeducation.common.PageResponse;
+import gn.lacaeducation.common.TenantContext;
 import gn.lacaeducation.iam.adapters.in.web.dto.CreateUserRequest;
 import gn.lacaeducation.iam.adapters.in.web.dto.UserResponse;
 import gn.lacaeducation.iam.application.port.in.UserUseCase;
@@ -34,8 +35,12 @@ public class UserController {
     @PostMapping
     @PreAuthorize("hasAuthority('user:create')")
     public ResponseEntity<UserResponse> create(@Valid @RequestBody CreateUserRequest req) {
+        // The tenant is taken from the authenticated admin's context so a tenant admin can only
+        // create users inside their own tenant. SUPER_ADMIN (no tenant context) may target a tenant
+        // explicitly via the request body.
+        Long tenantId = TenantContext.get() != null ? TenantContext.get() : req.tenantId();
         var user = userUseCase.create(new UserUseCase.CreateUserCommand(
-                req.tenantId(), req.firstName(), req.lastName(), req.email(), req.password(), req.phone()));
+                tenantId, req.firstName(), req.lastName(), req.email(), req.password(), req.phone()));
         return ResponseEntity.created(URI.create("/api/v1/users/" + user.getId()))
                 .body(toResponse(user));
     }
@@ -56,7 +61,12 @@ public class UserController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('user:read')")
     public ResponseEntity<UserResponse> findById(@PathVariable Long id) {
-        return userUseCase.findById(id).map(u -> ResponseEntity.ok(toResponse(u)))
+        // Hibernate's @Filter does not scope find-by-PK, so enforce tenant isolation here:
+        // a tenant-scoped caller may only read users of their own tenant.
+        Long ctx = TenantContext.get();
+        return userUseCase.findById(id)
+                .filter(u -> ctx == null || ctx.equals(u.getTenantId()))
+                .map(u -> ResponseEntity.ok(toResponse(u)))
                 .orElse(ResponseEntity.notFound().build());
     }
 

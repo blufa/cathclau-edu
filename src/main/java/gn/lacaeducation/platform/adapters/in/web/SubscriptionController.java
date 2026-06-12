@@ -145,7 +145,7 @@ public class SubscriptionController {
     @GetMapping("/active/invoices")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
     public List<SubscriptionInvoiceResponse> myInvoices() {
-        Long tenantId = gn.lacaeducation.iam.TenantContext.get();
+        Long tenantId = gn.lacaeducation.common.TenantContext.get();
         if (tenantId == null) return List.of();
         return invoiceUseCase.findInvoicesByTenant(tenantId)
                 .stream().map(SubscriptionInvoiceResponse::from).toList();

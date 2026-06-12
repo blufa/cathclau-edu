@@ -110,7 +110,7 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
 
     @Override @Transactional(readOnly = true)
     public Optional<Subscription> findActiveForCurrentTenant() {
-        Long tenantId = gn.lacaeducation.iam.TenantContext.get();
+        Long tenantId = gn.lacaeducation.common.TenantContext.get();
         if (tenantId == null) return Optional.empty();
         return subscriptionRepository.findActiveByTenantId(tenantId);
     }

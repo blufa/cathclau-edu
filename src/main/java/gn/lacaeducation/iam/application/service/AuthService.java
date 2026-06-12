@@ -16,6 +16,7 @@ import gn.lacaeducation.iam.domain.Permission;
 import gn.lacaeducation.iam.domain.PasswordResetToken;
 import gn.lacaeducation.iam.domain.RefreshToken;
 import gn.lacaeducation.iam.domain.User;
+import gn.lacaeducation.platform.TenantInfoProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
@@ -45,6 +46,7 @@ public class AuthService implements AuthUseCase {
     private final PasswordHasher passwordHasher;
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final TenantInfoProvider tenantInfoProvider;
     private final ApplicationEventPublisher eventPublisher;
 
     @Value("${app.jwt.expiration}")
@@ -72,6 +74,10 @@ public class AuthService implements AuthUseCase {
             userRepository.save(user);
             throw new BadCredentialsException("Invalid email or password");
         }
+
+        // Credentials are valid: reject if the tenant is suspended (403) without leaking tenant
+        // status to failed login attempts.
+        requireActiveTenant(user);
 
         user.setFailedAttempts(0);
         user.setLockedUntil(null);
@@ -108,6 +114,8 @@ public class AuthService implements AuthUseCase {
         if (!Boolean.TRUE.equals(user.getActive())) {
             throw new DisabledException("Account disabled");
         }
+
+        requireActiveTenant(user);
 
         List<String> roles = rolesOf(user.getId());
         List<String> permissions = permissionsOf(user.getId());
@@ -188,6 +196,13 @@ public class AuthService implements AuthUseCase {
                 .orElseThrow(() -> new ResourceNotFoundException("User", userId));
         return new MeResult(user.getId(), user.getTenantId(), user.getFirstName(), user.getLastName(),
                 user.getEmail(), user.getPhone(), rolesOf(userId), permissionsOf(userId));
+    }
+
+    /** Rejects login/refresh when the user's tenant is suspended, archived or terminated (403). */
+    private void requireActiveTenant(User user) {
+        if (user.getTenantId() != null && !tenantInfoProvider.isTenantActive(user.getTenantId())) {
+            throw new DisabledException("Tenant access is currently suspended");
+        }
     }
 
     private List<String> rolesOf(Long userId) {

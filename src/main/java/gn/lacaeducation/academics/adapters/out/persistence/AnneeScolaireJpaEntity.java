@@ -20,6 +20,7 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "academic_years")
 @Getter @Setter @NoArgsConstructor
+@org.hibernate.annotations.Filter(name = "tenantFilter")
 public class AnneeScolaireJpaEntity {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
     @Column(name = "tenant_id", nullable = false) private Long tenantId;

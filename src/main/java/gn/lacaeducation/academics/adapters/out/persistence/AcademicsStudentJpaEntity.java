@@ -17,6 +17,7 @@ import lombok.Setter;
 @Entity
 @Table(name = "students")
 @Getter @Setter @NoArgsConstructor
+@org.hibernate.annotations.Filter(name = "tenantFilter")
 class AcademicsStudentJpaEntity {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

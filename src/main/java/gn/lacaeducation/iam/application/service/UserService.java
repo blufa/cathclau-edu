@@ -64,9 +64,11 @@ public class UserService implements UserUseCase {
     public User update(Long id, UpdateUserCommand command) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User", id));
-        user.setFirstName(command.firstName());
-        user.setLastName(command.lastName());
-        user.setPhone(command.phone());
+        // Partial update: only overwrite fields explicitly provided, so PATCH activate/deactivate
+        // (which carries only the active flag) does not wipe the user's name/phone.
+        if (command.firstName() != null) user.setFirstName(command.firstName());
+        if (command.lastName() != null) user.setLastName(command.lastName());
+        if (command.phone() != null) user.setPhone(command.phone());
         if (command.active() != null) {
             user.setActive(command.active());
             if (Boolean.FALSE.equals(command.active())) {
@@ -78,7 +80,12 @@ public class UserService implements UserUseCase {
 
     @Override
     public void delete(Long id) {
-        userRepository.deleteById(id);
+        // Soft delete: mark the row deleted (never physically remove) and revoke active sessions.
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("User", id));
+        user.setDeletedAt(LocalDateTime.now());
+        userRepository.save(user);
+        refreshTokenRepository.revokeAllByUserId(id);
     }
 
     @Override

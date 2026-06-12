@@ -26,4 +26,5 @@ public class User {
     private LocalDateTime createdAt;
     private int failedAttempts;
     private LocalDateTime lockedUntil;
+    private LocalDateTime deletedAt;
 }

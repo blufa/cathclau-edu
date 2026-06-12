@@ -1,6 +1,6 @@
 package gn.lacaeducation.staff.adapters.in.web;
 
-import gn.lacaeducation.iam.TenantContext;
+import gn.lacaeducation.common.TenantContext;
 import gn.lacaeducation.staff.application.port.in.TeacherUseCase;
 import gn.lacaeducation.staff.application.port.in.TeacherUseCase.CreateTeacherCommand;
 import gn.lacaeducation.staff.domain.Teacher;

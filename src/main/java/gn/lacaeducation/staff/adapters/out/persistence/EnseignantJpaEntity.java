@@ -8,6 +8,7 @@ import java.time.LocalDate;
 
 @Entity @Table(name = "teachers")
 @Getter @Setter @NoArgsConstructor
+@org.hibernate.annotations.Filter(name = "tenantFilter")
 class EnseignantJpaEntity {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
     @Column(name = "tenant_id", nullable = false) private Long tenantId;

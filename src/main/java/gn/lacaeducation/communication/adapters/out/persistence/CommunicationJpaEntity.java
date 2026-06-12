@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.Setter;
 import java.time.LocalDateTime;
 @Entity @Table(name = "communications") @Getter @Setter
+@org.hibernate.annotations.Filter(name = "tenantFilter")
 public class CommunicationJpaEntity {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
     @Column(name = "tenant_id", nullable = false) private Long tenantId;

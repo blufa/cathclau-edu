@@ -13,6 +13,7 @@ import lombok.Setter;
 @Entity
 @Table(name = "school_classes")
 @Getter @Setter @NoArgsConstructor
+@org.hibernate.annotations.Filter(name = "tenantFilter")
 public class ClasseJpaEntity {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
     @Column(name = "tenant_id", nullable = false) private Long tenantId;

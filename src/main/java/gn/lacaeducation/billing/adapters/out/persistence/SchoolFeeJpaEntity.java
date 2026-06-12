@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.Setter;
 import java.math.BigDecimal;
 @Entity @Table(name = "school_fees") @Getter @Setter
+@org.hibernate.annotations.Filter(name = "tenantFilter")
 public class SchoolFeeJpaEntity {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
     @Column(name = "tenant_id", nullable = false) private Long tenantId;

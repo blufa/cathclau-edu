@@ -18,6 +18,7 @@ import java.time.LocalTime;
 @Entity
 @Table(name = "schedules")
 @Getter @Setter @NoArgsConstructor
+@org.hibernate.annotations.Filter(name = "tenantFilter")
 public class EmploiDuTempsJpaEntity {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
     @Column(name = "tenant_id", nullable = false) private Long tenantId;

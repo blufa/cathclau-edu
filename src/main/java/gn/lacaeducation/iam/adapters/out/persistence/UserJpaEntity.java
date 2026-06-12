@@ -18,6 +18,8 @@ import java.time.LocalDateTime;
 @Getter
 @Setter
 @NoArgsConstructor
+@org.hibernate.annotations.Filter(name = "tenantFilter")
+@org.hibernate.annotations.SQLRestriction("deleted_at IS NULL")
 public class UserJpaEntity {
 
     @Id
@@ -56,4 +58,7 @@ public class UserJpaEntity {
 
     @Column(name = "locked_until")
     private LocalDateTime lockedUntil;
+
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
 }

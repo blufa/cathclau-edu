@@ -23,6 +23,7 @@ import java.time.LocalDateTime;
 @Getter
 @Setter
 @NoArgsConstructor
+@org.hibernate.annotations.Filter(name = "tenantFilter")
 public class SubscriptionJpaEntity {
 
     @Id

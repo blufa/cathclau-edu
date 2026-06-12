@@ -6,6 +6,7 @@ import lombok.Setter;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 @Entity @Table(name = "assessments") @Getter @Setter
+@org.hibernate.annotations.Filter(name = "tenantFilter")
 public class AssessmentJpaEntity {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
     @Column(name = "tenant_id", nullable = false) private Long tenantId;

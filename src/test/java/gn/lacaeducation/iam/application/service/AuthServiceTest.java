@@ -17,6 +17,7 @@ import gn.lacaeducation.iam.domain.RefreshToken;
 import gn.lacaeducation.iam.domain.Role;
 import gn.lacaeducation.iam.domain.RoleCode;
 import gn.lacaeducation.iam.domain.User;
+import gn.lacaeducation.platform.TenantInfoProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -54,6 +55,7 @@ class AuthServiceTest {
     @Mock private PasswordHasher passwordHasher;
     @Mock private RefreshTokenRepository refreshTokenRepository;
     @Mock private PasswordResetTokenRepository passwordResetTokenRepository;
+    @Mock private TenantInfoProvider tenantInfoProvider;
     @Mock private ApplicationEventPublisher eventPublisher;
 
     @Captor private ArgumentCaptor<Object> eventCaptor;
@@ -83,6 +85,7 @@ class AuthServiceTest {
         Role schoolAdmin = Role.builder().id(2L).code(RoleCode.SCHOOL_ADMIN).name("School Administrator").build();
         when(userRepository.findByEmail("mamadou@ecole.gn")).thenReturn(Optional.of(activeUser));
         when(passwordHasher.verify("secret123", activeUser.getPasswordHash())).thenReturn(true);
+        when(tenantInfoProvider.isTenantActive(10L)).thenReturn(true);
         when(roleRepository.findUserRoles(1L)).thenReturn(List.of(schoolAdmin));
         when(permissionRepository.findByUserId(1L))
                 .thenReturn(List.of(Permission.builder().id(5L).code("user:create").build()));
@@ -161,6 +164,19 @@ class AuthServiceTest {
     }
 
     @Test
+    void authenticate_suspendedTenant_throwsDisabledException() {
+        when(userRepository.findByEmail("mamadou@ecole.gn")).thenReturn(Optional.of(activeUser));
+        when(passwordHasher.verify("secret123", activeUser.getPasswordHash())).thenReturn(true);
+        when(tenantInfoProvider.isTenantActive(10L)).thenReturn(false);
+
+        assertThatThrownBy(() -> authService.authenticate(
+                new AuthUseCase.LoginCommand("mamadou@ecole.gn", "secret123")))
+                .isInstanceOf(DisabledException.class);
+
+        verify(eventPublisher, never()).publishEvent(any(UserLoggedInEvent.class));
+    }
+
+    @Test
     void refreshToken_revoked_throws() {
         RefreshToken revoked = RefreshToken.builder().userId(1L).token("rt")
                 .expiresAt(LocalDateTime.now().plusDays(1)).revoked(true).build();
@@ -186,6 +202,7 @@ class AuthServiceTest {
                 .expiresAt(LocalDateTime.now().plusDays(1)).revoked(false).build();
         when(refreshTokenRepository.findByToken("old")).thenReturn(Optional.of(valid));
         when(userRepository.findById(1L)).thenReturn(Optional.of(activeUser));
+        when(tenantInfoProvider.isTenantActive(10L)).thenReturn(true);
         when(roleRepository.findUserRoles(1L)).thenReturn(List.of());
         when(permissionRepository.findByUserId(1L)).thenReturn(List.of());
         when(tokenGenerator.generate(any(), any(), anyList(), anyList())).thenReturn("new.jwt");

@@ -6,7 +6,8 @@
         "payments", "payments::events",
         "grading::events",
         "academics",
-        "iam"
+        "iam",
+        "platform"
     }
 )
 package gn.lacaeducation.notification;

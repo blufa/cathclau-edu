@@ -1,6 +1,6 @@
 package gn.lacaeducation.iam.adapters.in.security;
 
-import gn.lacaeducation.iam.TenantContext;
+import gn.lacaeducation.common.TenantContext;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;

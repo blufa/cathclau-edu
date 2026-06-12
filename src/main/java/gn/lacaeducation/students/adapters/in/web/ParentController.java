@@ -1,7 +1,7 @@
 package gn.lacaeducation.students.adapters.in.web;
 
 import gn.lacaeducation.common.PageResponse;
-import gn.lacaeducation.iam.TenantContext;
+import gn.lacaeducation.common.TenantContext;
 import gn.lacaeducation.students.application.port.in.ParentUseCase;
 import gn.lacaeducation.students.domain.Parent;
 import gn.lacaeducation.students.domain.Relationship;
