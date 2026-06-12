@@ -4,6 +4,7 @@ import gn.lacaeducation.grading.application.port.out.AssessmentRepository;
 import gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort;
 import gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort.ClassSubjectInfo;
 import gn.lacaeducation.grading.application.port.out.GradeRepository;
+import gn.lacaeducation.grading.application.port.out.GradingScaleRepository;
 import gn.lacaeducation.grading.application.port.out.ReportCardRepository;
 import gn.lacaeducation.grading.domain.Assessment;
 import gn.lacaeducation.grading.domain.Grade;
@@ -32,6 +33,7 @@ class GradeCalculationServiceTest {
     @Mock GradeRepository gradeRepository;
     @Mock ReportCardRepository reportCardRepository;
     @Mock ClassSubjectQueryPort classSubjectQueryPort;
+    @Mock GradingScaleRepository gradingScaleRepository;
     @Mock ApplicationEventPublisher eventPublisher;
     @InjectMocks GradeCalculationService service;
 

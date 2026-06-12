@@ -5,8 +5,10 @@ import gn.lacaeducation.grading.application.port.out.AssessmentRepository;
 import gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort;
 import gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort.ClassSubjectInfo;
 import gn.lacaeducation.grading.application.port.out.GradeRepository;
+import gn.lacaeducation.grading.application.port.out.GradingScaleRepository;
 import gn.lacaeducation.grading.application.port.out.ReportCardRepository;
 import gn.lacaeducation.grading.domain.Assessment;
+import gn.lacaeducation.grading.domain.GradingScale;
 import gn.lacaeducation.grading.domain.Grade;
 import gn.lacaeducation.grading.domain.ReportCard;
 import gn.lacaeducation.grading.domain.ReportCardLine;
@@ -50,6 +52,7 @@ public class GradeCalculationService {
     private final GradeRepository gradeRepository;
     private final ReportCardRepository reportCardRepository;
     private final ClassSubjectQueryPort classSubjectQueryPort;
+    private final GradingScaleRepository gradingScaleRepository;
     private final ApplicationEventPublisher eventPublisher;
 
     /** Internal value object pairing a report card with its computed lines. */
@@ -80,10 +83,12 @@ public class GradeCalculationService {
             return List.of();
         }
 
+        GradingScale scale = resolveScale(assessments);
+
         // Build intermediate results (average without rank)
         List<ReportCard> reportCards = new ArrayList<>();
         for (Long studentId : studentIds) {
-            ReportCardWithLines rcWithLines = buildReportCard(studentId, classId, periodId, assessments, subjectInfos);
+            ReportCardWithLines rcWithLines = buildReportCard(studentId, classId, periodId, assessments, subjectInfos, scale);
             ReportCard saved = persistReportCardWithLines(rcWithLines, periodId);
             reportCards.add(saved);
         }
@@ -104,7 +109,7 @@ public class GradeCalculationService {
         List<Assessment> assessments = assessmentRepository.findByClassIdAndPeriodId(classId, periodId);
         List<ClassSubjectInfo> subjectInfos = classSubjectQueryPort.findByClassId(classId);
 
-        ReportCardWithLines rcWithLines = buildReportCard(studentId, classId, periodId, assessments, subjectInfos);
+        ReportCardWithLines rcWithLines = buildReportCard(studentId, classId, periodId, assessments, subjectInfos, resolveScale(assessments));
         ReportCard saved = persistReportCardWithLines(rcWithLines, periodId);
 
         // Recalculate ranks for the whole class so the new card gets the right rank
@@ -125,7 +130,8 @@ public class GradeCalculationService {
      */
     private ReportCardWithLines buildReportCard(Long studentId, Long classId, Long periodId,
                                                 List<Assessment> assessments,
-                                                List<ClassSubjectInfo> subjectInfos) {
+                                                List<ClassSubjectInfo> subjectInfos,
+                                                GradingScale scale) {
 
         Map<Long, List<Assessment>> assessmentsBySubject = assessments.stream()
                 .collect(Collectors.groupingBy(Assessment::getSubjectId));
@@ -184,8 +190,8 @@ public class GradeCalculationService {
                 .classId(classId)
                 .periodId(periodId)
                 .overallAverage(generalAverage)
-                .honor(computeHonor(generalAverage))
-                .decision(computeDecision(generalAverage))
+                .honor(scale.honorFor(generalAverage))
+                .decision(scale.decisionFor(generalAverage))
                 .status(ReportCardStatus.GENERATED)
                 .generatedAt(LocalDateTime.now())
                 .build();
@@ -319,23 +325,21 @@ public class GradeCalculationService {
     // Static helpers (package-private for tests)
     // -------------------------------------------------------------------------
 
-    /**
-     * Mention/honor based on general average out of 20.
-     */
-    static String computeHonor(BigDecimal average) {
-        if (average == null) return "Insuffisant";
-        if (average.compareTo(BigDecimal.valueOf(18)) >= 0) return "Très Bien";
-        if (average.compareTo(BigDecimal.valueOf(16)) >= 0) return "Bien";
-        if (average.compareTo(BigDecimal.valueOf(14)) >= 0) return "Assez Bien";
-        if (average.compareTo(BigDecimal.valueOf(10)) >= 0) return "Passable";
-        return "Insuffisant";
+    /** Resolves the tenant's grading scale from the assessments' tenant, falling back to defaults. */
+    private GradingScale resolveScale(List<Assessment> assessments) {
+        Long tenantId = assessments.stream()
+                .map(Assessment::getTenantId).filter(java.util.Objects::nonNull).findFirst().orElse(null);
+        if (tenantId == null) return GradingScale.defaults();
+        return gradingScaleRepository.findByTenantId(tenantId).orElseGet(GradingScale::defaults);
     }
 
-    /**
-     * Admission decision based on the 10/20 pass threshold.
-     */
+    /** Mention/honor with the default scale (kept for back-compat / tests). */
+    static String computeHonor(BigDecimal average) {
+        return GradingScale.defaults().honorFor(average);
+    }
+
+    /** Admission decision with the default scale. */
     static String computeDecision(BigDecimal average) {
-        if (average == null) return "REDOUBLE";
-        return average.compareTo(BigDecimal.valueOf(10)) >= 0 ? "ADMIS" : "REDOUBLE";
+        return GradingScale.defaults().decisionFor(average);
     }
 }
