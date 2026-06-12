@@ -10,4 +10,5 @@ public interface TeacherRepository {
     List<Teacher> findByTenantId(Long tenantId);
     void deleteById(Long id);
     boolean existsById(Long id);
+    boolean existsByTenantIdAndStaffNumber(Long tenantId, String staffNumber);
 }

@@ -6,4 +6,5 @@ interface AssessmentJpaRepository extends JpaRepository<AssessmentJpaEntity, Lon
     List<AssessmentJpaEntity> findByPeriodId(Long periodId);
     List<AssessmentJpaEntity> findByClassIdAndPeriodId(Long classId, Long periodId);
     List<AssessmentJpaEntity> findByTenantId(Long tenantId);
+    boolean existsByTeacherId(Long teacherId);
 }

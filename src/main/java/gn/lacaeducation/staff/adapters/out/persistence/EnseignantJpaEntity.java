@@ -20,4 +20,5 @@ class EnseignantJpaEntity {
     private String email;
     private String specialization;
     @Column(name = "hire_date") private LocalDate hireDate;
+    @Column(nullable = false) private Boolean active = true;
 }

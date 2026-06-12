@@ -15,4 +15,5 @@ public class Teacher {
     private String email;
     private String specialization;
     private LocalDate hireDate;
+    private Boolean active;
 }

@@ -33,6 +33,7 @@ interface NiveauJpaRepository extends JpaRepository<NiveauJpaEntity, Long> {
 interface ClasseJpaRepository extends JpaRepository<ClasseJpaEntity, Long> {
     List<ClasseJpaEntity> findByAcademicYearId(Long academicYearId);
     List<ClasseJpaEntity> findByTenantId(Long tenantId);
+    List<ClasseJpaEntity> findByHeadTeacherId(Long headTeacherId);
 }
 
 interface MatiereJpaRepository extends JpaRepository<MatiereJpaEntity, Long> {
@@ -41,6 +42,7 @@ interface MatiereJpaRepository extends JpaRepository<MatiereJpaEntity, Long> {
 
 interface ClasseMatiereJpaRepository extends JpaRepository<ClasseMatiereJpaEntity, Long> {
     List<ClasseMatiereJpaEntity> findBySchoolClassId(Long schoolClassId);
+    List<ClasseMatiereJpaEntity> findByTeacherId(Long teacherId);
 }
 
 interface EmploiDuTempsJpaRepository extends JpaRepository<EmploiDuTempsJpaEntity, Long> {

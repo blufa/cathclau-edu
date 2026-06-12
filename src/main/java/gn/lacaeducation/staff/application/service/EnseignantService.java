@@ -1,11 +1,22 @@
 package gn.lacaeducation.staff.application.service;
 
+import gn.lacaeducation.academics.AcademicsDataProvider;
+import gn.lacaeducation.academics.ClassPublicInfo;
+import gn.lacaeducation.academics.ClassSubjectPublicInfo;
+import gn.lacaeducation.academics.ScheduleSlotPublicInfo;
+import gn.lacaeducation.common.ConflictException;
+import gn.lacaeducation.common.ResourceNotFoundException;
+import gn.lacaeducation.grading.GradingTeacherProvider;
+import gn.lacaeducation.staff.application.event.StaffCreatedEvent;
 import gn.lacaeducation.staff.application.port.in.TeacherUseCase;
 import gn.lacaeducation.staff.application.port.out.TeacherRepository;
 import gn.lacaeducation.staff.domain.Teacher;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Year;
 import java.util.List;
 import java.util.Optional;
 
@@ -13,21 +24,51 @@ import java.util.Optional;
 public class EnseignantService implements TeacherUseCase {
 
     private final TeacherRepository teacherRepository;
+    private final GradingTeacherProvider gradingTeacherProvider;
+    private final AcademicsDataProvider academicsDataProvider;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     public Teacher create(CreateTeacherCommand cmd) {
-        return teacherRepository.save(Teacher.builder()
-                .tenantId(cmd.tenantId()).userId(cmd.userId()).staffNumber(cmd.staffNumber())
+        String matricule = resolveStaffNumber(cmd.tenantId(), cmd.staffNumber());
+        Teacher saved = teacherRepository.save(Teacher.builder()
+                .tenantId(cmd.tenantId()).userId(cmd.userId()).staffNumber(matricule)
                 .firstName(cmd.firstName()).lastName(cmd.lastName()).phone(cmd.phone())
-                .email(cmd.email()).specialization(cmd.specialization()).hireDate(cmd.hireDate()).build());
+                .email(cmd.email()).specialization(cmd.specialization()).hireDate(cmd.hireDate())
+                .active(true).build());
+        eventPublisher.publishEvent(new StaffCreatedEvent(saved.getTenantId(), saved.getId(), saved.getStaffNumber()));
+        return saved;
+    }
+
+    /** Returns a tenant-unique staff number: validates a provided one, or auto-generates {@code EMP-YEAR-SEQ}. */
+    private String resolveStaffNumber(Long tenantId, String provided) {
+        if (provided != null && !provided.isBlank()) {
+            if (teacherRepository.existsByTenantIdAndStaffNumber(tenantId, provided)) {
+                throw new ConflictException("Staff number already exists for this tenant: " + provided);
+            }
+            return provided;
+        }
+        String year = String.valueOf(Year.now().getValue());
+        long seq = teacherRepository.findByTenantId(tenantId).size() + 1L;
+        String candidate;
+        do {
+            candidate = String.format("EMP-%s-%04d", year, seq++);
+        } while (teacherRepository.existsByTenantIdAndStaffNumber(tenantId, candidate));
+        return candidate;
     }
 
     @Override
     public Teacher update(Long id, UpdateTeacherCommand cmd) {
-        Teacher t = teacherRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Teacher not found: " + id));
+        Teacher t = load(id);
         t.setStaffNumber(cmd.staffNumber()); t.setFirstName(cmd.firstName()); t.setLastName(cmd.lastName());
         t.setPhone(cmd.phone()); t.setEmail(cmd.email()); t.setSpecialization(cmd.specialization()); t.setHireDate(cmd.hireDate());
+        return teacherRepository.save(t);
+    }
+
+    @Override
+    public Teacher setActive(Long id, boolean active) {
+        Teacher t = load(id);
+        t.setActive(active);
         return teacherRepository.save(t);
     }
 
@@ -38,8 +79,36 @@ public class EnseignantService implements TeacherUseCase {
     public List<Teacher> findByTenantId(Long tenantId) { return teacherRepository.findByTenantId(tenantId); }
 
     @Override
-    public void delete(Long id) { teacherRepository.deleteById(id); }
+    public void delete(Long id) {
+        Teacher t = load(id);
+        // Deletion is forbidden when the teacher owns evaluations/grades: deactivate instead.
+        if (gradingTeacherProvider.teacherHasEvaluations(id)) {
+            throw new ConflictException(
+                    "Teacher " + id + " is linked to evaluations and cannot be deleted; deactivate instead.");
+        }
+        teacherRepository.deleteById(t.getId());
+    }
 
     @Override @Transactional(readOnly = true)
     public boolean existsById(Long id) { return teacherRepository.existsById(id); }
+
+    @Override @Transactional(readOnly = true)
+    public List<ClassPublicInfo> findClasses(Long teacherId) {
+        return academicsDataProvider.findClassesByHeadTeacher(teacherId);
+    }
+
+    @Override @Transactional(readOnly = true)
+    public List<ClassSubjectPublicInfo> findSubjects(Long teacherId) {
+        return academicsDataProvider.findClassSubjectsByTeacher(teacherId);
+    }
+
+    @Override @Transactional(readOnly = true)
+    public List<ScheduleSlotPublicInfo> findSchedule(Long teacherId) {
+        return academicsDataProvider.findScheduleByTeacher(teacherId);
+    }
+
+    private Teacher load(Long id) {
+        return teacherRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Teacher", id));
+    }
 }

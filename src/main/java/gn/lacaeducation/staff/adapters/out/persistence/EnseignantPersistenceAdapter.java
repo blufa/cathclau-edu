@@ -18,4 +18,5 @@ class EnseignantPersistenceAdapter implements TeacherRepository {
     @Override public List<Teacher> findByTenantId(Long t) { return repo.findByTenantId(t).stream().map(mapper::toDomain).toList(); }
     @Override public void deleteById(Long id) { repo.deleteById(id); }
     @Override public boolean existsById(Long id) { return repo.existsById(id); }
+    @Override public boolean existsByTenantIdAndStaffNumber(Long t, String num) { return repo.existsByTenantIdAndStaffNumber(t, num); }
 }

@@ -7,4 +7,5 @@ import java.util.Optional;
 interface EnseignantJpaRepository extends JpaRepository<EnseignantJpaEntity, Long> {
     List<EnseignantJpaEntity> findByTenantId(Long tenantId);
     Optional<EnseignantJpaEntity> findByEmail(String email);
+    boolean existsByTenantIdAndStaffNumber(Long tenantId, String staffNumber);
 }
