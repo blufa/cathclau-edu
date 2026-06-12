@@ -17,7 +17,6 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
@@ -27,8 +26,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
 import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 @Tag(name = "Students", description = "Student registration and enrollment management")
 @RestController
@@ -58,31 +55,8 @@ public class StudentController {
                                          @RequestParam(required = false) Gender gender,
                                          @RequestParam(required = false) String search,
                                          @PageableDefault(size = 20) Pageable pageable) {
-        List<Student> list = studentUseCase.findByTenantId(TenantContext.get());
-
-        // class / enrollment-status filters resolved via enrollments
-        if (classId != null || enrollmentStatus != null) {
-            Set<Long> ids = enrollmentUseCase.search(null, classId, null, enrollmentStatus).stream()
-                    .map(Enrollment::getStudentId).collect(Collectors.toSet());
-            list = list.stream().filter(s -> ids.contains(s.getId())).toList();
-        }
-        if (gender != null) {
-            list = list.stream().filter(s -> gender.equals(s.getGender())).toList();
-        }
-        if (search != null && !search.isBlank()) {
-            String q = search.toLowerCase();
-            list = list.stream().filter(s -> contains(s.getFirstName(), q)
-                    || contains(s.getLastName(), q) || contains(s.getStudentNumber(), q)).toList();
-        }
-
-        int start = (int) pageable.getOffset();
-        int end = Math.min(start + pageable.getPageSize(), list.size());
-        List<Student> page = start >= list.size() ? List.of() : list.subList(start, end);
-        return PageResponse.of(new PageImpl<>(page, pageable, list.size()));
-    }
-
-    private static boolean contains(String value, String lowerNeedle) {
-        return value != null && value.toLowerCase().contains(lowerNeedle);
+        return PageResponse.of(studentUseCase.search(
+                TenantContext.get(), gender, search, classId, enrollmentStatus, pageable));
     }
 
     @Operation(summary = "Get a student's full record (enrollments, parents, documents)")

@@ -20,6 +20,8 @@ public interface StudentUseCase {
     Student updatePhoto(Long id, String photoUrl);
     Optional<Student> findById(Long id);
     List<Student> findByTenantId(Long tenantId);
+    org.springframework.data.domain.Page<Student> search(Long tenantId, Gender gender, String search,
+            Long classId, EnrollmentStatus enrollmentStatus, org.springframework.data.domain.Pageable pageable);
     void delete(Long id);
     boolean existsById(Long id);
     long countByTenantId(Long tenantId);

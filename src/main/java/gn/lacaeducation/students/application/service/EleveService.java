@@ -87,6 +87,16 @@ public class EleveService implements StudentUseCase {
     public List<Student> findByTenantId(Long tenantId) { return studentRepository.findByTenantId(tenantId); }
 
     @Override
+    @Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<Student> search(
+            Long tenantId, gn.lacaeducation.students.domain.Gender gender, String search,
+            Long classId, gn.lacaeducation.students.domain.EnrollmentStatus enrollmentStatus,
+            org.springframework.data.domain.Pageable pageable) {
+        String q = (search == null || search.isBlank()) ? null : search.toLowerCase();
+        return studentRepository.search(tenantId, gender, q, classId, enrollmentStatus, pageable);
+    }
+
+    @Override
     public Student updatePhoto(Long id, String photoUrl) {
         Student s = studentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Student", id));
