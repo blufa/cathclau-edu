@@ -11,6 +11,7 @@ public interface GradeUseCase {
     List<Grade> validateAllForAssessment(Long assessmentId);
     Grade update(Long id, BigDecimal value);
     Grade validate(Long id);
+    Grade unlock(Long id);
     Optional<Grade> findById(Long id);
     List<Grade> findByAssessment(Long assessmentId);
     List<Grade> findByStudent(Long studentId);

@@ -49,6 +49,13 @@ public class GradeController {
         return ResponseEntity.ok(useCase.validate(id));
     }
 
+    @Operation(summary = "Unlock a validated grade so it can be corrected (authorized roles only)")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PutMapping("/grades/{id}/unlock")
+    public ResponseEntity<Grade> unlock(@PathVariable Long id) {
+        return ResponseEntity.ok(useCase.unlock(id));
+    }
+
     @Operation(summary = "Get a grade by ID")
     @GetMapping("/grades/{id}")
     public ResponseEntity<Grade> findById(@PathVariable Long id) {

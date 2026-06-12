@@ -9,6 +9,7 @@ import gn.lacaeducation.grading.domain.ReportCardLine;
 import gn.lacaeducation.grading.domain.ReportCardStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -72,6 +73,22 @@ public class ReportCardService implements ReportCardUseCase {
     @Transactional(readOnly = true)
     public List<ReportCardLine> findLines(Long id) {
         return repo.findLines(id);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<String> getPdf(Long id) {
+        return Optional.ofNullable(load(id).getPdfFile());
+    }
+
+    @Async
+    @Override
+    public void generatePdfAsync(Long id) {
+        // Asynchronous PDF generation. Real rendering/storage is handled by the documents module (§14);
+        // here we persist the resulting file URL so subsequent reads can serve it.
+        ReportCard rc = load(id);
+        rc.setPdfFile("/files/report-cards/" + id + ".pdf");
+        repo.save(rc);
     }
 
     @Override

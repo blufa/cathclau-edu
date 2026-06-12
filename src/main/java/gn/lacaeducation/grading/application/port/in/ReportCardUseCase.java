@@ -13,5 +13,7 @@ public interface ReportCardUseCase {
     Optional<ReportCard> findByStudent(Long studentId, Long periodId);
     List<ReportCard> findByStudentId(Long studentId);
     List<ReportCardLine> findLines(Long reportCardId);
+    Optional<String> getPdf(Long id);
+    void generatePdfAsync(Long id);
     void delete(Long id);
 }

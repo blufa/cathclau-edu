@@ -24,6 +24,13 @@ public class AssessmentController {
                 r.tenantId(), r.classId(), r.subjectId(), r.teacherId(), r.periodId(),
                 r.type(), r.label(), r.date(), r.coefficient(), r.maxScore())));
     }
+    @Operation(summary = "Update an assessment (forbidden if the period is closed)")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
+    @PutMapping("/{id}") public ResponseEntity<Assessment> update(@PathVariable Long id, @RequestBody CreateRequest r) {
+        return ResponseEntity.ok(useCase.update(id, new AssessmentUseCase.CreateAssessmentCommand(
+                r.tenantId(), r.classId(), r.subjectId(), r.teacherId(), r.periodId(),
+                r.type(), r.label(), r.date(), r.coefficient(), r.maxScore())));
+    }
     @Operation(summary = "Get an assessment by ID")
     @GetMapping("/{id}") public ResponseEntity<Assessment> findById(@PathVariable Long id) {
         return useCase.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());

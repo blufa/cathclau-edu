@@ -19,6 +19,7 @@ public class AcademicsDataProviderAdapter implements AcademicsDataProvider {
     private final ClasseMatiereJpaRepository classeMatiereRepo;
     private final MatiereJpaRepository matiereRepo;
     private final EmploiDuTempsJpaRepository emploiDuTempsRepo;
+    private final AnneeScolaireJpaRepository anneeRepo;
     @Override
     public Optional<ClassPublicInfo> findClass(Long classId) {
         return classeRepo.findById(classId).map(c -> new ClassPublicInfo(c.getId(), c.getLabel(), null));
@@ -28,6 +29,15 @@ public class AcademicsDataProviderAdapter implements AcademicsDataProvider {
         return periodeRepo.findById(periodId).map(p ->
                 new PeriodPublicInfo(p.getId(), p.getLabel(), p.getType() != null ? p.getType().name() : null));
     }
+    @Override
+    public boolean isPeriodOpenForGrades(Long periodId) {
+        return periodeRepo.findById(periodId)
+                .filter(p -> !Boolean.TRUE.equals(p.getClosed()))
+                .flatMap(p -> anneeRepo.findById(p.getAcademicYearId()))
+                .map(y -> y.getStatus() == gn.lacaeducation.academics.domain.valueobject.StatutAnneeScolaire.EN_COURS)
+                .orElse(false);
+    }
+
     @Override
     public List<ClassSubjectPublicInfo> findClassSubjects(Long classId) {
         List<ClasseMatiereJpaEntity> assignments = classeMatiereRepo.findBySchoolClassId(classId);

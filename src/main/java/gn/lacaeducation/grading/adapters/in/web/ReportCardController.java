@@ -11,6 +11,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @Tag(name = "Report Cards", description = "Generate, publish, and query student report cards per period")
 @RestController
@@ -88,6 +89,14 @@ public class ReportCardController {
     public ResponseEntity<ReportCard> findByStudent(@PathVariable Long studentId, @PathVariable Long periodId) {
         return useCase.findByStudent(studentId, periodId).map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    @Operation(summary = "Get the report card PDF URL (triggers async generation if not yet available)")
+    @GetMapping("/{id}/pdf")
+    public ResponseEntity<Map<String, String>> pdf(@PathVariable Long id) {
+        return useCase.getPdf(id)
+                .map(url -> ResponseEntity.ok(Map.of("url", url)))
+                .orElseGet(() -> { useCase.generatePdfAsync(id); return ResponseEntity.accepted().body(Map.of("status", "GENERATING")); });
     }
 
     @Operation(summary = "Get the subject-by-subject detail lines of a report card")

@@ -11,5 +11,7 @@ public interface ExamUseCase {
     List<Exam> findByPeriod(Long periodId);
     Exam start(Long id);
     Exam complete(Long id);
+    Optional<String> getConvocation(Long id);
+    void generateConvocationAsync(Long id);
     void delete(Long id);
 }

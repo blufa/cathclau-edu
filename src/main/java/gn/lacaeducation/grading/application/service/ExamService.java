@@ -4,6 +4,7 @@ import gn.lacaeducation.grading.application.port.out.ExamRepository;
 import gn.lacaeducation.grading.domain.Exam;
 import gn.lacaeducation.grading.domain.ExamStatus;
 import lombok.RequiredArgsConstructor;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
@@ -20,6 +21,11 @@ public class ExamService implements ExamUseCase {
     @Override @Transactional(readOnly=true) public List<Exam> findByPeriod(Long p) { return repo.findByPeriodId(p); }
     @Override public Exam start(Long id) { Exam e = load(id); e.setStatus(ExamStatus.ONGOING); return repo.save(e); }
     @Override public Exam complete(Long id) { Exam e = load(id); e.setStatus(ExamStatus.COMPLETED); return repo.save(e); }
+    @Override @Transactional(readOnly=true) public Optional<String> getConvocation(Long id) { return Optional.ofNullable(load(id).getConvocationUrl()); }
+    @Async @Override public void generateConvocationAsync(Long id) {
+        // Asynchronous convocation PDF; real rendering belongs to the documents module (§14).
+        Exam e = load(id); e.setConvocationUrl("/files/exams/" + id + "-convocation.pdf"); repo.save(e);
+    }
     @Override public void delete(Long id) { repo.deleteById(id); }
-    private Exam load(Long id) { return repo.findById(id).orElseThrow(() -> new IllegalArgumentException("Exam not found: " + id)); }
+    private Exam load(Long id) { return repo.findById(id).orElseThrow(() -> new gn.lacaeducation.common.ResourceNotFoundException("Exam", id)); }
 }

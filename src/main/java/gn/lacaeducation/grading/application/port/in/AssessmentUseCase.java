@@ -7,6 +7,7 @@ import java.util.Optional;
 public interface AssessmentUseCase {
     record CreateAssessmentCommand(Long tenantId, Long classId, Long subjectId, Long teacherId, Long periodId, AssessmentType type, String label, LocalDate date, BigDecimal coefficient, BigDecimal maxScore) {}
     Assessment create(CreateAssessmentCommand command);
+    Assessment update(Long id, CreateAssessmentCommand command);
     Optional<Assessment> findById(Long id);
     List<Assessment> findByClass(Long classId);
     List<Assessment> findByPeriod(Long periodId);

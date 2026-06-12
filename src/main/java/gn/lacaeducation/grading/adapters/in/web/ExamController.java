@@ -10,6 +10,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 @Tag(name = "Exams", description = "Schedule and manage formal examinations (mock, semester, annual, national)")
 @RestController @RequestMapping("/api/v1/grading/exams") @RequiredArgsConstructor
 public class ExamController {
@@ -34,6 +35,12 @@ public class ExamController {
     @Operation(summary = "Mark an exam as completed")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
     @PutMapping("/{id}/complete") public ResponseEntity<Exam> complete(@PathVariable Long id) { return ResponseEntity.ok(useCase.complete(id)); }
+    @Operation(summary = "Get the exam convocation PDF URL (triggers async generation if not yet available)")
+    @GetMapping("/{id}/convocation") public ResponseEntity<Map<String, String>> convocation(@PathVariable Long id) {
+        return useCase.getConvocation(id)
+                .map(url -> ResponseEntity.ok(Map.of("url", url)))
+                .orElseGet(() -> { useCase.generateConvocationAsync(id); return ResponseEntity.accepted().body(Map.of("status", "GENERATING")); });
+    }
     @Operation(summary = "Delete an exam")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
     @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id) { useCase.delete(id); return ResponseEntity.noContent().build(); }
