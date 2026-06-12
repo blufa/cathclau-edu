@@ -1,6 +1,7 @@
 package gn.lacaeducation.attendance.adapters.out.persistence;
 import gn.lacaeducation.attendance.application.port.out.TeacherAttendanceRepository;
 import gn.lacaeducation.attendance.domain.TeacherAttendance;
+import gn.lacaeducation.attendance.domain.TeacherAttendanceStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import java.time.LocalDate;
@@ -13,5 +14,7 @@ class TeacherAttendancePersistenceAdapter implements TeacherAttendanceRepository
     @Override public TeacherAttendance save(TeacherAttendance a) { return mapper.toDomain(repo.save(mapper.toEntity(a))); }
     @Override public Optional<TeacherAttendance> findById(Long id) { return repo.findById(id).map(mapper::toDomain); }
     @Override public List<TeacherAttendance> findByTeacherIdAndDateBetween(Long t, LocalDate f, LocalDate to) { return repo.findByTeacherIdAndDateBetween(t,f,to).stream().map(mapper::toDomain).toList(); }
+    @Override public long countByTeacherIdAndDateBetween(Long t, LocalDate f, LocalDate to) { return repo.countByTeacherIdAndDateBetween(t,f,to); }
+    @Override public long countByTeacherIdAndDateBetweenAndStatus(Long t, LocalDate f, LocalDate to, TeacherAttendanceStatus st) { return repo.countByTeacherIdAndDateBetweenAndStatus(t,f,to,st); }
     @Override public void deleteById(Long id) { repo.deleteById(id); }
 }

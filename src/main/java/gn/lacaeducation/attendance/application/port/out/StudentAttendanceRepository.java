@@ -7,8 +7,11 @@ import java.util.Optional;
 public interface StudentAttendanceRepository {
     StudentAttendance save(StudentAttendance attendance);
     Optional<StudentAttendance> findById(Long id);
+    Optional<StudentAttendance> findByStudentIdAndClassIdAndDate(Long studentId, Long classId, LocalDate date);
     List<StudentAttendance> findByClassIdAndDate(Long classId, LocalDate date);
     List<StudentAttendance> findByStudentIdAndDateBetween(Long studentId, LocalDate from, LocalDate to);
     List<StudentAttendance> findByClassIdAndDateBetweenAndStatus(Long classId, LocalDate from, LocalDate to, AttendanceStatus status);
+    long countByStudentIdAndDateBetweenAndStatus(Long studentId, LocalDate from, LocalDate to, AttendanceStatus status);
+    long countByStudentIdAndDateBetween(Long studentId, LocalDate from, LocalDate to);
     void deleteById(Long id);
 }
