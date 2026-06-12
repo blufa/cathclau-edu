@@ -2,6 +2,7 @@ package gn.lacaeducation.platform.adapters.in.web;
 
 import gn.lacaeducation.common.PageResponse;
 import gn.lacaeducation.platform.adapters.in.web.dto.CreateTenantRequest;
+import gn.lacaeducation.platform.adapters.in.web.dto.TenantDetailResponse;
 import gn.lacaeducation.platform.adapters.in.web.dto.TenantResponse;
 import gn.lacaeducation.platform.adapters.in.web.dto.UpdateTenantRequest;
 import gn.lacaeducation.platform.application.port.in.CreateTenantUseCase;
@@ -40,21 +41,23 @@ public class TenantController {
                 .body(TenantResponse.from(tenant));
     }
 
-    @Operation(summary = "List all tenants (paginated)")
+    @Operation(summary = "List/search tenants (filters: status, city)")
     @GetMapping
     @PreAuthorize("hasRole('SUPER_ADMIN')")
-    public PageResponse<TenantResponse> findAll(@PageableDefault(size = 20) Pageable pageable) {
-        List<TenantResponse> list = tenantUseCase.findAll().stream().map(TenantResponse::from).toList();
+    public PageResponse<TenantResponse> findAll(@RequestParam(required = false) String status,
+                                                @RequestParam(required = false) String city,
+                                                @PageableDefault(size = 20) Pageable pageable) {
+        List<TenantResponse> list = tenantUseCase.findAll(status, city).stream().map(TenantResponse::from).toList();
         int start = (int) pageable.getOffset();
         int end = Math.min(start + pageable.getPageSize(), list.size());
         return PageResponse.of(new PageImpl<>(list.subList(start, end), pageable, list.size()));
     }
 
-    @Operation(summary = "Get tenant by ID")
+    @Operation(summary = "Get tenant detail (current subscription + consumed quota)")
     @GetMapping("/{id}")
     @PreAuthorize("hasRole('SUPER_ADMIN')")
-    public TenantResponse findById(@PathVariable Long id) {
-        return TenantResponse.from(tenantUseCase.findById(id));
+    public TenantDetailResponse findById(@PathVariable Long id) {
+        return TenantDetailResponse.from(tenantUseCase.getDetail(id));
     }
 
     @Operation(summary = "Update tenant details")
@@ -77,6 +80,19 @@ public class TenantController {
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void activate(@PathVariable Long id) { tenantUseCase.activate(id); }
+
+    @Operation(summary = "Change tenant status (ACTIVATE | SUSPEND | ARCHIVE)")
+    @PatchMapping("/{id}/status")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void changeStatus(@PathVariable Long id, @RequestParam String action) {
+        switch (action.toUpperCase()) {
+            case "ACTIVATE" -> tenantUseCase.activate(id);
+            case "SUSPEND" -> tenantUseCase.suspend(id);
+            case "ARCHIVE" -> tenantUseCase.delete(id);
+            default -> throw new gn.lacaeducation.common.BusinessRuleException("Unknown status action: " + action);
+        }
+    }
 
     @Operation(summary = "Soft-delete a tenant (archive)")
     @DeleteMapping("/{id}")

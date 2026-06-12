@@ -10,6 +10,7 @@ public interface SubscriptionInvoiceRepository {
     Optional<SubscriptionInvoice> findById(Long id);
     Optional<SubscriptionInvoice> findLatestBySubscriptionId(Long subscriptionId);
     List<SubscriptionInvoice> findBySubscriptionId(Long subscriptionId);
+    List<SubscriptionInvoice> findAll();
     void deleteById(Long id);
     boolean existsById(Long id);
 }

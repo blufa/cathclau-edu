@@ -11,4 +11,8 @@ public interface InvoiceUseCase {
     SubscriptionInvoice findInvoiceById(Long id);
     SubscriptionInvoice findLatestBySubscription(Long subscriptionId);
     List<SubscriptionInvoice> findAllBySubscription(Long subscriptionId);
+    List<SubscriptionInvoice> findAllInvoices(String status);
+    List<SubscriptionInvoice> findInvoicesByTenant(Long tenantId);
+    SubscriptionInvoice resendInvoice(Long invoiceId);
+    String generateInvoicePdf(Long invoiceId);
 }

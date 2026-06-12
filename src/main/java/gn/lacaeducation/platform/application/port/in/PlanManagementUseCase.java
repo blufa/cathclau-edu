@@ -10,6 +10,7 @@ public interface PlanManagementUseCase {
                               BigDecimal monthlyPrice, BigDecimal annualPrice, String description) {}
     Plan create(CreatePlanCommand command);
     Plan update(Long id, UpdatePlanCommand command);
+    Plan archive(Long id);
     Optional<Plan> findByCode(PlanCode code);
     void delete(Long id);
     boolean existsById(Long id);

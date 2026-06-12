@@ -35,6 +35,12 @@ public class PlanService implements PlanQueryUseCase, PlanManagementUseCase {
         p.setMonthlyPrice(c.monthlyPrice()); p.setAnnualPrice(c.annualPrice()); p.setDescription(c.description());
         return repo.save(p);
     }
+    @Override
+    public Plan archive(Long id) {
+        Plan p = load(id);
+        p.setArchived(true);
+        return repo.save(p);
+    }
     @Override @Transactional(readOnly=true)
     public Optional<Plan> findByCode(PlanCode code) { return repo.findByCode(code); }
     @Override

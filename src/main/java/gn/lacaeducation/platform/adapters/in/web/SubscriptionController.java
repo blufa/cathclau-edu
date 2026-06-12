@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
 
 @Tag(name = "Subscriptions", description = "SaaS subscription lifecycle management")
 @RestController
@@ -39,12 +40,16 @@ public class SubscriptionController {
                 .body(SubscriptionResponse.from(sub));
     }
 
-    @Operation(summary = "List all subscriptions (SUPER_ADMIN)")
+    @Operation(summary = "List all subscriptions (filters: status, planId)")
     @GetMapping
     @PreAuthorize("hasRole('SUPER_ADMIN')")
-    public PageResponse<SubscriptionResponse> findAll(@PageableDefault(size = 20) Pageable pageable) {
-        List<SubscriptionResponse> list = subscriptionUseCase.findAll()
-                .stream().map(SubscriptionResponse::from).toList();
+    public PageResponse<SubscriptionResponse> findAll(@RequestParam(required = false) String status,
+                                                      @RequestParam(required = false) Long planId,
+                                                      @PageableDefault(size = 20) Pageable pageable) {
+        List<SubscriptionResponse> list = subscriptionUseCase.findAll().stream()
+                .filter(s -> status == null || (s.getStatus() != null && s.getStatus().name().equalsIgnoreCase(status)))
+                .filter(s -> planId == null || planId.equals(s.getPlanId()))
+                .map(SubscriptionResponse::from).toList();
         int start = (int) pageable.getOffset();
         int end = Math.min(start + pageable.getPageSize(), list.size());
         return PageResponse.of(new PageImpl<>(list.subList(start, end), pageable, list.size()));
@@ -121,5 +126,40 @@ public class SubscriptionController {
     public List<SubscriptionInvoiceResponse> findInvoices(@PathVariable Long id) {
         return invoiceUseCase.findAllBySubscription(id)
                 .stream().map(SubscriptionInvoiceResponse::from).toList();
+    }
+
+    @Operation(summary = "Get the plan-change history of a subscription")
+    @GetMapping("/{id}/plan-changes")
+    public List<PlanChangeResponse> planChanges(@PathVariable Long id) {
+        return planChangeUseCase.findBySubscription(id).stream()
+                .map(PlanChangeResponse::from).toList();
+    }
+
+    @Operation(summary = "Get a subscription payment status")
+    @GetMapping("/payments/{paymentId}")
+    public SubscriptionPaymentResponse findPayment(@PathVariable Long paymentId) {
+        return SubscriptionPaymentResponse.from(paymentUseCase.findPaymentById(paymentId));
+    }
+
+    @Operation(summary = "Invoices of the current tenant")
+    @GetMapping("/active/invoices")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    public List<SubscriptionInvoiceResponse> myInvoices() {
+        Long tenantId = gn.lacaeducation.iam.TenantContext.get();
+        if (tenantId == null) return List.of();
+        return invoiceUseCase.findInvoicesByTenant(tenantId)
+                .stream().map(SubscriptionInvoiceResponse::from).toList();
+    }
+
+    @Operation(summary = "Download a subscription invoice PDF (URL)")
+    @GetMapping("/invoices/{invoiceId}/pdf")
+    public Map<String, String> invoicePdf(@PathVariable Long invoiceId) {
+        return Map.of("pdfUrl", invoiceUseCase.generateInvoicePdf(invoiceId));
+    }
+
+    @Operation(summary = "Download a subscription payment receipt PDF (URL)")
+    @GetMapping("/receipts/{receiptId}/pdf")
+    public Map<String, String> receiptPdf(@PathVariable Long receiptId) {
+        return Map.of("pdfUrl", paymentUseCase.generateReceiptPdf(receiptId));
     }
 }

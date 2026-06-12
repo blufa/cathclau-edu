@@ -1,7 +1,12 @@
 package gn.lacaeducation.platform.application.service;
 
+import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
+import gn.lacaeducation.platform.application.event.PlanChangedEvent;
 import gn.lacaeducation.platform.application.event.SubscriptionActivatedEvent;
+import gn.lacaeducation.platform.application.event.SubscriptionPaymentFailedEvent;
+import gn.lacaeducation.platform.application.event.SubscriptionPaymentSucceededEvent;
+import gn.lacaeducation.platform.application.event.SubscriptionSuspendedEvent;
 import gn.lacaeducation.platform.application.port.in.InvoiceUseCase;
 import gn.lacaeducation.platform.application.port.in.PaymentUseCase;
 import gn.lacaeducation.platform.application.port.in.PlanChangeUseCase;
@@ -60,6 +65,10 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
         Plan plan = planRepository.findById(command.planId())
                 .orElseThrow(() -> new ResourceNotFoundException("Plan not found: " + command.planId()));
 
+        if (plan.isArchived()) {
+            throw new BusinessRuleException("Plan is archived and cannot be subscribed: " + command.planId());
+        }
+
         BigDecimal amount = command.billingPeriod() == BillingPeriod.ANNUAL
                 ? plan.getAnnualPrice() : plan.getMonthlyPrice();
 
@@ -110,15 +119,16 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
     public void suspend(Long subscriptionId) {
         Subscription s = subscriptionRepository.findById(subscriptionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Subscription not found: " + subscriptionId));
-        s.setStatus(SubscriptionStatus.SUSPENDED);
+        s.transitionTo(SubscriptionStatus.SUSPENDED);
         subscriptionRepository.save(s);
+        eventPublisher.publishEvent(new SubscriptionSuspendedEvent(s.getTenantId(), s.getId()));
     }
 
     @Override
     public void cancel(Long subscriptionId) {
         Subscription s = subscriptionRepository.findById(subscriptionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Subscription not found: " + subscriptionId));
-        s.setStatus(SubscriptionStatus.CANCELLED);
+        s.transitionTo(SubscriptionStatus.CANCELLED);
         subscriptionRepository.save(s);
     }
 
@@ -180,6 +190,40 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
         return invoiceRepository.findBySubscriptionId(subscriptionId);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<SubscriptionInvoice> findAllInvoices(String status) {
+        return invoiceRepository.findAll().stream()
+                .filter(i -> status == null || (i.getStatus() != null && i.getStatus().name().equalsIgnoreCase(status)))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<SubscriptionInvoice> findInvoicesByTenant(Long tenantId) {
+        return subscriptionRepository.findByTenantId(tenantId).stream()
+                .flatMap(s -> invoiceRepository.findBySubscriptionId(s.getId()).stream())
+                .toList();
+    }
+
+    @Override
+    public SubscriptionInvoice resendInvoice(Long invoiceId) {
+        // "Relancer": re-issue the reminder. Notification dispatch lives in the communication module;
+        // here we simply confirm the invoice exists and return it (idempotent).
+        return findInvoiceById(invoiceId);
+    }
+
+    @Override
+    public String generateInvoicePdf(Long invoiceId) {
+        SubscriptionInvoice invoice = findInvoiceById(invoiceId);
+        if (invoice.getPdfFile() == null) {
+            // Real async iText/OpenPDF generation belongs to the documents module (§14); stub the URL.
+            invoice.setPdfFile(pdfUrl("subscription-invoices", invoice.getReference()));
+            invoiceRepository.save(invoice);
+        }
+        return invoice.getPdfFile();
+    }
+
     // ---- PaymentUseCase ----
 
     @Override
@@ -210,6 +254,10 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
         SubscriptionPayment saved = paymentRepository.save(payment);
 
         processSuccessfulPayment(saved);
+
+        Subscription sub = subscriptionOf(saved);
+        eventPublisher.publishEvent(new SubscriptionPaymentSucceededEvent(
+                sub.getTenantId(), sub.getId(), saved.getId()));
         return saved;
     }
 
@@ -220,7 +268,17 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
         payment.setStatus(PaymentStatus.FAILED);
         SubscriptionPayment saved = paymentRepository.save(payment);
         // Invoice remains UNPAID / PARTIAL — no status change needed
+        Subscription sub = subscriptionOf(saved);
+        eventPublisher.publishEvent(new SubscriptionPaymentFailedEvent(
+                sub.getTenantId(), sub.getId(), saved.getId()));
         return saved;
+    }
+
+    private Subscription subscriptionOf(SubscriptionPayment payment) {
+        SubscriptionInvoice invoice = invoiceRepository.findById(payment.getInvoiceId())
+                .orElseThrow(() -> new ResourceNotFoundException("Invoice not found: " + payment.getInvoiceId()));
+        return subscriptionRepository.findById(invoice.getSubscriptionId())
+                .orElseThrow(() -> new ResourceNotFoundException("Subscription not found: " + invoice.getSubscriptionId()));
     }
 
     @Override
@@ -228,6 +286,25 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
     public SubscriptionPayment findPaymentById(Long id) {
         return paymentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Payment not found: " + id));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public SubscriptionReceipt findReceiptById(Long id) {
+        return receiptRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Receipt not found: " + id));
+    }
+
+    @Override
+    public String generateReceiptPdf(Long receiptId) {
+        SubscriptionReceipt receipt = receiptRepository.findById(receiptId)
+                .orElseThrow(() -> new ResourceNotFoundException("Receipt not found: " + receiptId));
+        if (receipt.getPdfFile() == null) {
+            // Async PDF generation belongs to the documents module (§14); stub the URL for now.
+            receipt.setPdfFile(pdfUrl("subscription-receipts", receipt.getReference()));
+            receiptRepository.save(receipt);
+        }
+        return receipt.getPdfFile();
     }
 
     private void processSuccessfulPayment(SubscriptionPayment payment) {
@@ -243,7 +320,7 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
 
         if (invoice.isPaid()) {
             subscriptionRepository.findById(invoice.getSubscriptionId()).ifPresent(subscription -> {
-                subscription.setStatus(SubscriptionStatus.ACTIVE);
+                subscription.transitionTo(SubscriptionStatus.ACTIVE);
                 subscriptionRepository.save(subscription);
 
                 SubscriptionReceipt receipt = SubscriptionReceipt.builder()
@@ -295,6 +372,9 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
         subscription.setPlanId(command.newPlanId());
         subscription.setAmount(newPrice);
         subscriptionRepository.save(subscription);
+
+        eventPublisher.publishEvent(new PlanChangedEvent(
+                command.subscriptionId(), oldPlan.getId(), newPlan.getId(), type));
     }
 
     @Override
@@ -312,6 +392,10 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
                 .flatMap(s -> planRepository.findById(s.getPlanId()))
                 .map(plan -> plan.getStudentLimit() == null || currentStudentCount < plan.getStudentLimit())
                 .orElse(false);
+    }
+
+    private String pdfUrl(String resource, String reference) {
+        return "/files/" + resource + "/" + reference + ".pdf";
     }
 
     private String generateRef(String prefix) {

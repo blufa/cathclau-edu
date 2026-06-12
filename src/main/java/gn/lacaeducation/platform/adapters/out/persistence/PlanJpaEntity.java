@@ -44,4 +44,7 @@ public class PlanJpaEntity {
 
     @Column(columnDefinition = "TEXT")
     private String description;
+
+    @Column(nullable = false)
+    private Boolean archived = false;
 }

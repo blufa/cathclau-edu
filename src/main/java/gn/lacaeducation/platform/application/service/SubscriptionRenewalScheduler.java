@@ -1,5 +1,6 @@
 package gn.lacaeducation.platform.application.service;
 
+import gn.lacaeducation.platform.application.event.SubscriptionExpiringSoonEvent;
 import gn.lacaeducation.platform.application.port.out.SubscriptionRepository;
 import gn.lacaeducation.platform.application.port.out.TenantRepository;
 import gn.lacaeducation.platform.domain.Subscription;
@@ -7,6 +8,7 @@ import gn.lacaeducation.platform.domain.SubscriptionStatus;
 import gn.lacaeducation.platform.domain.TenantStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,7 +18,7 @@ import java.util.List;
 
 /**
  * Daily job implementing CLAUDE.md step 7: at end_date, auto-renew or enter grace period then suspend.
- * Grace period: 3 days after end_date before suspension.
+ * Grace period: 3 days after end_date before suspension. Also emits a J-7 expiring-soon reminder.
  */
 @Slf4j
 @Component
@@ -24,10 +26,23 @@ import java.util.List;
 public class SubscriptionRenewalScheduler {
 
     private static final int GRACE_PERIOD_DAYS = 3;
+    private static final int EXPIRY_REMINDER_DAYS = 7;
 
     private final SubscriptionRepository subscriptionRepository;
     private final TenantRepository tenantRepository;
     private final AbonnementService abonnementService;
+    private final ApplicationEventPublisher eventPublisher;
+
+    /** J-7 reminder: notify the admin that the subscription is about to expire (AbonnementBientotExpire). */
+    @Scheduled(cron = "0 30 1 * * *")
+    @Transactional(readOnly = true)
+    public void notifyExpiringSoon() {
+        LocalDate target = LocalDate.now().plusDays(EXPIRY_REMINDER_DAYS);
+        for (Subscription sub : subscriptionRepository.findActiveExpiringOn(target)) {
+            eventPublisher.publishEvent(new SubscriptionExpiringSoonEvent(
+                    sub.getTenantId(), sub.getId(), sub.getEndDate()));
+        }
+    }
 
     @Scheduled(cron = "0 0 1 * * *") // runs at 01:00 every day
     @Transactional
@@ -59,7 +74,7 @@ public class SubscriptionRenewalScheduler {
 
         sub.setStartDate(newStart);
         sub.setEndDate(newEnd);
-        sub.setStatus(SubscriptionStatus.PENDING);
+        sub.transitionTo(SubscriptionStatus.PENDING);
         subscriptionRepository.save(sub);
 
         var billingPeriod = isAnnual
@@ -72,7 +87,7 @@ public class SubscriptionRenewalScheduler {
 
     private void suspendTenant(Subscription sub) {
         log.info("Suspending tenant id={} — grace period expired for subscription id={}", sub.getTenantId(), sub.getId());
-        sub.setStatus(SubscriptionStatus.SUSPENDED);
+        sub.transitionTo(SubscriptionStatus.SUSPENDED);
         subscriptionRepository.save(sub);
 
         tenantRepository.findById(sub.getTenantId()).ifPresent(tenant -> {

@@ -21,4 +21,9 @@ public class Plan {
     private BigDecimal monthlyPrice;
     private BigDecimal annualPrice;
     private String description;
+    private Boolean archived;
+
+    public boolean isArchived() {
+        return Boolean.TRUE.equals(archived);
+    }
 }

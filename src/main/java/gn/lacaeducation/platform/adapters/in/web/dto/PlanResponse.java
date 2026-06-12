@@ -12,12 +12,13 @@ public record PlanResponse(
     Integer studentLimit,
     BigDecimal monthlyPrice,
     BigDecimal annualPrice,
-    String description
+    String description,
+    boolean archived
 ) {
     public static PlanResponse from(Plan plan) {
         return new PlanResponse(
             plan.getId(), plan.getName(), plan.getCode(), plan.getStudentLimit(),
-            plan.getMonthlyPrice(), plan.getAnnualPrice(), plan.getDescription()
+            plan.getMonthlyPrice(), plan.getAnnualPrice(), plan.getDescription(), plan.isArchived()
         );
     }
 }

@@ -16,6 +16,8 @@ class SubscriptionInvoicePersistenceAdapter implements SubscriptionInvoiceReposi
         return jpa.findTopBySubscriptionIdOrderByIssuedAtDesc(subscriptionId).map(mapper::toDomain); }
     @Override public List<SubscriptionInvoice> findBySubscriptionId(Long subscriptionId) {
         return jpa.findBySubscriptionId(subscriptionId).stream().map(mapper::toDomain).toList(); }
+    @Override public List<SubscriptionInvoice> findAll() {
+        return jpa.findAll().stream().map(mapper::toDomain).toList(); }
     @Override public void deleteById(Long id) { jpa.deleteById(id); }
     @Override public boolean existsById(Long id) { return jpa.existsById(id); }
 }

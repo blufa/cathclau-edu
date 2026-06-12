@@ -67,6 +67,13 @@ public class PlanController {
                         req.monthlyPrice(), req.annualPrice(), req.description())));
     }
 
+    @Operation(summary = "Archive a plan (no longer subscribable; existing subscriptions unaffected)")
+    @PatchMapping("/{id}/archive")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public PlanResponse archive(@PathVariable Long id) {
+        return PlanResponse.from(planManagementUseCase.archive(id));
+    }
+
     @Operation(summary = "Delete a plan")
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('SUPER_ADMIN')")

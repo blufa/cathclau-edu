@@ -16,8 +16,12 @@ class SubscriptionPersistenceAdapter implements SubscriptionRepository {
     @Override public Optional<Subscription> findById(Long id) { return jpa.findById(id).map(mapper::toDomain); }
     @Override public Optional<Subscription> findActiveByTenantId(Long tenantId) {
         return jpa.findByTenantIdAndStatus(tenantId, SubscriptionStatus.ACTIVE).map(mapper::toDomain); }
+    @Override public List<Subscription> findByTenantId(Long tenantId) {
+        return jpa.findByTenantId(tenantId).stream().map(mapper::toDomain).toList(); }
     @Override public List<Subscription> findAll() { return jpa.findAll().stream().map(mapper::toDomain).toList(); }
     @Override public List<Subscription> findActiveExpiredBefore(LocalDate date) {
         return jpa.findByStatusAndEndDateBefore(SubscriptionStatus.ACTIVE, date).stream().map(mapper::toDomain).toList(); }
+    @Override public List<Subscription> findActiveExpiringOn(LocalDate date) {
+        return jpa.findByStatusAndEndDate(SubscriptionStatus.ACTIVE, date).stream().map(mapper::toDomain).toList(); }
     @Override public void deleteById(Long id) { jpa.deleteById(id); }
 }

@@ -7,7 +7,9 @@ public interface SubscriptionRepository {
     Subscription save(Subscription s);
     Optional<Subscription> findById(Long id);
     Optional<Subscription> findActiveByTenantId(Long tenantId);
+    List<Subscription> findByTenantId(Long tenantId);
     List<Subscription> findAll();
     List<Subscription> findActiveExpiredBefore(LocalDate date);
+    List<Subscription> findActiveExpiringOn(LocalDate date);
     void deleteById(Long id);
 }

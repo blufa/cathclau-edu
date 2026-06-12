@@ -6,5 +6,7 @@ import java.util.List;
 import java.util.Optional;
 interface SubscriptionJpaRepository extends JpaRepository<SubscriptionJpaEntity, Long> {
     Optional<SubscriptionJpaEntity> findByTenantIdAndStatus(Long tenantId, SubscriptionStatus status);
+    List<SubscriptionJpaEntity> findByTenantId(Long tenantId);
     List<SubscriptionJpaEntity> findByStatusAndEndDateBefore(SubscriptionStatus status, LocalDate date);
+    List<SubscriptionJpaEntity> findByStatusAndEndDate(SubscriptionStatus status, LocalDate date);
 }
