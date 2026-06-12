@@ -93,17 +93,17 @@ public class DomainEventListener {
 
     @org.springframework.transaction.event.TransactionalEventListener
     public void onStudentAbsent(StudentAbsentEvent event) {
-        studentDataProvider.findStudent(event.studentId()).ifPresent(student -> {
+        int notified = studentDataProvider.findStudent(event.studentId()).map(student -> {
             String schoolName = schoolName(event.tenantId());
             String className = academicsDataProvider.findClass(event.classId())
                     .map(c -> c.label()).orElse("N/A");
             String date = event.date() != null ? event.date().format(DATE_FMT) : "N/A";
-            sendToParents(event.studentId(), email ->
+            return sendToParents(event.studentId(), email ->
                     notificationService.sendAbsenceNotification(email, schoolName,
                             fullName(student), date, className));
-        });
-        // Flag the attendance record as parent-notified once the notification has been dispatched.
-        if (event.attendanceId() != null) {
+        }).orElse(0);
+        // Flag the attendance record as parent-notified only if at least one parent was actually notified.
+        if (event.attendanceId() != null && notified > 0) {
             studentAttendanceNotifier.markParentNotified(event.attendanceId());
         }
     }
@@ -125,9 +125,13 @@ public class DomainEventListener {
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
-    private void sendToParents(Long studentId, java.util.function.Consumer<String> action) {
+    /** Sends to every parent with an email and returns the number of notifications dispatched. */
+    private int sendToParents(Long studentId, java.util.function.Consumer<String> action) {
         List<ParentPublicInfo> parents = studentDataProvider.findParentsByStudent(studentId);
-        parents.stream().filter(p -> p.email() != null && !p.email().isBlank()).forEach(p -> action.accept(p.email()));
+        List<String> emails = parents.stream()
+                .map(ParentPublicInfo::email).filter(e -> e != null && !e.isBlank()).toList();
+        emails.forEach(action::accept);
+        return emails.size();
     }
 
     private String schoolName(Long tenantId) {
