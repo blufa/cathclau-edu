@@ -6,6 +6,8 @@ import gn.lacaeducation.students.application.port.in.EnrollmentUseCase;
 import gn.lacaeducation.students.application.port.in.ParentUseCase;
 import gn.lacaeducation.students.application.port.in.StudentUseCase;
 import gn.lacaeducation.students.domain.Enrollment;
+import gn.lacaeducation.students.domain.EnrollmentStatus;
+import gn.lacaeducation.students.domain.Gender;
 import gn.lacaeducation.students.domain.Parent;
 import gn.lacaeducation.students.domain.Relationship;
 import gn.lacaeducation.students.domain.Student;
@@ -25,6 +27,8 @@ import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Tag(name = "Students", description = "Student registration and enrollment management")
 @RestController
@@ -46,21 +50,56 @@ public class StudentController {
         return ResponseEntity.created(URI.create("/api/v1/students/" + s.getId())).body(s);
     }
 
-    @Operation(summary = "List all students in current tenant (paginated)")
+    @Operation(summary = "List students in current tenant (filters: class, enrollment status, gender, name/matricule search)")
     @GetMapping
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','TEACHER')")
-    public PageResponse<Student> findAll(@PageableDefault(size = 20) Pageable pageable) {
+    public PageResponse<Student> findAll(@RequestParam(required = false) Long classId,
+                                         @RequestParam(required = false) EnrollmentStatus enrollmentStatus,
+                                         @RequestParam(required = false) Gender gender,
+                                         @RequestParam(required = false) String search,
+                                         @PageableDefault(size = 20) Pageable pageable) {
         List<Student> list = studentUseCase.findByTenantId(TenantContext.get());
+
+        // class / enrollment-status filters resolved via enrollments
+        if (classId != null || enrollmentStatus != null) {
+            Set<Long> ids = enrollmentUseCase.search(null, classId, null, enrollmentStatus).stream()
+                    .map(Enrollment::getStudentId).collect(Collectors.toSet());
+            list = list.stream().filter(s -> ids.contains(s.getId())).toList();
+        }
+        if (gender != null) {
+            list = list.stream().filter(s -> gender.equals(s.getGender())).toList();
+        }
+        if (search != null && !search.isBlank()) {
+            String q = search.toLowerCase();
+            list = list.stream().filter(s -> contains(s.getFirstName(), q)
+                    || contains(s.getLastName(), q) || contains(s.getStudentNumber(), q)).toList();
+        }
+
         int start = (int) pageable.getOffset();
         int end = Math.min(start + pageable.getPageSize(), list.size());
-        return PageResponse.of(new PageImpl<>(list.subList(start, end), pageable, list.size()));
+        List<Student> page = start >= list.size() ? List.of() : list.subList(start, end);
+        return PageResponse.of(new PageImpl<>(page, pageable, list.size()));
     }
 
-    @Operation(summary = "Get a student by ID")
-    @GetMapping("/{id}")
-    public ResponseEntity<Student> findById(@PathVariable Long id) {
-        return studentUseCase.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
+    private static boolean contains(String value, String lowerNeedle) {
+        return value != null && value.toLowerCase().contains(lowerNeedle);
     }
+
+    @Operation(summary = "Get a student's full record (enrollments, parents, documents)")
+    @GetMapping("/{id}")
+    public ResponseEntity<StudentDetailResponse> findById(@PathVariable Long id) {
+        return studentUseCase.findById(id)
+                .map(s -> ResponseEntity.ok(new StudentDetailResponse(
+                        s,
+                        enrollmentUseCase.findByStudent(id),
+                        parentUseCase.findByStudent(id),
+                        studentUseCase.findDocuments(id))))
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    /** Aggregated student record returned by GET /students/{id}. */
+    public record StudentDetailResponse(Student student, List<Enrollment> enrollments,
+                                        List<Parent> parents, List<StudentDocument> documents) {}
 
     @Operation(summary = "Update student information")
     @PutMapping("/{id}")

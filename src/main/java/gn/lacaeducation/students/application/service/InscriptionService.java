@@ -3,6 +3,7 @@ package gn.lacaeducation.students.application.service;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ConflictException;
 import gn.lacaeducation.common.ResourceNotFoundException;
+import gn.lacaeducation.students.application.event.EnrollmentCancelledEvent;
 import gn.lacaeducation.students.application.event.EnrollmentValidatedEvent;
 import gn.lacaeducation.students.application.port.in.EnrollmentUseCase;
 import gn.lacaeducation.students.ClassCapacityPort;
@@ -72,7 +73,10 @@ public class InscriptionService implements EnrollmentUseCase {
     public Enrollment cancel(Long id) {
         Enrollment e = load(id);
         e.setStatus(EnrollmentStatus.CANCELLED);
-        return enrollmentRepository.save(e);
+        Enrollment saved = enrollmentRepository.save(e);
+        eventPublisher.publishEvent(new EnrollmentCancelledEvent(
+                null, e.getStudentId(), e.getClassId(), e.getAcademicYearId()));
+        return saved;
     }
 
     @Override @Transactional(readOnly = true)

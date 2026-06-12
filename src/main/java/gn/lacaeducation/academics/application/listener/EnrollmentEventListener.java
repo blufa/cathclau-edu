@@ -2,6 +2,7 @@ package gn.lacaeducation.academics.application.listener;
 
 import gn.lacaeducation.academics.application.port.out.ClasseRepository;
 import gn.lacaeducation.academics.application.port.out.EnrollmentQueryPort;
+import gn.lacaeducation.students.application.event.EnrollmentCancelledEvent;
 import gn.lacaeducation.students.application.event.EnrollmentValidatedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,11 +25,21 @@ public class EnrollmentEventListener {
     @TransactionalEventListener
     @Transactional
     public void onEnrollmentValidated(EnrollmentValidatedEvent event) {
-        classeRepository.findById(event.classId()).ifPresent(classe -> {
-            long count = enrollmentQueryPort.countValidatedByClassId(event.classId());
+        recomputeHeadcount(event.classId());
+    }
+
+    @TransactionalEventListener
+    @Transactional
+    public void onEnrollmentCancelled(EnrollmentCancelledEvent event) {
+        recomputeHeadcount(event.classId());
+    }
+
+    private void recomputeHeadcount(Long classId) {
+        classeRepository.findById(classId).ifPresent(classe -> {
+            long count = enrollmentQueryPort.countValidatedByClassId(classId);
             classe.setHeadcount((int) count);
             classeRepository.save(classe);
-            log.debug("Recomputed headcount={} for class {}", count, event.classId());
+            log.debug("Recomputed headcount={} for class {}", count, classId);
         });
     }
 }

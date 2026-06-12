@@ -93,5 +93,6 @@ class InscriptionServiceTest {
 
         Enrollment result = service.cancel(1L);
         assertThat(result.getStatus()).isEqualTo(EnrollmentStatus.CANCELLED);
+        verify(eventPublisher).publishEvent(any(gn.lacaeducation.students.application.event.EnrollmentCancelledEvent.class));
     }
 }
