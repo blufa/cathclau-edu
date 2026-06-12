@@ -8,5 +8,6 @@ public interface StudentParentRepository {
     StudentParent save(StudentParent studentParent);
     List<Parent> findParentsByStudentId(Long studentId);
     void unlinkStudentParent(Long id);
+    void unlinkByStudentAndParent(Long studentId, Long parentId);
     List<Long> findStudentIdsByParentId(Long parentId);
 }

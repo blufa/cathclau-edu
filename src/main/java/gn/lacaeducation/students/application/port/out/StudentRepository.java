@@ -11,4 +11,5 @@ public interface StudentRepository {
     void deleteById(Long id);
     boolean existsById(Long id);
     long countByTenantId(Long tenantId);
+    boolean existsByTenantIdAndStudentNumber(Long tenantId, String studentNumber);
 }

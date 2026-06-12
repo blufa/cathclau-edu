@@ -22,6 +22,7 @@ class ElevePersistenceAdapter implements StudentRepository, StudentDocumentRepos
     @Override public void deleteById(Long id) { eleveRepo.deleteById(id); }
     @Override public boolean existsById(Long id) { return eleveRepo.existsById(id); }
     @Override public long countByTenantId(Long t) { return eleveRepo.countByTenantId(t); }
+    @Override public boolean existsByTenantIdAndStudentNumber(Long t, String num) { return eleveRepo.existsByTenantIdAndStudentNumber(t, num); }
 
     @Override public StudentDocument save(StudentDocument d) { return mapper.toDomain(docRepo.save(mapper.toEntity(d))); }
     @Override public List<StudentDocument> findByStudentId(Long sid) { return docRepo.findByStudentId(sid).stream().map(mapper::toDomain).toList(); }

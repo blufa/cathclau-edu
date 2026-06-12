@@ -25,6 +25,7 @@ class ParentPersistenceAdapter implements ParentRepository, StudentParentReposit
     @Override public StudentParent save(StudentParent sp) { return mapper.toDomain(studentParentRepo.save(mapper.toEntity(sp))); }
     @Override public List<Parent> findParentsByStudentId(Long sid) { return studentParentRepo.findParentsByStudentId(sid).stream().map(mapper::toDomain).toList(); }
     @Override public void unlinkStudentParent(Long id) { studentParentRepo.deleteById(id); }
+    @Override public void unlinkByStudentAndParent(Long studentId, Long parentId) { studentParentRepo.deleteByStudentIdAndParentId(studentId, parentId); }
     @Override public List<Long> findStudentIdsByParentId(Long parentId) {
         return studentParentRepo.findByParentId(parentId).stream()
                 .map(gn.lacaeducation.students.adapters.out.persistence.EleveParentJpaEntity::getStudentId).toList();

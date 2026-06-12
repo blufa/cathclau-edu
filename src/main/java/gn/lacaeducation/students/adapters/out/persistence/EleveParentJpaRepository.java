@@ -11,4 +11,6 @@ interface EleveParentJpaRepository extends JpaRepository<EleveParentJpaEntity, L
     List<ParentJpaEntity> findParentsByStudentId(@Param("studentId") Long studentId);
 
     List<EleveParentJpaEntity> findByParentId(Long parentId);
+
+    void deleteByStudentIdAndParentId(Long studentId, Long parentId);
 }

@@ -17,6 +17,7 @@ public interface StudentUseCase {
 
     Student create(CreateStudentCommand command);
     Student update(Long id, UpdateStudentCommand command);
+    Student updatePhoto(Long id, String photoUrl);
     Optional<Student> findById(Long id);
     List<Student> findByTenantId(Long tenantId);
     void delete(Long id);

@@ -18,6 +18,7 @@ public interface ParentUseCase {
     boolean existsById(Long id);
     StudentParent linkStudent(Long studentId, Long parentId, Relationship relationship);
     void unlinkStudent(Long studentParentId);
+    void unlinkStudentFromParent(Long studentId, Long parentId);
     List<Parent> findByStudent(Long studentId);
     List<Student> findStudentsByParent(Long parentId);
 }

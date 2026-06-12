@@ -12,6 +12,7 @@ import java.time.LocalDateTime;
 @Entity @Table(name = "students")
 @Getter @Setter @NoArgsConstructor
 @org.hibernate.annotations.Filter(name = "tenantFilter")
+@org.hibernate.annotations.SQLRestriction("deleted_at IS NULL")
 class EleveJpaEntity {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
     @Column(name = "tenant_id", nullable = false) private Long tenantId;
@@ -28,4 +29,5 @@ class EleveJpaEntity {
     private String email;
     private String nationality;
     @CreationTimestamp @Column(name = "created_at", updatable = false) private LocalDateTime createdAt;
+    @Column(name = "deleted_at") private LocalDateTime deletedAt;
 }

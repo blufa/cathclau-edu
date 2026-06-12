@@ -59,6 +59,11 @@ public class ParentService implements ParentUseCase {
     @Override
     public void unlinkStudent(Long studentParentId) { studentParentRepository.unlinkStudentParent(studentParentId); }
 
+    @Override
+    public void unlinkStudentFromParent(Long studentId, Long parentId) {
+        studentParentRepository.unlinkByStudentAndParent(studentId, parentId);
+    }
+
     @Override @Transactional(readOnly = true)
     public List<Parent> findByStudent(Long studentId) { return studentParentRepository.findParentsByStudentId(studentId); }
 

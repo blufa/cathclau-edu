@@ -2,6 +2,7 @@ package gn.lacaeducation.students.adapters.out.persistence;
 
 import gn.lacaeducation.students.application.port.out.EnrollmentRepository;
 import gn.lacaeducation.students.domain.Enrollment;
+import gn.lacaeducation.students.domain.EnrollmentStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import java.util.List;
@@ -20,4 +21,11 @@ class InscriptionPersistenceAdapter implements EnrollmentRepository {
     @Override public List<Enrollment> findByAcademicYearId(Long aid) { return repo.findByAcademicYearId(aid).stream().map(mapper::toDomain).toList(); }
     @Override public void deleteById(Long id) { repo.deleteById(id); }
     @Override public boolean existsById(Long id) { return repo.existsById(id); }
+    @Override public long countByClassIdAndStatus(Long cid, EnrollmentStatus status) { return repo.countByClassIdAndStatus(cid, status); }
+    @Override public boolean existsValidatedForStudentYear(Long sid, Long aid) {
+        return repo.existsByStudentIdAndAcademicYearIdAndStatus(sid, aid, EnrollmentStatus.VALIDATED);
+    }
+    @Override public List<Enrollment> search(Long sid, Long cid, Long aid, EnrollmentStatus status) {
+        return repo.search(sid, cid, aid, status).stream().map(mapper::toDomain).toList();
+    }
 }

@@ -3,10 +3,14 @@ package gn.lacaeducation.students.adapters.in.web;
 import gn.lacaeducation.common.PageResponse;
 import gn.lacaeducation.common.TenantContext;
 import gn.lacaeducation.students.application.port.in.EnrollmentUseCase;
+import gn.lacaeducation.students.application.port.in.ParentUseCase;
 import gn.lacaeducation.students.application.port.in.StudentUseCase;
 import gn.lacaeducation.students.domain.Enrollment;
+import gn.lacaeducation.students.domain.Parent;
+import gn.lacaeducation.students.domain.Relationship;
 import gn.lacaeducation.students.domain.Student;
 import gn.lacaeducation.students.domain.StudentDocument;
+import gn.lacaeducation.students.domain.StudentParent;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -30,6 +34,7 @@ public class StudentController {
 
     private final StudentUseCase studentUseCase;
     private final EnrollmentUseCase enrollmentUseCase;
+    private final ParentUseCase parentUseCase;
 
     @Operation(summary = "Register a new student (checks enrollment quota)")
     @PostMapping
@@ -64,6 +69,13 @@ public class StudentController {
         return studentUseCase.update(id, cmd);
     }
 
+    @Operation(summary = "Update a student's photo URL")
+    @PatchMapping("/{id}/photo")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','SECRETARY','DIRECTOR')")
+    public Student updatePhoto(@PathVariable Long id, @RequestParam String photoUrl) {
+        return studentUseCase.updatePhoto(id, photoUrl);
+    }
+
     @Operation(summary = "Delete (archive) a student")
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
@@ -91,6 +103,32 @@ public class StudentController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteDocument(@PathVariable Long id, @PathVariable Long documentId) {
         studentUseCase.deleteDocument(documentId);
+    }
+
+    // ---- Parents ----
+
+    @Operation(summary = "Link a parent to this student (PERE/MERE/TUTEUR)")
+    @PostMapping("/{studentId}/parents")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','SECRETARY','DIRECTOR')")
+    @ResponseStatus(HttpStatus.CREATED)
+    public StudentParent linkParent(@PathVariable Long studentId,
+                                     @RequestParam Long parentId,
+                                     @RequestParam Relationship relationship) {
+        return parentUseCase.linkStudent(studentId, parentId, relationship);
+    }
+
+    @Operation(summary = "Get the parents of this student")
+    @GetMapping("/{studentId}/parents")
+    public List<Parent> findParents(@PathVariable Long studentId) {
+        return parentUseCase.findByStudent(studentId);
+    }
+
+    @Operation(summary = "Unlink a parent from this student")
+    @DeleteMapping("/{studentId}/parents/{parentId}")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void unlinkParent(@PathVariable Long studentId, @PathVariable Long parentId) {
+        parentUseCase.unlinkStudentFromParent(studentId, parentId);
     }
 
     // ---- Enrollments ----

@@ -21,4 +21,5 @@ public class Student {
     private String email;
     private String nationality;
     private LocalDateTime createdAt;
+    private LocalDateTime deletedAt;
 }

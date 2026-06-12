@@ -2,6 +2,8 @@ package gn.lacaeducation.students.application.service;
 
 import gn.lacaeducation.students.application.event.EnrollmentValidatedEvent;
 import gn.lacaeducation.students.application.port.in.EnrollmentUseCase.EnrollCommand;
+import gn.lacaeducation.common.ConflictException;
+import gn.lacaeducation.students.ClassCapacityPort;
 import gn.lacaeducation.students.application.port.out.EnrollmentRepository;
 import gn.lacaeducation.students.domain.Enrollment;
 import gn.lacaeducation.students.domain.EnrollmentStatus;
@@ -22,6 +24,7 @@ import static org.mockito.Mockito.*;
 class InscriptionServiceTest {
 
     @Mock EnrollmentRepository enrollmentRepository;
+    @Mock ClassCapacityPort classCapacityPort;
     @Mock ApplicationEventPublisher eventPublisher;
     @InjectMocks InscriptionService service;
 
@@ -44,6 +47,8 @@ class InscriptionServiceTest {
         Enrollment pending = Enrollment.builder().id(1L).studentId(10L).classId(20L)
                 .academicYearId(30L).status(EnrollmentStatus.PENDING).build();
         when(enrollmentRepository.findById(1L)).thenReturn(Optional.of(pending));
+        when(enrollmentRepository.existsValidatedForStudentYear(10L, 30L)).thenReturn(false);
+        when(classCapacityPort.maxCapacity(20L)).thenReturn(null);
         when(enrollmentRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         service.validate(1L);
@@ -52,6 +57,32 @@ class InscriptionServiceTest {
         verify(eventPublisher).publishEvent(captor.capture());
         assertThat(captor.getValue().studentId()).isEqualTo(10L);
         assertThat(captor.getValue().classId()).isEqualTo(20L);
+    }
+
+    @Test
+    void validate_classFull_throwsConflict() {
+        Enrollment pending = Enrollment.builder().id(1L).studentId(10L).classId(20L)
+                .academicYearId(30L).status(EnrollmentStatus.PENDING).build();
+        when(enrollmentRepository.findById(1L)).thenReturn(Optional.of(pending));
+        when(enrollmentRepository.existsValidatedForStudentYear(10L, 30L)).thenReturn(false);
+        when(classCapacityPort.maxCapacity(20L)).thenReturn(2);
+        when(enrollmentRepository.countByClassIdAndStatus(20L, EnrollmentStatus.VALIDATED)).thenReturn(2L);
+
+        assertThatThrownBy(() -> service.validate(1L))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("capacity");
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void validate_studentAlreadyValidatedForYear_throwsConflict() {
+        Enrollment pending = Enrollment.builder().id(1L).studentId(10L).classId(20L)
+                .academicYearId(30L).status(EnrollmentStatus.PENDING).build();
+        when(enrollmentRepository.findById(1L)).thenReturn(Optional.of(pending));
+        when(enrollmentRepository.existsValidatedForStudentYear(10L, 30L)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.validate(1L))
+                .isInstanceOf(ConflictException.class);
     }
 
     @Test
