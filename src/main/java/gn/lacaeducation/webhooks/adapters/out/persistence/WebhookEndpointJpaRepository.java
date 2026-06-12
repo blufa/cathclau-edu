@@ -4,4 +4,5 @@ import java.util.List;
 interface WebhookEndpointJpaRepository extends JpaRepository<WebhookEndpointJpaEntity, Long> {
     List<WebhookEndpointJpaEntity> findByTenantId(Long tenantId);
     List<WebhookEndpointJpaEntity> findByTenantIdAndActive(Long tenantId, boolean active);
+    List<WebhookEndpointJpaEntity> findByActive(boolean active);
 }

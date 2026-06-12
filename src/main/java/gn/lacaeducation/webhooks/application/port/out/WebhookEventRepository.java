@@ -8,6 +8,7 @@ public interface WebhookEventRepository {
     WebhookEvent save(WebhookEvent event);
     Optional<WebhookEvent> findById(Long id);
     List<WebhookEvent> findByEndpointId(Long endpointId);
+    List<WebhookEvent> findByStatus(WebhookDeliveryStatus status);
     List<WebhookEvent> findByStatusAndNextAttemptAtBefore(WebhookDeliveryStatus status, LocalDateTime cutoff);
     void deleteById(Long id);
 }

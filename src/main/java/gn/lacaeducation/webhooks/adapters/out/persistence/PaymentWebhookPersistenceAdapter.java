@@ -14,4 +14,5 @@ class PaymentWebhookPersistenceAdapter implements PaymentWebhookRepository {
     @Override public Optional<PaymentWebhook> findById(Long id) { return jpa.findById(id).map(mapper::toDomain); }
     @Override public List<PaymentWebhook> findByProcessed(boolean p) { return jpa.findByProcessed(p).stream().map(mapper::toDomain).toList(); }
     @Override public List<PaymentWebhook> findByProvider(WebhookProvider p) { return jpa.findByProvider(p).stream().map(mapper::toDomain).toList(); }
+    @Override public boolean existsByExternalEventId(String externalEventId) { return jpa.existsByExternalEventId(externalEventId); }
 }

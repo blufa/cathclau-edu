@@ -11,5 +11,6 @@ public class PaymentWebhook {
     private String signature;
     private Boolean verified;
     private Boolean processed;
+    private String externalEventId;
     private LocalDateTime receivedAt;
 }

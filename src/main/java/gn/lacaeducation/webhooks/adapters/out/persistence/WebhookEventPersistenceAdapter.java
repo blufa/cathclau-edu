@@ -14,6 +14,7 @@ class WebhookEventPersistenceAdapter implements WebhookEventRepository {
     @Override public WebhookEvent save(WebhookEvent e) { return mapper.toDomain(jpa.save(mapper.toEntity(e))); }
     @Override public Optional<WebhookEvent> findById(Long id) { return jpa.findById(id).map(mapper::toDomain); }
     @Override public List<WebhookEvent> findByEndpointId(Long id) { return jpa.findByEndpointId(id).stream().map(mapper::toDomain).toList(); }
+    @Override public List<WebhookEvent> findByStatus(WebhookDeliveryStatus s) { return jpa.findByStatus(s).stream().map(mapper::toDomain).toList(); }
     @Override public List<WebhookEvent> findByStatusAndNextAttemptAtBefore(WebhookDeliveryStatus s, LocalDateTime t) { return jpa.findByStatusAndNextAttemptAtBefore(s, t).stream().map(mapper::toDomain).toList(); }
     @Override public void deleteById(Long id) { jpa.deleteById(id); }
 }

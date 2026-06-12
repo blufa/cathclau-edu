@@ -7,6 +7,7 @@ public interface WebhookEndpointRepository {
     Optional<WebhookEndpoint> findById(Long id);
     List<WebhookEndpoint> findByTenantId(Long tenantId);
     List<WebhookEndpoint> findByTenantIdAndActive(Long tenantId, boolean active);
+    List<WebhookEndpoint> findAllActive();
     void deleteById(Long id);
     boolean existsById(Long id);
 }

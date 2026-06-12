@@ -9,9 +9,11 @@ public interface WebhookEventUseCase {
     WebhookEvent create(CreateEventCommand command);
     Optional<WebhookEvent> findById(Long id);
     List<WebhookEvent> findByEndpointId(Long endpointId);
+    List<WebhookEvent> findByStatus(WebhookDeliveryStatus status);
     List<WebhookEvent> findPendingEvents();
     WebhookEvent markSent(Long id, int responseCode);
     WebhookEvent markFailed(Long id, int responseCode);
     WebhookEvent scheduleRetry(Long id);
+    WebhookEvent replay(Long id);
     void delete(Long id);
 }

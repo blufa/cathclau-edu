@@ -8,4 +8,5 @@ public interface PaymentWebhookRepository {
     Optional<PaymentWebhook> findById(Long id);
     List<PaymentWebhook> findByProcessed(boolean processed);
     List<PaymentWebhook> findByProvider(WebhookProvider provider);
+    boolean existsByExternalEventId(String externalEventId);
 }

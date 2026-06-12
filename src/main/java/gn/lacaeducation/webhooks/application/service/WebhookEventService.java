@@ -3,6 +3,7 @@ import gn.lacaeducation.webhooks.application.port.in.WebhookEventUseCase;
 import gn.lacaeducation.webhooks.application.port.out.WebhookEventRepository;
 import gn.lacaeducation.webhooks.domain.WebhookDeliveryStatus;
 import gn.lacaeducation.webhooks.domain.WebhookEvent;
+import gn.lacaeducation.common.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +20,7 @@ public class WebhookEventService implements WebhookEventUseCase {
     }
     @Override @Transactional(readOnly=true) public Optional<WebhookEvent> findById(Long id) { return repo.findById(id); }
     @Override @Transactional(readOnly=true) public List<WebhookEvent> findByEndpointId(Long id) { return repo.findByEndpointId(id); }
+    @Override @Transactional(readOnly=true) public List<WebhookEvent> findByStatus(WebhookDeliveryStatus status) { return repo.findByStatus(status); }
     @Override @Transactional(readOnly=true) public List<WebhookEvent> findPendingEvents() {
         return repo.findByStatusAndNextAttemptAtBefore(WebhookDeliveryStatus.PENDING, LocalDateTime.now());
     }
@@ -33,10 +35,18 @@ public class WebhookEventService implements WebhookEventUseCase {
         int attempts = e.getAttemptCount() + 1;
         e.setAttemptCount(attempts);
         e.setStatus(WebhookDeliveryStatus.PENDING);
-        // exponential backoff: 2^attempts minutes
-        e.setNextAttemptAt(LocalDateTime.now().plusMinutes((long) Math.pow(2, attempts)));
+        // exponential backoff: 2^attempts * 30 seconds
+        e.setNextAttemptAt(LocalDateTime.now().plusSeconds((long) Math.pow(2, attempts) * 30));
+        return repo.save(e);
+    }
+    @Override public WebhookEvent replay(Long id) {
+        WebhookEvent e = load(id);
+        e.setStatus(WebhookDeliveryStatus.PENDING);
+        e.setNextAttemptAt(LocalDateTime.now());
+        e.setAttemptCount(0);
+        e.setResponseCode(null);
         return repo.save(e);
     }
     @Override public void delete(Long id) { repo.deleteById(id); }
-    private WebhookEvent load(Long id) { return repo.findById(id).orElseThrow(() -> new IllegalArgumentException("WebhookEvent not found: " + id)); }
+    private WebhookEvent load(Long id) { return repo.findById(id).orElseThrow(() -> new ResourceNotFoundException("WebhookEvent", id)); }
 }

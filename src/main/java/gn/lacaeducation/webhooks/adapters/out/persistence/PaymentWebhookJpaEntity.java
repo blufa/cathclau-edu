@@ -14,5 +14,6 @@ public class PaymentWebhookJpaEntity {
     @Column private String signature;
     @Column(nullable = false) private Boolean verified;
     @Column(nullable = false) private Boolean processed;
+    @Column(name = "external_event_id") private String externalEventId;
     @Column(name = "received_at", nullable = false) private LocalDateTime receivedAt;
 }
