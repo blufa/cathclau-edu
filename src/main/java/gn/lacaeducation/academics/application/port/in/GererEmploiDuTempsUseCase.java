@@ -10,6 +10,7 @@ public interface GererEmploiDuTempsUseCase {
     Optional<EmploiDuTemps> findById(Long id);
     List<EmploiDuTemps> findByClass(Long classId);
     List<EmploiDuTemps> findByTeacher(Long teacherId);
+    List<EmploiDuTemps> search(Long classId, Long teacherId, Long roomId, JourSemaine day);
     void delete(Long id);
     record CreateScheduleCommand(Long tenantId, Long schoolClassId, Long subjectId, Long teacherId,
                                   Long roomId, JourSemaine day, LocalTime startTime, LocalTime endTime) {}

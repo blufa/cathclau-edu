@@ -16,6 +16,7 @@ class EmploiDuTempsPersistenceAdapter implements EmploiDuTempsRepository {
     @Override public Optional<EmploiDuTemps> findById(Long id) { return edtRepo.findById(id).map(mapper::toDomain); }
     @Override public List<EmploiDuTemps> findByClassId(Long classId) { return edtRepo.findBySchoolClassId(classId).stream().map(mapper::toDomain).toList(); }
     @Override public List<EmploiDuTemps> findByTeacherId(Long teacherId) { return edtRepo.findByTeacherId(teacherId).stream().map(mapper::toDomain).toList(); }
+    @Override public List<EmploiDuTemps> search(Long classId, Long teacherId, Long roomId, JourSemaine day) { return edtRepo.search(classId, teacherId, roomId, day).stream().map(mapper::toDomain).toList(); }
     @Override public void deleteById(Long id) { edtRepo.deleteById(id); }
     @Override public boolean existsRoomConflict(Long roomId, JourSemaine day, LocalTime st, LocalTime et) { return edtRepo.existsRoomConflict(roomId, day, st, et); }
     @Override public boolean existsTeacherConflict(Long teacherId, JourSemaine day, LocalTime st, LocalTime et) { return edtRepo.existsTeacherConflict(teacherId, day, st, et); }

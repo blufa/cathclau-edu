@@ -1,5 +1,7 @@
 package gn.lacaeducation.academics.application.service;
 
+import gn.lacaeducation.academics.application.event.AnneeScolaireArchiveeEvent;
+import gn.lacaeducation.academics.application.event.AnneeScolaireClotureeEvent;
 import gn.lacaeducation.academics.application.event.PeriodeClotureeEvent;
 import gn.lacaeducation.academics.application.port.in.GererAnneeScolaireUseCase.CreateAcademicYearCommand;
 import gn.lacaeducation.academics.application.port.in.GererAnneeScolaireUseCase.CreatePeriodCommand;
@@ -19,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -109,5 +112,58 @@ class AnneeScolaireServiceTest {
 
         assertThat(result.getClosed()).isFalse();
         assertThat(result.getLabel()).isEqualTo("Term 1");
+    }
+
+    @Test
+    void setCurrent_flipsPreviousCurrentOffAndSetsThisOne() {
+        AnneeScolaire annee = AnneeScolaire.builder()
+                .id(2L).tenantId(10L).status(StatutAnneeScolaire.EN_COURS).current(false).build();
+        when(anneeRepository.findById(2L)).thenReturn(Optional.of(annee));
+        when(anneeRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        AnneeScolaire result = service.setCurrent(2L);
+
+        verify(anneeRepository).removeCurrent(10L);
+        assertThat(result.getCurrent()).isTrue();
+    }
+
+    @Test
+    void update_archivedYear_throws() {
+        AnneeScolaire annee = AnneeScolaire.builder()
+                .id(1L).tenantId(10L).status(StatutAnneeScolaire.ARCHIVEE).build();
+        when(anneeRepository.findById(1L)).thenReturn(Optional.of(annee));
+
+        assertThatThrownBy(() -> service.update(1L, new CreateAcademicYearCommand(
+                10L, "x", LocalDate.now(), LocalDate.now().plusDays(1))))
+                .isInstanceOf(BusinessRuleException.class);
+    }
+
+    @Test
+    void close_publishesClotureeEvent() {
+        AnneeScolaire annee = AnneeScolaire.builder()
+                .id(1L).tenantId(10L).status(StatutAnneeScolaire.EN_COURS).current(true).build();
+        when(anneeRepository.findById(1L)).thenReturn(Optional.of(annee));
+        when(periodeRepository.findByAcademicYearId(1L)).thenReturn(List.of());
+        when(anneeRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        service.close(1L);
+
+        ArgumentCaptor<AnneeScolaireClotureeEvent> captor = ArgumentCaptor.forClass(AnneeScolaireClotureeEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        assertThat(captor.getValue().academicYearId()).isEqualTo(1L);
+    }
+
+    @Test
+    void archive_publishesArchiveeEvent() {
+        AnneeScolaire annee = AnneeScolaire.builder()
+                .id(1L).tenantId(10L).status(StatutAnneeScolaire.CLOTUREE).build();
+        when(anneeRepository.findById(1L)).thenReturn(Optional.of(annee));
+        when(anneeRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        service.archive(1L);
+
+        ArgumentCaptor<AnneeScolaireArchiveeEvent> captor = ArgumentCaptor.forClass(AnneeScolaireArchiveeEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        assertThat(captor.getValue().academicYearId()).isEqualTo(1L);
     }
 }

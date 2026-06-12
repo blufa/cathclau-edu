@@ -1,5 +1,7 @@
 package gn.lacaeducation.academics.application.service;
 
+import gn.lacaeducation.academics.application.event.AnneeScolaireArchiveeEvent;
+import gn.lacaeducation.academics.application.event.AnneeScolaireClotureeEvent;
 import gn.lacaeducation.academics.application.event.PeriodeClotureeEvent;
 import gn.lacaeducation.academics.application.port.in.GererAnneeScolaireUseCase;
 import gn.lacaeducation.academics.application.port.out.AnneeScolaireRepository;
@@ -42,6 +44,30 @@ public class AnneeScolaireService implements GererAnneeScolaireUseCase {
     }
 
     @Override
+    public AnneeScolaire update(Long academicYearId, CreateAcademicYearCommand command) {
+        AnneeScolaire annee = load(academicYearId);
+        if (annee.getStatus() == StatutAnneeScolaire.ARCHIVEE) {
+            throw new BusinessRuleException("Archived academic years are read-only and cannot be updated.");
+        }
+        annee.setLabel(command.label());
+        annee.setStartDate(command.startDate());
+        annee.setEndDate(command.endDate());
+        return anneeRepository.save(annee);
+    }
+
+    @Override
+    public AnneeScolaire setCurrent(Long academicYearId) {
+        AnneeScolaire annee = load(academicYearId);
+        if (annee.getStatus() == StatutAnneeScolaire.ARCHIVEE) {
+            throw new BusinessRuleException("An archived academic year cannot be set as current.");
+        }
+        // Exactly one current year per tenant: flip the previous current off, then set this one.
+        anneeRepository.removeCurrent(annee.getTenantId());
+        annee.setCurrent(true);
+        return anneeRepository.save(annee);
+    }
+
+    @Override
     public AnneeScolaire start(Long academicYearId) {
         AnneeScolaire annee = load(academicYearId);
         validateTransition(annee.getStatus(), StatutAnneeScolaire.PLANIFIEE, StatutAnneeScolaire.EN_COURS);
@@ -68,7 +94,9 @@ public class AnneeScolaireService implements GererAnneeScolaireUseCase {
 
         annee.setStatus(StatutAnneeScolaire.CLOTUREE);
         annee.setCurrent(false);
-        return anneeRepository.save(annee);
+        AnneeScolaire saved = anneeRepository.save(annee);
+        eventPublisher.publishEvent(new AnneeScolaireClotureeEvent(saved.getTenantId(), saved.getId()));
+        return saved;
     }
 
     @Override
@@ -76,7 +104,9 @@ public class AnneeScolaireService implements GererAnneeScolaireUseCase {
         AnneeScolaire annee = load(academicYearId);
         validateTransition(annee.getStatus(), StatutAnneeScolaire.CLOTUREE, StatutAnneeScolaire.ARCHIVEE);
         annee.setStatus(StatutAnneeScolaire.ARCHIVEE);
-        return anneeRepository.save(annee);
+        AnneeScolaire saved = anneeRepository.save(annee);
+        eventPublisher.publishEvent(new AnneeScolaireArchiveeEvent(saved.getTenantId(), saved.getId()));
+        return saved;
     }
 
     @Override
@@ -108,6 +138,21 @@ public class AnneeScolaireService implements GererAnneeScolaireUseCase {
                 .endDate(command.endDate())
                 .closed(false)
                 .build();
+        return periodeRepository.save(periode);
+    }
+
+    @Override
+    public Periode updatePeriod(Long periodId, CreatePeriodCommand command) {
+        Periode periode = periodeRepository.findById(periodId)
+                .orElseThrow(() -> new ResourceNotFoundException("Period", periodId));
+        if (Boolean.TRUE.equals(periode.getClosed())) {
+            throw new BusinessRuleException("A closed period is read-only and cannot be updated: id=" + periodId);
+        }
+        periode.setLabel(command.label());
+        periode.setType(command.type());
+        periode.setSortOrder(command.sortOrder());
+        periode.setStartDate(command.startDate());
+        periode.setEndDate(command.endDate());
         return periodeRepository.save(periode);
     }
 

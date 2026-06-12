@@ -9,6 +9,7 @@ public interface EmploiDuTempsRepository {
     Optional<EmploiDuTemps> findById(Long id);
     List<EmploiDuTemps> findByClassId(Long classId);
     List<EmploiDuTemps> findByTeacherId(Long teacherId);
+    List<EmploiDuTemps> search(Long classId, Long teacherId, Long roomId, JourSemaine day);
     void deleteById(Long id);
     boolean existsRoomConflict(Long roomId, JourSemaine day, LocalTime startTime, LocalTime endTime);
     boolean existsTeacherConflict(Long teacherId, JourSemaine day, LocalTime startTime, LocalTime endTime);

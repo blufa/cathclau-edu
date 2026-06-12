@@ -13,12 +13,16 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
@@ -55,6 +59,21 @@ public class ClasseController {
         return useCase.findByAcademicYear(academicYearId);
     }
 
+    @Operation(summary = "Update a class")
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    public Classe update(@PathVariable Long id, @Valid @RequestBody CreateClassCommand cmd) {
+        return useCase.update(id, new CreateClassCommand(
+                TenantContext.get(), cmd.levelId(), cmd.academicYearId(),
+                cmd.headTeacherId(), cmd.roomId(), cmd.label(), cmd.maxCapacity()));
+    }
+
+    @Operation(summary = "Delete a class")
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable Long id) { useCase.delete(id); }
+
     @Operation(summary = "List all students enrolled in a class (validated enrollments)")
     @GetMapping("/{id}/students")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER','SECRETARY')")
@@ -83,5 +102,13 @@ public class ClasseController {
     @GetMapping("/{classId}/subjects")
     public List<ClasseMatiere> findSubjects(@PathVariable Long classId) {
         return useCase.findSubjects(classId);
+    }
+
+    @Operation(summary = "Remove a subject assignment from a class")
+    @DeleteMapping("/{classId}/subjects/{id}")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void removeSubject(@PathVariable Long classId, @PathVariable Long id) {
+        useCase.removeSubject(id);
     }
 }

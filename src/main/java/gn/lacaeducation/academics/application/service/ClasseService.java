@@ -1,11 +1,15 @@
 package gn.lacaeducation.academics.application.service;
 
 import gn.lacaeducation.academics.application.port.in.GererClasseUseCase;
+import gn.lacaeducation.academics.application.port.out.AnneeScolaireRepository;
 import gn.lacaeducation.academics.application.port.out.ClasseRepository;
 import gn.lacaeducation.academics.application.port.out.EnrollmentQueryPort;
+import gn.lacaeducation.academics.domain.AnneeScolaire;
 import gn.lacaeducation.academics.domain.Classe;
 import gn.lacaeducation.academics.domain.ClasseMatiere;
 import gn.lacaeducation.academics.domain.ClassStudent;
+import gn.lacaeducation.academics.domain.valueobject.StatutAnneeScolaire;
+import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -21,9 +25,11 @@ public class ClasseService implements GererClasseUseCase {
 
     private final ClasseRepository classeRepository;
     private final EnrollmentQueryPort enrollmentQueryPort;
+    private final AnneeScolaireRepository anneeRepository;
 
     @Override
     public Classe create(CreateClassCommand command) {
+        requireWritableYear(command.academicYearId());
         Classe classe = Classe.builder()
                 .tenantId(command.tenantId())
                 .levelId(command.levelId())
@@ -62,6 +68,7 @@ public class ClasseService implements GererClasseUseCase {
     @Override
     public Classe update(Long id, CreateClassCommand command) {
         Classe c = classeRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Class", id));
+        requireWritableYear(c.getAcademicYearId());
         c.setLevelId(command.levelId()); c.setAcademicYearId(command.academicYearId());
         c.setHeadTeacherId(command.headTeacherId()); c.setRoomId(command.roomId());
         c.setLabel(command.label()); c.setMaxCapacity(command.maxCapacity());
@@ -81,6 +88,17 @@ public class ClasseService implements GererClasseUseCase {
     @Override @Transactional(readOnly = true)
     public List<ClassStudent> findStudentsByClassId(Long classId) {
         return classeRepository.findStudentsByClassId(classId);
+    }
+
+    /** Classes cannot be created/modified on a CLOTUREE or ARCHIVEE academic year (read-only). */
+    private void requireWritableYear(Long academicYearId) {
+        if (academicYearId == null) return;
+        AnneeScolaire year = anneeRepository.findById(academicYearId)
+                .orElseThrow(() -> new ResourceNotFoundException("AcademicYear", academicYearId));
+        if (year.getStatus() == StatutAnneeScolaire.CLOTUREE || year.getStatus() == StatutAnneeScolaire.ARCHIVEE) {
+            throw new BusinessRuleException(
+                    "Academic year id=" + academicYearId + " is " + year.getStatus() + " (read-only); classes cannot be modified.");
+        }
     }
 
     @Override @Transactional(readOnly = true)

@@ -12,6 +12,10 @@ public interface GererAnneeScolaireUseCase {
 
     AnneeScolaire create(CreateAcademicYearCommand command);
 
+    AnneeScolaire update(Long academicYearId, CreateAcademicYearCommand command);
+
+    AnneeScolaire setCurrent(Long academicYearId);
+
     AnneeScolaire start(Long academicYearId);
 
     AnneeScolaire close(Long academicYearId);
@@ -25,6 +29,8 @@ public interface GererAnneeScolaireUseCase {
     List<AnneeScolaire> findByTenantId(Long tenantId);
 
     Periode createPeriod(CreatePeriodCommand command);
+
+    Periode updatePeriod(Long periodId, CreatePeriodCommand command);
 
     Periode closePeriod(Long periodId);
 

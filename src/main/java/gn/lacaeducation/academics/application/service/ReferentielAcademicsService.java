@@ -5,6 +5,7 @@ import gn.lacaeducation.academics.application.port.out.ReferentielRepository;
 import gn.lacaeducation.academics.domain.Matiere;
 import gn.lacaeducation.academics.domain.Niveau;
 import gn.lacaeducation.academics.domain.Salle;
+import gn.lacaeducation.common.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -70,6 +71,13 @@ public class ReferentielAcademicsService implements GererReferentielUseCase {
     public Salle updateRoom(Long id, CreateRoomCommand command) {
         Salle s = referentielRepository.findRoomById(id).orElseThrow(() -> new IllegalArgumentException("Room not found: " + id));
         s.setLabel(command.label()); s.setBuilding(command.building()); s.setCapacity(command.capacity()); s.setType(command.type());
+        return referentielRepository.saveRoom(s);
+    }
+    @Override
+    public Salle setRoomAvailability(Long id, boolean available) {
+        Salle s = referentielRepository.findRoomById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Room", id));
+        s.setAvailable(available);
         return referentielRepository.saveRoom(s);
     }
     @Override @Transactional(readOnly=true)

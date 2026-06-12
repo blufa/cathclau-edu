@@ -10,6 +10,7 @@ public interface GererReferentielUseCase {
     // Room
     Salle createRoom(CreateRoomCommand command);
     Salle updateRoom(Long id, CreateRoomCommand command);
+    Salle setRoomAvailability(Long id, boolean available);
     Optional<Salle> findRoomById(Long id);
     List<Salle> findRooms(Long tenantId);
     void deleteRoom(Long id);

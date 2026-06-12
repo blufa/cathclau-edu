@@ -4,6 +4,7 @@ import gn.lacaeducation.academics.application.port.in.GererEmploiDuTempsUseCase;
 import gn.lacaeducation.academics.application.port.out.EmploiDuTempsRepository;
 import gn.lacaeducation.academics.domain.EmploiDuTemps;
 import gn.lacaeducation.academics.domain.valueobject.JourSemaine;
+import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ConflictException;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,7 @@ public class EmploiDuTempsService implements GererEmploiDuTempsUseCase {
 
     @Override
     public EmploiDuTemps create(CreateScheduleCommand command) {
+        validateTimeRange(command.startTime(), command.endTime());
         checkConflicts(command.roomId(), command.teacherId(), command.schoolClassId(),
                 command.day(), command.startTime(), command.endTime(), null);
 
@@ -43,6 +45,7 @@ public class EmploiDuTempsService implements GererEmploiDuTempsUseCase {
     public EmploiDuTemps update(Long id, CreateScheduleCommand command) {
         EmploiDuTemps e = edtRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Schedule", id));
+        validateTimeRange(command.startTime(), command.endTime());
         checkConflicts(command.roomId(), command.teacherId(), command.schoolClassId(),
                 command.day(), command.startTime(), command.endTime(), id);
         e.setSubjectId(command.subjectId()); e.setTeacherId(command.teacherId()); e.setRoomId(command.roomId());
@@ -56,7 +59,17 @@ public class EmploiDuTempsService implements GererEmploiDuTempsUseCase {
     public List<EmploiDuTemps> findByClass(Long classId) { return edtRepository.findByClassId(classId); }
     @Override @Transactional(readOnly=true)
     public List<EmploiDuTemps> findByTeacher(Long teacherId) { return edtRepository.findByTeacherId(teacherId); }
+    @Override @Transactional(readOnly=true)
+    public List<EmploiDuTemps> search(Long classId, Long teacherId, Long roomId, JourSemaine day) {
+        return edtRepository.search(classId, teacherId, roomId, day);
+    }
     @Override public void delete(Long id) { edtRepository.deleteById(id); }
+
+    private void validateTimeRange(LocalTime startTime, LocalTime endTime) {
+        if (startTime == null || endTime == null || !startTime.isBefore(endTime)) {
+            throw new BusinessRuleException("Invalid time range: start time must be before end time.");
+        }
+    }
 
     /**
      * Checks for scheduling conflicts for room, teacher, and class.

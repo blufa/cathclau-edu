@@ -6,6 +6,8 @@ import gn.lacaeducation.academics.application.port.in.GererAnneeScolaireUseCase.
 import gn.lacaeducation.academics.application.port.in.GererAnneeScolaireUseCase.CreatePeriodCommand;
 import gn.lacaeducation.academics.domain.AnneeScolaire;
 import gn.lacaeducation.academics.domain.Periode;
+import gn.lacaeducation.academics.domain.valueobject.StatutAnneeScolaire;
+import gn.lacaeducation.common.BusinessRuleException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -13,11 +15,13 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
@@ -60,6 +64,35 @@ public class AnneeScolaireController {
         return useCase.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
+    @Operation(summary = "Update an academic year (label, dates)")
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    public ResponseEntity<AnneeScolaire> update(@PathVariable Long id,
+                                                @Valid @RequestBody CreateAcademicYearCommand cmd) {
+        return ResponseEntity.ok(useCase.update(id, new CreateAcademicYearCommand(
+                TenantContext.get(), cmd.label(), cmd.startDate(), cmd.endDate())));
+    }
+
+    @Operation(summary = "Change the status: EN_COURS (start), CLOTUREE (close) or ARCHIVEE (archive)")
+    @PatchMapping("/{id}/status")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    public ResponseEntity<AnneeScolaire> changeStatus(@PathVariable Long id, @RequestParam StatutAnneeScolaire status) {
+        AnneeScolaire result = switch (status) {
+            case EN_COURS -> useCase.start(id);
+            case CLOTUREE -> useCase.close(id);
+            case ARCHIVEE -> useCase.archive(id);
+            case PLANIFIEE -> throw new BusinessRuleException("Cannot transition back to PLANIFIEE.");
+        };
+        return ResponseEntity.ok(result);
+    }
+
+    @Operation(summary = "Set this academic year as the current one (only one current per tenant)")
+    @PatchMapping("/{id}/set-current")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    public ResponseEntity<AnneeScolaire> setCurrent(@PathVariable Long id) {
+        return ResponseEntity.ok(useCase.setCurrent(id));
+    }
+
     @Operation(summary = "Start (activate) an academic year")
     @PutMapping("/{id}/start")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
@@ -89,6 +122,15 @@ public class AnneeScolaireController {
     @GetMapping("/{academicYearId}/periods")
     public List<Periode> findPeriods(@PathVariable Long academicYearId) {
         return useCase.findPeriods(academicYearId);
+    }
+
+    @Operation(summary = "Update a period (label, type, order, dates) — only while open")
+    @PutMapping("/periods/{periodId}")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    public ResponseEntity<Periode> updatePeriod(@PathVariable Long periodId,
+                                                @RequestBody CreatePeriodCommand cmd) {
+        return ResponseEntity.ok(useCase.updatePeriod(periodId, new CreatePeriodCommand(
+                null, cmd.label(), cmd.type(), cmd.sortOrder(), cmd.startDate(), cmd.endDate())));
     }
 
     @Operation(summary = "Close a period, freezing grades and triggering report card generation")

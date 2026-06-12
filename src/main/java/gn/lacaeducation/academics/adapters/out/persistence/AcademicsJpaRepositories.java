@@ -47,6 +47,16 @@ interface EmploiDuTempsJpaRepository extends JpaRepository<EmploiDuTempsJpaEntit
     List<EmploiDuTempsJpaEntity> findBySchoolClassId(Long schoolClassId);
     List<EmploiDuTempsJpaEntity> findByTeacherId(Long teacherId);
 
+    @Query("SELECT e FROM EmploiDuTempsJpaEntity e WHERE "
+            + "(:classId IS NULL OR e.schoolClassId = :classId) AND "
+            + "(:teacherId IS NULL OR e.teacherId = :teacherId) AND "
+            + "(:roomId IS NULL OR e.roomId = :roomId) AND "
+            + "(:day IS NULL OR e.day = :day)")
+    List<EmploiDuTempsJpaEntity> search(@Param("classId") Long classId,
+                                         @Param("teacherId") Long teacherId,
+                                         @Param("roomId") Long roomId,
+                                         @Param("day") JourSemaine day);
+
     @Query("SELECT COUNT(e) > 0 FROM EmploiDuTempsJpaEntity e WHERE e.roomId = :roomId AND e.day = :day " +
            "AND e.startTime < :endTime AND e.endTime > :startTime")
     boolean existsRoomConflict(@Param("roomId") Long roomId, @Param("day") JourSemaine day,
