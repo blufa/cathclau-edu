@@ -9,6 +9,7 @@ import gn.lacaeducation.academics.domain.AnneeScolaire;
 import gn.lacaeducation.academics.domain.Periode;
 import gn.lacaeducation.academics.domain.valueobject.StatutAnneeScolaire;
 import gn.lacaeducation.academics.domain.valueobject.TypePeriode;
+import gn.lacaeducation.common.BusinessRuleException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -89,7 +90,7 @@ class AnneeScolaireServiceTest {
         when(periodeRepository.findById(5L)).thenReturn(Optional.of(periode));
 
         assertThatThrownBy(() -> service.closePeriod(5L))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("already closed");
     }
 
