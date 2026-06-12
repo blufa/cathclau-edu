@@ -4,6 +4,7 @@ import java.time.LocalDate;
 @Getter @Setter @Builder @NoArgsConstructor @AllArgsConstructor
 public class StudentAttendance {
     private Long id;
+    private Long tenantId;
     private Long studentId;
     private Long classId;
     private LocalDate date;

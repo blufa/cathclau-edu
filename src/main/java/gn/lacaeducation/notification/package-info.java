@@ -1,7 +1,7 @@
 @org.springframework.modulith.ApplicationModule(
     allowedDependencies = {
         "students", "students::events",
-        "attendance::events",
+        "attendance", "attendance::events",
         "billing", "billing::events",
         "payments", "payments::events",
         "grading::events",

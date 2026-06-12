@@ -4,6 +4,7 @@ import gn.lacaeducation.attendance.application.port.out.TeacherAttendanceReposit
 import gn.lacaeducation.attendance.domain.TeacherAttendance;
 import gn.lacaeducation.attendance.domain.TeacherAttendanceStatus;
 import gn.lacaeducation.common.ResourceNotFoundException;
+import gn.lacaeducation.common.TenantContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,7 +18,15 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
     @Override
     public TeacherAttendance record(RecordTeacherAttendanceCommand cmd) {
         return attendanceRepository.save(TeacherAttendance.builder()
+                .tenantId(TenantContext.get())
                 .teacherId(cmd.teacherId()).date(cmd.date()).status(cmd.status()).reason(cmd.reason()).build());
+    }
+    @Override
+    public TeacherAttendance update(Long id, TeacherAttendanceStatus status, String reason) {
+        TeacherAttendance a = attendanceRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("TeacherAttendance", id));
+        a.setStatus(status); a.setReason(reason);
+        return attendanceRepository.save(a);
     }
     @Override @Transactional(readOnly = true)
     public TeacherAttendance findById(Long id) { return attendanceRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("TeacherAttendance", id)); }

@@ -1,10 +1,13 @@
 package gn.lacaeducation.attendance.application.service;
+import gn.lacaeducation.attendance.StudentAttendanceNotifier;
 import gn.lacaeducation.attendance.application.event.StudentAbsentEvent;
 import gn.lacaeducation.attendance.application.port.in.StudentAttendanceUseCase;
 import gn.lacaeducation.attendance.application.port.out.StudentAttendanceRepository;
 import gn.lacaeducation.attendance.domain.AttendanceStatus;
 import gn.lacaeducation.attendance.domain.StudentAttendance;
+import gn.lacaeducation.common.ConflictException;
 import gn.lacaeducation.common.ResourceNotFoundException;
+import gn.lacaeducation.common.TenantContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -16,18 +19,29 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 @Service @Transactional @RequiredArgsConstructor
-public class StudentAttendanceService implements StudentAttendanceUseCase {
+public class StudentAttendanceService implements StudentAttendanceUseCase, StudentAttendanceNotifier {
     private final StudentAttendanceRepository attendanceRepository;
     private final ApplicationEventPublisher eventPublisher;
     @Override
     public StudentAttendance record(RecordAttendanceCommand cmd) {
+        // One attendance per student, class and date.
+        attendanceRepository.findByStudentIdAndClassIdAndDate(cmd.studentId(), cmd.classId(), cmd.date())
+                .ifPresent(e -> { throw new ConflictException(
+                        "Attendance already recorded for student " + cmd.studentId()
+                                + " in class " + cmd.classId() + " on " + cmd.date()); });
         StudentAttendance a = attendanceRepository.save(StudentAttendance.builder()
+                .tenantId(TenantContext.get())
                 .studentId(cmd.studentId()).classId(cmd.classId()).date(cmd.date())
                 .status(cmd.status()).reason(cmd.reason()).parentNotified(false).build());
-        if (cmd.status() == AttendanceStatus.ABSENT || cmd.status() == AttendanceStatus.LATE) {
-            eventPublisher.publishEvent(new StudentAbsentEvent(null, cmd.studentId(), cmd.classId(), cmd.date()));
-        }
+        publishIfAbsent(a);
         return a;
+    }
+
+    private void publishIfAbsent(StudentAttendance a) {
+        if (a.getStatus() == AttendanceStatus.ABSENT || a.getStatus() == AttendanceStatus.LATE) {
+            eventPublisher.publishEvent(new StudentAbsentEvent(
+                    a.getId(), a.getTenantId(), a.getStudentId(), a.getClassId(), a.getDate()));
+        }
     }
     @Override
     public List<StudentAttendance> recordBulk(BulkAttendanceCommand cmd) {
@@ -43,12 +57,11 @@ public class StudentAttendanceService implements StudentAttendanceUseCase {
                 saved = attendanceRepository.save(a);
             } else {
                 saved = attendanceRepository.save(StudentAttendance.builder()
+                        .tenantId(TenantContext.get())
                         .studentId(entry.studentId()).classId(cmd.classId()).date(cmd.date())
                         .status(entry.status()).reason(entry.reason()).parentNotified(false).build());
             }
-            if (entry.status() == AttendanceStatus.ABSENT || entry.status() == AttendanceStatus.LATE) {
-                eventPublisher.publishEvent(new StudentAbsentEvent(null, entry.studentId(), cmd.classId(), cmd.date()));
-            }
+            publishIfAbsent(saved);
             results.add(saved);
         }
         return results;

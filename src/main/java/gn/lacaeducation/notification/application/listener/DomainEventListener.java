@@ -1,6 +1,7 @@
 package gn.lacaeducation.notification.application.listener;
 
 import gn.lacaeducation.academics.AcademicsDataProvider;
+import gn.lacaeducation.attendance.StudentAttendanceNotifier;
 import gn.lacaeducation.billing.InvoiceDataProvider;
 import gn.lacaeducation.billing.InvoicePublicInfo;
 import gn.lacaeducation.platform.TenantInfoProvider;
@@ -31,6 +32,7 @@ public class DomainEventListener {
     private final PaymentDataProvider paymentDataProvider;
     private final AcademicsDataProvider academicsDataProvider;
     private final TenantInfoProvider tenantInfoProvider;
+    private final StudentAttendanceNotifier studentAttendanceNotifier;
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
@@ -100,6 +102,10 @@ public class DomainEventListener {
                     notificationService.sendAbsenceNotification(email, schoolName,
                             fullName(student), date, className));
         });
+        // Flag the attendance record as parent-notified once the notification has been dispatched.
+        if (event.attendanceId() != null) {
+            studentAttendanceNotifier.markParentNotified(event.attendanceId());
+        }
     }
 
     @org.springframework.transaction.event.TransactionalEventListener
