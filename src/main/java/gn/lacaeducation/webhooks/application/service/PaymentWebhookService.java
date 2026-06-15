@@ -1,4 +1,5 @@
 package gn.lacaeducation.webhooks.application.service;
+import gn.lacaeducation.payments.PaymentCallbackHandler;
 import gn.lacaeducation.webhooks.application.port.in.PaymentWebhookUseCase;
 import gn.lacaeducation.webhooks.application.port.out.PaymentWebhookRepository;
 import gn.lacaeducation.webhooks.domain.PaymentWebhook;
@@ -18,16 +19,39 @@ import java.util.Optional;
 @Service @Transactional @RequiredArgsConstructor @Slf4j
 public class PaymentWebhookService implements PaymentWebhookUseCase {
     private final PaymentWebhookRepository repo;
+    private final PaymentCallbackHandler paymentCallbackHandler;
     @Value("${app.webhook.secret:dev-webhook-secret}")
     private String webhookSecret;
 
     @Override public PaymentWebhook receive(ReceiveWebhookCommand c) {
+        // Signature is verified BEFORE any processing (§10.1). The raw payload is always persisted
+        // for audit; the payment is only updated when the signature is valid.
         boolean verified = verifyHmacSignature(c.rawPayload(), c.signature(), webhookSecret);
-        return repo.save(PaymentWebhook.builder().transactionId(c.transactionId()).provider(c.provider())
+        PaymentWebhook webhook = repo.save(PaymentWebhook.builder().transactionId(c.transactionId()).provider(c.provider())
                 .event(c.event()).rawPayload(c.rawPayload()).signature(c.signature())
                 .verified(verified).processed(false)
                 .externalEventId(c.externalEventId())
                 .receivedAt(LocalDateTime.now()).build());
+
+        if (verified && webhook.getTransactionId() != null) {
+            boolean success = isSuccessEvent(c.event());
+            paymentCallbackHandler.applyCallback(webhook.getTransactionId(), success, c.event(), c.rawPayload());
+            webhook.setProcessed(true);
+            webhook = repo.save(webhook);
+            log.info("Processed payment webhook id={} transaction={} success={}", webhook.getId(), webhook.getTransactionId(), success);
+        }
+        return webhook;
+    }
+
+    /** A callback is a success unless it explicitly signals failure. */
+    private boolean isSuccessEvent(String event) {
+        if (event == null) return false;
+        String e = event.toLowerCase();
+        if (e.contains("fail") || e.contains("declin") || e.contains("error") || e.contains("cancel") || e.contains("echou")) {
+            return false;
+        }
+        return e.contains("success") || e.contains("succeed") || e.contains("paid")
+                || e.contains("complete") || e.contains("reussi");
     }
 
     @Override public PaymentWebhook verify(Long id, String secret) {
@@ -48,8 +72,10 @@ public class PaymentWebhookService implements PaymentWebhookUseCase {
 
     @Override @Transactional(readOnly=true)
     public boolean isAlreadyProcessed(String externalEventId) {
+        // Idempotence keys on a previously *processed* event (§10.1: "traité une seule fois"),
+        // so a prior unverified/unprocessed attempt does not block a legitimate retry.
         if (externalEventId == null || externalEventId.isBlank()) return false;
-        return repo.existsByExternalEventId(externalEventId);
+        return repo.existsByExternalEventIdAndProcessedTrue(externalEventId);
     }
 
     boolean verifyHmacSignature(String payload, String signature, String secret) {

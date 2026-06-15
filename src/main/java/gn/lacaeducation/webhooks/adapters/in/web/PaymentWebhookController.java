@@ -15,22 +15,23 @@ import java.util.List;
 public class PaymentWebhookController {
     private final PaymentWebhookUseCase useCase;
 
-    public record ReceiveRequest(Long transactionId, WebhookProvider provider, String event,
+    public record ReceiveRequest(Long transactionId, String event,
                                   String rawPayload, String signature, String externalEventId) {}
 
-    @Operation(summary = "Receive an inbound payment callback from a payment provider")
-    @PostMapping
+    @Operation(summary = "Receive an inbound payment callback from a provider (public, signature-protected)")
+    @PostMapping("/{provider}")
     public ResponseEntity<PaymentWebhook> receive(
+            @PathVariable WebhookProvider provider,
             @RequestBody ReceiveRequest r,
             @RequestHeader(value = "X-Webhook-Signature", required = false) String headerSignature) {
         // Use header signature if provided, otherwise fall back to body signature field
         String effectiveSignature = headerSignature != null ? headerSignature : r.signature();
-        // Idempotency check: if we already processed this external event, return 200 immediately
+        // Idempotency: if this external event was already processed, return 200 immediately
         if (r.externalEventId() != null && useCase.isAlreadyProcessed(r.externalEventId())) {
             return ResponseEntity.ok().build();
         }
         PaymentWebhook webhook = useCase.receive(new PaymentWebhookUseCase.ReceiveWebhookCommand(
-                r.transactionId(), r.provider(), r.event(), r.rawPayload(), effectiveSignature, r.externalEventId()));
+                r.transactionId(), provider, r.event(), r.rawPayload(), effectiveSignature, r.externalEventId()));
         if (!Boolean.TRUE.equals(webhook.getVerified())) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }

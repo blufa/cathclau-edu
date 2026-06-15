@@ -43,3 +43,9 @@ app:
     expiration: 86400
   webhook:
     secret: ${WEBHOOK_SECRET:dev-webhook-secret}
+  # Generated documents (report cards, exam convocations, …) are stored on Cloudinary,
+  # never on the local filesystem. Fill these in with your Cloudinary credentials.
+  cloudinary:
+    cloud-name: ${CLOUDINARY_CLOUD_NAME:}
+    api-key: ${CLOUDINARY_API_KEY:}
+    api-secret: ${CLOUDINARY_API_SECRET:}

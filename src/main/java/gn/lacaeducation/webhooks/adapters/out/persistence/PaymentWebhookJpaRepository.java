@@ -6,4 +6,5 @@ interface PaymentWebhookJpaRepository extends JpaRepository<PaymentWebhookJpaEnt
     List<PaymentWebhookJpaEntity> findByProcessed(boolean processed);
     List<PaymentWebhookJpaEntity> findByProvider(WebhookProvider provider);
     boolean existsByExternalEventId(String externalEventId);
+    boolean existsByExternalEventIdAndProcessedTrue(String externalEventId);
 }
