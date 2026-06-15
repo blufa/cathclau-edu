@@ -22,7 +22,7 @@ public class PaymentService implements PaymentUseCase {
     @Override public Payment confirmSuccess(Long id) {
         Payment p = load(id); p.setStatus(PaymentStatus.SUCCEEDED);
         Payment saved = repo.save(p);
-        eventPublisher.publishEvent(new PaymentSucceededEvent(p.getTenantId(), p.getStudentId(), p.getId(), p.getInvoiceId()));
+        eventPublisher.publishEvent(new PaymentSucceededEvent(p.getTenantId(), p.getStudentId(), p.getId(), p.getInvoiceId(), p.getAmount()));
         return saved;
     }
     @Override public Payment markFailed(Long id) { Payment p = load(id); p.setStatus(PaymentStatus.FAILED); return repo.save(p); }

@@ -2,6 +2,7 @@ package gn.lacaeducation.billing.application.service;
 import gn.lacaeducation.billing.application.port.in.SchoolFeeUseCase;
 import gn.lacaeducation.billing.application.port.out.SchoolFeeRepository;
 import gn.lacaeducation.billing.domain.SchoolFee;
+import gn.lacaeducation.common.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,5 +25,5 @@ public class SchoolFeeService implements SchoolFeeUseCase {
     @Override @Transactional(readOnly=true) public List<SchoolFee> findByTenantIdAndAcademicYear(Long t, String y) { return repo.findByTenantIdAndAcademicYear(t, y); }
     @Override public void delete(Long id) { repo.deleteById(id); }
     @Override @Transactional(readOnly=true) public boolean existsById(Long id) { return repo.existsById(id); }
-    private SchoolFee load(Long id) { return repo.findById(id).orElseThrow(() -> new IllegalArgumentException("SchoolFee not found: " + id)); }
+    private SchoolFee load(Long id) { return repo.findById(id).orElseThrow(() -> new ResourceNotFoundException("SchoolFee", id)); }
 }

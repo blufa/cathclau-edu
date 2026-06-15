@@ -1,6 +1,7 @@
 package gn.lacaeducation.billing.application.service;
 import gn.lacaeducation.billing.application.event.InvoiceGeneratedEvent;
 import gn.lacaeducation.billing.application.event.InvoiceIssuedEvent;
+import gn.lacaeducation.billing.application.event.InvoicePaidEvent;
 import gn.lacaeducation.billing.application.port.in.InvoiceUseCase;
 import gn.lacaeducation.billing.application.port.out.EnrollmentQueryPort;
 import gn.lacaeducation.billing.application.port.out.InvoiceRepository;
@@ -28,12 +29,21 @@ public class InvoiceService implements InvoiceUseCase {
     private final ApplicationEventPublisher eventPublisher;
 
     @Override public Invoice create(CreateInvoiceCommand c) {
+        String reference = (c.reference() == null || c.reference().isBlank())
+                ? generateReference(c.tenantId()) : c.reference();
         Invoice inv = repo.save(Invoice.builder().tenantId(c.tenantId()).studentId(c.studentId()).feeId(c.feeId())
-                .reference(c.reference()).totalAmount(c.totalAmount()).paidAmount(BigDecimal.ZERO)
+                .reference(reference).totalAmount(c.totalAmount()).paidAmount(BigDecimal.ZERO)
                 .remainingBalance(c.totalAmount()).status(InvoiceStatus.UNPAID).issueDate(LocalDate.now()).build());
         eventPublisher.publishEvent(new InvoiceGeneratedEvent(c.tenantId(), c.studentId(), inv.getId(), inv.getReference()));
         eventPublisher.publishEvent(new InvoiceIssuedEvent(inv.getId(), c.studentId(), c.tenantId()));
         return inv;
+    }
+
+    /** Tenant-scoped unique invoice reference (FAC-&lt;tenant&gt;-&lt;date&gt;-&lt;suffix&gt;). */
+    private String generateReference(Long tenantId) {
+        String date = LocalDate.now().format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE);
+        String suffix = UUID.randomUUID().toString().substring(0, 6).toUpperCase();
+        return "FAC-" + tenantId + "-" + date + "-" + suffix;
     }
 
     @Override public List<Invoice> generateBulk(BulkGenerateCommand cmd) {
@@ -69,8 +79,14 @@ public class InvoiceService implements InvoiceUseCase {
         Invoice inv = load(invoiceId);
         inv.setPaidAmount(inv.getPaidAmount().add(amount));
         inv.setRemainingBalance(inv.getTotalAmount().subtract(inv.getPaidAmount()));
-        inv.setStatus(inv.getRemainingBalance().compareTo(BigDecimal.ZERO) <= 0 ? InvoiceStatus.PAID : InvoiceStatus.PARTIAL);
-        return repo.save(inv);
+        boolean fullySettled = inv.getRemainingBalance().compareTo(BigDecimal.ZERO) <= 0;
+        inv.setStatus(fullySettled ? InvoiceStatus.PAID : InvoiceStatus.PARTIAL);
+        Invoice saved = repo.save(inv);
+        if (fullySettled) {
+            eventPublisher.publishEvent(
+                    new InvoicePaidEvent(inv.getTenantId(), inv.getStudentId(), inv.getId(), inv.getReference()));
+        }
+        return saved;
     }
     @Override public void cancel(Long id) { repo.deleteById(id); }
     @Override public void delete(Long id) { repo.deleteById(id); }

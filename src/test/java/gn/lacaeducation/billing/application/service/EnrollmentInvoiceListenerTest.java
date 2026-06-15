@@ -1,0 +1,60 @@
+package gn.lacaeducation.billing.application.service;
+
+import gn.lacaeducation.billing.application.port.in.InvoiceUseCase;
+import gn.lacaeducation.billing.application.port.in.InvoiceUseCase.CreateInvoiceCommand;
+import gn.lacaeducation.billing.application.port.out.SchoolFeeRepository;
+import gn.lacaeducation.billing.domain.FeeType;
+import gn.lacaeducation.billing.domain.SchoolFee;
+import gn.lacaeducation.students.application.event.EnrollmentValidatedEvent;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.math.BigDecimal;
+import java.util.List;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+class EnrollmentInvoiceListenerTest {
+
+    @Mock SchoolFeeRepository schoolFeeRepository;
+    @Mock InvoiceUseCase invoiceUseCase;
+    @InjectMocks EnrollmentInvoiceListener listener;
+
+    private final EnrollmentValidatedEvent event = new EnrollmentValidatedEvent(10L, 7L, 3L, 1L);
+
+    @Test
+    void createsEnrollmentInvoiceWhenFeeConfigured() {
+        when(schoolFeeRepository.findByClassIdAndType(3L, FeeType.ENROLLMENT)).thenReturn(List.of(
+                SchoolFee.builder().id(99L).amount(new BigDecimal("250.00")).build()));
+        when(invoiceUseCase.existsByStudentIdAndFeeId(7L, 99L)).thenReturn(false);
+
+        listener.onEnrollmentValidated(event);
+
+        verify(invoiceUseCase).create(any(CreateInvoiceCommand.class));
+    }
+
+    @Test
+    void skipsWhenNoEnrollmentFee() {
+        when(schoolFeeRepository.findByClassIdAndType(3L, FeeType.ENROLLMENT)).thenReturn(List.of());
+
+        listener.onEnrollmentValidated(event);
+
+        verify(invoiceUseCase, never()).create(any());
+    }
+
+    @Test
+    void idempotent_skipsWhenInvoiceAlreadyExists() {
+        when(schoolFeeRepository.findByClassIdAndType(3L, FeeType.ENROLLMENT)).thenReturn(List.of(
+                SchoolFee.builder().id(99L).amount(new BigDecimal("250.00")).build()));
+        when(invoiceUseCase.existsByStudentIdAndFeeId(7L, 99L)).thenReturn(true);
+
+        listener.onEnrollmentValidated(event);
+
+        verify(invoiceUseCase, never()).create(any());
+    }
+}
