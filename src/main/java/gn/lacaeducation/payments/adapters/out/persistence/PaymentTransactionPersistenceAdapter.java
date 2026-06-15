@@ -12,5 +12,7 @@ class PaymentTransactionPersistenceAdapter implements PaymentTransactionReposito
     @Override public PaymentTransaction save(PaymentTransaction t) { return mapper.toDomain(jpa.save(mapper.toEntity(t))); }
     @Override public Optional<PaymentTransaction> findById(Long id) { return jpa.findById(id).map(mapper::toDomain); }
     @Override public List<PaymentTransaction> findByPaymentId(Long id) { return jpa.findByPaymentId(id).stream().map(mapper::toDomain).toList(); }
+    @Override public List<PaymentTransaction> findByProvider(gn.lacaeducation.payments.domain.PaymentProvider provider) { return jpa.findByProvider(provider).stream().map(mapper::toDomain).toList(); }
+    @Override public List<PaymentTransaction> findAll() { return jpa.findAll().stream().map(mapper::toDomain).toList(); }
     @Override public Optional<PaymentTransaction> findByExternalTransactionId(String ext) { return jpa.findByExternalTransactionId(ext).map(mapper::toDomain); }
 }

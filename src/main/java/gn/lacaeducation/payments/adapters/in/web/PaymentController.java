@@ -1,5 +1,7 @@
 package gn.lacaeducation.payments.adapters.in.web;
+import gn.lacaeducation.payments.application.port.in.PaymentTransactionUseCase;
 import gn.lacaeducation.payments.application.port.in.PaymentUseCase;
+import gn.lacaeducation.payments.application.port.in.ReceiptUseCase;
 import gn.lacaeducation.payments.domain.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -9,10 +11,13 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 @Tag(name = "Payments", description = "Initiate and manage student fee payments via mobile money and card providers")
 @RestController @RequestMapping("/api/v1/payments") @RequiredArgsConstructor
 public class PaymentController {
     private final PaymentUseCase useCase;
+    private final PaymentTransactionUseCase transactionUseCase;
+    private final ReceiptUseCase receiptUseCase;
     public record InitiateRequest(Long tenantId, Long invoiceId, Long studentId, String reference, BigDecimal amount, PaymentChannel channel, PaymentType type) {}
     @Operation(summary = "Initiate a new payment for a student invoice")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT','SECRETARY')")
@@ -35,6 +40,17 @@ public class PaymentController {
     @Operation(summary = "Get a payment by its reference number")
     @GetMapping("/reference/{reference}") public ResponseEntity<Payment> findByReference(@PathVariable String reference) {
         return useCase.findByReference(reference).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
+    }
+    @Operation(summary = "Get the provider transactions associated with a payment (§9.1)")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @GetMapping("/{id}/transactions") public List<PaymentTransaction> transactions(@PathVariable Long id) {
+        return transactionUseCase.findByPaymentId(id);
+    }
+    @Operation(summary = "Get the receipt PDF URL for a successful payment (§9.1)")
+    @GetMapping("/{id}/receipt/pdf") public ResponseEntity<Map<String, String>> receiptPdf(@PathVariable Long id) {
+        return receiptUseCase.findByPaymentId(id)
+                .map(r -> ResponseEntity.ok(Map.of("url", r.getPdfFile() == null ? "" : r.getPdfFile())))
+                .orElse(ResponseEntity.notFound().build());
     }
     @Operation(summary = "List all payments for an invoice")
     @GetMapping("/invoice/{invoiceId}") public List<Payment> findByInvoice(@PathVariable Long invoiceId) { return useCase.findByInvoiceId(invoiceId); }

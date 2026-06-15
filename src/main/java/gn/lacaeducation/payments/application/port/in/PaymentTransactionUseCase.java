@@ -7,5 +7,7 @@ public interface PaymentTransactionUseCase {
     PaymentTransaction record(RecordTransactionCommand command);
     Optional<PaymentTransaction> findById(Long id);
     List<PaymentTransaction> findByPaymentId(Long paymentId);
+    List<PaymentTransaction> findByProvider(PaymentProvider provider);
+    List<PaymentTransaction> findAll();
     Optional<PaymentTransaction> findByExternalId(String externalId);
 }

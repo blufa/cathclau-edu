@@ -18,5 +18,7 @@ public class PaymentTransactionService implements PaymentTransactionUseCase {
     }
     @Override @Transactional(readOnly=true) public Optional<PaymentTransaction> findById(Long id) { return repo.findById(id); }
     @Override @Transactional(readOnly=true) public List<PaymentTransaction> findByPaymentId(Long id) { return repo.findByPaymentId(id); }
+    @Override @Transactional(readOnly=true) public List<PaymentTransaction> findByProvider(gn.lacaeducation.payments.domain.PaymentProvider p) { return repo.findByProvider(p); }
+    @Override @Transactional(readOnly=true) public List<PaymentTransaction> findAll() { return repo.findAll(); }
     @Override @Transactional(readOnly=true) public Optional<PaymentTransaction> findByExternalId(String ext) { return repo.findByExternalTransactionId(ext); }
 }
