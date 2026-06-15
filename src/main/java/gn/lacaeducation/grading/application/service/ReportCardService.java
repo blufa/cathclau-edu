@@ -3,6 +3,8 @@ package gn.lacaeducation.grading.application.service;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.grading.application.event.ReportCardPublishedEvent;
 import gn.lacaeducation.grading.application.port.in.ReportCardUseCase;
+import gn.lacaeducation.grading.application.port.out.DocumentStoragePort;
+import gn.lacaeducation.grading.application.port.out.ReportCardPdfGenerator;
 import gn.lacaeducation.grading.application.port.out.ReportCardRepository;
 import gn.lacaeducation.grading.domain.ReportCard;
 import gn.lacaeducation.grading.domain.ReportCardLine;
@@ -24,6 +26,8 @@ public class ReportCardService implements ReportCardUseCase {
     private final ReportCardRepository repo;
     private final GradeCalculationService calculationService;
     private final ApplicationEventPublisher eventPublisher;
+    private final ReportCardPdfGenerator pdfGenerator;
+    private final DocumentStoragePort documentStorage;
 
     @Override
     public ReportCard generate(GenerateReportCardCommand c) {
@@ -84,10 +88,13 @@ public class ReportCardService implements ReportCardUseCase {
     @Async
     @Override
     public void generatePdfAsync(Long id) {
-        // Asynchronous PDF generation. Real rendering/storage is handled by the documents module (§14);
-        // here we persist the resulting file URL so subsequent reads can serve it.
+        // Asynchronous PDF generation: render the report card, store the bytes, then persist the
+        // resulting location so subsequent reads can serve it (idempotent — re-rendering overwrites).
         ReportCard rc = load(id);
-        rc.setPdfFile("/files/report-cards/" + id + ".pdf");
+        List<ReportCardLine> lines = repo.findLines(id);
+        byte[] pdf = pdfGenerator.generate(rc, lines);
+        String location = documentStorage.store("report-card-" + id + ".pdf", pdf);
+        rc.setPdfFile(location);
         repo.save(rc);
     }
 
