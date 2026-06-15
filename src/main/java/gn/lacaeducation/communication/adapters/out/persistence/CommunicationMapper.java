@@ -7,4 +7,6 @@ interface CommunicationMapper {
     CommunicationJpaEntity toEntity(Communication d);
     MessageRecipient toDomain(MessageRecipientJpaEntity e);
     MessageRecipientJpaEntity toEntity(MessageRecipient d);
+    MessageTemplate toDomain(MessageTemplateJpaEntity e);
+    MessageTemplateJpaEntity toEntity(MessageTemplate d);
 }
