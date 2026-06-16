@@ -1,6 +1,10 @@
 HELP.md
 target/
 .mvn/wrapper/maven-wrapper.jar
+
+### Secrets — jamais commités (Djomy, etc.) ###
+.env
+.env.local
 !**/src/main/**/target/
 !**/src/test/**/target/
 

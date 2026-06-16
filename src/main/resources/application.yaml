@@ -4,13 +4,13 @@ spring:
 
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/lacaeducation}
-    username: ${DB_USER:lacaeducation}
-    password: ${DB_PASSWORD:lacaeducation}
+    username: ${DB_USER:blufa}
+    password: ${DB_PASSWORD:blufa}
     driver-class-name: org.postgresql.Driver
 
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: update
     open-in-view: false
     show-sql: false
     properties:
@@ -49,3 +49,11 @@ app:
     cloud-name: ${CLOUDINARY_CLOUD_NAME:}
     api-key: ${CLOUDINARY_API_KEY:}
     api-secret: ${CLOUDINARY_API_SECRET:}
+
+# Djomy (agrégateur de paiement) — identifiants UNIQUEMENT via l'environnement (.env non commité).
+djomy:
+  client-id: ${DJOMY_CLIENT_ID:}
+  client-secret: ${DJOMY_CLIENT_SECRET:}
+  base-url: ${DJOMY_BASE_URL:https://sandbox-api.djomy.africa}
+  currency: ${DJOMY_CURRENCY:GNF}
+  return-url: ${DJOMY_RETURN_URL:}

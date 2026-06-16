@@ -18,11 +18,20 @@ public class PaymentController {
     private final PaymentUseCase useCase;
     private final PaymentTransactionUseCase transactionUseCase;
     private final ReceiptUseCase receiptUseCase;
-    public record InitiateRequest(Long tenantId, Long invoiceId, Long studentId, String reference, BigDecimal amount, PaymentChannel channel, PaymentType type) {}
-    @Operation(summary = "Initiate a new payment for a student invoice")
+    public record InitiateRequest(Long tenantId, Long invoiceId, Long studentId, String reference, BigDecimal amount, PaymentChannel channel, PaymentType type,
+                                  String payerNumber) {}
+    /** Initiation result: the payment plus the aggregator redirect URL (Djomy) when present. */
+    public record InitiateResponse(Payment payment, String redirectUrl) {}
+    @Operation(summary = "Initiate a new payment for a student invoice (returns redirectUrl for aggregator channels)")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT','SECRETARY')")
-    @PostMapping public ResponseEntity<Payment> initiate(@RequestBody InitiateRequest r) {
-        return ResponseEntity.ok(useCase.initiate(new PaymentUseCase.InitiatePaymentCommand(r.tenantId(), r.invoiceId(), r.studentId(), r.reference(), r.amount(), r.channel(), r.type())));
+    @PostMapping public ResponseEntity<InitiateResponse> initiate(@RequestBody InitiateRequest r) {
+        Payment payment = useCase.initiate(new PaymentUseCase.InitiatePaymentCommand(
+                r.tenantId(), r.invoiceId(), r.studentId(), r.reference(), r.amount(), r.channel(), r.type(), r.payerNumber()));
+        String redirectUrl = transactionUseCase.findByPaymentId(payment.getId()).stream()
+                .map(PaymentTransaction::getRedirectUrl)
+                .filter(u -> u != null && !u.isBlank())
+                .findFirst().orElse(null);
+        return ResponseEntity.ok(new InitiateResponse(payment, redirectUrl));
     }
     @Operation(summary = "Confirm a payment as successful")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")

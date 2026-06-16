@@ -9,5 +9,7 @@ public class PaymentTransaction {
     private String externalTransactionId;
     private String providerStatus;
     private String responsePayload;
+    /** Aggregator redirect URL (Djomy create_payment_gateway) returned to the frontend; null otherwise. */
+    private String redirectUrl;
     private LocalDateTime createdAt;
 }

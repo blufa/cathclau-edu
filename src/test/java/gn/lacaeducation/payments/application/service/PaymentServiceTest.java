@@ -42,7 +42,7 @@ class PaymentServiceTest {
     }
 
     private final InitiatePaymentCommand cmd = new InitiatePaymentCommand(
-            10L, 3L, 7L, "PAY-1", new BigDecimal("100.00"), PaymentChannel.ORANGE_MONEY, PaymentType.COMPLETE);
+            10L, 3L, 7L, "PAY-1", new BigDecimal("100.00"), PaymentChannel.ORANGE_MONEY, PaymentType.COMPLETE, null);
 
     @Test
     void initiate_callsGateway_recordsTransaction_movesToPending() {
@@ -67,7 +67,7 @@ class PaymentServiceTest {
         when(repo.save(any(Payment.class))).thenAnswer(i -> { Payment p = i.getArgument(0); p.setId(1L); return p; });
 
         InitiatePaymentCommand cardCmd = new InitiatePaymentCommand(
-                10L, 3L, 7L, "PAY-2", BigDecimal.TEN, PaymentChannel.BANK_CARD, PaymentType.COMPLETE);
+                10L, 3L, 7L, "PAY-2", BigDecimal.TEN, PaymentChannel.BANK_CARD, PaymentType.COMPLETE, null);
 
         assertThatThrownBy(() -> service().initiate(cardCmd)).isInstanceOf(BusinessRuleException.class);
     }

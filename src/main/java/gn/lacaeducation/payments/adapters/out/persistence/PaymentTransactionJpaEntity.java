@@ -12,5 +12,6 @@ public class PaymentTransactionJpaEntity {
     @Column(name = "external_transaction_id") private String externalTransactionId;
     @Column(name = "provider_status") private String providerStatus;
     @Lob @Column(name = "response_payload") private String responsePayload;
+    @Column(name = "redirect_url") private String redirectUrl;
     @Column(name = "created_at", nullable = false) private LocalDateTime createdAt;
 }

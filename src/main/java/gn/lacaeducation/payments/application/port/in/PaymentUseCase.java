@@ -4,7 +4,9 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 public interface PaymentUseCase {
-    record InitiatePaymentCommand(Long tenantId, Long invoiceId, Long studentId, String reference, BigDecimal amount, PaymentChannel channel, PaymentType type) {}
+    record InitiatePaymentCommand(Long tenantId, Long invoiceId, Long studentId, String reference, BigDecimal amount, PaymentChannel channel, PaymentType type,
+                                  /** Payer phone number — required by aggregator channels (e.g. Djomy). */
+                                  String payerNumber) {}
     Payment initiate(InitiatePaymentCommand command);
     Payment confirmSuccess(Long paymentId);
     Payment markFailed(Long paymentId);

@@ -35,7 +35,7 @@ public class PaymentService implements PaymentUseCase {
 
         PaymentProviderGateway gateway = resolveGateway(c.channel());
         try {
-            PaymentTransaction tx = gateway.initiate(payment.getId(), payment.getAmount(), payment.getReference(), null);
+            PaymentTransaction tx = gateway.initiate(payment.getId(), payment.getAmount(), payment.getReference(), c.payerNumber());
             transactionRepo.save(tx);
             payment.transitionTo(PaymentStatus.PENDING);
         } catch (RuntimeException e) {
