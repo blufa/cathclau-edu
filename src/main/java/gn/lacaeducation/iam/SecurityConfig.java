@@ -91,6 +91,7 @@ public class SecurityConfig {
                     "/api/v1/auth/password/reset",
                     "/api/v1/public/**",
                     "/api/v1/webhooks/payment/**",
+                    "/api/v1/webhooks/paiement/**",
                     "/actuator/health",
                     "/v3/api-docs/**",
                     "/swagger-ui/**"
