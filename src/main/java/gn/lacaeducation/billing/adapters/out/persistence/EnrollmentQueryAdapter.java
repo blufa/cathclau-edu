@@ -10,7 +10,7 @@ import java.util.List;
  * Adapter that reads directly from the enrollments table to find validated students.
  * This avoids importing beans from the students module (hexagonal boundary).
  */
-@Component
+@Component("billingEnrollmentQueryAdapter")
 @RequiredArgsConstructor
 class EnrollmentQueryAdapter implements EnrollmentQueryPort {
 
