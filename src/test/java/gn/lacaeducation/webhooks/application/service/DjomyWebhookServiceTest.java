@@ -1,6 +1,5 @@
 package gn.lacaeducation.webhooks.application.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import gn.lacaeducation.payments.DjomyCallbackHandler;
 import gn.lacaeducation.webhooks.application.port.out.PaymentWebhookRepository;
 import gn.lacaeducation.webhooks.domain.PaymentWebhook;
@@ -9,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.util.Optional;
 
@@ -30,7 +30,7 @@ class DjomyWebhookServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new DjomyWebhookService(djomy, repo, null);
+        service = new DjomyWebhookService(djomy, repo, JsonMapper.builder().build());
     }
 
     @Test
