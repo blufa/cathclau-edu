@@ -1,5 +1,6 @@
 package gn.lacaeducation.webhooks.adapters.in.web;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import gn.lacaeducation.webhooks.application.service.DjomyWebhookService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -28,7 +29,7 @@ public class DjomyWebhookController {
     @PostMapping(value = "/djomy", consumes = MediaType.ALL_VALUE)
     public ResponseEntity<Void> djomy(
             @RequestBody(required = false) String rawBody,
-            @RequestHeader(value = "X-Webhook-Signature", required = false) String signature) {
+            @RequestHeader(value = "X-Webhook-Signature", required = false) String signature) throws JsonProcessingException {
         boolean accepted = service.handle(rawBody == null ? "" : rawBody, signature);
         return accepted ? ResponseEntity.ok().build() : ResponseEntity.badRequest().build();
     }

@@ -1,7 +1,8 @@
 spring:
   application:
     name: lacaeducation
-
+  config:
+    import: optional:file:.env.example[.properties]
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/lacaeducation}
     username: ${DB_USER:blufa}
@@ -57,3 +58,14 @@ djomy:
   base-url: ${DJOMY_BASE_URL:https://sandbox-api.djomy.africa}
   currency: ${DJOMY_CURRENCY:GNF}
   return-url: ${DJOMY_RETURN_URL:}
+  cancel-url: ${DJOMY_CANCEL_URL:}
+  default-country: ${DJOMY_DEFAULT_COUNTRY:GN}
+  # Méthodes affichées sur le portail Djomy (allowedPaymentMethods). Vide = toutes.
+  allowed-methods: ${DJOMY_ALLOWED_METHODS:OM,MOMO,CARD,SOUTRA_MONEY,PAYCARD}
+
+logging:
+  level:
+    root: INFO
+    org.springframework.web.client: DEBUG
+    org.springframework.http: DEBUG
+    gn.tauxdechange.payment: DEBUG

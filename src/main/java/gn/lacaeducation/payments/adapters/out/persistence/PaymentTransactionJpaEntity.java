@@ -1,6 +1,8 @@
 package gn.lacaeducation.payments.adapters.out.persistence;
 import gn.lacaeducation.payments.domain.PaymentProvider;
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import lombok.Getter;
 import lombok.Setter;
 import java.time.LocalDateTime;
@@ -11,7 +13,7 @@ public class PaymentTransactionJpaEntity {
     @Enumerated(EnumType.STRING) @Column(nullable = false) private PaymentProvider provider;
     @Column(name = "external_transaction_id") private String externalTransactionId;
     @Column(name = "provider_status") private String providerStatus;
-    @Lob @Column(name = "response_payload") private String responsePayload;
+    @JdbcTypeCode(SqlTypes.LONGVARCHAR) @Column(name = "response_payload") private String responsePayload;
     @Column(name = "redirect_url") private String redirectUrl;
     @Column(name = "created_at", nullable = false) private LocalDateTime createdAt;
 }

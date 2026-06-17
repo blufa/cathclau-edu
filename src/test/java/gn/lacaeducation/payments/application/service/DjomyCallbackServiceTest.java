@@ -28,7 +28,7 @@ class DjomyCallbackServiceTest {
             .externalTransactionId("TX-1").build();
 
     @Test
-    void confirmSuccess_applies_when_verify_confirms() {
+    void confirmSuccess_applies_when_verify_confirms() throws Exception {
         when(transactionRepo.findByExternalTransactionId("TX-1")).thenReturn(Optional.of(tx));
         when(verifier.isConfirmedSuccess("TX-1")).thenReturn(true);
 
@@ -37,7 +37,7 @@ class DjomyCallbackServiceTest {
     }
 
     @Test
-    void confirmSuccess_does_nothing_when_verify_contradicts_the_webhook() {
+    void confirmSuccess_does_nothing_when_verify_contradicts_the_webhook() throws Exception {
         when(transactionRepo.findByExternalTransactionId("TX-1")).thenReturn(Optional.of(tx));
         when(verifier.isConfirmedSuccess("TX-1")).thenReturn(false);
 
@@ -46,7 +46,7 @@ class DjomyCallbackServiceTest {
     }
 
     @Test
-    void confirmSuccess_false_when_transaction_unknown() {
+    void confirmSuccess_false_when_transaction_unknown() throws Exception {
         when(transactionRepo.findByExternalTransactionId("TX-X")).thenReturn(Optional.empty());
 
         assertThat(service.confirmSuccess("TX-X")).isFalse();
@@ -55,7 +55,7 @@ class DjomyCallbackServiceTest {
     }
 
     @Test
-    void markFailed_drives_payment_to_failed() {
+    void markFailed_drives_payment_to_failed() throws Exception {
         when(transactionRepo.findByExternalTransactionId("TX-1")).thenReturn(Optional.of(tx));
 
         service.markFailed("TX-1");

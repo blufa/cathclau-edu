@@ -1,4 +1,5 @@
 package gn.lacaeducation.payments.application.service;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.payments.application.event.PaymentFailedEvent;
@@ -6,6 +7,7 @@ import gn.lacaeducation.payments.application.event.PaymentRefundedEvent;
 import gn.lacaeducation.payments.application.event.PaymentSucceededEvent;
 import gn.lacaeducation.payments.application.port.in.PaymentUseCase;
 import gn.lacaeducation.payments.application.port.in.ReceiptUseCase;
+import gn.lacaeducation.payments.application.port.out.DjomyVerificationPort;
 import gn.lacaeducation.payments.application.port.out.PaymentProviderGateway;
 import gn.lacaeducation.payments.application.port.out.PaymentRepository;
 import gn.lacaeducation.payments.application.port.out.PaymentTransactionRepository;
@@ -26,8 +28,9 @@ public class PaymentService implements PaymentUseCase {
     private final ReceiptUseCase receiptUseCase;
     private final List<PaymentProviderGateway> gateways;
     private final ApplicationEventPublisher eventPublisher;
+    private final DjomyVerificationPort djomyVerifier;
 
-    @Override public Payment initiate(InitiatePaymentCommand c) {
+    @Override public Payment initiate(InitiatePaymentCommand c) throws JsonProcessingException {
         // Facture → Paiement → TransactionPaiement (appel fournisseur) → EN_ATTENTE (§9.1).
         Payment payment = repo.save(Payment.builder().tenantId(c.tenantId()).invoiceId(c.invoiceId()).studentId(c.studentId())
                 .reference(c.reference()).amount(c.amount()).channel(c.channel()).type(c.type())
@@ -47,6 +50,20 @@ public class PaymentService implements PaymentUseCase {
             throw e;
         }
         return repo.save(payment);
+    }
+
+    @Override @Transactional(readOnly = true)
+    public DjomyStatusResponse checkDjomyStatus(Long paymentId) throws JsonProcessingException {
+        load(paymentId); // 404 if the payment does not exist
+        String externalId = transactionRepo.findByPaymentId(paymentId).stream()
+                .filter(t -> t.getProvider() == PaymentProvider.DJOMY)
+                .map(PaymentTransaction::getExternalTransactionId)
+                .filter(id -> id != null && !id.isBlank())
+                .findFirst()
+                .orElseThrow(() -> new BusinessRuleException(
+                        "Payment " + paymentId + " has no Djomy transaction to query"));
+        DjomyVerificationPort.DjomyStatus s = djomyVerifier.verify(externalId);
+        return new DjomyStatusResponse(paymentId, externalId, s.status(), s.amount(), s.currency(), s.success());
     }
 
     @Override public Payment confirmSuccess(Long id) {

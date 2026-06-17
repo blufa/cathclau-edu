@@ -30,11 +30,11 @@ class DjomyWebhookServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new DjomyWebhookService(djomy, repo, new ObjectMapper());
+        service = new DjomyWebhookService(djomy, repo, null);
     }
 
     @Test
-    void rejects_invalid_signature_with_400_and_no_processing() {
+    void rejects_invalid_signature_with_400_and_no_processing() throws Exception {
         when(djomy.verifyWebhookSignature(any(), any())).thenReturn(false);
 
         assertThat(service.handle("{}", "bad")).isFalse();
@@ -44,7 +44,7 @@ class DjomyWebhookServiceTest {
     }
 
     @Test
-    void payment_success_confirmed_marks_processed() {
+    void payment_success_confirmed_marks_processed() throws Exception {
         when(djomy.verifyWebhookSignature(any(), any())).thenReturn(true);
         when(repo.existsByExternalEventIdAndProcessedTrue("evt1")).thenReturn(false);
         when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
@@ -58,7 +58,7 @@ class DjomyWebhookServiceTest {
     }
 
     @Test
-    void payment_success_not_confirmed_does_not_mark_processed() {
+    void payment_success_not_confirmed_does_not_mark_processed() throws Exception {
         when(djomy.verifyWebhookSignature(any(), any())).thenReturn(true);
         when(repo.existsByExternalEventIdAndProcessedTrue("evt1")).thenReturn(false);
         when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
@@ -71,7 +71,7 @@ class DjomyWebhookServiceTest {
     }
 
     @Test
-    void payment_failed_marks_failed() {
+    void payment_failed_marks_failed() throws Exception {
         when(djomy.verifyWebhookSignature(any(), any())).thenReturn(true);
         when(repo.existsByExternalEventIdAndProcessedTrue("evt2")).thenReturn(false);
         when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
@@ -82,7 +82,7 @@ class DjomyWebhookServiceTest {
     }
 
     @Test
-    void idempotent_already_processed_event_is_acknowledged_without_acting() {
+    void idempotent_already_processed_event_is_acknowledged_without_acting() throws Exception {
         when(djomy.verifyWebhookSignature(any(), any())).thenReturn(true);
         when(repo.existsByExternalEventIdAndProcessedTrue("evt1")).thenReturn(true);
 

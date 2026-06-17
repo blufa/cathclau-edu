@@ -1,5 +1,6 @@
 package gn.lacaeducation.platform.adapters.in.web;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import gn.lacaeducation.common.PageResponse;
 import gn.lacaeducation.platform.adapters.in.web.dto.*;
 import gn.lacaeducation.platform.application.port.in.*;
@@ -97,12 +98,13 @@ public class SubscriptionController {
                 id, req.newPlanId(), req.newBillingPeriod()));
     }
 
-    @Operation(summary = "Initiate a payment for a subscription invoice")
+    @Operation(summary = "Initiate a payment for a subscription invoice "
+            + "(returns the created payment; redirectUrl is set for aggregator channels like Djomy)")
     @PostMapping("/{id}/payments")
     @ResponseStatus(HttpStatus.CREATED)
-    public void initiatePayment(@PathVariable Long id, @Valid @RequestBody InitiatePaymentRequest req) {
-        paymentUseCase.initiate(new PaymentUseCase.InitiatePaymentCommand(
-                req.invoiceId(), req.amount(), req.channel(), req.paymentType()));
+    public SubscriptionPaymentResponse initiatePayment(@PathVariable Long id, @Valid @RequestBody InitiatePaymentRequest req) throws JsonProcessingException {
+        return SubscriptionPaymentResponse.from(paymentUseCase.initiate(new PaymentUseCase.InitiatePaymentCommand(
+                req.invoiceId(), req.amount(), req.channel(), req.paymentType(), req.payerNumber())));
     }
 
     @Operation(summary = "Confirm a payment (callback / manual)")
@@ -119,6 +121,14 @@ public class SubscriptionController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void failPayment(@PathVariable Long paymentId) {
         paymentUseCase.fail(paymentId);
+    }
+
+    @Operation(summary = "Query the live Djomy status of a payment "
+            + "(diagnostic: follow CREATED → PENDING → SUCCESS without waiting for the webhook)")
+    @GetMapping("/payments/{paymentId}/djomy-status")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public PaymentUseCase.DjomyStatusResponse djomyStatus(@PathVariable Long paymentId) throws JsonProcessingException {
+        return paymentUseCase.checkDjomyStatus(paymentId);
     }
 
     @Operation(summary = "Get all invoices for a subscription")

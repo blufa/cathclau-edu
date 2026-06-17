@@ -36,16 +36,17 @@ class PaymentServiceTest {
     @Mock ReceiptUseCase receiptUseCase;
     @Mock PaymentProviderGateway orangeGateway;
     @Mock ApplicationEventPublisher eventPublisher;
+    @Mock gn.lacaeducation.payments.application.port.out.DjomyVerificationPort djomyVerifier;
 
     private PaymentService service() {
-        return new PaymentService(repo, transactionRepo, receiptUseCase, List.of(orangeGateway), eventPublisher);
+        return new PaymentService(repo, transactionRepo, receiptUseCase, List.of(orangeGateway), eventPublisher, djomyVerifier);
     }
 
     private final InitiatePaymentCommand cmd = new InitiatePaymentCommand(
             10L, 3L, 7L, "PAY-1", new BigDecimal("100.00"), PaymentChannel.ORANGE_MONEY, PaymentType.COMPLETE, null);
 
     @Test
-    void initiate_callsGateway_recordsTransaction_movesToPending() {
+    void initiate_callsGateway_recordsTransaction_movesToPending() throws Exception {
         when(orangeGateway.getChannel()).thenReturn(PaymentChannel.ORANGE_MONEY);
         when(orangeGateway.initiate(any(), any(), any(), any())).thenReturn(
                 PaymentTransaction.builder().provider(PaymentProvider.ORANGE_MONEY).providerStatus("PENDING").build());

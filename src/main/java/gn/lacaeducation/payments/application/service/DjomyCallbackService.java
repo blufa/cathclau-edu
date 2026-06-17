@@ -1,5 +1,6 @@
 package gn.lacaeducation.payments.application.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import gn.lacaeducation.payments.DjomyCallbackHandler;
 import gn.lacaeducation.payments.PaymentCallbackHandler;
 import gn.lacaeducation.payments.application.port.out.DjomyVerificationPort;
@@ -36,7 +37,7 @@ class DjomyCallbackService implements DjomyCallbackHandler {
     }
 
     @Override
-    public boolean confirmSuccess(String externalTransactionId) {
+    public boolean confirmSuccess(String externalTransactionId) throws JsonProcessingException {
         Optional<PaymentTransaction> tx = transactionRepo.findByExternalTransactionId(externalTransactionId);
         if (tx.isEmpty()) {
             return false;

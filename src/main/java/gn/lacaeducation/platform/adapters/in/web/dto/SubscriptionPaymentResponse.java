@@ -17,11 +17,12 @@ public record SubscriptionPaymentResponse(
         PaymentType paymentType,
         PaymentStatus status,
         String externalTransactionId,
+        String redirectUrl,
         LocalDateTime paidAt
 ) {
     public static SubscriptionPaymentResponse from(SubscriptionPayment p) {
         return new SubscriptionPaymentResponse(p.getId(), p.getInvoiceId(), p.getReference(),
                 p.getAmount(), p.getChannel(), p.getPaymentType(), p.getStatus(),
-                p.getExternalTransactionId(), p.getPaidAt());
+                p.getExternalTransactionId(), p.getRedirectUrl(), p.getPaidAt());
     }
 }

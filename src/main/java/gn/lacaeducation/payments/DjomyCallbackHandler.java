@@ -1,5 +1,7 @@
 package gn.lacaeducation.payments;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+
 import java.util.Optional;
 
 /**
@@ -19,7 +21,7 @@ public interface DjomyCallbackHandler {
      * payment.success path: confirms server-side via Djomy verify_payment (never trusts the webhook
      * alone) and, only if confirmed SUCCESS, drives the payment to SUCCEEDED. Returns whether confirmed.
      */
-    boolean confirmSuccess(String externalTransactionId);
+    boolean confirmSuccess(String externalTransactionId) throws JsonProcessingException;
 
     /** payment.failed path: drives the matching payment to FAILED. */
     void markFailed(String externalTransactionId);

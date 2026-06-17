@@ -1,7 +1,8 @@
 package gn.lacaeducation.webhooks.application.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import gn.lacaeducation.payments.DjomyCallbackHandler;
 import gn.lacaeducation.webhooks.application.port.out.PaymentWebhookRepository;
 import gn.lacaeducation.webhooks.domain.PaymentWebhook;
@@ -31,7 +32,7 @@ public class DjomyWebhookService {
 
     /** @return false only when the signature is invalid (HTTP 400); true otherwise (HTTP 200). */
     @Transactional
-    public boolean handle(String rawBody, String signatureHeader) {
+    public boolean handle(String rawBody, String signatureHeader) throws JsonProcessingException {
         if (!djomy.verifyWebhookSignature(rawBody, signatureHeader)) {
             log.warn("Djomy webhook rejected: invalid or missing signature");
             return false;

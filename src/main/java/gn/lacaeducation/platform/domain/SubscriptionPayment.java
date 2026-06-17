@@ -23,5 +23,7 @@ public class SubscriptionPayment {
     private PaymentType paymentType;
     private PaymentStatus status;
     private String externalTransactionId;
+    /** Djomy aggregator redirect URL returned to the frontend (null for non-aggregator channels). */
+    private String redirectUrl;
     private LocalDateTime paidAt;
 }

@@ -53,6 +53,9 @@ public class SubscriptionPaymentJpaEntity {
     @Column(name = "external_transaction_id")
     private String externalTransactionId;
 
+    @Column(name = "redirect_url")
+    private String redirectUrl;
+
     @Column(name = "paid_at", nullable = false)
     private LocalDateTime paidAt;
 }

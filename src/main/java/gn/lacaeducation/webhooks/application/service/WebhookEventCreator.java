@@ -1,6 +1,6 @@
 package gn.lacaeducation.webhooks.application.service;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 import gn.lacaeducation.attendance.application.event.StudentAbsentEvent;
 import gn.lacaeducation.grading.application.event.ReportCardPublishedEvent;
 import gn.lacaeducation.payments.application.event.PaymentSucceededEvent;
@@ -75,7 +75,7 @@ public class WebhookEventCreator {
     private String serializePayload(Object event) {
         try {
             return objectMapper.writeValueAsString(event);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             log.error("Failed to serialize webhook event payload", e);
             return "{}";
         }

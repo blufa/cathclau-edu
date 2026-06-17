@@ -1,5 +1,6 @@
 package gn.lacaeducation.payments.adapters.out.gateway.djomy;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import gn.lacaeducation.payments.application.port.out.DjomyVerificationPort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -18,7 +19,13 @@ class DjomyVerificationAdapter implements DjomyVerificationPort {
     }
 
     @Override
-    public boolean isConfirmedSuccess(String externalTransactionId) {
+    public DjomyStatus verify(String externalTransactionId) throws JsonProcessingException {
+        DjomyClient.Verification v = client.verifyPayment(externalTransactionId);
+        return new DjomyStatus(v.status(), v.receivedAmount(), v.currency(), v.isSuccess());
+    }
+
+    @Override
+    public boolean isConfirmedSuccess(String externalTransactionId) throws JsonProcessingException {
         return client.verifyPayment(externalTransactionId).isSuccess();
     }
 }

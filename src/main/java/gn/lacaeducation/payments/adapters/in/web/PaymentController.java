@@ -1,4 +1,5 @@
 package gn.lacaeducation.payments.adapters.in.web;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import gn.lacaeducation.payments.application.port.in.PaymentTransactionUseCase;
 import gn.lacaeducation.payments.application.port.in.PaymentUseCase;
 import gn.lacaeducation.payments.application.port.in.ReceiptUseCase;
@@ -24,7 +25,7 @@ public class PaymentController {
     public record InitiateResponse(Payment payment, String redirectUrl) {}
     @Operation(summary = "Initiate a new payment for a student invoice (returns redirectUrl for aggregator channels)")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT','SECRETARY')")
-    @PostMapping public ResponseEntity<InitiateResponse> initiate(@RequestBody InitiateRequest r) {
+    @PostMapping public ResponseEntity<InitiateResponse> initiate(@RequestBody InitiateRequest r) throws JsonProcessingException {
         Payment payment = useCase.initiate(new PaymentUseCase.InitiatePaymentCommand(
                 r.tenantId(), r.invoiceId(), r.studentId(), r.reference(), r.amount(), r.channel(), r.type(), r.payerNumber()));
         String redirectUrl = transactionUseCase.findByPaymentId(payment.getId()).stream()
@@ -32,6 +33,11 @@ public class PaymentController {
                 .filter(u -> u != null && !u.isBlank())
                 .findFirst().orElse(null);
         return ResponseEntity.ok(new InitiateResponse(payment, redirectUrl));
+    }
+    @Operation(summary = "Query the live Djomy status of a payment (diagnostic: follow CREATED → PENDING → SUCCESS without waiting for the webhook)")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @GetMapping("/{id}/djomy-status") public ResponseEntity<PaymentUseCase.DjomyStatusResponse> djomyStatus(@PathVariable Long id) throws JsonProcessingException {
+        return ResponseEntity.ok(useCase.checkDjomyStatus(id));
     }
     @Operation(summary = "Confirm a payment as successful")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")

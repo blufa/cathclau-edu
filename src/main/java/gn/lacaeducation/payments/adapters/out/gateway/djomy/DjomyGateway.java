@@ -1,11 +1,13 @@
 package gn.lacaeducation.payments.adapters.out.gateway.djomy;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import gn.lacaeducation.payments.application.port.out.PaymentProviderGateway;
 import gn.lacaeducation.payments.domain.PaymentChannel;
 import gn.lacaeducation.payments.domain.PaymentProvider;
 import gn.lacaeducation.payments.domain.PaymentTransaction;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import tools.jackson.core.JacksonException;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -28,7 +30,7 @@ public class DjomyGateway implements PaymentProviderGateway {
     }
 
     @Override
-    public PaymentTransaction initiate(Long paymentId, BigDecimal amount, String reference, String phoneOrCard) {
+    public PaymentTransaction initiate(Long paymentId, BigDecimal amount, String reference, String phoneOrCard) throws JsonProcessingException{
         DjomyClient.GatewayResult result = client.createPaymentGateway(phoneOrCard, amount, reference, null);
         return PaymentTransaction.builder()
                 .paymentId(paymentId)

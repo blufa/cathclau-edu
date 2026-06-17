@@ -12,6 +12,7 @@ class SubscriptionPaymentPersistenceAdapter implements SubscriptionPaymentReposi
     private final PlatformMapper mapper;
     @Override public SubscriptionPayment save(SubscriptionPayment p) { return mapper.toDomain(jpa.save(mapper.toEntity(p))); }
     @Override public Optional<SubscriptionPayment> findById(Long id) { return jpa.findById(id).map(mapper::toDomain); }
+    @Override public Optional<SubscriptionPayment> findByExternalTransactionId(String ext) { return jpa.findByExternalTransactionId(ext).map(mapper::toDomain); }
     @Override public List<SubscriptionPayment> findAll() { return jpa.findAll().stream().map(mapper::toDomain).toList(); }
     @Override public void deleteById(Long id) { jpa.deleteById(id); }
     @Override public boolean existsById(Long id) { return jpa.existsById(id); }
