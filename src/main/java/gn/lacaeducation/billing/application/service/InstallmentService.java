@@ -32,9 +32,22 @@ public class InstallmentService implements InstallmentUseCase {
         return repo.save(i);
     }
 
-    @Override @Transactional(readOnly=true) public Optional<Installment> findById(Long id) { return repo.findById(id); }
-    @Override @Transactional(readOnly=true) public List<Installment> findByFeeId(Long feeId) { return repo.findByFeeId(feeId); }
-    @Override public void delete(Long id) { repo.deleteById(id); }
+    @Override
+    @Transactional(readOnly=true)
+    public Optional<Installment> findById(Long id) {
+        return repo.findById(id);
+    }
+
+    @Override
+    @Transactional(readOnly=true)
+    public List<Installment> findByFeeId(Long feeId) {
+        return repo.findByFeeId(feeId);
+    }
+
+    @Override
+    public void delete(Long id) {
+        repo.deleteById(id);
+    }
 
     /**
      * Validates that adding/updating an installment amount does not exceed the fee total.
@@ -59,5 +72,7 @@ public class InstallmentService implements InstallmentUseCase {
         }
     }
 
-    private Installment load(Long id) { return repo.findById(id).orElseThrow(() -> new ResourceNotFoundException("Installment", id)); }
+    private Installment load(Long id) {
+        return repo.findById(id).orElseThrow(() -> new ResourceNotFoundException("Installment", id));
+    }
 }

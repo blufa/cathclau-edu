@@ -9,6 +9,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.client.RestClientResponseException;
 import java.net.URI;
 import java.util.List;
 
@@ -90,9 +91,9 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ProblemDetail handleIllegalArg(IllegalArgumentException ex) {
-        ProblemDetail pd = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
-        pd.setType(URI.create("https://api.lacaeducation.gn/errors/not-found"));
-        pd.setTitle("Resource not found");
+        ProblemDetail pd = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+        pd.setType(URI.create("https://api.lacaeducation.gn/errors/bad-request"));
+        pd.setTitle("Invalid request");
         pd.setDetail(ex.getMessage());
         return pd;
     }
@@ -103,6 +104,17 @@ public class GlobalExceptionHandler {
         pd.setType(URI.create("https://api.lacaeducation.gn/errors/business-rule"));
         pd.setTitle("Business rule violation");
         pd.setDetail(ex.getMessage());
+        return pd;
+    }
+
+    /** An upstream HTTP call (payment gateway, etc.) failed — surface it as 502, not a misleading 500. */
+    @ExceptionHandler(RestClientResponseException.class)
+    public ProblemDetail handleUpstream(RestClientResponseException ex) {
+        ProblemDetail pd = ProblemDetail.forStatus(HttpStatus.BAD_GATEWAY);
+        pd.setType(URI.create("https://api.lacaeducation.gn/errors/upstream"));
+        pd.setTitle("Upstream service error");
+        pd.setDetail("Upstream call failed with status " + ex.getStatusCode().value()
+                + ": " + ex.getResponseBodyAsString());
         return pd;
     }
 

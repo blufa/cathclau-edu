@@ -1,6 +1,8 @@
 package gn.lacaeducation.communication.adapters.out.persistence;
 import gn.lacaeducation.communication.domain.*;
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import lombok.Getter;
 import lombok.Setter;
 import java.time.LocalDateTime;
@@ -13,7 +15,7 @@ public class CommunicationJpaEntity {
     @Enumerated(EnumType.STRING) @Column(nullable = false) private CommunicationChannel channel;
     @Enumerated(EnumType.STRING) @Column(name = "recipient_type", nullable = false) private RecipientType recipientType;
     @Column private String subject;
-    @Lob @Column(nullable = false) private String content;
+    @JdbcTypeCode(SqlTypes.LONGVARCHAR) @Column(nullable = false) private String content;
     @Enumerated(EnumType.STRING) @Column private CommunicationReason reason;
     @Column(name = "sent_at", nullable = false) private LocalDateTime sentAt;
 }

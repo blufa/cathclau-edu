@@ -1,7 +1,8 @@
 package gn.lacaeducation.grading.adapters.out.pdf;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import gn.lacaeducation.grading.application.port.out.DocumentStoragePort;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -81,7 +82,7 @@ class CloudinaryDocumentStorage implements DocumentStoragePort {
             }
             log.info("Stored document {} on Cloudinary: {}", filename, secureUrl);
             return secureUrl;
-        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new IllegalStateException("Unable to parse Cloudinary response", e);
         }
     }

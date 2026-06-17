@@ -13,7 +13,7 @@ SELECT t.id, 'Admin', 'École', 'admin@laca.gn',
        '$2a$10$uHqjCLYFZPTIX4kwSzCjwu4TT64os9ANG9xo9U6avitgFkVxPlX9e', TRUE, NOW()
 FROM tenant t
 WHERE t.school_name = 'École Test'
-ON CONFLICT (email) DO NOTHING;
+  AND NOT EXISTS (SELECT 1 FROM users WHERE email = 'admin@laca.gn');
 
 INSERT INTO user_roles (user_id, role_id)
 SELECT u.id, r.id
