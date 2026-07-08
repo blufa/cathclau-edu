@@ -34,18 +34,23 @@ class GradeCalculationServiceTest {
     @Mock ReportCardRepository reportCardRepository;
     @Mock ClassSubjectQueryPort classSubjectQueryPort;
     @Mock GradingScaleRepository gradingScaleRepository;
+    @Mock gn.lacaeducation.grading.application.port.out.GradingCalculationSettingsRepository calculationSettingsRepository;
+    @Mock gn.lacaeducation.grading.application.port.out.EliminatoryRuleRepository eliminatoryRuleRepository;
+    @Mock gn.lacaeducation.grading.application.port.out.DecisionRuleRepository decisionRuleRepository;
+    @Mock gn.lacaeducation.grading.application.port.out.AssessmentTypeConfigRepository assessmentTypeConfigRepository;
     @Mock ApplicationEventPublisher eventPublisher;
     @InjectMocks GradeCalculationService service;
 
     @Test
     void honorAndDecision_thresholds() {
-        assertThat(GradeCalculationService.computeHonor(BigDecimal.valueOf(18))).isEqualTo("Très Bien");
-        assertThat(GradeCalculationService.computeHonor(BigDecimal.valueOf(16))).isEqualTo("Bien");
-        assertThat(GradeCalculationService.computeHonor(BigDecimal.valueOf(14))).isEqualTo("Assez Bien");
-        assertThat(GradeCalculationService.computeHonor(BigDecimal.valueOf(10))).isEqualTo("Passable");
-        assertThat(GradeCalculationService.computeHonor(BigDecimal.valueOf(8))).isEqualTo("Insuffisant");
-        assertThat(GradeCalculationService.computeDecision(BigDecimal.valueOf(10))).isEqualTo("ADMIS");
-        assertThat(GradeCalculationService.computeDecision(BigDecimal.valueOf(9))).isEqualTo("REDOUBLE");
+        gn.lacaeducation.grading.domain.GradingScale scale = gn.lacaeducation.grading.domain.GradingScale.defaults();
+        assertThat(scale.honorFor(BigDecimal.valueOf(18))).isEqualTo("Très Bien");
+        assertThat(scale.honorFor(BigDecimal.valueOf(16))).isEqualTo("Bien");
+        assertThat(scale.honorFor(BigDecimal.valueOf(14))).isEqualTo("Assez Bien");
+        assertThat(scale.honorFor(BigDecimal.valueOf(10))).isEqualTo("Passable");
+        assertThat(scale.honorFor(BigDecimal.valueOf(8))).isEqualTo("Insuffisant");
+        assertThat(scale.decisionFor(BigDecimal.valueOf(10))).isEqualTo("ADMIS");
+        assertThat(scale.decisionFor(BigDecimal.valueOf(9))).isEqualTo("REDOUBLE");
     }
 
     @Test

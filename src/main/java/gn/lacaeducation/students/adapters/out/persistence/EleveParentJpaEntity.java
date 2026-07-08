@@ -13,4 +13,5 @@ class EleveParentJpaEntity {
     @Column(name = "student_id", nullable = false) private Long studentId;
     @Column(name = "parent_id", nullable = false) private Long parentId;
     @Enumerated(EnumType.STRING) private Relationship relationship;
+    @Column(name = "primary_guardian", nullable = false) private boolean primaryGuardian;
 }

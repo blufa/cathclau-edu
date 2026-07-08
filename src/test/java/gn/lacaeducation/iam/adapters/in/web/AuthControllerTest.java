@@ -32,12 +32,12 @@ class AuthControllerTest {
     @Test
     void login_validCredentials_returns200WithTokens() throws Exception {
         when(authUseCase.authenticate(any())).thenReturn(
-                new LoginResult("jwt.token", "refresh.token", 86400L, 1L, 10L, List.of("SCHOOL_ADMIN")));
+                new LoginResult("jwt.token", "refresh.token", 86400L, 1L, 10L, List.of("SCHOOL_ADMIN"), false));
 
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                Map.of("email", "admin@ecole.gn", "password", "secret123"))))
+                                Map.of("identifier", "jean.camara", "password", "secret123"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").value("jwt.token"))
                 .andExpect(jsonPath("$.refreshToken").value("refresh.token"))
@@ -46,11 +46,11 @@ class AuthControllerTest {
     }
 
     @Test
-    void login_invalidEmail_returns400() throws Exception {
+    void login_blankIdentifier_returns400() throws Exception {
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                Map.of("email", "", "password", "secret123"))))
+                                Map.of("identifier", "", "password", "secret123"))))
                 .andExpect(status().isBadRequest());
     }
 }

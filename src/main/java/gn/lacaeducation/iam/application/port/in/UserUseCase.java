@@ -15,14 +15,25 @@ public interface UserUseCase {
     void assignRole(Long userId, Long roleId);
     List<Role> findUserRoles(Long userId);
 
+    /**
+     * (Ré)initialise l'accès d'un compte : définit le mot de passe (fourni, sinon temporaire généré),
+     * impose son changement à la prochaine connexion et révoque les sessions. Retourne l'identifiant
+     * et le mot de passe en clair à communiquer une seule fois.
+     */
+    TemporaryAccess resetAccess(Long userId, String rawPassword);
+
     record CreateUserCommand(
         Long tenantId,
         String firstName,
         String lastName,
         String email,
+        /** Optionnel : si absent, un mot de passe temporaire est généré et devra être changé. */
         String password,
         String phone
     ) {}
+
+    /** Identifiants restitués une seule fois après création/réinitialisation d'un accès. */
+    record TemporaryAccess(Long userId, String username, String temporaryPassword, boolean mustChangePassword) {}
 
     record UpdateUserCommand(
         String firstName,

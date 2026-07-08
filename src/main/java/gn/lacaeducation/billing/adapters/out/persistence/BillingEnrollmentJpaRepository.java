@@ -18,4 +18,7 @@ interface BillingEnrollmentJpaRepository extends JpaRepository<BillingEnrollment
 
     @Query("SELECT COUNT(e) FROM BillingEnrollmentJpaEntity e WHERE e.classId = :classId AND e.status = 'VALIDATED'")
     long countValidatedByClassId(@Param("classId") Long classId);
+
+    @Query("SELECT COUNT(e) > 0 FROM BillingEnrollmentJpaEntity e WHERE e.studentId = :studentId AND e.status <> 'CANCELLED'")
+    boolean existsActiveByStudentId(@Param("studentId") Long studentId);
 }

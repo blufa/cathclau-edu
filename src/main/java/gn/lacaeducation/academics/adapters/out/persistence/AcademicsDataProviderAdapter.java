@@ -7,6 +7,7 @@ import gn.lacaeducation.academics.ScheduleSlotPublicInfo;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -23,6 +24,12 @@ public class AcademicsDataProviderAdapter implements AcademicsDataProvider {
     @Override
     public Optional<ClassPublicInfo> findClass(Long classId) {
         return classeRepo.findById(classId).map(c -> new ClassPublicInfo(c.getId(), c.getLabel(), null));
+    }
+    @Override
+    public Map<Long, String> subjectLabels(Collection<Long> subjectIds) {
+        if (subjectIds == null || subjectIds.isEmpty()) return Map.of();
+        return matiereRepo.findAllById(subjectIds).stream()
+                .collect(Collectors.toMap(MatiereJpaEntity::getId, MatiereJpaEntity::getLabel));
     }
     @Override
     public Optional<PeriodPublicInfo> findPeriod(Long periodId) {
@@ -89,12 +96,24 @@ public class AcademicsDataProviderAdapter implements AcademicsDataProvider {
 
     @Override
     public List<ScheduleSlotPublicInfo> findScheduleByTeacher(Long teacherId) {
-        return emploiDuTempsRepo.findByTeacherId(teacherId).stream()
-                .map(e -> new ScheduleSlotPublicInfo(
-                        e.getId(), e.getSchoolClassId(), e.getSubjectId(), e.getTeacherId(), e.getRoomId(),
-                        e.getDay() != null ? e.getDay().name() : null,
-                        e.getStartTime() != null ? e.getStartTime().toString() : null,
-                        e.getEndTime() != null ? e.getEndTime().toString() : null))
-                .toList();
+        return emploiDuTempsRepo.findByTeacherId(teacherId).stream().map(this::toSlot).toList();
+    }
+
+    @Override
+    public List<ScheduleSlotPublicInfo> findScheduleByClass(Long classId) {
+        return emploiDuTempsRepo.findBySchoolClassId(classId).stream().map(this::toSlot).toList();
+    }
+
+    @Override
+    public Optional<String> currentAcademicYearLabel(Long tenantId) {
+        return anneeRepo.findByTenantIdAndCurrentTrue(tenantId).map(AnneeScolaireJpaEntity::getLabel);
+    }
+
+    private ScheduleSlotPublicInfo toSlot(EmploiDuTempsJpaEntity e) {
+        return new ScheduleSlotPublicInfo(
+                e.getId(), e.getSchoolClassId(), e.getSubjectId(), e.getTeacherId(), e.getRoomId(),
+                e.getDay() != null ? e.getDay().name() : null,
+                e.getStartTime() != null ? e.getStartTime().toString() : null,
+                e.getEndTime() != null ? e.getEndTime().toString() : null);
     }
 }

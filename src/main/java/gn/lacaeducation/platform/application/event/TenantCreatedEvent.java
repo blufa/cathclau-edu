@@ -8,5 +8,8 @@ public record TenantCreatedEvent(
         Long tenantId,
         String schoolName,
         String adminEmail,
-        String director
+        String director,
+        String adminPassword,
+        /** true si le mot de passe est temporaire (généré) et doit être changé à la 1re connexion. */
+        boolean temporaryPassword
 ) {}

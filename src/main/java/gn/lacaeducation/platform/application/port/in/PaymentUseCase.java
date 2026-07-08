@@ -19,6 +19,12 @@ public interface PaymentUseCase {
     /** On-demand query of the live Djomy status for a payment (diagnostic; webhook stays authoritative). */
     DjomyStatusResponse checkDjomyStatus(Long paymentId) throws JsonProcessingException;
 
+    /**
+     * Confirme et active la souscription en interrogeant Djomy à la demande (sans dépendre du webhook) :
+     * si la transaction est SUCCESS, le paiement est confirmé et l'abonnement activé. Idempotent.
+     */
+    SubscriptionPayment confirmViaDjomy(Long paymentId) throws JsonProcessingException;
+
     record DjomyStatusResponse(
         Long paymentId,
         String externalTransactionId,

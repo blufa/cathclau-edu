@@ -4,12 +4,12 @@ import gn.lacaeducation.billing.application.event.InvoiceGeneratedEvent;
 import gn.lacaeducation.billing.application.event.InvoiceIssuedEvent;
 import gn.lacaeducation.billing.application.event.InvoicePaidEvent;
 import gn.lacaeducation.billing.application.port.in.InvoiceUseCase.CreateInvoiceCommand;
-import gn.lacaeducation.billing.application.port.out.EnrollmentQueryPort;
-import gn.lacaeducation.billing.application.port.out.InvoiceRepository;
-import gn.lacaeducation.billing.application.port.out.SchoolFeeRepository;
+import gn.lacaeducation.billing.application.port.out.*;
 import gn.lacaeducation.billing.domain.Invoice;
 import gn.lacaeducation.billing.domain.InvoiceStatus;
+import gn.lacaeducation.common.MediaUploadService;
 import gn.lacaeducation.common.ResourceNotFoundException;
+import gn.lacaeducation.common.TenantInfoProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -17,6 +17,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 
+import javax.print.attribute.standard.Media;
 import java.math.BigDecimal;
 import java.util.Optional;
 
@@ -32,9 +33,37 @@ class InvoiceServiceTest {
     @Mock SchoolFeeRepository schoolFeeRepository;
     @Mock EnrollmentQueryPort enrollmentQueryPort;
     @Mock ApplicationEventPublisher eventPublisher;
+    @Mock InstallmentRepository installmentRepository;
+    @Mock InvoicePdfGenerator invoicePdfGenerator;
+    @Mock MediaUploadService mediaUploadService;
+    @Mock TenantInfoProvider tenantInfoProvider;
+    @Mock gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase familyDiscountUseCase;
 
     InvoiceService service() {
-        return new InvoiceService(repo, schoolFeeRepository, enrollmentQueryPort, eventPublisher);
+        return new InvoiceService(repo, schoolFeeRepository, installmentRepository, enrollmentQueryPort, eventPublisher, invoicePdfGenerator, mediaUploadService, tenantInfoProvider, familyDiscountUseCase);
+
+    }
+
+    @Test
+    void generateMonthly_appliesFamilyDiscountOnEachInstallment() {
+        when(enrollmentQueryPort.hasActiveEnrollment(7L)).thenReturn(true);
+        when(installmentRepository.findByFeeId(3L)).thenReturn(java.util.List.of(
+                gn.lacaeducation.billing.domain.Installment.builder()
+                        .id(1L).feeId(3L).label("Septembre").amount(new BigDecimal("100")).build()));
+        when(repo.existsByStudentIdAndInstallmentId(7L, 1L)).thenReturn(false);
+        when(familyDiscountUseCase.computeApplicable(1L, 7L, gn.lacaeducation.billing.domain.FeeType.MONTHLY))
+                .thenReturn(new gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase.ApplicableDiscount(
+                        new BigDecimal("5"), "Règle fratrie"));
+        when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
+
+        var invoices = service().generateMonthly(
+                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 3L));
+
+        assertThat(invoices).hasSize(1);
+        Invoice inv = invoices.get(0);
+        assertThat(inv.getDiscountAmount()).isEqualByComparingTo("5.00");
+        assertThat(inv.getRemainingBalance()).isEqualByComparingTo("95.00");
+        assertThat(inv.getDiscountReason()).contains("Règle fratrie");
     }
 
     @Test
@@ -60,7 +89,8 @@ class InvoiceServiceTest {
 
         Invoice inv = service().create(new CreateInvoiceCommand(42L, 7L, 3L, null, new BigDecimal("50.00")));
 
-        assertThat(inv.getReference()).startsWith("FAC-42-");
+        // Référence au format <codeÉcole>-FAC-<année>-<suffixe>, ex. EC-FAC-2026-4EAF7F.
+        assertThat(inv.getReference()).matches("[A-Z]{2}-FAC-\\d{4}-.*");
     }
 
     @Test

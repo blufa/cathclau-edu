@@ -3,8 +3,10 @@ package gn.lacaeducation.iam.application.listener;
 import gn.lacaeducation.iam.application.service.TenantProvisioningService;
 import gn.lacaeducation.platform.application.event.SubscriptionActivatedEvent;
 import gn.lacaeducation.platform.application.event.SubscriptionSuspendedEvent;
+import gn.lacaeducation.platform.application.event.TenantActivatedEvent;
 import gn.lacaeducation.platform.application.event.TenantCreatedEvent;
 import gn.lacaeducation.platform.application.event.TenantReactivatedEvent;
+import gn.lacaeducation.platform.application.event.TenantSignupRequestedEvent;
 import gn.lacaeducation.platform.application.event.TenantSuspendedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,8 +28,35 @@ public class PlatformEventListener {
 
     @TransactionalEventListener
     public void onTenantCreated(TenantCreatedEvent event) {
-        provisioningService.provisionTenantAdmin(
-                event.tenantId(), event.schoolName(), event.adminEmail(), event.director());
+        // Effet de bord après-commit : ne doit jamais faire échouer la requête de création du tenant
+        // (le tenant est déjà persisté). Une erreur de provisioning est journalisée, pas propagée.
+        try {
+            provisioningService.provisionTenantAdmin(
+                    event.tenantId(), event.schoolName(), event.adminEmail(), event.director(),
+                    event.adminPassword(), event.temporaryPassword());
+        } catch (RuntimeException e) {
+            log.error("Provisioning de l'admin échoué pour le tenant {} : {}", event.tenantId(), e.getMessage(), e);
+        }
+    }
+
+    /** Self-service signup: create the unverified ADMIN_ECOLE with the chosen password. */
+    @TransactionalEventListener
+    public void onTenantSignupRequested(TenantSignupRequestedEvent event) {
+        provisioningService.provisionUnverifiedAdmin(
+                event.tenantId(), event.schoolName(), event.adminEmail(),
+                event.director(), event.rawPassword(),
+                event.adminFirstName(), event.adminLastName(), event.adminPhone());
+    }
+
+    /** School became usable (email verified or manual activation): activate the admin account. */
+    @TransactionalEventListener
+    public void onTenantActivated(TenantActivatedEvent event) {
+        // Après-commit : ne jamais propager (le tenant/activation sont déjà persistés).
+        try {
+            provisioningService.markAdminVerified(event.tenantId(), event.adminEmail());
+        } catch (RuntimeException e) {
+            log.warn("markAdminVerified échoué pour le tenant {} : {}", event.tenantId(), e.getMessage());
+        }
     }
 
     @TransactionalEventListener

@@ -23,6 +23,19 @@ public class TenantContextFilter extends OncePerRequestFilter {
                 Object claim = jwtAuth.getToken().getClaim("tenant_id");
                 if (claim instanceof Number num) {
                     TenantContext.set(num.longValue());
+                } else {
+                    // SUPER_ADMIN (no tenant) may impersonate a school for testing/support by sending the
+                    // X-Tenant-Id header. Scoped to SUPER_ADMIN only — already an all-powerful role.
+                    boolean superAdmin = auth.getAuthorities().stream()
+                            .anyMatch(a -> a.getAuthority().equals("ROLE_SUPER_ADMIN") || a.getAuthority().equals("SUPER_ADMIN"));
+                    String header = request.getHeader("X-Tenant-Id");
+                    if (superAdmin && header != null && !header.isBlank()) {
+                        try {
+                            TenantContext.set(Long.parseLong(header.trim()));
+                        } catch (NumberFormatException ignored) {
+                            // invalid header → behave as platform-level (no tenant)
+                        }
+                    }
                 }
             }
             filterChain.doFilter(request, response);

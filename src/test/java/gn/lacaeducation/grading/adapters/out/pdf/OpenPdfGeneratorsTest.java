@@ -1,5 +1,6 @@
 package gn.lacaeducation.grading.adapters.out.pdf;
 
+import gn.lacaeducation.grading.application.port.out.ReportCardPdfGenerator.ReportCardContext;
 import gn.lacaeducation.grading.domain.Exam;
 import gn.lacaeducation.grading.domain.ExamStatus;
 import gn.lacaeducation.grading.domain.ExamType;
@@ -11,13 +12,24 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class OpenPdfGeneratorsTest {
 
-    private final OpenPdfReportCardGenerator reportCardGenerator = new OpenPdfReportCardGenerator();
-    private final OpenPdfExamConvocationGenerator convocationGenerator = new OpenPdfExamConvocationGenerator();
+    // Tenant lookup returns empty → the branded header is skipped (the generator degrades gracefully).
+    private final OpenPdfReportCardGenerator reportCardGenerator = new OpenPdfReportCardGenerator(
+            new gn.lacaeducation.common.TenantInfoProvider() {
+                @Override public Optional<gn.lacaeducation.common.TenantPublicInfo> findTenantInfo(Long tenantId) { return Optional.empty(); }
+                @Override public boolean isTenantActive(Long tenantId) { return true; }
+            });
+    private final OpenPdfExamConvocationGenerator convocationGenerator = new OpenPdfExamConvocationGenerator(
+            new gn.lacaeducation.common.TenantInfoProvider() {
+                @Override public Optional<gn.lacaeducation.common.TenantPublicInfo> findTenantInfo(Long tenantId) { return Optional.empty(); }
+                @Override public boolean isTenantActive(Long tenantId) { return true; }
+            });
 
     @Test
     void reportCard_producesValidPdfBytes() {
@@ -36,7 +48,9 @@ class OpenPdfGeneratorsTest {
                         .coefficient(new BigDecimal("2")).weightedAverage(new BigDecimal("26.00"))
                         .subjectRank(5).build());
 
-        byte[] pdf = reportCardGenerator.generate(rc, lines);
+        ReportCardContext ctx = new ReportCardContext(1L, "Awa Diallo", "2026-0007", "6e A (Collège)",
+                "1er trimestre", "2025-2026", Map.of(11L, "Mathématiques", 12L, "Français"));
+        byte[] pdf = reportCardGenerator.generate(rc, lines, ctx);
 
         assertThat(pdf).isNotEmpty();
         assertThat(new String(pdf, 0, 5)).isEqualTo("%PDF-");
@@ -46,7 +60,7 @@ class OpenPdfGeneratorsTest {
     void reportCard_handlesNullsAndEmptyLines() {
         ReportCard rc = ReportCard.builder().id(2L).build();
 
-        byte[] pdf = reportCardGenerator.generate(rc, List.of());
+        byte[] pdf = reportCardGenerator.generate(rc, List.of(), ReportCardContext.empty());
 
         assertThat(pdf).isNotEmpty();
         assertThat(new String(pdf, 0, 5)).isEqualTo("%PDF-");
@@ -60,7 +74,9 @@ class OpenPdfGeneratorsTest {
                 .scheduledDate(LocalDate.of(2026, 6, 20)).status(ExamStatus.PLANNED)
                 .build();
 
-        byte[] pdf = convocationGenerator.generate(exam);
+        byte[] pdf = convocationGenerator.generate(exam,
+                new gn.lacaeducation.grading.application.port.out.ExamConvocationPdfGenerator.ExamConvocationContext(
+                        "Terminale S", "Semestre 2", "2025-2026"));
 
         assertThat(pdf).isNotEmpty();
         assertThat(new String(pdf, 0, 5)).isEqualTo("%PDF-");

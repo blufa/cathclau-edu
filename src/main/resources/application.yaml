@@ -1,10 +1,17 @@
+server:
+  port: ${SERVER_PORT:8284}
+
 spring:
   application:
     name: lacaeducation
   config:
     import: optional:file:.env.example[.properties]
+  servlet:
+    multipart:
+      max-file-size: 15MB
+      max-request-size: 20MB
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/lacaeducation}
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/cathclau}
     username: ${DB_USER:blufa}
     password: ${DB_PASSWORD:blufa}
     driver-class-name: org.postgresql.Driver
@@ -25,10 +32,10 @@ spring:
     baseline-on-migrate: true
 
   mail:
-    host: ${MAIL_HOST:smtp.gmail.com}
+    host: ${MAIL_HOST:sandbox.smtp.mailtrap.io}
     port: ${MAIL_PORT:587}
-    username: ${MAIL_USERNAME:noreply@lacaeducation.gn}
-    password: ${MAIL_PASSWORD:}
+    username: ${MAIL_USERNAME:0f3306e70e9cd4}
+    password: ${MAIL_PASSWORD:947b5a42e9d920}
     properties:
       mail:
         smtp:
@@ -50,11 +57,17 @@ app:
     cloud-name: ${CLOUDINARY_CLOUD_NAME:}
     api-key: ${CLOUDINARY_API_KEY:}
     api-secret: ${CLOUDINARY_API_SECRET:}
+  platform:
+    # Base of the email-verification link. Local default points at the clickable GET endpoint so the
+    # link works without a front-end (Mailtrap, dev). In prod, override with the SPA page URL.
+    verification-url: ${VERIFICATION_URL:http://localhost:8284/api/v1/public/verify-email}
 
 # Djomy (agrégateur de paiement) — identifiants UNIQUEMENT via l'environnement (.env non commité).
 djomy:
   client-id: ${DJOMY_CLIENT_ID:}
   client-secret: ${DJOMY_CLIENT_SECRET:}
+  # Clé de signature des webhooks (espace développeur Djomy). Si vide, on utilise client-secret.
+  webhook-secret: ${DJOMY_WEBHOOK_SECRET:}
   base-url: ${DJOMY_BASE_URL:https://sandbox-api.djomy.africa}
   currency: ${DJOMY_CURRENCY:GNF}
   return-url: ${DJOMY_RETURN_URL:}

@@ -38,8 +38,34 @@ public class ParentService implements ParentUseCase {
         return parentRepository.save(p);
     }
 
+    @Override
+    public Parent updateOwnProfile(Long userId, UpdateProfileCommand cmd) {
+        Parent p = requireByUserId(userId);
+        // Mise à jour partielle : seuls les champs fournis sont modifiés (le nom n'est pas modifiable).
+        if (cmd.phone() != null) p.setPhone(cmd.phone());
+        if (cmd.email() != null) p.setEmail(cmd.email());
+        if (cmd.address() != null) p.setAddress(cmd.address());
+        if (cmd.occupation() != null) p.setOccupation(cmd.occupation());
+        return parentRepository.save(p);
+    }
+
+    @Override
+    public Parent updateOwnPhoto(Long userId, String photoUrl) {
+        Parent p = requireByUserId(userId);
+        p.setPhoto(photoUrl);
+        return parentRepository.save(p);
+    }
+
+    private Parent requireByUserId(Long userId) {
+        return parentRepository.findByUserId(userId)
+                .orElseThrow(() -> new gn.lacaeducation.common.ResourceNotFoundException("Parent (compte)", userId));
+    }
+
     @Override @Transactional(readOnly = true)
     public Optional<Parent> findById(Long id) { return parentRepository.findById(id); }
+
+    @Override @Transactional(readOnly = true)
+    public Optional<Parent> findByUserId(Long userId) { return parentRepository.findByUserId(userId); }
 
     @Override @Transactional(readOnly = true)
     public List<Parent> findByTenantId(Long tenantId) { return parentRepository.findByTenantId(tenantId); }
@@ -54,6 +80,21 @@ public class ParentService implements ParentUseCase {
     public StudentParent linkStudent(Long studentId, Long parentId, Relationship relationship) {
         return studentParentRepository.save(StudentParent.builder()
                 .studentId(studentId).parentId(parentId).relationship(relationship).build());
+    }
+
+    @Override
+    public void setPrimaryGuardian(Long studentId, Long parentId) {
+        List<StudentParent> links = studentParentRepository.findLinksByStudentId(studentId);
+        if (links.stream().noneMatch(l -> l.getParentId().equals(parentId))) {
+            throw new gn.lacaeducation.common.ResourceNotFoundException("StudentParent (student/parent)", parentId);
+        }
+        for (StudentParent l : links) {
+            boolean primary = l.getParentId().equals(parentId);
+            if (l.isPrimaryGuardian() != primary) {
+                l.setPrimaryGuardian(primary);
+                studentParentRepository.save(l);
+            }
+        }
     }
 
     @Override

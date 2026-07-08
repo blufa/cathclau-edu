@@ -10,6 +10,24 @@ public interface PaymentUseCase {
                                   String payerNumber) {}
     Payment initiate(InitiatePaymentCommand command) throws JsonProcessingException;
 
+    /** Part d'un paiement groupé affectée à une facture-mois. */
+    record InvoiceShare(Long invoiceId, BigDecimal amount) {}
+    /**
+     * Paiement groupé de plusieurs mois (ou de l'année) en une fois : un seul paiement, un seul reçu
+     * listant les mois réglés et le reste à payer. Au guichet (canal manuel) la confirmation est
+     * immédiate ; chaque facture-mois est soldée via {@code GroupedInvoiceSettlementEvent}.
+     */
+    record GroupPaymentCommand(Long tenantId, Long studentId, PaymentChannel channel, String payerNumber,
+                               String coverageLabel, Integer monthsCount, BigDecimal remainingAfter,
+                               List<InvoiceShare> shares) {}
+    Payment initiateGroup(GroupPaymentCommand command);
+
+    /**
+     * Confirme un paiement (groupé ou simple) en interrogeant Djomy à la demande, sans dépendre du
+     * webhook : si la transaction est réussie, le paiement est confirmé (reçu + répartition). Idempotent.
+     */
+    Payment confirmViaDjomy(Long paymentId) throws JsonProcessingException;
+
     /** On-demand query of the live Djomy status for a payment (diagnostic; webhook stays authoritative). */
     DjomyStatusResponse checkDjomyStatus(Long paymentId) throws JsonProcessingException;
 

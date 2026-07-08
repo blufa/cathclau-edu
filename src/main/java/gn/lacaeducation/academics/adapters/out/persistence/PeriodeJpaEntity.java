@@ -1,5 +1,6 @@
 package gn.lacaeducation.academics.adapters.out.persistence;
 
+import gn.lacaeducation.academics.domain.valueobject.SchoolCycle;
 import gn.lacaeducation.academics.domain.valueobject.TypePeriode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -23,6 +24,7 @@ public class PeriodeJpaEntity {
     @Column(name = "academic_year_id", nullable = false) private Long academicYearId;
     @Column(nullable = false) private String label;
     @Enumerated(EnumType.STRING) @Column(nullable = false) private TypePeriode type;
+    @Enumerated(EnumType.STRING) @Column(name = "cycle") private SchoolCycle cycle;
     @Column(name = "sort_order") private Integer sortOrder;
     @Column(name = "start_date") private LocalDate startDate;
     @Column(name = "end_date") private LocalDate endDate;

@@ -12,4 +12,8 @@ public class ReceiptJpaEntity {
     @Column(nullable = false, precision = 15, scale = 2) private BigDecimal amount;
     @Column(name = "pdf_file") private String pdfFile;
     @Column(name = "generated_at", nullable = false) private LocalDateTime generatedAt;
+    @Column(name = "covered_months", length = 500) private String coveredMonths;
+    @Column(name = "months_count") private Integer monthsCount;
+    @Column(name = "remaining_after", precision = 15, scale = 2) private BigDecimal remainingAfter;
+    @Column(name = "student_name", length = 200) private String studentName;
 }

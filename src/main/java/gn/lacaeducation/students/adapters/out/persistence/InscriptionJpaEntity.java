@@ -1,7 +1,7 @@
 package gn.lacaeducation.students.adapters.out.persistence;
 
 import gn.lacaeducation.students.domain.EnrollmentStatus;
-import gn.lacaeducation.students.domain.EnrollmentType;
+import gn.lacaeducation.students.EnrollmentType;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;

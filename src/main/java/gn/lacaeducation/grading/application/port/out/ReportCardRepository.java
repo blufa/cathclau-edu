@@ -8,6 +8,7 @@ public interface ReportCardRepository {
     List<ReportCard> saveAll(List<ReportCard> reportCards);
     Optional<ReportCard> findById(Long id);
     List<ReportCard> findByClassIdAndPeriodId(Long classId, Long periodId);
+    List<ReportCard> findByPeriodId(Long periodId);
     Optional<ReportCard> findByStudentIdAndPeriodId(Long studentId, Long periodId);
     List<ReportCard> findByStudentId(Long studentId);
     ReportCardLine saveLine(ReportCardLine line);

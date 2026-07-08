@@ -13,4 +13,7 @@ public class Parent {
     private String email;
     private String occupation;
     private String address;
+    private String photo;
+    /** Rempli uniquement dans le contexte d'un élève : responsable principal (« responsable 1 ») ? */
+    private boolean primaryGuardian;
 }

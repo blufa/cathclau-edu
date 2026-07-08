@@ -22,6 +22,8 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
@@ -36,6 +38,27 @@ public class StudentController {
     private final StudentUseCase studentUseCase;
     private final EnrollmentUseCase enrollmentUseCase;
     private final ParentUseCase parentUseCase;
+    private final gn.lacaeducation.students.application.service.StudentCertificateService certificateService;
+    private final gn.lacaeducation.students.application.service.StudentImportService importService;
+
+    public record CertificateRequest(String schoolName, String motif) {}
+
+    @Operation(summary = "Generate a school-leaving / transfer certificate (PDF) for a student")
+    @PostMapping("/{id}/certificat-radiation")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    public java.util.Map<String, String> transferCertificate(@PathVariable Long id, @RequestBody(required = false) CertificateRequest req) {
+        String url = certificateService.generateTransferCertificate(id,
+                req == null ? null : req.schoolName(), req == null ? null : req.motif());
+        return java.util.Map.of("url", url);
+    }
+
+    @Operation(summary = "Bulk import students from a CSV file (returns a per-row report)")
+    @PostMapping(value = "/import", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','SECRETARY','DIRECTOR')")
+    public gn.lacaeducation.students.application.service.StudentImportService.ImportReport importCsv(
+            @org.springframework.web.bind.annotation.RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
+        return importService.importCsv(file);
+    }
 
     @Operation(summary = "Register a new student (checks enrollment quota)")
     @PostMapping
@@ -43,7 +66,9 @@ public class StudentController {
     public ResponseEntity<Student> create(@Valid @RequestBody StudentUseCase.CreateStudentCommand cmd) {
         Student s = studentUseCase.create(new StudentUseCase.CreateStudentCommand(
                 TenantContext.get(), cmd.userId(), cmd.studentNumber(), cmd.firstName(), cmd.lastName(),
-                cmd.gender(), cmd.birthDate(), cmd.birthPlace(), cmd.address(), cmd.phone(), cmd.email(), cmd.nationality()));
+                cmd.gender(), cmd.birthDate(), cmd.birthPlace(), cmd.address(), cmd.phone(), cmd.email(), cmd.nationality(), cmd.originSchool(), cmd.photo(),
+                cmd.birthCertificateNumber(), cmd.bloodGroup(), cmd.neighborhood(), cmd.landmark(),
+                cmd.previousClass(), cmd.repeating(), cmd.transferReason(), cmd.medicalNotes()));
         return ResponseEntity.created(URI.create("/api/v1/students/" + s.getId())).body(s);
     }
 
@@ -54,9 +79,18 @@ public class StudentController {
                                          @RequestParam(required = false) EnrollmentStatus enrollmentStatus,
                                          @RequestParam(required = false) Gender gender,
                                          @RequestParam(required = false) String search,
+                                         @RequestParam(required = false, defaultValue = "false") boolean notEnrolled,
                                          @PageableDefault(size = 20) Pageable pageable) {
         return PageResponse.of(studentUseCase.search(
-                TenantContext.get(), gender, search, classId, enrollmentStatus, pageable));
+                TenantContext.get(), gender, search, classId, enrollmentStatus, notEnrolled, pageable));
+    }
+
+    @Operation(summary = "Get the student record of the currently authenticated user (student portal)")
+    @GetMapping("/me")
+    public ResponseEntity<Student> me(@AuthenticationPrincipal Jwt jwt) {
+        Long userId;
+        try { userId = Long.parseLong(jwt.getSubject()); } catch (RuntimeException e) { userId = null; }
+        return studentUseCase.findByUserId(userId).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
     @Operation(summary = "Get a student's full record (enrollments, parents, documents)")

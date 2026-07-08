@@ -38,6 +38,15 @@ public class GradingScaleService implements GradingScaleUseCase {
                 || c.tresBienMin().compareTo(BigDecimal.valueOf(20)) > 0) {
             throw new BusinessRuleException("Thresholds must be within [0, 20].");
         }
+        // Distinction thresholds: optional (fall back to defaults), Compliments <= Félicitations.
+        GradingScale defaults = GradingScale.defaults();
+        BigDecimal felicitations = c.felicitationsMin() != null ? c.felicitationsMin() : defaults.getFelicitationsMin();
+        BigDecimal compliments = c.complimentsMin() != null ? c.complimentsMin() : defaults.getComplimentsMin();
+        BigDecimal noFailing = c.distinctionNoFailingThreshold() != null
+                ? c.distinctionNoFailingThreshold() : defaults.getDistinctionNoFailingThreshold();
+        if (compliments.compareTo(felicitations) > 0) {
+            throw new BusinessRuleException("Compliments threshold must not exceed the Félicitations threshold.");
+        }
         return repo.save(GradingScale.builder()
                 .tenantId(tenantId)
                 .passThreshold(c.passThreshold())
@@ -45,6 +54,9 @@ public class GradingScaleService implements GradingScaleUseCase {
                 .assezBienMin(c.assezBienMin())
                 .bienMin(c.bienMin())
                 .tresBienMin(c.tresBienMin())
+                .felicitationsMin(felicitations)
+                .complimentsMin(compliments)
+                .distinctionNoFailingThreshold(noFailing)
                 .build());
     }
 }

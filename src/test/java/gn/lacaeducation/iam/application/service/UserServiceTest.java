@@ -113,4 +113,48 @@ class UserServiceTest {
         verify(userRepository).assignRole(5L, 2L);
         verify(eventPublisher).publishEvent(new RoleAssignedEvent(5L, 2L));
     }
+
+    @Test
+    void create_noPassword_generatesUsernameAndTemporaryPassword() {
+        when(userRepository.existsByTenantIdAndEmail(10L, "new@ecole.gn")).thenReturn(false);
+        when(passwordHasher.hash(any())).thenReturn("$hash");
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        User created = userService.create(new UserUseCase.CreateUserCommand(
+                10L, "Jean", "Camara", "new@ecole.gn", null, "0600"));
+
+        org.assertj.core.api.Assertions.assertThat(created.getUsername()).isEqualTo("jean.camara");
+        org.assertj.core.api.Assertions.assertThat(created.isMustChangePassword()).isTrue();
+        org.assertj.core.api.Assertions.assertThat(created.getPlainTemporaryPassword()).isNotBlank();
+    }
+
+    @Test
+    void create_withPassword_noTemporaryPasswordAndNoForcedChange() {
+        when(userRepository.existsByTenantIdAndEmail(10L, "new@ecole.gn")).thenReturn(false);
+        when(passwordHasher.hash("chosenPw")).thenReturn("$hash");
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        User created = userService.create(new UserUseCase.CreateUserCommand(
+                10L, "Marie", "Diallo", "new@ecole.gn", "chosenPw", "0600"));
+
+        org.assertj.core.api.Assertions.assertThat(created.getUsername()).isEqualTo("marie.diallo");
+        org.assertj.core.api.Assertions.assertThat(created.isMustChangePassword()).isFalse();
+        org.assertj.core.api.Assertions.assertThat(created.getPlainTemporaryPassword()).isNull();
+    }
+
+    @Test
+    void resetAccess_setsTemporaryPasswordForcesChangeAndRevokesSessions() {
+        User user = User.builder().id(5L).username("jean.camara").build();
+        when(userRepository.findById(5L)).thenReturn(Optional.of(user));
+        when(passwordHasher.hash(any())).thenReturn("$hash");
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        UserUseCase.TemporaryAccess access = userService.resetAccess(5L, null);
+
+        org.assertj.core.api.Assertions.assertThat(access.username()).isEqualTo("jean.camara");
+        org.assertj.core.api.Assertions.assertThat(access.temporaryPassword()).isNotBlank();
+        org.assertj.core.api.Assertions.assertThat(access.mustChangePassword()).isTrue();
+        org.assertj.core.api.Assertions.assertThat(user.isMustChangePassword()).isTrue();
+        verify(refreshTokenRepository).revokeAllByUserId(5L);
+    }
 }

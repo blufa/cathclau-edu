@@ -12,4 +12,7 @@ public interface EnrollmentQueryPort {
      * Returns the IDs of all students with a VALIDATED enrollment in the given class.
      */
     List<Long> findValidatedStudentIdsByClassId(Long classId);
+
+    /** Whether the student has at least one non-cancelled enrollment (PENDING or VALIDATED). */
+    boolean hasActiveEnrollment(Long studentId);
 }

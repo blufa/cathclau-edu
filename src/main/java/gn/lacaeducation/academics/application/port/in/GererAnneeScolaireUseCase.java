@@ -2,6 +2,7 @@ package gn.lacaeducation.academics.application.port.in;
 
 import gn.lacaeducation.academics.domain.AnneeScolaire;
 import gn.lacaeducation.academics.domain.Periode;
+import gn.lacaeducation.academics.domain.valueobject.SchoolCycle;
 import gn.lacaeducation.academics.domain.valueobject.TypePeriode;
 
 import java.time.LocalDate;
@@ -40,6 +41,7 @@ public interface GererAnneeScolaireUseCase {
 
     record CreatePeriodCommand(
             Long academicYearId, String label, TypePeriode type,
+            SchoolCycle cycle,
             Integer sortOrder, LocalDate startDate, LocalDate endDate
     ) {}
 }

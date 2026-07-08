@@ -31,7 +31,7 @@ class DjomyClientTest {
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         DjomyProperties props = new DjomyProperties(
                 "cid", "secret", "http://djomy.test", "GNF",
-                "http://return", "http://cancel", "GN", List.of("OM", "MOMO", "CARD"));
+                "http://return", "http://cancel", "GN", List.of("OM", "MOMO", "CARD"), null);
         return new Fixture(new DjomyClient(props, builder), server);
     }
 

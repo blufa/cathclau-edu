@@ -7,6 +7,8 @@ import gn.lacaeducation.platform.application.port.in.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import gn.lacaeducation.common.TenantContext;
+import gn.lacaeducation.platform.domain.BillingPeriod;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
@@ -41,6 +43,21 @@ public class SubscriptionController {
                 .body(SubscriptionResponse.from(sub));
     }
 
+    public record SelfSubscribeRequest(@jakarta.validation.constraints.NotNull Long planId,
+                                       @jakarta.validation.constraints.NotNull BillingPeriod billingPeriod,
+                                       Boolean autoRenewal) {}
+
+    @Operation(summary = "Self-service: the current school subscribes to a paid plan "
+            + "(creates an EN_ATTENTE subscription + its first invoice; pay via Djomy to activate)")
+    @PostMapping("/subscribe")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR')")
+    public ResponseEntity<SubscriptionResponse> subscribe(@Valid @RequestBody SelfSubscribeRequest req) {
+        var sub = subscriptionUseCase.initiate(new SubscriptionUseCase.InitiateSubscriptionCommand(
+                TenantContext.get(), req.planId(), req.billingPeriod(), req.autoRenewal()));
+        return ResponseEntity.created(URI.create("/api/v1/platform/subscriptions/" + sub.getId()))
+                .body(SubscriptionResponse.from(sub));
+    }
+
     @Operation(summary = "List all subscriptions (filters: status, planId)")
     @GetMapping
     @PreAuthorize("hasRole('SUPER_ADMIN')")
@@ -67,6 +84,15 @@ public class SubscriptionController {
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
     public ResponseEntity<SubscriptionResponse> findActive() {
         return subscriptionUseCase.findActiveForCurrentTenant()
+                .map(SubscriptionResponse::from).map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @Operation(summary = "Get the current tenant's latest subscription (incl. PENDING awaiting payment)")
+    @GetMapping("/current")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    public ResponseEntity<SubscriptionResponse> findCurrent() {
+        return subscriptionUseCase.findLatestForCurrentTenant()
                 .map(SubscriptionResponse::from).map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -126,9 +152,17 @@ public class SubscriptionController {
     @Operation(summary = "Query the live Djomy status of a payment "
             + "(diagnostic: follow CREATED → PENDING → SUCCESS without waiting for the webhook)")
     @GetMapping("/payments/{paymentId}/djomy-status")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN')")
     public PaymentUseCase.DjomyStatusResponse djomyStatus(@PathVariable Long paymentId) throws JsonProcessingException {
         return paymentUseCase.checkDjomyStatus(paymentId);
+    }
+
+    @Operation(summary = "Confirm & activate the subscription by polling Djomy on demand "
+            + "(activates without waiting for the webhook; only succeeds if Djomy reports SUCCESS)")
+    @PostMapping("/payments/{paymentId}/confirm-djomy")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN')")
+    public SubscriptionPaymentResponse confirmViaDjomy(@PathVariable Long paymentId) throws JsonProcessingException {
+        return SubscriptionPaymentResponse.from(paymentUseCase.confirmViaDjomy(paymentId));
     }
 
     @Operation(summary = "Get all invoices for a subscription")

@@ -1,5 +1,5 @@
 -- DEV/TEST : compte SUPER_ADMIN pour les tests (Postman).
---   email    : super@laca.gn
+--   email    : super@admin.gn
 --   password : Test@1234  (hash BCrypt ci-dessous)
 -- ⚠️ Compte à usage de TEST : changer le mot de passe ou supprimer ce compte avant la production.
 INSERT INTO users (tenant_id, first_name, last_name, email, password_hash, active, created_at)

@@ -8,6 +8,7 @@ public record CreateUserRequest(
         @NotBlank String firstName,
         @NotBlank String lastName,
         @NotBlank @Email String email,
-        @NotBlank String password,
+        /** Optionnel : si absent, un mot de passe temporaire est généré et renvoyé une seule fois. */
+        String password,
         String phone
 ) {}

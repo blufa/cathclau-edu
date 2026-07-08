@@ -16,4 +16,7 @@ class GradingScaleJpaEntity {
     @Column(name = "assez_bien_min", nullable = false) private BigDecimal assezBienMin;
     @Column(name = "bien_min", nullable = false) private BigDecimal bienMin;
     @Column(name = "tres_bien_min", nullable = false) private BigDecimal tresBienMin;
+    @Column(name = "felicitations_min") private BigDecimal felicitationsMin;
+    @Column(name = "compliments_min") private BigDecimal complimentsMin;
+    @Column(name = "distinction_no_failing_threshold") private BigDecimal distinctionNoFailingThreshold;
 }

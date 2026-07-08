@@ -42,7 +42,7 @@ class TenantProvisioningServiceTest {
         when(roleRepository.findByCode(RoleCode.SCHOOL_ADMIN))
                 .thenReturn(Optional.of(Role.builder().id(2L).code(RoleCode.SCHOOL_ADMIN).build()));
 
-        service.provisionTenantAdmin(10L, "École Test", "admin@ecole.gn", "Mamadou Diallo");
+        service.provisionTenantAdmin(10L, "École Test", "admin@ecole.gn", "Mamadou Diallo", "Kdrp-4827-Muxs", true);
 
         ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
         verify(userRepository).save(captor.capture());
@@ -52,14 +52,34 @@ class TenantProvisioningServiceTest {
         assertThat(saved.getFirstName()).isEqualTo("Mamadou");
         assertThat(saved.getLastName()).isEqualTo("Diallo");
         assertThat(saved.getActive()).isTrue();
+        assertThat(saved.isMustChangePassword()).isTrue();
         verify(userRepository).assignRole(99L, 2L);
+    }
+
+    @Test
+    void provisionTenantAdmin_usesChosenPassword_whenProvided() {
+        when(userRepository.existsByTenantIdAndEmail(10L, "admin@ecole.gn")).thenReturn(false);
+        when(passwordHasher.hash("Secret123")).thenReturn("$2a$10$chosen");
+        when(userRepository.save(any(User.class)))
+                .thenAnswer(inv -> { User u = inv.getArgument(0); u.setId(99L); return u; });
+        when(roleRepository.findByCode(RoleCode.SCHOOL_ADMIN))
+                .thenReturn(Optional.of(Role.builder().id(2L).code(RoleCode.SCHOOL_ADMIN).build()));
+
+        service.provisionTenantAdmin(10L, "École Test", "admin@ecole.gn", "Mamadou Diallo", "Secret123", false);
+
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(captor.capture());
+        User saved = captor.getValue();
+        assertThat(saved.getPasswordHash()).isEqualTo("$2a$10$chosen");
+        assertThat(saved.isMustChangePassword()).isFalse();
+        verify(passwordHasher).hash("Secret123");
     }
 
     @Test
     void provisionTenantAdmin_idempotent_whenAdminAlreadyExists() {
         when(userRepository.existsByTenantIdAndEmail(10L, "admin@ecole.gn")).thenReturn(true);
 
-        service.provisionTenantAdmin(10L, "École Test", "admin@ecole.gn", "Mamadou Diallo");
+        service.provisionTenantAdmin(10L, "École Test", "admin@ecole.gn", "Mamadou Diallo", null, true);
 
         verify(userRepository, never()).save(any());
         verify(userRepository, never()).assignRole(any(), any());

@@ -11,4 +11,8 @@ public class StudentAttendance {
     private AttendanceStatus status;
     private String reason;
     private Boolean parentNotified;
+    /** Absence justifiée ou non (null = non encore traitée). */
+    private Boolean justified;
+    /** URL de la pièce justificative (certificat, mot des parents…). */
+    private String justificationDoc;
 }

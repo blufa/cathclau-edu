@@ -1,6 +1,7 @@
 package gn.lacaeducation.grading.adapters.in.web;
 import gn.lacaeducation.grading.application.port.in.ExamUseCase;
 import gn.lacaeducation.grading.domain.Exam;
+import gn.lacaeducation.grading.domain.ExamSupervision;
 import gn.lacaeducation.grading.domain.ExamType;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -41,7 +42,36 @@ public class ExamController {
                 .map(url -> ResponseEntity.ok(Map.of("url", url)))
                 .orElseGet(() -> { useCase.generateConvocationAsync(id); return ResponseEntity.accepted().body(Map.of("status", "GENERATING")); });
     }
+    @Operation(summary = "Stream the exam convocation PDF bytes (inline) — independent of Cloudinary")
+    @GetMapping("/{id}/convocation/download") public ResponseEntity<byte[]> convocationDownload(@PathVariable Long id) {
+        return ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"convocation-" + id + ".pdf\"")
+                .body(useCase.convocationBytes(id));
+    }
     @Operation(summary = "Delete an exam")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
     @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id) { useCase.delete(id); return ResponseEntity.noContent().build(); }
+
+    // ── Surveillance (composition : surveillants par salle) ──────────────────────
+    public record SupervisionRequest(Long roomId, Long teacherId) {}
+
+    @Operation(summary = "Affecter un enseignant surveillant à une salle pour l'examen (conflit refusé en 422)")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @PostMapping("/{id}/supervisions")
+    public ResponseEntity<ExamSupervision> assignSupervisor(@PathVariable Long id, @RequestBody SupervisionRequest r) {
+        return ResponseEntity.ok(useCase.assignSupervisor(id, r.roomId(), r.teacherId()));
+    }
+
+    @Operation(summary = "Lister les surveillants d'un examen")
+    @GetMapping("/{id}/supervisions")
+    public List<ExamSupervision> supervisions(@PathVariable Long id) { return useCase.supervisions(id); }
+
+    @Operation(summary = "Retirer un surveillant")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @DeleteMapping("/{id}/supervisions/{supervisionId}")
+    public ResponseEntity<Void> removeSupervision(@PathVariable Long id, @PathVariable Long supervisionId) {
+        useCase.removeSupervision(supervisionId);
+        return ResponseEntity.noContent().build();
+    }
 }

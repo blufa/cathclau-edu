@@ -2,10 +2,15 @@ package gn.lacaeducation.grading.application.service;
 import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
+import gn.lacaeducation.grading.application.event.AssessmentScheduledEvent;
 import gn.lacaeducation.grading.application.port.in.AssessmentUseCase;
 import gn.lacaeducation.grading.application.port.out.AssessmentRepository;
+import gn.lacaeducation.grading.application.port.out.AssessmentSessionSettingsRepository;
 import gn.lacaeducation.grading.domain.Assessment;
+import gn.lacaeducation.grading.domain.AssessmentSessionSettings;
 import lombok.RequiredArgsConstructor;
+import java.math.BigDecimal;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
@@ -14,12 +19,33 @@ import java.util.Optional;
 public class AssessmentService implements AssessmentUseCase {
     private final AssessmentRepository repo;
     private final AcademicsDataProvider academicsDataProvider;
+    private final AssessmentSessionSettingsRepository sessionSettingsRepository;
+    private final gn.lacaeducation.grading.application.port.out.AssessmentTypeConfigRepository assessmentTypeConfigRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override public Assessment create(CreateAssessmentCommand c) {
         requireOpenPeriod(c.periodId());
-        return repo.save(Assessment.builder().tenantId(c.tenantId()).classId(c.classId()).subjectId(c.subjectId())
-                .teacherId(c.teacherId()).periodId(c.periodId()).type(c.type()).label(c.label())
-                .date(c.date()).coefficient(c.coefficient()).maxScore(c.maxScore()).build());
+
+        // Le front n'envoie pas le tenant : on le résout depuis le contexte (multi-tenant).
+        Long tenantId = c.tenantId() != null ? c.tenantId() : gn.lacaeducation.common.TenantContext.get();
+        // Coefficient : celui saisi, sinon le coefficient par défaut du type configurable choisi (§3).
+        BigDecimal coefficient = c.coefficient();
+        if (coefficient == null && c.assessmentTypeId() != null) {
+            coefficient = assessmentTypeConfigRepository.findById(c.assessmentTypeId())
+                    .map(gn.lacaeducation.grading.domain.AssessmentTypeConfig::getDefaultCoefficient)
+                    .orElse(null);
+        }
+        Assessment saved = repo.save(Assessment.builder().tenantId(tenantId).classId(c.classId()).subjectId(c.subjectId())
+                .teacherId(c.teacherId()).periodId(c.periodId()).type(c.type()).assessmentTypeId(c.assessmentTypeId())
+                .label(c.label()).date(c.date()).coefficient(coefficient).maxScore(c.maxScore()).build());
+        // Durée de la séance comptabilisée : paramétrable par établissement selon le type d'évaluation.
+        Integer sessionMinutes = sessionSettingsRepository.findByTenantId(tenantId)
+                .orElseGet(AssessmentSessionSettings::defaults)
+                .minutesFor(saved.getType());
+        eventPublisher.publishEvent(new AssessmentScheduledEvent(saved.getTenantId(), saved.getId(),
+                saved.getClassId(), saved.getSubjectId(), saved.getTeacherId(), saved.getLabel(),
+                saved.getDate(), sessionMinutes));
+        return saved;
     }
 
     @Override public Assessment update(Long id, CreateAssessmentCommand c) {

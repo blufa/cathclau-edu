@@ -27,10 +27,10 @@ public class AuthController {
 
     private final AuthUseCase authUseCase;
 
-    @Operation(summary = "Authenticate with email and password, returns access and refresh tokens")
+    @Operation(summary = "Authenticate with username or email + password, returns access and refresh tokens")
     @PostMapping("/login")
     public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest req) {
-        var result = authUseCase.authenticate(new AuthUseCase.LoginCommand(req.email(), req.password()));
+        var result = authUseCase.authenticate(new AuthUseCase.LoginCommand(req.identifier(), req.password()));
         return ResponseEntity.ok(toResponse(result));
     }
 
@@ -98,6 +98,7 @@ public class AuthController {
 
     private LoginResponse toResponse(AuthUseCase.LoginResult result) {
         return new LoginResponse(result.accessToken(), result.refreshToken(),
-                result.expiresIn(), result.userId(), result.tenantId(), result.roles());
+                result.expiresIn(), result.userId(), result.tenantId(), result.roles(),
+                result.mustChangePassword());
     }
 }

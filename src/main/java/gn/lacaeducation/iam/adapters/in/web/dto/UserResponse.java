@@ -7,9 +7,13 @@ public record UserResponse(
         Long tenantId,
         String firstName,
         String lastName,
+        String username,
         String email,
         String phone,
         Boolean active,
+        boolean mustChangePassword,
+        /** Présent uniquement dans la réponse de création quand un mot de passe temporaire a été généré. */
+        String temporaryPassword,
         LocalDateTime lastLoginAt,
         LocalDateTime createdAt
 ) {}

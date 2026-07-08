@@ -81,8 +81,8 @@ public class EmploiDuTempsService implements GererEmploiDuTempsUseCase {
                 ? edtRepository.existsRoomConflict(roomId, day, startTime, endTime)
                 : edtRepository.existsRoomConflictExcluding(roomId, day, startTime, endTime, excludeId);
         if (roomConflict) {
-            throw new ConflictException("Room conflict: room id=" + roomId
-                    + " is already booked on " + day + " " + startTime + "-" + endTime);
+            throw new ConflictException("Cette salle est déjà occupée le " + dayLabel(day)
+                    + " de " + hhmm(startTime) + " à " + hhmm(endTime) + " par un autre cours.");
         }
 
         if (teacherId != null) {
@@ -90,8 +90,8 @@ public class EmploiDuTempsService implements GererEmploiDuTempsUseCase {
                     ? edtRepository.existsTeacherConflict(teacherId, day, startTime, endTime)
                     : edtRepository.existsTeacherConflictExcluding(teacherId, day, startTime, endTime, excludeId);
             if (teacherConflict) {
-                throw new ConflictException("Teacher conflict: teacher id=" + teacherId
-                        + " is already scheduled on " + day + " " + startTime + "-" + endTime);
+                throw new ConflictException("Cet enseignant a déjà un cours le " + dayLabel(day)
+                        + " de " + hhmm(startTime) + " à " + hhmm(endTime) + ".");
             }
         }
 
@@ -100,9 +100,25 @@ public class EmploiDuTempsService implements GererEmploiDuTempsUseCase {
                     ? edtRepository.existsClassConflict(classId, day, startTime, endTime)
                     : edtRepository.existsClassConflictExcluding(classId, day, startTime, endTime, excludeId);
             if (classConflict) {
-                throw new ConflictException("Class conflict: class id=" + classId
-                        + " already has a slot on " + day + " " + startTime + "-" + endTime);
+                throw new ConflictException("Cette classe a déjà un cours le " + dayLabel(day)
+                        + " de " + hhmm(startTime) + " à " + hhmm(endTime) + ".");
             }
         }
+    }
+
+    private static String hhmm(LocalTime t) {
+        return t == null ? "-" : String.format("%02d:%02d", t.getHour(), t.getMinute());
+    }
+
+    private static String dayLabel(JourSemaine day) {
+        if (day == null) return "-";
+        return switch (day) {
+            case LUNDI -> "lundi";
+            case MARDI -> "mardi";
+            case MERCREDI -> "mercredi";
+            case JEUDI -> "jeudi";
+            case VENDREDI -> "vendredi";
+            case SAMEDI -> "samedi";
+        };
     }
 }

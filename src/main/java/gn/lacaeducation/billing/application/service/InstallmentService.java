@@ -25,6 +25,29 @@ public class InstallmentService implements InstallmentUseCase {
                 .dueDate(c.dueDate()).status(InstallmentStatus.PENDING).build());
     }
 
+    @Override public List<Installment> generateTerms(GenerateTermsCommand c) {
+        SchoolFee fee = schoolFeeRepository.findById(c.feeId())
+                .orElseThrow(() -> new ResourceNotFoundException("SchoolFee", c.feeId()));
+        java.math.BigDecimal total = c.annualTotal() != null && c.annualTotal().signum() > 0
+                ? c.annualTotal() : fee.getAmount();
+        if (total == null || total.signum() <= 0) {
+            throw new BusinessRuleException("Le total annuel doit être positif pour la répartition trimestrielle");
+        }
+        if (c.terms() == null || c.terms().isEmpty()) {
+            throw new BusinessRuleException("Au moins une période est requise");
+        }
+        java.util.List<Installment> created = new java.util.ArrayList<>();
+        for (TermSpec t : c.terms()) {
+            java.math.BigDecimal pct = t.percentage() != null ? t.percentage() : java.math.BigDecimal.ZERO;
+            java.math.BigDecimal amount = total.multiply(pct)
+                    .divide(java.math.BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
+            created.add(repo.save(Installment.builder()
+                    .feeId(c.feeId()).label(t.label()).amount(amount).dueDate(t.dueDate())
+                    .status(InstallmentStatus.PENDING).build()));
+        }
+        return created;
+    }
+
     @Override public Installment update(Long id, UpdateInstallmentCommand c) {
         Installment i = load(id);
         validateInstallmentSum(i.getFeeId(), id, c.amount());
@@ -58,6 +81,12 @@ public class InstallmentService implements InstallmentUseCase {
     private void validateInstallmentSum(Long feeId, Long excludeInstallmentId, BigDecimal newAmount) {
         SchoolFee fee = schoolFeeRepository.findById(feeId)
                 .orElseThrow(() -> new ResourceNotFoundException("SchoolFee", feeId));
+
+        // Pour une MENSUALITE, chaque échéance est un mois autonome (montant complet) : pas de plafond
+        // « somme = total » — le total annuel = montant mensuel × nombre de mois.
+        if (fee.getType() == gn.lacaeducation.billing.domain.FeeType.MONTHLY) {
+            return;
+        }
 
         BigDecimal existingSum = repo.findByFeeId(feeId).stream()
                 .filter(i -> excludeInstallmentId == null || !excludeInstallmentId.equals(i.getId()))

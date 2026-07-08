@@ -56,11 +56,25 @@ public class ClasseService implements GererClasseUseCase {
     }
 
     @Override
-    public ClasseMatiere assignSubject(Long classId, Long subjectId, Long teacherId) {
+    public ClasseMatiere assignSubject(Long classId, Long subjectId, Long teacherId, java.math.BigDecimal coefficient) {
+        // Idempotent : si la matière est déjà affectée à la classe (contrainte unique classe+matière),
+        // on met à jour l'enseignant (et le coefficient si fourni) au lieu d'insérer un doublon.
+        ClasseMatiere existing = classeRepository.findSubjectsByClassId(classId).stream()
+                .filter(cm -> subjectId.equals(cm.getSubjectId()))
+                .findFirst()
+                .orElse(null);
+        if (existing != null) {
+            existing.setTeacherId(teacherId);
+            if (coefficient != null) {
+                existing.setCoefficient(coefficient);
+            }
+            return classeRepository.saveClassSubject(existing);
+        }
         ClasseMatiere cm = ClasseMatiere.builder()
                 .schoolClassId(classId)
                 .subjectId(subjectId)
                 .teacherId(teacherId)
+                .coefficient(coefficient)
                 .build();
         return classeRepository.saveClassSubject(cm);
     }

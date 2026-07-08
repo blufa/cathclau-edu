@@ -40,6 +40,13 @@ public class EnrollmentController {
         return ResponseEntity.created(URI.create("/api/v1/enrollments/" + e.getId())).body(e);
     }
 
+    @Operation(summary = "Modify a pending enrollment (class / academic year / type)")
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','SECRETARY','DIRECTOR')")
+    public Enrollment update(@PathVariable Long id, @Valid @RequestBody EnrollCommand cmd) {
+        return useCase.update(id, cmd);
+    }
+
     @Operation(summary = "Search enrollments by student, class, academic year and/or status")
     @GetMapping
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")

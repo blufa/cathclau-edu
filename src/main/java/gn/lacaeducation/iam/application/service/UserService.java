@@ -32,20 +32,44 @@ public class UserService implements UserUseCase {
 
     @Override
     public User create(CreateUserCommand command) {
-        if (userRepository.existsByTenantIdAndEmail(command.tenantId(), command.email())) {
+        if (command.email() != null && userRepository.existsByTenantIdAndEmail(command.tenantId(), command.email())) {
             throw new ConflictException("A user with this email already exists in this tenant");
         }
+        // Identifiant de connexion généré (prenom.nom, unique) pour les comptes créés par l'école.
+        String username = UsernameGenerator.generate(
+                command.firstName(), command.lastName(), userRepository::existsByUsername);
+        // Mot de passe : celui choisi par l'admin, sinon un mot de passe temporaire à changer.
+        boolean generated = command.password() == null || command.password().isBlank();
+        String rawPassword = generated ? TemporaryPassword.generate() : command.password();
         User user = User.builder()
                 .tenantId(command.tenantId())
                 .firstName(command.firstName())
                 .lastName(command.lastName())
+                .username(username)
                 .email(command.email())
-                .passwordHash(passwordHasher.hash(command.password()))
+                .passwordHash(passwordHasher.hash(rawPassword))
+                .mustChangePassword(generated)
                 .phone(command.phone())
                 .active(true)
                 .createdAt(LocalDateTime.now())
                 .build();
-        return userRepository.save(user);
+        User saved = userRepository.save(user);
+        // On restitue le mot de passe uniquement quand il a été généré (jamais persisté en clair).
+        if (generated) saved.setPlainTemporaryPassword(rawPassword);
+        return saved;
+    }
+
+    @Override
+    public TemporaryAccess resetAccess(Long userId, String rawPassword) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", userId));
+        boolean generated = rawPassword == null || rawPassword.isBlank();
+        String password = generated ? TemporaryPassword.generate() : rawPassword;
+        user.setPasswordHash(passwordHasher.hash(password));
+        user.setMustChangePassword(true);
+        userRepository.save(user);
+        refreshTokenRepository.revokeAllByUserId(userId);
+        return new TemporaryAccess(userId, user.getUsername(), password, true);
     }
 
     @Override

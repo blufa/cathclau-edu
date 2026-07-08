@@ -1,10 +1,16 @@
 package gn.lacaeducation.common;
 
+import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -13,6 +19,7 @@ import org.springframework.web.client.RestClientResponseException;
 import java.net.URI;
 import java.util.List;
 
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -63,6 +70,27 @@ public class GlobalExceptionHandler {
         return pd;
     }
 
+    @ExceptionHandler(ModuleInactiveException.class)
+    public ProblemDetail handleModuleInactive(ModuleInactiveException ex) {
+        ProblemDetail pd = ProblemDetail.forStatus(HttpStatus.FORBIDDEN);
+        pd.setType(URI.create("https://api.lacaeducation.gn/errors/module-inactive"));
+        pd.setTitle("Module inactif");
+        pd.setDetail(ex.getMessage());
+        pd.setProperty("module", ex.getModuleCode());
+        pd.setProperty("raison", "MODULE_INACTIF");
+        return pd;
+    }
+
+    /** Safety net for DB unique/foreign-key violations not caught earlier (→ 409 instead of 500). */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ProblemDetail handleDataIntegrity(DataIntegrityViolationException ex) {
+        ProblemDetail pd = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        pd.setType(URI.create("https://api.lacaeducation.gn/errors/conflict"));
+        pd.setTitle("Conflict");
+        pd.setDetail("Conflit de données : une valeur unique existe déjà ou une référence est invalide.");
+        return pd;
+    }
+
     @ExceptionHandler(BadCredentialsException.class)
     public ProblemDetail handleBadCredentials(BadCredentialsException ex) {
         ProblemDetail pd = ProblemDetail.forStatus(HttpStatus.UNAUTHORIZED);
@@ -82,10 +110,20 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(AccessDeniedException.class)
-    public ProblemDetail handleAccessDenied(AccessDeniedException ex) {
+    public ProblemDetail handleAccessDenied(AccessDeniedException ex, HttpServletRequest request) {
+        // Trace which endpoint was refused and which authorities the caller actually holds — the raw
+        // Spring log ("Resolved AuthorizationDeniedException") gives neither, making 403s hard to diagnose.
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String authorities = auth == null ? "<anonymous>" : auth.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority).sorted().toList().toString();
+        String uri = request.getMethod() + " " + request.getRequestURI();
+        log.warn("Access denied on {} — caller authorities={} ({})", uri, authorities, ex.getMessage());
+
         ProblemDetail pd = ProblemDetail.forStatus(HttpStatus.FORBIDDEN);
         pd.setType(URI.create("https://api.lacaeducation.gn/errors/forbidden"));
         pd.setTitle("Access denied");
+        pd.setDetail("Vous n'avez pas les droits requis pour " + uri + ".");
+        pd.setInstance(URI.create(request.getRequestURI()));
         return pd;
     }
 

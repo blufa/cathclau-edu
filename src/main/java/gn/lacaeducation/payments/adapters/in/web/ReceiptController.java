@@ -9,7 +9,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
-@Tag(name = "Receipts", description = "Generate and retrieve payment receipts")
+@Tag(name = "Receipts", description = "Generate and retrieve payment receipts (personnel). Le portail parent télécharge via /api/v1/parent/receipts.")
 @RestController @RequestMapping("/api/v1/payments/receipts") @RequiredArgsConstructor
 public class ReceiptController {
     private final ReceiptUseCase useCase;
@@ -20,11 +20,25 @@ public class ReceiptController {
         return studentId == null ? List.of() : useCase.findByStudentId(studentId);
     }
 
-    @Operation(summary = "Get the receipt PDF URL (§9.3)")
+    @Operation(summary = "Get the receipt PDF URL (§9.3) — generated on demand if missing")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT','SECRETARY')")
     @GetMapping("/{id}/pdf") public ResponseEntity<Map<String, String>> pdf(@PathVariable Long id) {
-        return useCase.findById(id)
-                .map(r -> ResponseEntity.ok(Map.of("url", r.getPdfFile() == null ? "" : r.getPdfFile())))
-                .orElse(ResponseEntity.notFound().build());
+        if (useCase.findById(id).isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(Map.of("url", useCase.pdfUrl(id)));
+    }
+
+    @Operation(summary = "Stream the receipt PDF bytes (inline) — independent of Cloudinary delivery")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT','SECRETARY')")
+    @GetMapping("/{id}/pdf/download") public ResponseEntity<byte[]> pdfDownload(@PathVariable Long id) {
+        if (useCase.findById(id).isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"recu-" + id + ".pdf\"")
+                .body(useCase.pdfBytes(id));
     }
     @Operation(summary = "Generate a receipt for a successful payment")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT','SECRETARY')")

@@ -22,6 +22,16 @@ public class Plan {
     private BigDecimal annualPrice;
     private String description;
     private Boolean archived;
+    private Boolean trial;
+    private Integer trialDays;
+    private Boolean defaultTrial;
+    private PlanType planType;
+    private Periodicity periodicity;
+    private Integer userLimit;
+    private Integer smsLimit;
+    private Boolean publicVisible;
+    private Integer displayOrder;
+    private Boolean highlighted;
 
     public boolean isArchived() {
         return Boolean.TRUE.equals(archived);

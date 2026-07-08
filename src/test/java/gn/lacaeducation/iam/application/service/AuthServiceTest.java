@@ -17,7 +17,7 @@ import gn.lacaeducation.iam.domain.RefreshToken;
 import gn.lacaeducation.iam.domain.Role;
 import gn.lacaeducation.iam.domain.RoleCode;
 import gn.lacaeducation.iam.domain.User;
-import gn.lacaeducation.platform.TenantInfoProvider;
+import gn.lacaeducation.common.TenantInfoProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

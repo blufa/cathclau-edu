@@ -1,11 +1,13 @@
 package gn.lacaeducation.platform.adapters.in.web;
 
+import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.PageResponse;
 import gn.lacaeducation.platform.adapters.in.web.dto.CreateTenantRequest;
 import gn.lacaeducation.platform.adapters.in.web.dto.TenantDetailResponse;
 import gn.lacaeducation.platform.adapters.in.web.dto.TenantResponse;
 import gn.lacaeducation.platform.adapters.in.web.dto.UpdateTenantRequest;
 import gn.lacaeducation.platform.application.port.in.CreateTenantUseCase;
+import gn.lacaeducation.platform.domain.TenantStatus;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -35,10 +37,12 @@ public class TenantController {
     @PostMapping
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ResponseEntity<TenantResponse> create(@Valid @RequestBody CreateTenantRequest req) {
-        var tenant = tenantUseCase.create(new CreateTenantUseCase.CreateTenantCommand(
-                req.schoolName(), req.email(), req.phone(), req.address(), req.city(), req.country(), req.director()));
+        var created = tenantUseCase.create(new CreateTenantUseCase.CreateTenantCommand(
+                req.schoolName(), req.slug(), req.email(), req.phone(), req.address(), req.city(),
+                req.country(), req.director(), req.establishmentTypes(), req.initialState(), req.adminPassword()));
+        var tenant = created.tenant();
         return ResponseEntity.created(URI.create("/api/v1/platform/tenants/" + tenant.getId()))
-                .body(TenantResponse.from(tenant));
+                .body(TenantResponse.from(tenant, created.temporaryPassword()));
     }
 
     @Operation(summary = "List/search tenants (filters: status, city)")
@@ -66,7 +70,8 @@ public class TenantController {
     public TenantResponse update(@PathVariable Long id, @Valid @RequestBody UpdateTenantRequest req) {
         return TenantResponse.from(tenantUseCase.update(id, new CreateTenantUseCase.UpdateTenantCommand(
                 req.schoolName(), req.logo(), req.brandColor(), req.address(), req.city(),
-                req.country(), req.phone(), req.email(), req.website(), req.director())));
+                req.country(), req.phone(), req.email(), req.website(), req.director(),
+                req.accreditationNumber(), req.openingAuthorization())));
     }
 
     @Operation(summary = "Suspend a tenant (blocks all users)")
@@ -81,17 +86,18 @@ public class TenantController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void activate(@PathVariable Long id) { tenantUseCase.activate(id); }
 
-    @Operation(summary = "Change tenant status (ACTIVATE | SUSPEND | ARCHIVE)")
+    @Operation(summary = "Change tenant status (ACTIVATE | SUSPEND | ARCHIVE) via the lifecycle state machine")
     @PatchMapping("/{id}/status")
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void changeStatus(@PathVariable Long id, @RequestParam String action) {
-        switch (action.toUpperCase()) {
-            case "ACTIVATE" -> tenantUseCase.activate(id);
-            case "SUSPEND" -> tenantUseCase.suspend(id);
-            case "ARCHIVE" -> tenantUseCase.delete(id);
-            default -> throw new gn.lacaeducation.common.BusinessRuleException("Unknown status action: " + action);
-        }
+        var target = switch (action.toUpperCase()) {
+            case "ACTIVATE" -> TenantStatus.ACTIVE;
+            case "SUSPEND" -> TenantStatus.SUSPENDED;
+            case "ARCHIVE" -> TenantStatus.ARCHIVED;
+            default -> throw new BusinessRuleException("Unknown status action: " + action);
+        };
+        tenantUseCase.changeStatus(id, target);
     }
 
     @Operation(summary = "Soft-delete a tenant (archive)")

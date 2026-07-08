@@ -8,4 +8,6 @@ public class StudentParent {
     private Long studentId;
     private Long parentId;
     private Relationship relationship;
+    /** Responsable principal (« responsable 1 ») : cible des factures, relances et notifications. */
+    private boolean primaryGuardian;
 }

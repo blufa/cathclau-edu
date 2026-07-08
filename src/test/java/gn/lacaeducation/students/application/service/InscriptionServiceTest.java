@@ -7,7 +7,7 @@ import gn.lacaeducation.students.ClassCapacityPort;
 import gn.lacaeducation.students.application.port.out.EnrollmentRepository;
 import gn.lacaeducation.students.domain.Enrollment;
 import gn.lacaeducation.students.domain.EnrollmentStatus;
-import gn.lacaeducation.students.domain.EnrollmentType;
+import gn.lacaeducation.students.EnrollmentType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -33,6 +33,52 @@ class InscriptionServiceTest {
         when(enrollmentRepository.save(any())).thenAnswer(i -> { Enrollment e = i.getArgument(0); e.setId(1L); return e; });
         Enrollment result = service.enroll(new EnrollCommand(10L, 20L, 30L, EnrollmentType.NEW));
         assertThat(result.getStatus()).isEqualTo(EnrollmentStatus.PENDING);
+    }
+
+    @Test
+    void enroll_publishesEnrollmentCreatedEvent() {
+        when(enrollmentRepository.save(any())).thenAnswer(i -> { Enrollment e = i.getArgument(0); e.setId(1L); return e; });
+        service.enroll(new EnrollCommand(10L, 20L, 30L, EnrollmentType.NEW));
+        verify(eventPublisher).publishEvent(any(gn.lacaeducation.students.application.event.EnrollmentCreatedEvent.class));
+    }
+
+    @Test
+    void enroll_duplicateActiveEnrollmentForYear_throwsConflict() {
+        when(enrollmentRepository.existsActiveForStudentYear(10L, 30L)).thenReturn(true);
+        assertThatThrownBy(() -> service.enroll(new EnrollCommand(10L, 20L, 30L, EnrollmentType.NEW)))
+                .isInstanceOf(ConflictException.class);
+        verify(enrollmentRepository, never()).save(any());
+    }
+
+    @Test
+    void update_nonPendingEnrollment_throwsBusinessRule() {
+        Enrollment validated = Enrollment.builder().id(1L).studentId(10L).classId(20L)
+                .academicYearId(30L).status(EnrollmentStatus.VALIDATED).build();
+        when(enrollmentRepository.findById(1L)).thenReturn(Optional.of(validated));
+        assertThatThrownBy(() -> service.update(1L, new EnrollCommand(10L, 21L, 30L, EnrollmentType.NEW)))
+                .isInstanceOf(gn.lacaeducation.common.BusinessRuleException.class);
+    }
+
+    @Test
+    void validatePaidEnrollment_validatesMatchingPendingEnrollment() {
+        Enrollment pending = Enrollment.builder().id(1L).studentId(10L).classId(20L)
+                .academicYearId(30L).status(EnrollmentStatus.PENDING).build();
+        when(enrollmentRepository.findPendingByStudentAndClass(10L, 20L)).thenReturn(Optional.of(pending));
+        when(enrollmentRepository.existsValidatedForStudentYear(10L, 30L)).thenReturn(false);
+        when(classCapacityPort.maxCapacity(20L)).thenReturn(null);
+        when(enrollmentRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        service.validatePaidEnrollment(10L, 20L);
+
+        assertThat(pending.getStatus()).isEqualTo(EnrollmentStatus.VALIDATED);
+        verify(eventPublisher).publishEvent(any(EnrollmentValidatedEvent.class));
+    }
+
+    @Test
+    void validatePaidEnrollment_noPendingEnrollment_noop() {
+        when(enrollmentRepository.findPendingByStudentAndClass(10L, 20L)).thenReturn(Optional.empty());
+        service.validatePaidEnrollment(10L, 20L);
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     @Test

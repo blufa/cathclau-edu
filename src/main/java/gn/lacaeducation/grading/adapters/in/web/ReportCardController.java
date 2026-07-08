@@ -1,13 +1,19 @@
 package gn.lacaeducation.grading.adapters.in.web;
 
+import gn.lacaeducation.common.PortalAccess;
 import gn.lacaeducation.grading.application.port.in.ReportCardUseCase;
 import gn.lacaeducation.grading.domain.ReportCard;
 import gn.lacaeducation.grading.domain.ReportCardLine;
+import gn.lacaeducation.grading.domain.ReportCardStatus;
+import gn.lacaeducation.students.ParentAccessProvider;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -20,6 +26,25 @@ import java.util.Map;
 public class ReportCardController {
 
     private final ReportCardUseCase useCase;
+    private final ParentAccessProvider parentAccessProvider;
+
+    /**
+     * Un parent restreint ne peut consulter/télécharger que les bulletins <b>publiés</b> de ses
+     * propres enfants ; le personnel encadrant garde l'accès complet.
+     */
+    private void assertParentCanAccessReportCard(Jwt jwt, Long reportCardId) {
+        if (jwt == null) return;
+        List<String> roles = jwt.getClaimAsStringList("roles");
+        if (!PortalAccess.isRestrictedParent(roles)) return;
+        ReportCard rc = useCase.findById(reportCardId)
+                .orElseThrow(() -> new AccessDeniedException("Bulletin introuvable."));
+        Long userId;
+        try { userId = Long.parseLong(jwt.getSubject()); } catch (RuntimeException e) { userId = null; }
+        if (!parentAccessProvider.isParentOfStudent(userId, rc.getStudentId())
+                || rc.getStatus() != ReportCardStatus.PUBLISHED) {
+            throw new AccessDeniedException("Ce bulletin n'est pas accessible.");
+        }
+    }
 
     public record GenerateRequest(Long studentId, Long classId, Long periodId) {}
     public record GenerateBulkRequest(Long classId, Long periodId) {}
@@ -53,6 +78,13 @@ public class ReportCardController {
         return ResponseEntity.ok(useCase.publish(id));
     }
 
+    @Operation(summary = "Ajuster l'appréciation du conseil de classe (Félicitations, Encouragements, Mise en garde…)")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
+    @PatchMapping("/{id}/distinction")
+    public ResponseEntity<ReportCard> setDistinction(@PathVariable Long id, @RequestParam gn.lacaeducation.grading.domain.Distinction distinction) {
+        return ResponseEntity.ok(useCase.setDistinction(id, distinction));
+    }
+
     // ── Query ─────────────────────────────────────────────────────────────────
 
     @Operation(summary = "Get a report card by ID (includes status, averages, rank, honor, decision)")
@@ -84,19 +116,52 @@ public class ReportCardController {
         return useCase.findByClass(classId, periodId);
     }
 
+    @Operation(summary = "Palmarès / tableau d'honneur d'une classe (PDF) : élèves classés par rang avec mention")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','RESPONSABLE_PEDAGOGIQUE','TEACHER','SECRETARY')")
+    @GetMapping("/class/{classId}/period/{periodId}/palmares/download")
+    public ResponseEntity<byte[]> honorRollDownload(@PathVariable Long classId, @PathVariable Long periodId) {
+        return ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"palmares-classe-" + classId + "-periode-" + periodId + ".pdf\"")
+                .body(useCase.classHonorRollPdf(classId, periodId));
+    }
+
     @Operation(summary = "Get the report card for a student in a given period")
     @GetMapping("/student/{studentId}/period/{periodId}")
-    public ResponseEntity<ReportCard> findByStudent(@PathVariable Long studentId, @PathVariable Long periodId) {
-        return useCase.findByStudent(studentId, periodId).map(ResponseEntity::ok)
+    public ResponseEntity<ReportCard> findByStudent(@PathVariable Long studentId, @PathVariable Long periodId,
+                                                    @AuthenticationPrincipal Jwt jwt) {
+        boolean restrictedParent = jwt != null && PortalAccess.isRestrictedParent(jwt.getClaimAsStringList("roles"));
+        if (jwt != null) {
+            Long userId;
+            try { userId = Long.parseLong(jwt.getSubject()); } catch (RuntimeException e) { userId = null; }
+            PortalAccess.assertParentCanAccessStudent(jwt.getClaimAsStringList("roles"), userId, studentId,
+                    parentAccessProvider::isParentOfStudent);
+        }
+        return useCase.findByStudent(studentId, periodId)
+                // Un parent ne voit que les bulletins publiés.
+                .filter(rc -> !restrictedParent || rc.getStatus() == ReportCardStatus.PUBLISHED)
+                .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @Operation(summary = "Get the report card PDF URL (triggers async generation if not yet available)")
     @GetMapping("/{id}/pdf")
-    public ResponseEntity<Map<String, String>> pdf(@PathVariable Long id) {
+    public ResponseEntity<Map<String, String>> pdf(@PathVariable Long id, @AuthenticationPrincipal Jwt jwt) {
+        assertParentCanAccessReportCard(jwt, id);
         return useCase.getPdf(id)
                 .map(url -> ResponseEntity.ok(Map.of("url", url)))
                 .orElseGet(() -> { useCase.generatePdfAsync(id); return ResponseEntity.accepted().body(Map.of("status", "GENERATING")); });
+    }
+
+    @Operation(summary = "Stream the report card PDF bytes (inline) — independent of Cloudinary delivery")
+    @GetMapping("/{id}/pdf/download")
+    public ResponseEntity<byte[]> pdfDownload(@PathVariable Long id, @AuthenticationPrincipal Jwt jwt) {
+        assertParentCanAccessReportCard(jwt, id);
+        return ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"bulletin-" + id + ".pdf\"")
+                .body(useCase.pdfBytes(id));
     }
 
     @Operation(summary = "Get the subject-by-subject detail lines of a report card")

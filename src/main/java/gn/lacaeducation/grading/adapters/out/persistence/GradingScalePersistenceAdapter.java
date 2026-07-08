@@ -26,6 +26,9 @@ class GradingScalePersistenceAdapter implements GradingScaleRepository {
         e.setAssezBienMin(s.getAssezBienMin());
         e.setBienMin(s.getBienMin());
         e.setTresBienMin(s.getTresBienMin());
+        e.setFelicitationsMin(s.getFelicitationsMin());
+        e.setComplimentsMin(s.getComplimentsMin());
+        e.setDistinctionNoFailingThreshold(s.getDistinctionNoFailingThreshold());
         return toDomain(repo.save(e));
     }
 
@@ -34,6 +37,8 @@ class GradingScalePersistenceAdapter implements GradingScaleRepository {
                 .id(e.getId()).tenantId(e.getTenantId())
                 .passThreshold(e.getPassThreshold()).passableMin(e.getPassableMin())
                 .assezBienMin(e.getAssezBienMin()).bienMin(e.getBienMin()).tresBienMin(e.getTresBienMin())
+                .felicitationsMin(e.getFelicitationsMin()).complimentsMin(e.getComplimentsMin())
+                .distinctionNoFailingThreshold(e.getDistinctionNoFailingThreshold())
                 .build();
     }
 }

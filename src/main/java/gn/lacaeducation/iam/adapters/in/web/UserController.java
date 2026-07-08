@@ -122,9 +122,21 @@ public class UserController {
         return userUseCase.findUserRoles(id).stream().map(Role::getName).toList();
     }
 
+    public record ResetAccessRequest(String password) {}
+
+    @Operation(summary = "(Ré)initialiser l'accès d'un compte : renvoie l'identifiant et un mot de passe "
+            + "temporaire (ou celui fourni) à changer à la première connexion")
+    @PostMapping("/{id}/reset-access")
+    @PreAuthorize("hasAuthority('user:update')")
+    public UserUseCase.TemporaryAccess resetAccess(@PathVariable Long id,
+                                                   @RequestBody(required = false) ResetAccessRequest req) {
+        return userUseCase.resetAccess(id, req != null ? req.password() : null);
+    }
+
     private UserResponse toResponse(gn.lacaeducation.iam.domain.User u) {
         return new UserResponse(u.getId(), u.getTenantId(), u.getFirstName(), u.getLastName(),
-                u.getEmail(), u.getPhone(), u.getActive(), u.getLastLoginAt(), u.getCreatedAt());
+                u.getUsername(), u.getEmail(), u.getPhone(), u.getActive(), u.isMustChangePassword(),
+                u.getPlainTemporaryPassword(), u.getLastLoginAt(), u.getCreatedAt());
     }
 
     record UpdateUserRequest(String firstName, String lastName, String phone, Boolean active) {}

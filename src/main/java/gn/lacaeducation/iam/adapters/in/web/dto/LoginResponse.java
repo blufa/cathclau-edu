@@ -8,5 +8,6 @@ public record LoginResponse(
         long expiresIn,
         Long userId,
         Long tenantId,
-        List<String> roles
+        List<String> roles,
+        boolean mustChangePassword
 ) {}

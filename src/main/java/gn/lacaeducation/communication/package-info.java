@@ -4,9 +4,11 @@
         "students",
         "attendance::events",
         "grading::events",
+        "billing::events",
         "payments", "payments::events",
         "academics",
-        "platform"
+        "iam",
+        "platform", "platform::events"
     }
 )
 package gn.lacaeducation.communication;

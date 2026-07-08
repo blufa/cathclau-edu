@@ -22,7 +22,14 @@ public record DjomyProperties(
         /** ISO country code sent on payment creation (default GN). */
         String defaultCountry,
         /** Methods shown on the Djomy portal (allowedPaymentMethods); default = all portal methods. */
-        List<String> allowedMethods) {
+        List<String> allowedMethods,
+        /** Secret used to verify inbound webhook signatures; falls back to {@code clientSecret} when unset. */
+        String webhookSecret) {
+
+    /** The secret that signs inbound webhooks (dedicated webhook key if set, else the API client secret). */
+    public String webhookSecretOrClientSecret() {
+        return webhookSecret == null || webhookSecret.isBlank() ? clientSecret : webhookSecret;
+    }
 
     public String currencyOrDefault() {
         return currency == null || currency.isBlank() ? "GNF" : currency;

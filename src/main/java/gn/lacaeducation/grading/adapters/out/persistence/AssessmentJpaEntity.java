@@ -15,6 +15,7 @@ public class AssessmentJpaEntity {
     @Column(name = "teacher_id", nullable = false) private Long teacherId;
     @Column(name = "period_id", nullable = false) private Long periodId;
     @Enumerated(EnumType.STRING) @Column(nullable = false) private AssessmentType type;
+    @Column(name = "assessment_type_id") private Long assessmentTypeId;
     @Column(nullable = false) private String label;
     @Column(nullable = false) private LocalDate date;
     @Column(nullable = false, precision = 5, scale = 2) private BigDecimal coefficient;

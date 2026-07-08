@@ -25,6 +25,12 @@ class InscriptionPersistenceAdapter implements EnrollmentRepository {
     @Override public boolean existsValidatedForStudentYear(Long sid, Long aid) {
         return repo.existsByStudentIdAndAcademicYearIdAndStatus(sid, aid, EnrollmentStatus.VALIDATED);
     }
+    @Override public boolean existsActiveForStudentYear(Long sid, Long aid) {
+        return repo.existsByStudentIdAndAcademicYearIdAndStatusNot(sid, aid, EnrollmentStatus.CANCELLED);
+    }
+    @Override public Optional<Enrollment> findPendingByStudentAndClass(Long sid, Long cid) {
+        return repo.findFirstByStudentIdAndClassIdAndStatus(sid, cid, EnrollmentStatus.PENDING).map(mapper::toDomain);
+    }
     @Override public List<Enrollment> search(Long sid, Long cid, Long aid, EnrollmentStatus status) {
         return repo.search(sid, cid, aid, status).stream().map(mapper::toDomain).toList();
     }

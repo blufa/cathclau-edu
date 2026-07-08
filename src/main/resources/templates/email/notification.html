@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title th:text="${subject}">Notification</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Segoe UI',Arial,sans-serif; background:#f1f5f9; color:#334155; }
+    .wrapper { max-width:600px; margin:32px auto; background:#fff; border-radius:14px; overflow:hidden; box-shadow:0 4px 16px rgba(15,23,42,.08); }
+    .header { background:linear-gradient(105deg,#14b8a6,#0f766e); color:#fff; padding:28px 32px; }
+    .header h1 { font-size:20px; font-weight:700; letter-spacing:-.01em; }
+    .header p { font-size:13px; opacity:.85; margin-top:4px; }
+    .body { padding:32px; }
+    .body h2 { font-size:18px; color:#0f172a; margin-bottom:16px; }
+    .body p { font-size:14px; line-height:1.6; color:#475569; }
+    .btn { display:inline-block; background:linear-gradient(105deg,#14b8a6,#0f766e); color:#fff!important; padding:13px 30px; border-radius:9999px; text-decoration:none; font-size:14px; font-weight:600; margin:24px 0 8px; }
+    .link-fallback { font-size:12px; color:#94a3b8; word-break:break-all; margin-top:8px; }
+    .footer { background:#f8fafc; padding:20px 32px; text-align:center; font-size:12px; color:#94a3b8; border-top:1px solid #e2e8f0; }
+  </style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="header">
+    <h1 th:text="${schoolName}">CathClau Edu</h1>
+    <p>Plateforme de gestion scolaire</p>
+  </div>
+  <div class="body">
+    <h2 th:text="${subject}">Notification</h2>
+    <p th:utext="${bodyHtml}">Message</p>
+    <div th:if="${actionUrl}" style="text-align:center;">
+      <a class="btn" th:href="${actionUrl}" th:text="${actionLabel}">Ouvrir</a>
+      <p class="link-fallback">
+        Si le bouton ne fonctionne pas, copiez ce lien : <span th:text="${actionUrl}">—</span>
+      </p>
+    </div>
+  </div>
+  <div class="footer">
+    <p>Ce message a été envoyé automatiquement. Merci de ne pas y répondre.</p>
+    <p style="margin-top:6px;" th:text="${schoolName}">CathClau Edu</p>
+  </div>
+</div>
+</body>
+</html>

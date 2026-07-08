@@ -39,8 +39,9 @@ public final class DjomySignature {
      */
     public static boolean verifyWebhook(String rawBody, String signatureHeader, String clientSecret) {
         if (signatureHeader == null || !signatureHeader.startsWith("v1:")) return false;
-        String provided = signatureHeader.substring(3);
-        String expected = hmacHex(rawBody, clientSecret);
+        // Hex is case-insensitive — normalise both sides so an upper-case digest still matches.
+        String provided = signatureHeader.substring(3).trim().toLowerCase();
+        String expected = hmacHex(rawBody, clientSecret).toLowerCase();
         return MessageDigest.isEqual(
                 provided.getBytes(StandardCharsets.UTF_8),
                 expected.getBytes(StandardCharsets.UTF_8));

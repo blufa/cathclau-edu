@@ -20,4 +20,9 @@ class EnrollmentQueryAdapter implements EnrollmentQueryPort {
     public List<Long> findValidatedStudentIdsByClassId(Long classId) {
         return enrollmentJpaRepository.findValidatedStudentIdsByClassId(classId);
     }
+
+    @Override
+    public boolean hasActiveEnrollment(Long studentId) {
+        return enrollmentJpaRepository.existsActiveByStudentId(studentId);
+    }
 }

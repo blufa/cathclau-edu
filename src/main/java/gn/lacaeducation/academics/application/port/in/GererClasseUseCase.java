@@ -10,7 +10,7 @@ public interface GererClasseUseCase {
     Optional<Classe> findById(Long id);
     List<Classe> findByAcademicYear(Long academicYearId);
     List<Classe> findByTenantId(Long tenantId);
-    ClasseMatiere assignSubject(Long classId, Long subjectId, Long teacherId);
+    ClasseMatiere assignSubject(Long classId, Long subjectId, Long teacherId, java.math.BigDecimal coefficient);
     void removeSubject(Long classSubjectId);
     List<ClasseMatiere> findSubjects(Long classId);
     void delete(Long id);

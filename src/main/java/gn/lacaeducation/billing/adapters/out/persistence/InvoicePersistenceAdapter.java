@@ -18,6 +18,7 @@ class InvoicePersistenceAdapter implements InvoiceRepository {
     @Override public List<Invoice> findByTenantIdAndStatus(Long t, InvoiceStatus s) { return jpa.findByTenantIdAndStatus(t, s).stream().map(mapper::toDomain).toList(); }
     @Override public List<Invoice> findByFeeId(Long feeId) { return jpa.findByFeeId(feeId).stream().map(mapper::toDomain).toList(); }
     @Override public boolean existsByStudentIdAndFeeId(Long studentId, Long feeId) { return jpa.existsByStudentIdAndFeeId(studentId, feeId); }
+    @Override public boolean existsByStudentIdAndInstallmentId(Long studentId, Long installmentId) { return jpa.existsByStudentIdAndInstallmentId(studentId, installmentId); }
     @Override public void deleteById(Long id) { jpa.deleteById(id); }
     @Override public boolean existsById(Long id) { return jpa.existsById(id); }
 }

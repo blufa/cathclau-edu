@@ -89,8 +89,4 @@ CREATE TABLE plan_change (
     created_at       TIMESTAMP     NOT NULL DEFAULT NOW()
 );
 
--- Default plans (amounts in GNF — Guinean Franc)
-INSERT INTO plan (name, code, student_limit, monthly_price, annual_price, description) VALUES
-    ('Starter',  'STARTER',  500,  25000.00,  250000.00,  'Up to 500 students'),
-    ('Standard', 'STANDARD', 2000, 75000.00,  750000.00,  'Up to 2000 students'),
-    ('Premium',  'PREMIUM',  NULL, 150000.00, 1500000.00, 'Unlimited students');
+-- No default plans are seeded: the SUPER_ADMIN creates the plans from the platform UI.

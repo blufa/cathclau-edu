@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import java.time.LocalDate;
+import java.time.LocalTime;
 @Entity @Table(name = "teacher_attendances")
 @Getter @Setter @NoArgsConstructor
 class TeacherAttendanceJpaEntity {
@@ -13,4 +14,6 @@ class TeacherAttendanceJpaEntity {
     private LocalDate date;
     @Enumerated(EnumType.STRING) private TeacherAttendanceStatus status;
     private String reason;
+    @Column(name = "check_in_time") private LocalTime checkInTime;
+    @Column(name = "late_minutes") private Integer lateMinutes;
 }

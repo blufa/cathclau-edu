@@ -16,4 +16,6 @@ public class ClasseMatiere {
     private Long schoolClassId;
     private Long subjectId;
     private Long teacherId;
+    /** Coefficient de la matière pour cette classe (null = coefficient par défaut de la matière). */
+    private java.math.BigDecimal coefficient;
 }

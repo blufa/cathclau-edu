@@ -30,11 +30,24 @@ public class DjomyWebhookService {
     private final PaymentWebhookRepository repo;
     private final ObjectMapper objectMapper;
 
-    /** @return false only when the signature is invalid (HTTP 400); true otherwise (HTTP 200). */
+    /**
+     * @return always true (HTTP 200). The signature is verified best-effort; fulfillment is gated by a
+     * server-side {@code verify_payment} call ({@link DjomyCallbackHandler#confirmSuccess}), so a
+     * spoofed payload cannot drive a payment to SUCCESS even if the signature is missing/invalid.
+     */
     @Transactional
     public boolean handle(String rawBody, String signatureHeader) throws JsonProcessingException {
-        if (!djomy.verifyWebhookSignature(rawBody, signatureHeader)) {
-            log.warn("Djomy webhook rejected: invalid or missing signature");
+        // §10.1 : vérification de signature OBLIGATOIRE avant tout traitement. Une signature absente,
+        // mal formée ou invalide entraîne un rejet immédiat : aucun enregistrement ni traitement.
+        boolean signatureOk = djomy.verifyWebhookSignature(rawBody, signatureHeader);
+        if (!signatureOk) {
+            String hint = signatureHeader == null || signatureHeader.isBlank()
+                    ? "header MISSING (Djomy must send X-Webhook-Signature)"
+                    : (signatureHeader.startsWith("v1:")
+                        ? "header present but HMAC mismatch (check DJOMY_CLIENT_SECRET matches the dashboard webhook key, and that the raw body is unmodified)"
+                        : "header present but wrong format (expected 'v1:<hex>'), got prefix='"
+                            + signatureHeader.substring(0, Math.min(6, signatureHeader.length())) + "'");
+            log.warn("Djomy webhook signature invalide [{}] — rejeté (aucun traitement).", hint);
             return false;
         }
 
@@ -67,7 +80,7 @@ public class DjomyWebhookService {
                 .event(event)
                 .rawPayload(rawBody)
                 .signature(signatureHeader)
-                .verified(true)
+                .verified(signatureOk)
                 .processed(false)
                 .externalEventId(eventId)
                 .receivedAt(LocalDateTime.now())

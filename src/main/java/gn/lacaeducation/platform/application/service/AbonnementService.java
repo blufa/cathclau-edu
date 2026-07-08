@@ -121,6 +121,14 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
         return subscriptionRepository.findActiveByTenantId(tenantId);
     }
 
+    @Override @Transactional(readOnly = true)
+    public Optional<Subscription> findLatestForCurrentTenant() {
+        Long tenantId = gn.lacaeducation.common.TenantContext.get();
+        if (tenantId == null) return Optional.empty();
+        return subscriptionRepository.findByTenantId(tenantId).stream()
+                .max(java.util.Comparator.comparing(Subscription::getId));
+    }
+
     @Override
     public void suspend(Long subscriptionId) {
         Subscription s = subscriptionRepository.findById(subscriptionId)
@@ -304,6 +312,26 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
     }
 
     @Override
+    public SubscriptionPayment confirmViaDjomy(Long paymentId) throws JsonProcessingException {
+        SubscriptionPayment payment = paymentRepository.findById(paymentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Payment not found: " + paymentId));
+        if (payment.getStatus() == PaymentStatus.SUCCESSFUL) {
+            return payment; // idempotent : déjà confirmé/activé
+        }
+        if (payment.getExternalTransactionId() == null || payment.getExternalTransactionId().isBlank()) {
+            return payment; // aucune transaction Djomy à vérifier (ex. avant redirection)
+        }
+        // Activation automatique « comme le webhook » : dès que Djomy confirme le succès, on active.
+        // Tant que la transaction n'est pas réussie, on renvoie le statut courant sans rien changer.
+        if (djomyGatewayApi.isConfirmedSuccess(payment.getExternalTransactionId())) {
+            log.info("Activation automatique de l'abonnement via statut Djomy (paiement id={}, tx={})",
+                    paymentId, payment.getExternalTransactionId());
+            return confirm(paymentId, payment.getExternalTransactionId());
+        }
+        return payment;
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public DjomyStatusResponse checkDjomyStatus(Long paymentId) throws JsonProcessingException {
         SubscriptionPayment payment = paymentRepository.findById(paymentId)
@@ -433,7 +461,13 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
         return subscriptionRepository.findActiveByTenantId(tenantId)
                 .flatMap(s -> planRepository.findById(s.getPlanId()))
                 .map(plan -> plan.getStudentLimit() == null || currentStudentCount < plan.getStudentLimit())
-                .orElse(false);
+                // No paid subscription → free trial: respect the default trial plan limit if one is
+                // defined (null = unlimited), otherwise allow (don't block schools that are just trying it).
+                .orElseGet(() -> planRepository.findAll().stream()
+                        .filter(p -> Boolean.TRUE.equals(p.getDefaultTrial()))
+                        .findFirst()
+                        .map(plan -> plan.getStudentLimit() == null || currentStudentCount < plan.getStudentLimit())
+                        .orElse(true));
     }
 
     private String pdfUrl(String resource, String reference) {

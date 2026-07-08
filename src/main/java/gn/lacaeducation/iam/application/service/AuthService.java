@@ -16,7 +16,7 @@ import gn.lacaeducation.iam.domain.Permission;
 import gn.lacaeducation.iam.domain.PasswordResetToken;
 import gn.lacaeducation.iam.domain.RefreshToken;
 import gn.lacaeducation.iam.domain.User;
-import gn.lacaeducation.platform.TenantInfoProvider;
+import gn.lacaeducation.common.TenantInfoProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
@@ -54,8 +54,10 @@ public class AuthService implements AuthUseCase {
 
     @Override
     public LoginResult authenticate(LoginCommand command) {
-        User user = userRepository.findByEmail(command.email())
-                .orElseThrow(() -> new BadCredentialsException("Invalid email or password"));
+        // Comptes créés par l'école → username ; self-service → email. On accepte les deux.
+        User user = userRepository.findByUsername(command.identifier())
+                .or(() -> userRepository.findByEmail(command.identifier()))
+                .orElseThrow(() -> new BadCredentialsException("Invalid credentials"));
 
         if (!Boolean.TRUE.equals(user.getActive())) {
             throw new DisabledException("Account disabled");
@@ -85,7 +87,7 @@ public class AuthService implements AuthUseCase {
         userRepository.save(user);
 
         List<String> roles = rolesOf(user.getId());
-        List<String> permissions = permissionsOf(user.getId());
+        List<String> permissions = permissionsFor(user.getId(), roles);
 
         String accessToken = tokenGenerator.generate(user.getId(), user.getTenantId(), roles, permissions);
         String refreshTokenValue = generateRefreshTokenForUser(user.getId());
@@ -93,7 +95,7 @@ public class AuthService implements AuthUseCase {
         eventPublisher.publishEvent(new UserLoggedInEvent(user.getId(), user.getTenantId(), user.getLastLoginAt()));
 
         return new LoginResult(accessToken, refreshTokenValue, jwtExpiration,
-                user.getId(), user.getTenantId(), roles);
+                user.getId(), user.getTenantId(), roles, user.isMustChangePassword());
     }
 
     @Override
@@ -118,14 +120,14 @@ public class AuthService implements AuthUseCase {
         requireActiveTenant(user);
 
         List<String> roles = rolesOf(user.getId());
-        List<String> permissions = permissionsOf(user.getId());
+        List<String> permissions = permissionsFor(user.getId(), roles);
 
         String accessToken = tokenGenerator.generate(user.getId(), user.getTenantId(), roles, permissions);
         String newRefreshToken = generateRefreshTokenForUser(user.getId());
         refreshTokenRepository.revokeByToken(refreshTokenValue);
 
         return new LoginResult(accessToken, newRefreshToken, jwtExpiration,
-                user.getId(), user.getTenantId(), roles);
+                user.getId(), user.getTenantId(), roles, user.isMustChangePassword());
     }
 
     @Override
@@ -164,6 +166,7 @@ public class AuthService implements AuthUseCase {
                 .orElseThrow(() -> new ResourceNotFoundException("User", resetToken.getUserId()));
 
         user.setPasswordHash(passwordHasher.hash(command.newPassword()));
+        user.setMustChangePassword(false);
         userRepository.save(user);
 
         resetToken.setUsed(true);
@@ -184,6 +187,7 @@ public class AuthService implements AuthUseCase {
         }
 
         user.setPasswordHash(passwordHasher.hash(command.newPassword()));
+        user.setMustChangePassword(false);
         userRepository.save(user);
 
         refreshTokenRepository.revokeAllByUserId(user.getId());
@@ -216,6 +220,18 @@ public class AuthService implements AuthUseCase {
         return permissionRepository.findByUserId(userId).stream()
                 .map(Permission::getCode)
                 .toList();
+    }
+
+    /**
+     * Effective permissions embedded in the JWT. SUPER_ADMIN is a platform-wide superuser and is
+     * granted the entire permission catalogue, so it can access everything regardless of explicit
+     * role-permission assignments (and automatically inherits any newly added permission).
+     */
+    private List<String> permissionsFor(Long userId, List<String> roles) {
+        if (roles.contains("SUPER_ADMIN")) {
+            return permissionRepository.findAll().stream().map(Permission::getCode).distinct().toList();
+        }
+        return permissionsOf(userId);
     }
 
     private String generateRefreshTokenForUser(Long userId) {

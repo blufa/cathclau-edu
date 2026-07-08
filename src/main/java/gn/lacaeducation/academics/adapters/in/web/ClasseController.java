@@ -17,6 +17,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -68,6 +69,16 @@ public class ClasseController {
                 cmd.headTeacherId(), cmd.roomId(), cmd.label(), cmd.maxCapacity()));
     }
 
+    @Operation(summary = "Désigner (ou retirer) le professeur principal de la classe, depuis le tableau matières/enseignants")
+    @PatchMapping("/{id}/head-teacher")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    public Classe setHeadTeacher(@PathVariable Long id, @RequestParam(required = false) Long teacherId) {
+        Classe c = useCase.findById(id)
+                .orElseThrow(() -> new gn.lacaeducation.common.ResourceNotFoundException("Classe", id));
+        return useCase.update(id, new CreateClassCommand(TenantContext.get(), c.getLevelId(), c.getAcademicYearId(),
+                teacherId, c.getRoomId(), c.getLabel(), c.getMaxCapacity()));
+    }
+
     @Operation(summary = "Delete a class")
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
@@ -94,8 +105,9 @@ public class ClasseController {
     public ResponseEntity<ClasseMatiere> assignSubject(
             @PathVariable Long classId,
             @RequestParam Long subjectId,
-            @RequestParam(required = false) Long teacherId) {
-        return ResponseEntity.ok(useCase.assignSubject(classId, subjectId, teacherId));
+            @RequestParam(required = false) Long teacherId,
+            @RequestParam(required = false) java.math.BigDecimal coefficient) {
+        return ResponseEntity.ok(useCase.assignSubject(classId, subjectId, teacherId, coefficient));
     }
 
     @Operation(summary = "List all subjects assigned to a class")

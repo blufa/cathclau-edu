@@ -18,4 +18,11 @@ public class InvoiceJpaEntity {
     @Column(name = "remaining_balance", nullable = false, precision = 15, scale = 2) private BigDecimal remainingBalance;
     @Enumerated(EnumType.STRING) @Column(nullable = false) private InvoiceStatus status;
     @Column(name = "issue_date", nullable = false) private LocalDate issueDate;
+    @Column(name = "pdf_file", length = 1024) private String pdfFile;
+    @Column(name = "installment_id") private Long installmentId;
+    @Column(name = "period_label", length = 60) private String periodLabel;
+    @Column(name = "discount_amount", precision = 15, scale = 2) private BigDecimal discountAmount;
+    @Column(name = "discount_reason", length = 255) private String discountReason;
+    @Enumerated(EnumType.STRING) @Column(name = "recovery_stage", length = 16) private gn.lacaeducation.billing.domain.RecoveryStage recoveryStage;
+    @Column(name = "last_reminder_at") private java.time.LocalDate lastReminderAt;
 }

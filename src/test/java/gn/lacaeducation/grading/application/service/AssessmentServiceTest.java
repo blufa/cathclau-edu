@@ -26,10 +26,13 @@ class AssessmentServiceTest {
 
     @Mock AssessmentRepository repo;
     @Mock AcademicsDataProvider academicsDataProvider;
+    @Mock gn.lacaeducation.grading.application.port.out.AssessmentSessionSettingsRepository sessionSettingsRepository;
+    @Mock gn.lacaeducation.grading.application.port.out.AssessmentTypeConfigRepository assessmentTypeConfigRepository;
+    @Mock org.springframework.context.ApplicationEventPublisher eventPublisher;
     @InjectMocks AssessmentService service;
 
     private CreateAssessmentCommand cmd() {
-        return new CreateAssessmentCommand(10L, 1L, 100L, 5L, 2L, AssessmentType.HOMEWORK,
+        return new CreateAssessmentCommand(10L, 1L, 100L, 5L, 2L, AssessmentType.HOMEWORK, null,
                 "Devoir 1", LocalDate.of(2026, 1, 15), BigDecimal.ONE, BigDecimal.valueOf(20));
     }
 

@@ -32,6 +32,21 @@ class TenantPersistenceAdapter implements TenantRepository {
     }
 
     @Override
+    public Optional<Tenant> findBySlug(String slug) {
+        return jpaRepository.findBySlug(slug).map(mapper::toDomain);
+    }
+
+    @Override
+    public boolean existsByEmail(String email) {
+        return jpaRepository.existsByEmail(email);
+    }
+
+    @Override
+    public boolean existsBySlug(String slug) {
+        return jpaRepository.existsBySlug(slug);
+    }
+
+    @Override
     public List<Tenant> findAll() {
         return jpaRepository.findAll().stream().map(mapper::toDomain).toList();
     }

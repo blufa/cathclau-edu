@@ -16,10 +16,19 @@ public class InstallmentController {
     private final InstallmentUseCase useCase;
     public record CreateRequest(Long feeId, String label, BigDecimal amount, LocalDate dueDate) {}
     public record UpdateRequest(String label, BigDecimal amount, LocalDate dueDate) {}
+    public record TermRequest(String label, BigDecimal percentage, LocalDate dueDate) {}
+    public record GenerateTermsRequest(Long feeId, BigDecimal annualTotal, List<TermRequest> terms) {}
     @Operation(summary = "Create a new installment deadline for a school fee")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
     @PostMapping public ResponseEntity<Installment> create(@RequestBody CreateRequest r) {
         return ResponseEntity.ok(useCase.create(new InstallmentUseCase.CreateInstallmentCommand(r.feeId(), r.label(), r.amount(), r.dueDate())));
+    }
+    @Operation(summary = "Générer des échéances trimestrielles pondérées (ex. 40/30/30) depuis un total annuel")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PostMapping("/generate-terms") public List<Installment> generateTerms(@RequestBody GenerateTermsRequest r) {
+        List<InstallmentUseCase.TermSpec> terms = r.terms().stream()
+                .map(t -> new InstallmentUseCase.TermSpec(t.label(), t.percentage(), t.dueDate())).toList();
+        return useCase.generateTerms(new InstallmentUseCase.GenerateTermsCommand(r.feeId(), r.annualTotal(), terms));
     }
     @Operation(summary = "Update an installment deadline")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")

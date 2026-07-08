@@ -76,9 +76,11 @@ class VerifierQuotaElevesTest {
     }
 
     @Test
-    void isQuotaAvailable_noActiveSubscription_returnsFalse() {
+    void isQuotaAvailable_noSubscriptionNoTrialPlan_allowsTrial() {
         when(subscriptionRepository.findActiveByTenantId(99L)).thenReturn(Optional.empty());
 
-        assertThat(abonnementService.isQuotaAvailable(99L, 0)).isFalse();
+        // Sans abonnement payant et sans plan d'essai par défaut, on n'empêche pas une école en
+        // phase d'essai de créer des élèves (choix produit).
+        assertThat(abonnementService.isQuotaAvailable(99L, 0)).isTrue();
     }
 }
