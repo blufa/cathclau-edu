@@ -1,0 +1,16 @@
+# Reverse proxy + HTTPS automatique (Let's Encrypt) pour cathclau-edu.com.
+# Caddy obtient et renouvelle les certificats tout seul (ports 80/443 ouverts requis).
+
+cathclau-edu.com, www.cathclau-edu.com {
+	encode zstd gzip
+	reverse_proxy frontend:3000
+}
+
+api.cathclau-edu.com {
+	encode zstd gzip
+	# Corps volumineux autorisés (upload de documents/photos côté API : max 20 Mo).
+	request_body {
+		max_size 20MB
+	}
+	reverse_proxy backend:8284
+}

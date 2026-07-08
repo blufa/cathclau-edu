@@ -35,3 +35,7 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Secrets de déploiement (garder les *.example)
+deploy/.env.prod
+deploy/.env.dev

@@ -1,0 +1,25 @@
+# Reverse-proxy partagé (Caddy) — HTTPS automatique pour les deux environnements.
+# Démarré une seule fois :  docker compose -p proxy up -d
+# Rejoint le réseau « web » où vivent les conteneurs backend/frontend de chaque stack.
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: proxy-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [web]
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+networks:
+  web:
+    external: true
+    name: web

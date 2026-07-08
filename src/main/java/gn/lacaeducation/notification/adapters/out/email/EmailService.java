@@ -22,6 +22,10 @@ public class EmailService {
     @Value("${app.mail.min-interval-ms:1100}")
     private long minIntervalMs;
 
+    /** Expéditeur des emails (obligatoire pour la plupart des SMTP réels). Configurable par env APP_MAIL_FROM. */
+    @Value("${app.mail.from:CathClau Edu <no-reply@cathclau-edu.com>}")
+    private String from;
+
     private static final Object SEND_LOCK = new Object();
     private static long lastSentAt = 0L;
 
@@ -55,6 +59,7 @@ public class EmailService {
             MimeMessage msg = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(msg, MimeMessageHelper.MULTIPART_MODE_MIXED_RELATED,
                     StandardCharsets.UTF_8.name());
+            helper.setFrom(from);
             helper.setTo(to);
             helper.setSubject(subject);
             helper.setText(html, true);

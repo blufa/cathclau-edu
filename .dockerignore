@@ -1,0 +1,13 @@
+target/
+.git/
+.github/
+.idea/
+.vscode/
+*.iml
+.env
+.env.local
+deploy/
+features/
+*.md
+HELP.md
+.DS_Store
