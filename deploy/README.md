@@ -72,6 +72,17 @@ ufw allow 22 && ufw allow 80 && ufw allow 443 && ufw --force enable
 docker network create web                          # réseau partagé proxy <-> applications
 mkdir -p /opt/lacaeducation/proxy
 ```
+
+> ⚠️ **DNS des conteneurs (piège fréquent Contabo / `systemd-resolved`)** : sans ça, les conteneurs
+> ne résolvent aucun domaine (`127.0.0.53:53 connection refused`) → **Caddy ne peut pas obtenir de
+> certificat HTTPS** et le backend ne joint pas Cloudinary/Djomy/SMTP. Fixez le DNS Docker :
+> ```bash
+> mkdir -p /etc/docker
+> cat > /etc/docker/daemon.json <<'EOF'
+> { "dns": ["1.1.1.1", "8.8.8.8"] }
+> EOF
+> systemctl restart docker
+> ```
 Vérifier : `docker --version` et `docker compose version` doivent répondre.
 **Rien d'autre à installer** (pas de Java, Node, PostgreSQL ni Nginx : tout est conteneurisé).
 
@@ -147,8 +158,91 @@ api-dev.cathclau-edu.com {
 }
 EOF
 ```
-Le fichier `docker-compose.yml` de l'application (celui à la racine `/opt/lacaeducation/`) et les
-`.env.*.example` restent copiés via la Méthode A (ou recréés de la même façon).
+Puis créez le **`docker-compose.yml` de l'application** (racine `/opt/lacaeducation/`) — copiez-collez
+ce bloc entier sur le VPS :
+```bash
+cat > /opt/lacaeducation/docker-compose.yml <<'COMPOSE_EOF'
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ${STACK}-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${DB_HOST_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [internal]
+
+  backend:
+    image: ghcr.io/${GHCR_OWNER}/lacaeducation-backend:${BACKEND_TAG}
+    container_name: ${STACK}-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILE}
+      SERVER_PORT: "8284"
+      DB_URL: jdbc:postgresql://db:5432/${POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET}
+      APP_QR_SECRET: ${APP_QR_SECRET}
+      BOOTSTRAP_SUPERADMIN_EMAIL: ${SUPER_ADMIN_EMAIL}
+      BOOTSTRAP_SUPERADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD}
+      APP_CORS_ALLOWED_ORIGINS: ${FRONT_URL}
+      VERIFICATION_URL: ${FRONT_URL}/verify-email
+      APP_PLATFORM_VERIFICATION_URL: ${FRONT_URL}/verify-email
+      APP_PLATFORM_LOGIN_URL: ${FRONT_URL}/login
+      MAIL_HOST: ${MAIL_HOST}
+      MAIL_PORT: ${MAIL_PORT}
+      MAIL_USERNAME: ${MAIL_USERNAME}
+      MAIL_PASSWORD: ${MAIL_PASSWORD}
+      APP_MAIL_FROM: ${MAIL_FROM}
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
+      DJOMY_CLIENT_ID: ${DJOMY_CLIENT_ID}
+      DJOMY_CLIENT_SECRET: ${DJOMY_CLIENT_SECRET}
+      DJOMY_BASE_URL: ${DJOMY_BASE_URL}
+      DJOMY_WEBHOOK_SECRET: ${DJOMY_WEBHOOK_SECRET}
+      DJOMY_RETURN_URL: ${FRONT_URL}/subscription/payment
+      DJOMY_CANCEL_URL: ${FRONT_URL}/subscription/payment
+    expose:
+      - "8284"
+    networks: [internal, web]
+
+  frontend:
+    image: ghcr.io/${GHCR_OWNER}/lacaeducation-frontend:${FRONTEND_TAG}
+    container_name: ${STACK}-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    expose:
+      - "3000"
+    networks: [web]
+
+volumes:
+  pgdata:
+
+networks:
+  internal:
+  web:
+    external: true
+    name: web
+COMPOSE_EOF
+```
+Les fichiers `.env.prod` / `.env.dev` se créent à la section suivante.
 
 ### Fichiers de variables d'environnement à créer (sur le VPS)
 De retour sur le VPS, créez les vrais fichiers de secrets à partir des exemples :
