@@ -68,7 +68,8 @@ public class StudentController {
                 TenantContext.get(), cmd.userId(), cmd.studentNumber(), cmd.firstName(), cmd.lastName(),
                 cmd.gender(), cmd.birthDate(), cmd.birthPlace(), cmd.address(), cmd.phone(), cmd.email(), cmd.nationality(), cmd.originSchool(), cmd.photo(),
                 cmd.birthCertificateNumber(), cmd.bloodGroup(), cmd.neighborhood(), cmd.landmark(),
-                cmd.previousClass(), cmd.repeating(), cmd.transferReason(), cmd.medicalNotes()));
+                cmd.previousClass(), cmd.repeating(), cmd.transferReason(), cmd.medicalNotes(),
+                cmd.createLogin(), cmd.loginPassword()));
         return ResponseEntity.created(URI.create("/api/v1/students/" + s.getId())).body(s);
     }
 

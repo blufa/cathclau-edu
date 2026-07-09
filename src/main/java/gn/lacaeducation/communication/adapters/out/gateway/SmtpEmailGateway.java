@@ -31,7 +31,7 @@ public class SmtpEmailGateway implements NotificationGateway {
     private final JavaMailSender mailSender;
     private final TemplateEngine templateEngine;
 
-    @Value("${app.mail.from:CathClau Edu <no-reply@cathclau.edu>}")
+    @Value("${app.mail.from:CathClau Edu <no-reply@cathclau-edu.com>}")
     private String from;
 
     @Value("${app.mail.brand-name:CathClau Edu}")

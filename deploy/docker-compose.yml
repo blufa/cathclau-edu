@@ -1,0 +1,90 @@
+# Stack applicative LACA Education — paramétrée par environnement (dev / prod).
+# Déployée deux fois sur le même VPS avec deux fichiers .env et deux noms de projet :
+#
+#   docker compose --env-file .env.prod -p laca-prod up -d
+#   docker compose --env-file .env.dev  -p laca-dev  up -d
+#
+# Le reverse-proxy (dossier proxy/) route les domaines vers ces conteneurs via le réseau « web ».
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ${STACK}-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [internal]
+
+  backend:
+    image: ghcr.io/${GHCR_OWNER}/lacaeducation-backend:${BACKEND_TAG}
+    container_name: ${STACK}-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILE}
+      SERVER_PORT: "8284"
+      DB_URL: jdbc:postgresql://db:5432/${POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET}
+      APP_QR_SECRET: ${APP_QR_SECRET}
+      # Création du SUPER_ADMIN au 1er démarrage (le seed de test est exclu hors dev).
+      BOOTSTRAP_SUPERADMIN_EMAIL: ${SUPER_ADMIN_EMAIL}
+      BOOTSTRAP_SUPERADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD}
+      # CORS + liens email pointant vers le front de cet environnement.
+      APP_CORS_ALLOWED_ORIGINS: ${FRONT_URL}
+      VERIFICATION_URL: ${FRONT_URL}/verify-email
+      APP_PLATFORM_VERIFICATION_URL: ${FRONT_URL}/verify-email
+      APP_PLATFORM_LOGIN_URL: ${FRONT_URL}/login
+      # Email (SMTP réel). APP_MAIL_FROM doit être un expéditeur autorisé par le fournisseur SMTP.
+      MAIL_HOST: ${MAIL_HOST}
+      MAIL_PORT: ${MAIL_PORT}
+      MAIL_USERNAME: ${MAIL_USERNAME}
+      MAIL_PASSWORD: ${MAIL_PASSWORD}
+      APP_MAIL_FROM: ${MAIL_FROM}
+      # Stockage média (Cloudinary).
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
+      # Paiements Djomy (frais scolaires + abonnements).
+      DJOMY_CLIENT_ID: ${DJOMY_CLIENT_ID}
+      DJOMY_CLIENT_SECRET: ${DJOMY_CLIENT_SECRET}
+      DJOMY_BASE_URL: ${DJOMY_BASE_URL}
+      DJOMY_WEBHOOK_SECRET: ${DJOMY_WEBHOOK_SECRET}
+      DJOMY_RETURN_URL: ${FRONT_URL}/subscription/payment
+      DJOMY_CANCEL_URL: ${FRONT_URL}/subscription/payment
+      # NB : l'URL du webhook Djomy se configure dans le tableau de bord Djomy, pas via l'app :
+      #   https://api.cathclau-edu.com/api/v1/webhooks/paiement/djomy  (orthographe FR « paiement »)
+    expose:
+      - "8284"
+    networks: [internal, web]
+
+  frontend:
+    image: ghcr.io/${GHCR_OWNER}/lacaeducation-frontend:${FRONTEND_TAG}
+    container_name: ${STACK}-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    expose:
+      - "3000"
+    networks: [web]
+
+volumes:
+  pgdata:
+
+networks:
+  internal:
+  web:
+    external: true
+    name: web
