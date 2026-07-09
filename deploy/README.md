@@ -281,28 +281,34 @@ docker compose --env-file .env.prod -p laca-prod exec db \
   pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" > backup_$(date +%F).sql
 ```
 
-## Accès à la base depuis pgAdmin (local) — tunnel SSH
-La base n'est **jamais exposée à Internet** : elle écoute uniquement sur `127.0.0.1` du VPS
-(prod = 5432, dev = 5433). Vous y accédez via un **tunnel SSH** depuis votre PC.
+## Accès à la base depuis pgAdmin — connexion directe par l'IP
+La base est exposée sur l'IP du VPS (prod = 5432, dev = 5433). Vous ajoutez simplement le serveur
+dans pgAdmin avec l'IP + la base + les identifiants.
 
-1. Ouvrir le tunnel (laisser la fenêtre ouverte pendant l'utilisation) :
+1. **Ouvrir le port** dans le pare-feu du VPS :
    ```bash
-   # PROD  -> base dispo sur votre PC en localhost:5432
-   ssh -N -L 5432:127.0.0.1:5432 root@IP_DU_VPS
-   # DEV   -> base dispo sur votre PC en localhost:5433
-   ssh -N -L 5433:127.0.0.1:5433 root@IP_DU_VPS
+   # Option SÛRE (recommandée) : n'autoriser QUE votre IP (trouvez-la sur https://ifconfig.me)
+   ufw allow from VOTRE_IP_PUBLIQUE to any port 5432 proto tcp
+   ufw allow from VOTRE_IP_PUBLIQUE to any port 5433 proto tcp
+   # Option simple (moins sûre : ouvert à tous) :
+   # ufw allow 5432/tcp && ufw allow 5433/tcp
    ```
-2. Dans **pgAdmin** → *Add New Server* :
+2. Dans **pgAdmin** → clic droit *Servers* → *Register → Server* :
    | Champ | Prod | Dev |
    |---|---|---|
-   | Host | `127.0.0.1` | `127.0.0.1` |
+   | Host | **IP_DU_VPS** | **IP_DU_VPS** |
    | Port | `5432` | `5433` |
    | Maintenance DB | `cathclau` | `cathclau_dev` |
    | Username | `cathclau` | `cathclau_dev` |
    | Password | (`POSTGRES_PASSWORD` du `.env.prod`) | (celui du `.env.dev`) |
 
-> Le tunnel nécessite que les stacks soient **déjà déployées** (le conteneur `db` doit tourner).
-> Après avoir ajouté `DB_HOST_PORT`, relancez la stack : `docker compose --env-file .env.dev -p laca-dev up -d`.
+> ⚠️ **SÉCURITÉ** : un port Postgres ouvert sur Internet est une cible. **Impératif** :
+> mot de passe `POSTGRES_PASSWORD` **fort et unique**, et de préférence **restreindre à votre IP**
+> (option sûre ci-dessus). Alternative 100 % privée : tunnel SSH
+> `ssh -N -L 5432:127.0.0.1:5432 root@IP_DU_VPS` puis pgAdmin sur `127.0.0.1:5432`.
+>
+> Nécessite que la stack soit **déployée** (conteneur `db` en marche). Après mise à jour du compose,
+> relancez : `docker compose --env-file .env.dev -p laca-dev up -d`.
 
 ## Checklist Mailing (prod)
 1. Fournisseur SMTP : **Brevo**, **Mailgun**, **SendGrid** ou le SMTP de votre hébergeur.
