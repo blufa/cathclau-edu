@@ -1,0 +1,19 @@
+# Profil PRODUCTION (activé via SPRING_PROFILES_ACTIVE=prod).
+# Surcharge le application.yaml : schéma géré uniquement par Flyway, sans données de test.
+spring:
+  jpa:
+    hibernate:
+      # Le schéma est piloté par Flyway ; Hibernate se contente de valider la correspondance.
+      ddl-auto: validate
+    open-in-view: false
+    show-sql: false
+  flyway:
+    # Production : migrations uniquement, jamais les seeds de test (db/seed exclu).
+    locations: classpath:db/migration
+
+# Swagger/OpenAPI désactivé en production.
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

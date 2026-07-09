@@ -18,6 +18,12 @@ public class Payment {
     private PaymentType type;
     private PaymentStatus status;
     private LocalDateTime paidAt;
+    /** Paiement groupé : mois couverts (libellé), nombre de mois, reste à payer, et parts JSON
+     *  [{invoiceId, amount}] à répartir au succès (cas en ligne). Null pour un paiement simple. */
+    private String coveredMonths;
+    private Integer monthsCount;
+    private BigDecimal remainingAfter;
+    private String groupLines;
 
     /**
      * Strict payment state machine (features/09-payments.md §9.1):

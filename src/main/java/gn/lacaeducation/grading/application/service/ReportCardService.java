@@ -1,6 +1,10 @@
 package gn.lacaeducation.grading.application.service;
 
+import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.common.ResourceNotFoundException;
+import gn.lacaeducation.grading.application.port.out.ReportCardPdfGenerator.ReportCardContext;
+import gn.lacaeducation.students.StudentDataProvider;
+import gn.lacaeducation.students.StudentPublicInfo;
 import gn.lacaeducation.grading.application.event.ReportCardPublishedEvent;
 import gn.lacaeducation.grading.application.port.in.ReportCardUseCase;
 import gn.lacaeducation.grading.application.port.out.DocumentStoragePort;
@@ -28,6 +32,9 @@ public class ReportCardService implements ReportCardUseCase {
     private final ApplicationEventPublisher eventPublisher;
     private final ReportCardPdfGenerator pdfGenerator;
     private final DocumentStoragePort documentStorage;
+    private final StudentDataProvider studentProvider;
+    private final AcademicsDataProvider academicsProvider;
+    private final gn.lacaeducation.grading.application.port.out.ClassHonorRollPdfGenerator honorRollGenerator;
 
     @Override
     public ReportCard generate(GenerateReportCardCommand c) {
@@ -47,6 +54,13 @@ public class ReportCardService implements ReportCardUseCase {
         eventPublisher.publishEvent(
                 new ReportCardPublishedEvent(null, rc.getStudentId(), rc.getPeriodId(), rc.getId()));
         return saved;
+    }
+
+    @Override
+    public ReportCard setDistinction(Long id, gn.lacaeducation.grading.domain.Distinction distinction) {
+        ReportCard rc = load(id);
+        rc.setDistinction(distinction != null ? distinction : gn.lacaeducation.grading.domain.Distinction.NONE);
+        return repo.save(rc);
     }
 
     @Override
@@ -85,6 +99,14 @@ public class ReportCardService implements ReportCardUseCase {
         return Optional.ofNullable(load(id).getPdfFile());
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] pdfBytes(Long id) {
+        ReportCard rc = load(id);
+        List<ReportCardLine> lines = repo.findLines(id);
+        return pdfGenerator.generate(rc, lines, buildContext(rc, lines));
+    }
+
     @Async
     @Override
     public void generatePdfAsync(Long id) {
@@ -92,10 +114,64 @@ public class ReportCardService implements ReportCardUseCase {
         // resulting location so subsequent reads can serve it (idempotent — re-rendering overwrites).
         ReportCard rc = load(id);
         List<ReportCardLine> lines = repo.findLines(id);
-        byte[] pdf = pdfGenerator.generate(rc, lines);
+        byte[] pdf = pdfGenerator.generate(rc, lines, buildContext(rc, lines));
         String location = documentStorage.store("report-card-" + id + ".pdf", pdf);
         rc.setPdfFile(location);
         repo.save(rc);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] classHonorRollPdf(Long classId, Long periodId) {
+        List<ReportCard> cards = repo.findByClassIdAndPeriodId(classId, periodId);
+        // Classement : par rang (croissant, nuls en fin), puis moyenne décroissante.
+        var rows = cards.stream()
+                .sorted(java.util.Comparator
+                        .comparing((ReportCard rc) -> rc.getRank() == null ? Integer.MAX_VALUE : rc.getRank())
+                        .thenComparing(rc -> rc.getOverallAverage() == null ? java.math.BigDecimal.valueOf(-1) : rc.getOverallAverage(),
+                                java.util.Comparator.reverseOrder()))
+                .map(rc -> new gn.lacaeducation.grading.application.port.out.ClassHonorRollPdfGenerator.Row(
+                        rc.getRank(), studentName(rc.getStudentId()), rc.getOverallAverage(), rc.getHonor()))
+                .toList();
+        Long tenantId = cards.stream()
+                .map(rc -> studentProvider.findStudent(rc.getStudentId()).map(StudentPublicInfo::tenantId).orElse(null))
+                .filter(java.util.Objects::nonNull).findFirst().orElse(null);
+        String className = academicsProvider.findClass(classId)
+                .map(c -> c.levelLabel() != null && !c.levelLabel().isBlank() ? c.label() + " (" + c.levelLabel() + ")" : c.label())
+                .orElse(null);
+        String periodLabel = academicsProvider.findPeriod(periodId).map(p -> p.label()).orElse(null);
+        String schoolYear = tenantId == null ? null : academicsProvider.currentAcademicYearLabel(tenantId).orElse(null);
+        java.math.BigDecimal classAvg = cards.isEmpty() ? null : cards.get(0).getClassAverage();
+        return honorRollGenerator.generate(new gn.lacaeducation.grading.application.port.out.ClassHonorRollPdfGenerator.HonorRoll(
+                tenantId, className, periodLabel, schoolYear, classAvg, rows));
+    }
+
+    private String studentName(Long studentId) {
+        if (studentId == null) return "—";
+        return studentProvider.findStudent(studentId)
+                .map(s -> ((s.firstName() == null ? "" : s.firstName()) + " "
+                        + (s.lastName() == null ? "" : s.lastName())).trim())
+                .filter(n -> !n.isBlank())
+                .orElse("Élève #" + studentId);
+    }
+
+    /** Resolves human-readable names from the other modules so the PDF never shows raw IDs. */
+    private ReportCardContext buildContext(ReportCard rc, List<ReportCardLine> lines) {
+        StudentPublicInfo student = studentProvider.findStudent(rc.getStudentId()).orElse(null);
+        Long tenantId = student != null ? student.tenantId() : null;
+        String studentName = student == null ? null
+                : ((student.firstName() != null ? student.firstName() : "") + " "
+                   + (student.lastName() != null ? student.lastName() : "")).trim();
+        String className = academicsProvider.findClass(rc.getClassId())
+                .map(c -> c.levelLabel() != null && !c.levelLabel().isBlank() ? c.label() + " (" + c.levelLabel() + ")" : c.label())
+                .orElse(null);
+        String periodLabel = academicsProvider.findPeriod(rc.getPeriodId()).map(p -> p.label()).orElse(null);
+        String schoolYear = tenantId == null ? null : academicsProvider.currentAcademicYearLabel(tenantId).orElse(null);
+        var subjectIds = lines.stream().map(ReportCardLine::getSubjectId)
+                .filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+        return new ReportCardContext(tenantId, studentName,
+                student != null ? student.studentNumber() : null,
+                className, periodLabel, schoolYear, academicsProvider.subjectLabels(subjectIds));
     }
 
     @Override

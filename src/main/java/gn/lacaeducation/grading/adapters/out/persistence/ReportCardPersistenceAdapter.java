@@ -18,6 +18,7 @@ class ReportCardPersistenceAdapter implements ReportCardRepository {
     }
     @Override public Optional<ReportCard> findById(Long id) { return jpa.findById(id).map(mapper::toDomain); }
     @Override public List<ReportCard> findByClassIdAndPeriodId(Long c, Long p) { return jpa.findByClassIdAndPeriodId(c, p).stream().map(mapper::toDomain).toList(); }
+    @Override public List<ReportCard> findByPeriodId(Long p) { return jpa.findByPeriodId(p).stream().map(mapper::toDomain).toList(); }
     @Override public Optional<ReportCard> findByStudentIdAndPeriodId(Long s, Long p) { return jpa.findByStudentIdAndPeriodId(s, p).map(mapper::toDomain); }
     @Override public List<ReportCard> findByStudentId(Long studentId) { return jpa.findByStudentId(studentId).stream().map(mapper::toDomain).toList(); }
     @Override public ReportCardLine saveLine(ReportCardLine l) { return mapper.toDomain(lineJpa.save(mapper.toEntity(l))); }

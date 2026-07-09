@@ -23,4 +23,5 @@ public class ReportCardJpaEntity {
     @Column(name = "pdf_file") private String pdfFile;
     @Enumerated(EnumType.STRING) @Column(nullable = false) private ReportCardStatus status;
     @Column(name = "generated_at") private LocalDateTime generatedAt;
+    @Enumerated(EnumType.STRING) @Column(length = 24) private gn.lacaeducation.grading.domain.Distinction distinction;
 }

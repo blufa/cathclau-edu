@@ -17,7 +17,7 @@ class CloudinaryDocumentStorageTest {
 
     @Test
     void store_withoutCredentials_failsFast() {
-        CloudinaryDocumentStorage storage = new CloudinaryDocumentStorage("", "", "", new ObjectMapper());
+        CloudinaryDocumentStorage storage = new CloudinaryDocumentStorage("", "", "", null);
 
         assertThatThrownBy(() -> storage.store("report-card-1.pdf", new byte[]{1, 2, 3}))
                 .isInstanceOf(IllegalStateException.class)

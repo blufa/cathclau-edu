@@ -7,6 +7,7 @@ import gn.lacaeducation.students.application.event.EnrollmentValidatedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionalEventListener;
 
@@ -23,13 +24,13 @@ public class EnrollmentEventListener {
     private final EnrollmentQueryPort enrollmentQueryPort;
 
     @TransactionalEventListener
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onEnrollmentValidated(EnrollmentValidatedEvent event) {
         recomputeHeadcount(event.classId());
     }
 
     @TransactionalEventListener
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onEnrollmentCancelled(EnrollmentCancelledEvent event) {
         recomputeHeadcount(event.classId());
     }

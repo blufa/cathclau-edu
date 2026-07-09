@@ -1,23 +1,38 @@
 package gn.lacaeducation.platform.application.port.in;
+import gn.lacaeducation.platform.domain.EstablishmentType;
 import gn.lacaeducation.platform.domain.Plan;
 import gn.lacaeducation.platform.domain.Subscription;
 import gn.lacaeducation.platform.domain.Tenant;
+import gn.lacaeducation.platform.domain.TenantStatus;
 import java.util.List;
+import java.util.Set;
 public interface CreateTenantUseCase {
-    Tenant create(CreateTenantCommand command);
+    CreatedTenant create(CreateTenantCommand command);
     Tenant findById(Long id);
     TenantDetail getDetail(Long id);
     List<Tenant> findAll(String status, String city);
     Tenant update(Long id, UpdateTenantCommand command);
+    /** Self-service branding update (logo + colour) by the school itself. */
+    Tenant updateBranding(Long id, String logo, String brandColor);
     void suspend(Long id);
     void activate(Long id);
+    /** Generic status change for SUPER_ADMIN (ACTIVATE | SUSPEND | ARCHIVE) routed through the lifecycle. */
+    void changeStatus(Long id, TenantStatus target);
     void delete(Long id);
 
-    record CreateTenantCommand(String schoolName, String email, String phone,
-            String address, String city, String country, String director) {}
+    /** Manual creation by SUPER_ADMIN. {@code initialState} defaults to TRIAL (null → TRIAL). */
+    record CreateTenantCommand(String schoolName, String slug, String email, String phone,
+            String address, String city, String country, String director,
+            Set<EstablishmentType> establishmentTypes, TenantStatus initialState, String adminPassword) {}
+
+    /**
+     * Résultat d'une création manuelle. {@code temporaryPassword} n'est renseigné que si aucun mot de
+     * passe n'a été fourni (généré) — permet de l'afficher une fois au SUPER_ADMIN ; null sinon.
+     */
+    record CreatedTenant(Tenant tenant, String temporaryPassword) {}
     record UpdateTenantCommand(String schoolName, String logo, String brandColor,
             String address, String city, String country, String phone, String email,
-            String website, String director) {}
+            String website, String director, String accreditationNumber, String openingAuthorization) {}
 
     /** Tenant detail with its current subscription, plan and consumed student quota (§1.1). */
     record TenantDetail(Tenant tenant, Subscription currentSubscription, Plan plan,

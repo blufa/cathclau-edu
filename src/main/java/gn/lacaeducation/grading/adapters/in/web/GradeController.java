@@ -2,11 +2,14 @@ package gn.lacaeducation.grading.adapters.in.web;
 
 import gn.lacaeducation.grading.application.port.in.GradeUseCase;
 import gn.lacaeducation.grading.domain.Grade;
+import gn.lacaeducation.grading.domain.GradeHistory;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -21,7 +24,7 @@ public class GradeController {
     private final GradeUseCase useCase;
 
     public record EnterRequest(Long assessmentId, Long studentId, BigDecimal value) {}
-    public record UpdateRequest(BigDecimal value) {}
+    public record UpdateRequest(BigDecimal value, String reason) {}
     public record BulkEntry(Long studentId, BigDecimal value) {}
     public record BulkGradeRequest(List<BulkEntry> grades) {}
 
@@ -30,30 +33,32 @@ public class GradeController {
     @Operation(summary = "Enter a grade for a student on an assessment")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
     @PostMapping("/grades")
-    public ResponseEntity<Grade> enter(@RequestBody EnterRequest r) {
+    public ResponseEntity<Grade> enter(@RequestBody EnterRequest r, @AuthenticationPrincipal Jwt jwt) {
         return ResponseEntity.ok(useCase.enter(
-                new GradeUseCase.EnterGradeCommand(r.assessmentId(), r.studentId(), r.value())));
+                new GradeUseCase.EnterGradeCommand(r.assessmentId(), r.studentId(), r.value()), currentUserId(jwt)));
     }
 
-    @Operation(summary = "Update a student's grade value (only while period is open and grade not validated)")
+    @Operation(summary = "Update a student's grade value (only while period is open and grade not validated). "
+            + "An optional reason explains the correction and is kept in the grade's history.")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
     @PutMapping("/grades/{id}")
-    public ResponseEntity<Grade> update(@PathVariable Long id, @RequestBody UpdateRequest r) {
-        return ResponseEntity.ok(useCase.update(id, r.value()));
+    public ResponseEntity<Grade> update(@PathVariable Long id, @RequestBody UpdateRequest r,
+                                        @AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok(useCase.update(id, r.value(), currentUserId(jwt), r.reason()));
     }
 
     @Operation(summary = "Validate (lock) a single grade so it can no longer be modified")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
     @PutMapping("/grades/{id}/validate")
-    public ResponseEntity<Grade> validate(@PathVariable Long id) {
-        return ResponseEntity.ok(useCase.validate(id));
+    public ResponseEntity<Grade> validate(@PathVariable Long id, @AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok(useCase.validate(id, currentUserId(jwt)));
     }
 
     @Operation(summary = "Unlock a validated grade so it can be corrected (authorized roles only)")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
     @PutMapping("/grades/{id}/unlock")
-    public ResponseEntity<Grade> unlock(@PathVariable Long id) {
-        return ResponseEntity.ok(useCase.unlock(id));
+    public ResponseEntity<Grade> unlock(@PathVariable Long id, @AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok(useCase.unlock(id, currentUserId(jwt)));
     }
 
     @Operation(summary = "Get a grade by ID")
@@ -62,10 +67,42 @@ public class GradeController {
         return useCase.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
+    @Operation(summary = "Get the full modification history of a grade (who changed what, when and why)")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
+    @GetMapping("/grades/{id}/history")
+    public List<GradeHistory> history(@PathVariable Long id) {
+        return useCase.findHistory(id);
+    }
+
     @Operation(summary = "List all grades for an assessment")
     @GetMapping("/grades/assessment/{assessmentId}")
     public List<Grade> findByAssessment(@PathVariable Long assessmentId) {
         return useCase.findByAssessment(assessmentId);
+    }
+
+    @Operation(summary = "Feuille de notes d'une évaluation : liste des élèves de la classe avec leur note saisie")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
+    @GetMapping("/assessments/{assessmentId}/grade-sheet")
+    public List<GradeUseCase.GradeSheetRow> gradeSheet(@PathVariable Long assessmentId) {
+        return useCase.gradeSheet(assessmentId);
+    }
+
+    @Operation(summary = "Relevé de notes d'une matière (classe/période) : chaque évaluation + moyenne calculée")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','RESPONSABLE_PEDAGOGIQUE','TEACHER','SECRETARY')")
+    @GetMapping("/classes/{classId}/subjects/{subjectId}/periods/{periodId}/releve")
+    public GradeUseCase.SubjectGradeReport subjectReleve(@PathVariable Long classId, @PathVariable Long subjectId, @PathVariable Long periodId) {
+        return useCase.subjectGradeReport(classId, subjectId, periodId);
+    }
+
+    @Operation(summary = "Relevé de notes d'une matière (PDF)")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','RESPONSABLE_PEDAGOGIQUE','TEACHER','SECRETARY')")
+    @GetMapping("/classes/{classId}/subjects/{subjectId}/periods/{periodId}/releve/download")
+    public org.springframework.http.ResponseEntity<byte[]> subjectReleveDownload(@PathVariable Long classId, @PathVariable Long subjectId, @PathVariable Long periodId) {
+        return org.springframework.http.ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"releve-classe-" + classId + "-matiere-" + subjectId + "-periode-" + periodId + ".pdf\"")
+                .body(useCase.subjectGradeReportPdf(classId, subjectId, periodId));
     }
 
     @Operation(summary = "List all grades for a student (optionally filtered by periodId)")
@@ -81,8 +118,8 @@ public class GradeController {
     @Operation(summary = "Delete a grade")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
     @DeleteMapping("/grades/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        useCase.delete(id);
+    public ResponseEntity<Void> delete(@PathVariable Long id, @AuthenticationPrincipal Jwt jwt) {
+        useCase.delete(id, currentUserId(jwt));
         return ResponseEntity.noContent().build();
     }
 
@@ -105,17 +142,30 @@ public class GradeController {
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
     @PostMapping("/assessments/{assessmentId}/grades/bulk")
     public ResponseEntity<List<Grade>> enterBulk(@PathVariable Long assessmentId,
-                                                  @RequestBody BulkGradeRequest request) {
+                                                  @RequestBody BulkGradeRequest request,
+                                                  @AuthenticationPrincipal Jwt jwt,
+                                                  org.springframework.security.core.Authentication authentication) {
         List<GradeUseCase.BulkGradeEntry> entries = request.grades().stream()
                 .map(e -> new GradeUseCase.BulkGradeEntry(e.studentId(), e.value()))
                 .toList();
-        return ResponseEntity.ok(useCase.enterBulk(assessmentId, entries));
+        // Only ADMIN/DIRECTOR may overwrite an already-entered grade; teachers can only enter new ones.
+        boolean allowOverwrite = authentication != null && authentication.getAuthorities().stream()
+                .map(org.springframework.security.core.GrantedAuthority::getAuthority)
+                .anyMatch(a -> a.equals("ROLE_SCHOOL_ADMIN") || a.equals("ROLE_DIRECTOR"));
+        return ResponseEntity.ok(useCase.enterBulk(assessmentId, entries, allowOverwrite, currentUserId(jwt)));
     }
 
-    @Operation(summary = "Validate (lock) all grades for an assessment in one operation")
+    @Operation(summary = "Validate (lock) all grades for an assessment in one operation. "
+            + "Recomputes the class averages, ranks and report cards for the assessment's period.")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
     @PatchMapping("/assessments/{assessmentId}/grades/validate")
-    public ResponseEntity<List<Grade>> validateAll(@PathVariable Long assessmentId) {
-        return ResponseEntity.ok(useCase.validateAllForAssessment(assessmentId));
+    public ResponseEntity<List<Grade>> validateAll(@PathVariable Long assessmentId,
+                                                    @AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok(useCase.validateAllForAssessment(assessmentId, currentUserId(jwt)));
+    }
+
+    private Long currentUserId(Jwt jwt) {
+        if (jwt == null) return null;
+        try { return Long.parseLong(jwt.getSubject()); } catch (RuntimeException e) { return null; }
     }
 }

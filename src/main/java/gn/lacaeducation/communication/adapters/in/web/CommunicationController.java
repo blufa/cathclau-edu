@@ -18,9 +18,11 @@ public class CommunicationController {
     @Operation(summary = "Send a communication (SMS, email, or WhatsApp) to one or more recipients")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','TEACHER')")
     @PostMapping public ResponseEntity<Communication> send(@RequestBody SendRequest r) {
+        List<CommunicationUseCase.RecipientTarget> targets = r.recipientUserIds() == null ? List.of()
+                : r.recipientUserIds().stream().map(id -> new CommunicationUseCase.RecipientTarget(id, null)).toList();
         return ResponseEntity.ok(useCase.send(new CommunicationUseCase.SendCommunicationCommand(
                 r.tenantId(), r.senderId(), r.channel(), r.recipientType(), r.subject(),
-                r.content(), r.reason(), r.recipientUserIds())));
+                r.content(), r.reason(), targets)));
     }
     @Operation(summary = "Get a communication by ID")
     @GetMapping("/{id}") public ResponseEntity<Communication> findById(@PathVariable Long id) {

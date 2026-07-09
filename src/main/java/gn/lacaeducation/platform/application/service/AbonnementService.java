@@ -1,5 +1,6 @@
 package gn.lacaeducation.platform.application.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.platform.application.event.PlanChangedEvent;
@@ -26,10 +27,13 @@ import gn.lacaeducation.platform.domain.PlanChange;
 import gn.lacaeducation.platform.domain.PlanChangeType;
 import gn.lacaeducation.platform.domain.Subscription;
 import gn.lacaeducation.platform.domain.SubscriptionInvoice;
+import gn.lacaeducation.payments.DjomyGatewayApi;
+import gn.lacaeducation.platform.domain.PaymentChannel;
 import gn.lacaeducation.platform.domain.SubscriptionPayment;
 import gn.lacaeducation.platform.domain.SubscriptionReceipt;
 import gn.lacaeducation.platform.domain.SubscriptionStatus;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,6 +48,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @Transactional
 @RequiredArgsConstructor
@@ -57,6 +62,7 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
     private final SubscriptionReceiptRepository receiptRepository;
     private final PlanChangeRepository planChangeRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final gn.lacaeducation.payments.DjomyGatewayApi djomyGatewayApi;
 
     // ---- SubscriptionUseCase ----
 
@@ -113,6 +119,14 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
         Long tenantId = gn.lacaeducation.common.TenantContext.get();
         if (tenantId == null) return Optional.empty();
         return subscriptionRepository.findActiveByTenantId(tenantId);
+    }
+
+    @Override @Transactional(readOnly = true)
+    public Optional<Subscription> findLatestForCurrentTenant() {
+        Long tenantId = gn.lacaeducation.common.TenantContext.get();
+        if (tenantId == null) return Optional.empty();
+        return subscriptionRepository.findByTenantId(tenantId).stream()
+                .max(java.util.Comparator.comparing(Subscription::getId));
     }
 
     @Override
@@ -227,21 +241,44 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
     // ---- PaymentUseCase ----
 
     @Override
-    public SubscriptionPayment initiate(InitiatePaymentCommand command) {
+    public SubscriptionPayment initiate(InitiatePaymentCommand command) throws JsonProcessingException {
         invoiceRepository.findById(command.invoiceId())
                 .orElseThrow(() -> new ResourceNotFoundException("Invoice not found: " + command.invoiceId()));
 
-        SubscriptionPayment payment = SubscriptionPayment.builder()
+        String reference = generateRef("PAY");
+        // Persist as INITIATED first so the payment has an id before the provider call (mirrors the
+        // school-fee PaymentService): on failure we can mark it FAILED and emit the failure event.
+        SubscriptionPayment payment = paymentRepository.save(SubscriptionPayment.builder()
                 .invoiceId(command.invoiceId())
-                .reference(generateRef("PAY"))
+                .reference(reference)
                 .amount(command.amount())
                 .channel(command.channel())
                 .paymentType(command.paymentType())
                 .status(PaymentStatus.INITIATED)
                 .paidAt(LocalDateTime.now())
-                .build();
+                .build());
 
-        return paymentRepository.save(payment);
+        try {
+            // Aggregator (Djomy): create the gateway payment and expose the redirect URL. Confirmation
+            // arrives later via the signed webhook + verify_payment — never trust the redirect alone.
+            if (command.channel() == PaymentChannel.DJOMY) {
+                DjomyGatewayApi.GatewayResult gw = djomyGatewayApi.createGatewayPayment(
+                        command.payerNumber(), command.amount(), reference, "Abonnement " + reference);
+                payment.setExternalTransactionId(gw.transactionId());
+                payment.setRedirectUrl(gw.redirectUrl());
+                payment.setStatus(PaymentStatus.PENDING);
+            }
+            return paymentRepository.save(payment);
+        } catch (RuntimeException | JsonProcessingException e) {
+            log.error("Subscription payment initiation failed for payment id={} invoice={} channel={}: {}",
+                    payment.getId(), command.invoiceId(), command.channel(), e.getMessage());
+            payment.setStatus(PaymentStatus.FAILED);
+            SubscriptionPayment failed = paymentRepository.save(payment);
+            Subscription sub = subscriptionOf(failed);
+            eventPublisher.publishEvent(new SubscriptionPaymentFailedEvent(
+                    sub.getTenantId(), sub.getId(), failed.getId()));
+            throw e;
+        }
     }
 
     @Override
@@ -272,6 +309,39 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
         eventPublisher.publishEvent(new SubscriptionPaymentFailedEvent(
                 sub.getTenantId(), sub.getId(), saved.getId()));
         return saved;
+    }
+
+    @Override
+    public SubscriptionPayment confirmViaDjomy(Long paymentId) throws JsonProcessingException {
+        SubscriptionPayment payment = paymentRepository.findById(paymentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Payment not found: " + paymentId));
+        if (payment.getStatus() == PaymentStatus.SUCCESSFUL) {
+            return payment; // idempotent : déjà confirmé/activé
+        }
+        if (payment.getExternalTransactionId() == null || payment.getExternalTransactionId().isBlank()) {
+            return payment; // aucune transaction Djomy à vérifier (ex. avant redirection)
+        }
+        // Activation automatique « comme le webhook » : dès que Djomy confirme le succès, on active.
+        // Tant que la transaction n'est pas réussie, on renvoie le statut courant sans rien changer.
+        if (djomyGatewayApi.isConfirmedSuccess(payment.getExternalTransactionId())) {
+            log.info("Activation automatique de l'abonnement via statut Djomy (paiement id={}, tx={})",
+                    paymentId, payment.getExternalTransactionId());
+            return confirm(paymentId, payment.getExternalTransactionId());
+        }
+        return payment;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public DjomyStatusResponse checkDjomyStatus(Long paymentId) throws JsonProcessingException {
+        SubscriptionPayment payment = paymentRepository.findById(paymentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Payment not found: " + paymentId));
+        if (payment.getExternalTransactionId() == null || payment.getExternalTransactionId().isBlank()) {
+            throw new BusinessRuleException("Payment " + paymentId + " has no Djomy transaction to query");
+        }
+        DjomyGatewayApi.DjomyStatus s = djomyGatewayApi.verify(payment.getExternalTransactionId());
+        return new DjomyStatusResponse(payment.getId(), payment.getExternalTransactionId(),
+                s.status(), s.amount(), s.currency(), s.success());
     }
 
     private Subscription subscriptionOf(SubscriptionPayment payment) {
@@ -391,7 +461,13 @@ public class AbonnementService implements SubscriptionUseCase, InvoiceUseCase,
         return subscriptionRepository.findActiveByTenantId(tenantId)
                 .flatMap(s -> planRepository.findById(s.getPlanId()))
                 .map(plan -> plan.getStudentLimit() == null || currentStudentCount < plan.getStudentLimit())
-                .orElse(false);
+                // No paid subscription → free trial: respect the default trial plan limit if one is
+                // defined (null = unlimited), otherwise allow (don't block schools that are just trying it).
+                .orElseGet(() -> planRepository.findAll().stream()
+                        .filter(p -> Boolean.TRUE.equals(p.getDefaultTrial()))
+                        .findFirst()
+                        .map(plan -> plan.getStudentLimit() == null || currentStudentCount < plan.getStudentLimit())
+                        .orElse(true));
     }
 
     private String pdfUrl(String resource, String reference) {

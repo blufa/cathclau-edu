@@ -35,11 +35,17 @@ public class UserJpaEntity {
     @Column(name = "last_name", nullable = false)
     private String lastName;
 
+    @Column(unique = true)
+    private String username;
+
     @Column(nullable = false, unique = true)
     private String email;
 
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
+
+    @Column(name = "must_change_password", nullable = false)
+    private boolean mustChangePassword = false;
 
     private String phone;
 

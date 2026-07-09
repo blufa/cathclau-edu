@@ -9,6 +9,7 @@ import gn.lacaeducation.academics.application.port.out.AnneeScolaireRepository;
 import gn.lacaeducation.academics.application.port.out.PeriodeRepository;
 import gn.lacaeducation.academics.domain.AnneeScolaire;
 import gn.lacaeducation.academics.domain.Periode;
+import gn.lacaeducation.academics.domain.valueobject.SchoolCycle;
 import gn.lacaeducation.academics.domain.valueobject.StatutAnneeScolaire;
 import gn.lacaeducation.academics.domain.valueobject.TypePeriode;
 import gn.lacaeducation.common.BusinessRuleException;
@@ -27,8 +28,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class AnneeScolaireServiceTest {
@@ -105,9 +105,8 @@ class AnneeScolaireServiceTest {
             return p;
         });
 
-        Periode result = service.createPeriod(new CreatePeriodCommand(
-                1L, "Term 1", TypePeriode.TRIMESTRE, 1,
-                LocalDate.of(2025, 9, 1), LocalDate.of(2025, 12, 20)
+        Periode result = service.createPeriod(  new CreatePeriodCommand(
+                1L, "Term 1", TypePeriode.TRIMESTRE, SchoolCycle.PRIMAIRE,1, LocalDate.of(2020,6,2),LocalDate.of(2020,6,3)
         ));
 
         assertThat(result.getClosed()).isFalse();

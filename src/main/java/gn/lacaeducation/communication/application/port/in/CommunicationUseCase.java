@@ -3,9 +3,11 @@ import gn.lacaeducation.communication.domain.*;
 import java.util.List;
 import java.util.Optional;
 public interface CommunicationUseCase {
+    /** A single target: an optional user account and the resolved destination (phone/email) to dispatch to. */
+    record RecipientTarget(Long userId, String destination) {}
     record SendCommunicationCommand(Long tenantId, Long senderId, CommunicationChannel channel,
                                     RecipientType recipientType, String subject, String content,
-                                    CommunicationReason reason, List<Long> recipientUserIds) {}
+                                    CommunicationReason reason, List<RecipientTarget> recipients) {}
     Communication send(SendCommunicationCommand command);
     Optional<Communication> findById(Long id);
     List<Communication> findByTenantId(Long tenantId);

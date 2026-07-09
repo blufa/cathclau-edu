@@ -6,6 +6,7 @@ public class MessageRecipient {
     private Long id;
     private Long communicationId;
     private Long userId;
+    private String destination;
     private DeliveryStatus deliveryStatus;
     private Boolean read;
     private LocalDateTime deliveredAt;

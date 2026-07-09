@@ -36,7 +36,7 @@ class GradingScaleServiceTest {
     void update_nonIncreasingBands_throws() {
         assertThatThrownBy(() -> service.update(10L, new UpdateScaleCommand(
                 BigDecimal.valueOf(10), BigDecimal.valueOf(10), BigDecimal.valueOf(10),
-                BigDecimal.valueOf(16), BigDecimal.valueOf(18))))
+                BigDecimal.valueOf(16), BigDecimal.valueOf(18), null, null, null)))
                 .isInstanceOf(BusinessRuleException.class);
     }
 
@@ -45,10 +45,40 @@ class GradingScaleServiceTest {
         when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
         GradingScale saved = service.update(10L, new UpdateScaleCommand(
                 BigDecimal.valueOf(12), BigDecimal.valueOf(12), BigDecimal.valueOf(15),
-                BigDecimal.valueOf(17), BigDecimal.valueOf(19)));
+                BigDecimal.valueOf(17), BigDecimal.valueOf(19), null, null, null));
 
         // With this stricter scale, 16/20 is only "Assez Bien" and 11/20 fails the pass threshold.
         assertThat(saved.honorFor(BigDecimal.valueOf(16))).isEqualTo("Assez Bien");
         assertThat(saved.decisionFor(BigDecimal.valueOf(11))).isEqualTo("REDOUBLE");
+        // Distinction thresholds left null → default barème (Félicitations ≥ 16, Compliments ≥ 13).
+        assertThat(saved.getFelicitationsMin()).isEqualByComparingTo("16");
+        assertThat(saved.getComplimentsMin()).isEqualByComparingTo("13");
+    }
+
+    @Test
+    void update_customDistinctionThresholds_applied() {
+        when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
+        GradingScale saved = service.update(10L, new UpdateScaleCommand(
+                BigDecimal.valueOf(10), BigDecimal.valueOf(10), BigDecimal.valueOf(14),
+                BigDecimal.valueOf(16), BigDecimal.valueOf(18),
+                BigDecimal.valueOf(17), BigDecimal.valueOf(14), BigDecimal.valueOf(9)));
+
+        // Félicitations à 17, Compliments à 14, aucune matière < 9.
+        assertThat(saved.distinctionFor(BigDecimal.valueOf(17), BigDecimal.valueOf(9)))
+                .isEqualTo(gn.lacaeducation.grading.domain.Distinction.FELICITATIONS);
+        assertThat(saved.distinctionFor(BigDecimal.valueOf(15), BigDecimal.valueOf(10)))
+                .isEqualTo(gn.lacaeducation.grading.domain.Distinction.COMPLIMENTS);
+        // Une matière sous le seuil (8 < 9) annule la distinction malgré une bonne moyenne.
+        assertThat(saved.distinctionFor(BigDecimal.valueOf(18), BigDecimal.valueOf(8)))
+                .isEqualTo(gn.lacaeducation.grading.domain.Distinction.NONE);
+    }
+
+    @Test
+    void update_complimentsAboveFelicitations_throws() {
+        assertThatThrownBy(() -> service.update(10L, new UpdateScaleCommand(
+                BigDecimal.valueOf(10), BigDecimal.valueOf(10), BigDecimal.valueOf(14),
+                BigDecimal.valueOf(16), BigDecimal.valueOf(18),
+                BigDecimal.valueOf(14), BigDecimal.valueOf(15), BigDecimal.TEN)))
+                .isInstanceOf(BusinessRuleException.class);
     }
 }

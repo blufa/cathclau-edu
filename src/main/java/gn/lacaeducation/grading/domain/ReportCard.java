@@ -20,4 +20,6 @@ public class ReportCard {
     private String pdfFile;
     private ReportCardStatus status;
     private LocalDateTime generatedAt;
+    /** Appréciation du conseil de classe (Félicitations, Compliments, Encouragements…). */
+    private Distinction distinction;
 }

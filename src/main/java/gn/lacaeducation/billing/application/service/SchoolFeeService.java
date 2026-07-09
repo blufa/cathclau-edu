@@ -19,11 +19,41 @@ public class SchoolFeeService implements SchoolFeeUseCase {
         SchoolFee f = load(id); f.setClassId(c.classId()); f.setType(c.type()); f.setAmount(c.amount()); f.setAcademicYear(c.academicYear());
         return repo.save(f);
     }
-    @Override @Transactional(readOnly=true) public Optional<SchoolFee> findById(Long id) { return repo.findById(id); }
-    @Override @Transactional(readOnly=true) public List<SchoolFee> findByTenantId(Long t) { return repo.findByTenantId(t); }
-    @Override @Transactional(readOnly=true) public List<SchoolFee> findByClassId(Long c) { return repo.findByClassId(c); }
-    @Override @Transactional(readOnly=true) public List<SchoolFee> findByTenantIdAndAcademicYear(Long t, String y) { return repo.findByTenantIdAndAcademicYear(t, y); }
-    @Override public void delete(Long id) { repo.deleteById(id); }
-    @Override @Transactional(readOnly=true) public boolean existsById(Long id) { return repo.existsById(id); }
-    private SchoolFee load(Long id) { return repo.findById(id).orElseThrow(() -> new ResourceNotFoundException("SchoolFee", id)); }
+    @Override
+    @Transactional(readOnly=true)
+    public Optional<SchoolFee> findById(Long id) {
+        return repo.findById(id);
+    }
+
+    @Override
+    @Transactional(readOnly=true)
+    public List<SchoolFee> findByTenantId(Long t) {
+        return repo.findByTenantId(t);
+    }
+
+    @Override
+    @Transactional(readOnly=true)
+    public List<SchoolFee> findByClassId(Long c) {
+        return repo.findByClassId(c);
+    }
+
+    @Override
+    @Transactional(readOnly=true)
+    public List<SchoolFee> findByTenantIdAndAcademicYear(Long t, String y) {
+        return repo.findByTenantIdAndAcademicYear(t, y);
+    }
+
+    @Override
+    public void delete(Long id) {
+        repo.deleteById(id);
+    }
+
+    @Override
+    @Transactional(readOnly=true)
+    public boolean existsById(Long id) {
+        return repo.existsById(id);
+    }
+    private SchoolFee load(Long id) {
+        return repo.findById(id).orElseThrow(() -> new ResourceNotFoundException("SchoolFee", id));
+    }
 }

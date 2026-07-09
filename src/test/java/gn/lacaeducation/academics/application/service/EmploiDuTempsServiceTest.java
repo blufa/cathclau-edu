@@ -38,7 +38,7 @@ class EmploiDuTempsServiceTest {
 
         assertThatThrownBy(() -> service.create(cmd()))
                 .isInstanceOf(ConflictException.class)
-                .hasMessageContaining("Room conflict");
+                .hasMessageContaining("Cette salle est déjà occupée");
         verify(repo, never()).save(any());
     }
 
@@ -50,7 +50,7 @@ class EmploiDuTempsServiceTest {
 
         assertThatThrownBy(() -> service.create(cmd()))
                 .isInstanceOf(ConflictException.class)
-                .hasMessageContaining("Teacher conflict");
+                .hasMessageContaining("Cet enseignant a déjà un cours");
     }
 
     @Test
@@ -62,7 +62,7 @@ class EmploiDuTempsServiceTest {
 
         assertThatThrownBy(() -> service.create(cmd()))
                 .isInstanceOf(ConflictException.class)
-                .hasMessageContaining("Class conflict");
+                .hasMessageContaining("Cette classe a déjà un cours");
     }
 
     @Test

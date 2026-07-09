@@ -15,4 +15,6 @@ class StudentAttendanceJpaEntity {
     @Enumerated(EnumType.STRING) private AttendanceStatus status;
     private String reason;
     @Column(name = "parent_notified") private Boolean parentNotified;
+    private Boolean justified;
+    @Column(name = "justification_doc", length = 1024) private String justificationDoc;
 }

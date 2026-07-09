@@ -7,6 +7,7 @@ import gn.lacaeducation.common.TenantContext;
 import gn.lacaeducation.staff.application.port.in.TeacherUseCase;
 import gn.lacaeducation.staff.application.port.in.TeacherUseCase.CreateTeacherCommand;
 import gn.lacaeducation.staff.domain.Teacher;
+import gn.lacaeducation.staff.domain.TeacherWorkload;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -28,8 +29,18 @@ public class EnseignantController {
     public ResponseEntity<Teacher> create(@RequestBody CreateTeacherCommand cmd) {
         Teacher t = teacherUseCase.create(new CreateTeacherCommand(
                 TenantContext.get(), cmd.userId(), cmd.staffNumber(), cmd.firstName(), cmd.lastName(),
-                cmd.phone(), cmd.email(), cmd.specialization(), cmd.hireDate()));
+                cmd.phone(), cmd.email(), cmd.specialization(), cmd.hireDate(),
+                cmd.employmentStatus(), cmd.diploma(), cmd.remunerationType(),
+                cmd.remunerationRate(), cmd.teachingAuthorizationNumber(), cmd.cnssNumber()));
         return ResponseEntity.created(URI.create("/api/staff/teachers/" + t.getId())).body(t);
+    }
+
+    @Operation(summary = "Get the teacher record of the currently authenticated user")
+    @GetMapping("/me")
+    public ResponseEntity<Teacher> me(@org.springframework.security.core.annotation.AuthenticationPrincipal org.springframework.security.oauth2.jwt.Jwt jwt) {
+        Long userId;
+        try { userId = Long.parseLong(jwt.getSubject()); } catch (RuntimeException e) { userId = null; }
+        return teacherUseCase.findByUserId(userId).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
     @Operation(summary = "Get a teacher by ID")
@@ -78,4 +89,8 @@ public class EnseignantController {
     @Operation(summary = "Consolidated timetable of the teacher")
     @GetMapping("/{id}/schedule")
     public List<ScheduleSlotPublicInfo> schedule(@PathVariable Long id) { return teacherUseCase.findSchedule(id); }
+
+    @Operation(summary = "Charge horaire hebdomadaire de l'enseignant (total heures + répartition par jour)")
+    @GetMapping("/{id}/workload")
+    public TeacherWorkload workload(@PathVariable Long id) { return teacherUseCase.computeWorkload(id); }
 }

@@ -18,4 +18,5 @@ class ParentJpaEntity {
     private String email;
     private String occupation;
     private String address;
+    private String photo;
 }

@@ -1,11 +1,39 @@
 package gn.lacaeducation.payments.application.port.in;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import gn.lacaeducation.payments.domain.*;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 public interface PaymentUseCase {
-    record InitiatePaymentCommand(Long tenantId, Long invoiceId, Long studentId, String reference, BigDecimal amount, PaymentChannel channel, PaymentType type) {}
-    Payment initiate(InitiatePaymentCommand command);
+    record InitiatePaymentCommand(Long tenantId, Long invoiceId, Long studentId, String reference, BigDecimal amount, PaymentChannel channel, PaymentType type,
+                                  /** Payer phone number — required by aggregator channels (e.g. Djomy). */
+                                  String payerNumber) {}
+    Payment initiate(InitiatePaymentCommand command) throws JsonProcessingException;
+
+    /** Part d'un paiement groupé affectée à une facture-mois. */
+    record InvoiceShare(Long invoiceId, BigDecimal amount) {}
+    /**
+     * Paiement groupé de plusieurs mois (ou de l'année) en une fois : un seul paiement, un seul reçu
+     * listant les mois réglés et le reste à payer. Au guichet (canal manuel) la confirmation est
+     * immédiate ; chaque facture-mois est soldée via {@code GroupedInvoiceSettlementEvent}.
+     */
+    record GroupPaymentCommand(Long tenantId, Long studentId, PaymentChannel channel, String payerNumber,
+                               String coverageLabel, Integer monthsCount, BigDecimal remainingAfter,
+                               List<InvoiceShare> shares) {}
+    Payment initiateGroup(GroupPaymentCommand command);
+
+    /**
+     * Confirme un paiement (groupé ou simple) en interrogeant Djomy à la demande, sans dépendre du
+     * webhook : si la transaction est réussie, le paiement est confirmé (reçu + répartition). Idempotent.
+     */
+    Payment confirmViaDjomy(Long paymentId) throws JsonProcessingException;
+
+    /** On-demand query of the live Djomy status for a payment (diagnostic; webhook stays authoritative). */
+    DjomyStatusResponse checkDjomyStatus(Long paymentId) throws JsonProcessingException;
+
+    record DjomyStatusResponse(Long paymentId, String externalTransactionId, String djomyStatus,
+                               BigDecimal amount, String currency, boolean success) {}
+
     Payment confirmSuccess(Long paymentId);
     Payment markFailed(Long paymentId);
     Payment markRefunded(Long paymentId);

@@ -53,6 +53,10 @@ public class GradeCalculationService {
     private final ReportCardRepository reportCardRepository;
     private final ClassSubjectQueryPort classSubjectQueryPort;
     private final GradingScaleRepository gradingScaleRepository;
+    private final gn.lacaeducation.grading.application.port.out.GradingCalculationSettingsRepository calculationSettingsRepository;
+    private final gn.lacaeducation.grading.application.port.out.EliminatoryRuleRepository eliminatoryRuleRepository;
+    private final gn.lacaeducation.grading.application.port.out.DecisionRuleRepository decisionRuleRepository;
+    private final gn.lacaeducation.grading.application.port.out.AssessmentTypeConfigRepository assessmentTypeConfigRepository;
     private final ApplicationEventPublisher eventPublisher;
 
     /** Internal value object pairing a report card with its computed lines. */
@@ -84,11 +88,16 @@ public class GradeCalculationService {
         }
 
         GradingScale scale = resolveScale(assessments);
+        gn.lacaeducation.grading.domain.GradingCalculationSettings calcSettings = resolveCalcSettings(assessments);
+        Map<Long, BigDecimal> categoryWeights = resolveCategoryWeights(assessments);
+        List<gn.lacaeducation.grading.domain.EliminatoryRule> eliminatoryRules = resolveEliminatoryRules(assessments);
+        List<gn.lacaeducation.grading.domain.DecisionRule> decisionRules = resolveDecisionRules(assessments);
 
         // Build intermediate results (average without rank)
         List<ReportCard> reportCards = new ArrayList<>();
         for (Long studentId : studentIds) {
-            ReportCardWithLines rcWithLines = buildReportCard(studentId, classId, periodId, assessments, subjectInfos, scale);
+            ReportCardWithLines rcWithLines = buildReportCard(studentId, classId, periodId, assessments,
+                    subjectInfos, scale, calcSettings, categoryWeights, eliminatoryRules, decisionRules);
             ReportCard saved = persistReportCardWithLines(rcWithLines, periodId);
             reportCards.add(saved);
         }
@@ -109,7 +118,9 @@ public class GradeCalculationService {
         List<Assessment> assessments = assessmentRepository.findByClassIdAndPeriodId(classId, periodId);
         List<ClassSubjectInfo> subjectInfos = classSubjectQueryPort.findByClassId(classId);
 
-        ReportCardWithLines rcWithLines = buildReportCard(studentId, classId, periodId, assessments, subjectInfos, resolveScale(assessments));
+        ReportCardWithLines rcWithLines = buildReportCard(studentId, classId, periodId, assessments, subjectInfos,
+                resolveScale(assessments), resolveCalcSettings(assessments), resolveCategoryWeights(assessments),
+                resolveEliminatoryRules(assessments), resolveDecisionRules(assessments));
         ReportCard saved = persistReportCardWithLines(rcWithLines, periodId);
 
         // Recalculate ranks for the whole class so the new card gets the right rank
@@ -131,7 +142,11 @@ public class GradeCalculationService {
     private ReportCardWithLines buildReportCard(Long studentId, Long classId, Long periodId,
                                                 List<Assessment> assessments,
                                                 List<ClassSubjectInfo> subjectInfos,
-                                                GradingScale scale) {
+                                                GradingScale scale,
+                                                gn.lacaeducation.grading.domain.GradingCalculationSettings calcSettings,
+                                                Map<Long, BigDecimal> categoryWeights,
+                                                List<gn.lacaeducation.grading.domain.EliminatoryRule> eliminatoryRules,
+                                                List<gn.lacaeducation.grading.domain.DecisionRule> decisionRules) {
 
         Map<Long, List<Assessment>> assessmentsBySubject = assessments.stream()
                 .collect(Collectors.groupingBy(Assessment::getSubjectId));
@@ -162,7 +177,7 @@ public class GradeCalculationService {
                 continue;
             }
 
-            BigDecimal subjectAverage = computeSubjectAverage(grades, subjectAssessments);
+            BigDecimal subjectAverage = computeSubjectAverage(grades, subjectAssessments, calcSettings, categoryWeights);
             BigDecimal subjectCoeff = subjectCoeffMap.getOrDefault(subjectId, BigDecimal.ONE);
             BigDecimal weighted = subjectAverage.multiply(subjectCoeff, MC).setScale(SCALE, RoundingMode.HALF_UP);
 
@@ -185,13 +200,29 @@ public class GradeCalculationService {
                 ? BigDecimal.ZERO
                 : sumWeighted.divide(sumSubjectCoeffs, SCALE, RoundingMode.HALF_UP);
 
+        // Notes éliminatoires (§7) : une moyenne matière sous le seuil impose la décision de la règle.
+        String decision = scale.decisionFor(generalAverage);
+        java.util.Map<Long, BigDecimal> subjectAverages = lines.stream()
+                .filter(l -> l.getSubjectId() != null && l.getSubjectAverage() != null)
+                .collect(Collectors.toMap(ReportCardLine::getSubjectId, ReportCardLine::getSubjectAverage, (a, b) -> a));
+        decision = gn.lacaeducation.grading.domain.EliminatoryRuleEvaluator.resolveDecision(
+                decision, subjectAverages, eliminatoryRules);
+
+        // Moteur de règles de décision paramétrable (§17) : une règle satisfaite impose sa décision.
+        String ruleDecision = gn.lacaeducation.grading.domain.DecisionRuleEngine.evaluate(
+                generalAverage, subjectAverages, decisionRules, java.time.LocalDate.now());
+        if (ruleDecision != null) {
+            decision = ruleDecision;
+        }
+
         ReportCard rc = ReportCard.builder()
                 .studentId(studentId)
                 .classId(classId)
                 .periodId(periodId)
                 .overallAverage(generalAverage)
                 .honor(scale.honorFor(generalAverage))
-                .decision(scale.decisionFor(generalAverage))
+                .decision(decision)
+                .distinction(scale.distinctionFor(generalAverage, minSubjectAverage(lines)))
                 .status(ReportCardStatus.GENERATED)
                 .generatedAt(LocalDateTime.now())
                 .build();
@@ -298,27 +329,83 @@ public class GradeCalculationService {
     }
 
     /**
-     * Weighted average of grades for one subject:
-     * subject_average = Σ(grade.value × assessment.coefficient) / Σ(assessment.coefficient)
+     * Moyenne d'un élève dans une matière (sur les évaluations données), calculée avec exactement le
+     * même paramétrage que les bulletins (méthode, décimales, arrondi, poids de catégorie). Renvoie
+     * {@code null} si l'élève n'a aucune note. Exposée pour le relevé de notes par matière.
      */
-    private BigDecimal computeSubjectAverage(List<Grade> grades, List<Assessment> assessments) {
+    public BigDecimal subjectAverage(List<Assessment> subjectAssessments, List<Grade> studentGrades) {
+        if (subjectAssessments == null || subjectAssessments.isEmpty()
+                || studentGrades == null || studentGrades.isEmpty()) {
+            return null;
+        }
+        var settings = resolveCalcSettings(subjectAssessments);
+        var categoryWeights = resolveCategoryWeights(subjectAssessments);
+        return computeSubjectAverage(studentGrades, subjectAssessments, settings, categoryWeights);
+    }
+
+    /**
+     * Moyenne d'une matière selon la méthode et l'arrondi configurés par l'établissement (§2/§5).
+     * Par défaut : moyenne pondérée par le coefficient d'évaluation, 2 décimales, arrondi mathématique.
+     */
+    private BigDecimal computeSubjectAverage(List<Grade> grades, List<Assessment> assessments,
+                                             gn.lacaeducation.grading.domain.GradingCalculationSettings settings,
+                                             Map<Long, BigDecimal> categoryWeights) {
         Map<Long, BigDecimal> coeffByAssessment = assessments.stream()
                 .collect(Collectors.toMap(Assessment::getId,
                         a -> a.getCoefficient() != null ? a.getCoefficient() : BigDecimal.ONE));
+        Map<Long, Long> categoryByAssessment = assessments.stream()
+                .filter(a -> a.getAssessmentTypeId() != null)
+                .collect(Collectors.toMap(Assessment::getId, Assessment::getAssessmentTypeId));
 
-        BigDecimal sumNumerator = BigDecimal.ZERO;
-        BigDecimal sumDenominator = BigDecimal.ZERO;
+        List<gn.lacaeducation.grading.domain.SubjectAverageCalculator.WeightedGrade> weighted = grades.stream()
+                .map(g -> new gn.lacaeducation.grading.domain.SubjectAverageCalculator.WeightedGrade(
+                        g.getValue(), coeffByAssessment.getOrDefault(g.getAssessmentId(), BigDecimal.ONE),
+                        categoryByAssessment.get(g.getAssessmentId())))
+                .toList();
 
-        for (Grade g : grades) {
-            BigDecimal coeff = coeffByAssessment.getOrDefault(g.getAssessmentId(), BigDecimal.ONE);
-            sumNumerator = sumNumerator.add(g.getValue().multiply(coeff, MC));
-            sumDenominator = sumDenominator.add(coeff);
-        }
+        return gn.lacaeducation.grading.domain.SubjectAverageCalculator.compute(
+                settings.methodOrDefault(), weighted, categoryWeights,
+                settings.decimalsOrDefault(), settings.roundingOrDefault());
+    }
 
-        if (sumDenominator.compareTo(BigDecimal.ZERO) == 0) {
-            return BigDecimal.ZERO;
-        }
-        return sumNumerator.divide(sumDenominator, SCALE, RoundingMode.HALF_UP);
+    /**
+     * Poids de catégorie (type d'évaluation) du tenant, pour la méthode {@code BY_CATEGORY} :
+     * map {@code assessmentTypeId -> poids}. Seuls les types actifs avec un poids strictement positif
+     * sont retenus ; vide si non applicable (retombe alors sur la moyenne pondérée).
+     */
+    private Map<Long, BigDecimal> resolveCategoryWeights(List<Assessment> assessments) {
+        Long tenantId = assessments.stream()
+                .map(Assessment::getTenantId).filter(java.util.Objects::nonNull).findFirst().orElse(null);
+        if (tenantId == null) return Map.of();
+        return assessmentTypeConfigRepository.findByTenantId(tenantId).stream()
+                .filter(c -> c.isActive() && c.getWeight() != null && c.getWeight().signum() > 0)
+                .collect(Collectors.toMap(
+                        gn.lacaeducation.grading.domain.AssessmentTypeConfig::getId,
+                        gn.lacaeducation.grading.domain.AssessmentTypeConfig::getWeight,
+                        (a, b) -> a));
+    }
+
+    /** Réglage du moteur de calcul du tenant des évaluations (ou défauts). */
+    private gn.lacaeducation.grading.domain.GradingCalculationSettings resolveCalcSettings(List<Assessment> assessments) {
+        Long tenantId = assessments.stream()
+                .map(Assessment::getTenantId).filter(java.util.Objects::nonNull).findFirst().orElse(null);
+        if (tenantId == null) return gn.lacaeducation.grading.domain.GradingCalculationSettings.defaults();
+        return calculationSettingsRepository.findByTenantId(tenantId)
+                .orElseGet(gn.lacaeducation.grading.domain.GradingCalculationSettings::defaults);
+    }
+
+    /** Règles de notes éliminatoires (§7) du tenant des évaluations. */
+    private List<gn.lacaeducation.grading.domain.EliminatoryRule> resolveEliminatoryRules(List<Assessment> assessments) {
+        Long tenantId = assessments.stream()
+                .map(Assessment::getTenantId).filter(java.util.Objects::nonNull).findFirst().orElse(null);
+        return tenantId == null ? List.of() : eliminatoryRuleRepository.findByTenantId(tenantId);
+    }
+
+    /** Règles de décision paramétrables (§17) du tenant des évaluations. */
+    private List<gn.lacaeducation.grading.domain.DecisionRule> resolveDecisionRules(List<Assessment> assessments) {
+        Long tenantId = assessments.stream()
+                .map(Assessment::getTenantId).filter(java.util.Objects::nonNull).findFirst().orElse(null);
+        return tenantId == null ? List.of() : decisionRuleRepository.findByTenantId(tenantId);
     }
 
     // -------------------------------------------------------------------------
@@ -333,13 +420,12 @@ public class GradeCalculationService {
         return gradingScaleRepository.findByTenantId(tenantId).orElseGet(GradingScale::defaults);
     }
 
-    /** Mention/honor with the default scale (kept for back-compat / tests). */
-    static String computeHonor(BigDecimal average) {
-        return GradingScale.defaults().honorFor(average);
-    }
-
-    /** Admission decision with the default scale. */
-    static String computeDecision(BigDecimal average) {
-        return GradingScale.defaults().decisionFor(average);
+    /** Plus faible moyenne de matière des lignes du bulletin, ou {@code null} si aucune. */
+    private static BigDecimal minSubjectAverage(List<ReportCardLine> lines) {
+        return lines.stream()
+                .map(ReportCardLine::getSubjectAverage)
+                .filter(java.util.Objects::nonNull)
+                .min(BigDecimal::compareTo)
+                .orElse(null);
     }
 }

@@ -8,7 +8,8 @@ import java.time.LocalDateTime;
 public class MessageRecipientJpaEntity {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
     @Column(name = "communication_id", nullable = false) private Long communicationId;
-    @Column(name = "user_id", nullable = false) private Long userId;
+    @Column(name = "user_id") private Long userId;
+    @Column private String destination;
     @Enumerated(EnumType.STRING) @Column(name = "delivery_status", nullable = false) private DeliveryStatus deliveryStatus;
     @Column(nullable = false) private Boolean read;
     @Column(name = "delivered_at") private LocalDateTime deliveredAt;

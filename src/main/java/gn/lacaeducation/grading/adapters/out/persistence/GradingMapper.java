@@ -13,4 +13,6 @@ interface GradingMapper {
     ReportCardJpaEntity toEntity(ReportCard d);
     ReportCardLine toDomain(ReportCardLineJpaEntity e);
     ReportCardLineJpaEntity toEntity(ReportCardLine d);
+    GradeHistory toDomain(GradeHistoryJpaEntity e);
+    GradeHistoryJpaEntity toEntity(GradeHistory d);
 }

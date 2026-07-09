@@ -3,14 +3,16 @@ package gn.lacaeducation.students.application.service;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ConflictException;
 import gn.lacaeducation.common.ResourceNotFoundException;
+import gn.lacaeducation.students.EnrollmentValidationApi;
 import gn.lacaeducation.students.application.event.EnrollmentCancelledEvent;
+import gn.lacaeducation.students.application.event.EnrollmentCreatedEvent;
 import gn.lacaeducation.students.application.event.EnrollmentValidatedEvent;
 import gn.lacaeducation.students.application.port.in.EnrollmentUseCase;
 import gn.lacaeducation.students.ClassCapacityPort;
 import gn.lacaeducation.students.application.port.out.EnrollmentRepository;
 import gn.lacaeducation.students.domain.Enrollment;
 import gn.lacaeducation.students.domain.EnrollmentStatus;
-import gn.lacaeducation.students.domain.EnrollmentType;
+import gn.lacaeducation.students.EnrollmentType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -19,7 +21,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 @Service @Transactional @RequiredArgsConstructor
-public class InscriptionService implements EnrollmentUseCase {
+public class InscriptionService implements EnrollmentUseCase, EnrollmentValidationApi {
 
     private final EnrollmentRepository enrollmentRepository;
     private final ClassCapacityPort classCapacityPort;
@@ -27,20 +29,44 @@ public class InscriptionService implements EnrollmentUseCase {
 
     @Override
     public Enrollment enroll(EnrollCommand cmd) {
-        return enrollmentRepository.save(Enrollment.builder()
-                .studentId(cmd.studentId()).classId(cmd.classId())
-                .academicYearId(cmd.academicYearId())
-                .type(cmd.type() != null ? cmd.type() : EnrollmentType.NEW)
-                .status(EnrollmentStatus.PENDING).enrolledAt(LocalDate.now()).build());
+        return create(cmd, cmd.type() != null ? cmd.type() : EnrollmentType.NEW);
     }
 
     @Override
     public Enrollment reenroll(EnrollCommand cmd) {
-        return enrollmentRepository.save(Enrollment.builder()
+        return create(cmd, EnrollmentType.RE_ENROLLMENT);
+    }
+
+    private Enrollment create(EnrollCommand cmd, EnrollmentType type) {
+        requireNoActiveEnrollment(cmd.studentId(), cmd.academicYearId());
+        Enrollment saved = enrollmentRepository.save(Enrollment.builder()
                 .studentId(cmd.studentId()).classId(cmd.classId())
                 .academicYearId(cmd.academicYearId())
-                .type(EnrollmentType.RE_ENROLLMENT)
+                .type(type)
                 .status(EnrollmentStatus.PENDING).enrolledAt(LocalDate.now()).build());
+        publishCreated(saved);
+        return saved;
+    }
+
+    @Override
+    public Enrollment update(Long id, EnrollCommand cmd) {
+        Enrollment e = load(id);
+        if (e.getStatus() != EnrollmentStatus.PENDING) {
+            throw new BusinessRuleException("Only a pending enrollment can be modified: id=" + id);
+        }
+        boolean yearChanged = !e.getAcademicYearId().equals(cmd.academicYearId());
+        boolean classChanged = !e.getClassId().equals(cmd.classId());
+        if (yearChanged && enrollmentRepository.existsActiveForStudentYear(e.getStudentId(), cmd.academicYearId())) {
+            throw new ConflictException("Student " + e.getStudentId()
+                    + " already has an active enrollment for academic year " + cmd.academicYearId());
+        }
+        e.setClassId(cmd.classId());
+        e.setAcademicYearId(cmd.academicYearId());
+        if (cmd.type() != null) e.setType(cmd.type());
+        Enrollment saved = enrollmentRepository.save(e);
+        // Re-issue the enrollment invoice against the (possibly new) class fee.
+        if (classChanged) publishCreated(saved);
+        return saved;
     }
 
     @Override
@@ -49,6 +75,18 @@ public class InscriptionService implements EnrollmentUseCase {
         if (e.getStatus() == EnrollmentStatus.VALIDATED) {
             throw new BusinessRuleException("Enrollment is already validated: id=" + id);
         }
+        return doValidate(e);
+    }
+
+    @Override
+    public void validatePaidEnrollment(Long studentId, Long classId) {
+        enrollmentRepository.findPendingByStudentAndClass(studentId, classId)
+                .ifPresent(this::doValidate);
+    }
+
+    /** Shared validation: capacity + one-validated-per-year checks, then transition to VALIDATED. */
+    private Enrollment doValidate(Enrollment e) {
+        if (e.getStatus() == EnrollmentStatus.VALIDATED) return e;
         // One validated enrollment per student and academic year
         if (enrollmentRepository.existsValidatedForStudentYear(e.getStudentId(), e.getAcademicYearId())) {
             throw new ConflictException("Student " + e.getStudentId()
@@ -98,6 +136,19 @@ public class InscriptionService implements EnrollmentUseCase {
 
     @Override
     public void delete(Long id) { enrollmentRepository.deleteById(id); }
+
+    private void requireNoActiveEnrollment(Long studentId, Long academicYearId) {
+        if (enrollmentRepository.existsActiveForStudentYear(studentId, academicYearId)) {
+            throw new ConflictException("Student " + studentId
+                    + " already has an active enrollment for academic year " + academicYearId
+                    + "; cancel it or modify the existing one.");
+        }
+    }
+
+    private void publishCreated(Enrollment e) {
+        eventPublisher.publishEvent(new EnrollmentCreatedEvent(
+                e.getStudentId(), e.getClassId(), e.getAcademicYearId(), e.getId(), e.getType()));
+    }
 
     private Enrollment load(Long id) {
         return enrollmentRepository.findById(id)

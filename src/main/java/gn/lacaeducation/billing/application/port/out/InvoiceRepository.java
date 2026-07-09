@@ -12,6 +12,7 @@ public interface InvoiceRepository {
     List<Invoice> findByTenantIdAndStatus(Long tenantId, InvoiceStatus status);
     List<Invoice> findByFeeId(Long feeId);
     boolean existsByStudentIdAndFeeId(Long studentId, Long feeId);
+    boolean existsByStudentIdAndInstallmentId(Long studentId, Long installmentId);
     void deleteById(Long id);
     boolean existsById(Long id);
 }

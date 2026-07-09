@@ -36,40 +36,43 @@ class PaymentServiceTest {
     @Mock ReceiptUseCase receiptUseCase;
     @Mock PaymentProviderGateway orangeGateway;
     @Mock ApplicationEventPublisher eventPublisher;
+    @Mock gn.lacaeducation.payments.application.port.out.DjomyVerificationPort djomyVerifier;
 
     private PaymentService service() {
-        return new PaymentService(repo, transactionRepo, receiptUseCase, List.of(orangeGateway), eventPublisher);
+        return new PaymentService(repo, transactionRepo, receiptUseCase, List.of(orangeGateway), eventPublisher, djomyVerifier,
+                tools.jackson.databind.json.JsonMapper.builder().build());
     }
 
     private final InitiatePaymentCommand cmd = new InitiatePaymentCommand(
-            10L, 3L, 7L, "PAY-1", new BigDecimal("100.00"), PaymentChannel.ORANGE_MONEY, PaymentType.COMPLETE);
+            10L, 3L, 7L, "PAY-1", new BigDecimal("100.00"), PaymentChannel.ORANGE_MONEY, PaymentType.COMPLETE, null);
 
     @Test
-    void initiate_callsGateway_recordsTransaction_movesToPending() {
-        when(orangeGateway.getChannel()).thenReturn(PaymentChannel.ORANGE_MONEY);
-        when(orangeGateway.initiate(any(), any(), any(), any())).thenReturn(
-                PaymentTransaction.builder().provider(PaymentProvider.ORANGE_MONEY).providerStatus("PENDING").build());
+    void initiate_deskManualChannel_confirmsImmediately_generatesReceipt() throws Exception {
+        // Orange Money est encaissé au guichet (isDeskManual) : l'argent est déjà reçu → confirmation
+        // immédiate (SUCCEEDED), reçu émis et événement publié, sans passerelle en ligne.
         when(repo.save(any(Payment.class))).thenAnswer(i -> {
             Payment p = i.getArgument(0);
             if (p.getId() == null) p.setId(1L);
             return p;
         });
 
-        Payment p = service().initiate(cmd);
+        Payment p = service().initiate(cmd); // cmd = ORANGE_MONEY
 
-        assertThat(p.getStatus()).isEqualTo(PaymentStatus.PENDING);
-        verify(transactionRepo).save(any(PaymentTransaction.class));
+        assertThat(p.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED);
+        verify(receiptUseCase).generate(1L);
+        verify(eventPublisher).publishEvent(any(PaymentSucceededEvent.class));
     }
 
     @Test
-    void initiate_unknownChannel_throwsBusinessRule() {
+    void initiate_onlineChannelWithoutGateway_throwsBusinessRule() {
         when(orangeGateway.getChannel()).thenReturn(PaymentChannel.ORANGE_MONEY);
         when(repo.save(any(Payment.class))).thenAnswer(i -> { Payment p = i.getArgument(0); p.setId(1L); return p; });
 
-        InitiatePaymentCommand cardCmd = new InitiatePaymentCommand(
-                10L, 3L, 7L, "PAY-2", BigDecimal.TEN, PaymentChannel.BANK_CARD, PaymentType.COMPLETE);
+        // MTN Money est un canal en ligne (non desk-manual) : sans passerelle configurée → règle métier.
+        InitiatePaymentCommand onlineCmd = new InitiatePaymentCommand(
+                10L, 3L, 7L, "PAY-2", BigDecimal.TEN, PaymentChannel.MTN_MONEY, PaymentType.COMPLETE, null);
 
-        assertThatThrownBy(() -> service().initiate(cardCmd)).isInstanceOf(BusinessRuleException.class);
+        assertThatThrownBy(() -> service().initiate(onlineCmd)).isInstanceOf(BusinessRuleException.class);
     }
 
     @Test

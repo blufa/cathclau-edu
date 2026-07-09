@@ -5,7 +5,8 @@ import gn.lacaeducation.billing.application.port.in.InvoiceUseCase.CreateInvoice
 import gn.lacaeducation.billing.application.port.out.SchoolFeeRepository;
 import gn.lacaeducation.billing.domain.FeeType;
 import gn.lacaeducation.billing.domain.SchoolFee;
-import gn.lacaeducation.students.application.event.EnrollmentValidatedEvent;
+import gn.lacaeducation.students.application.event.EnrollmentCreatedEvent;
+import gn.lacaeducation.students.EnrollmentType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -23,17 +24,18 @@ class EnrollmentInvoiceListenerTest {
 
     @Mock SchoolFeeRepository schoolFeeRepository;
     @Mock InvoiceUseCase invoiceUseCase;
+    @Mock gn.lacaeducation.common.TenantInfoProvider tenantInfoProvider;
     @InjectMocks EnrollmentInvoiceListener listener;
 
-    private final EnrollmentValidatedEvent event = new EnrollmentValidatedEvent(10L, 7L, 3L, 1L);
+    private final EnrollmentCreatedEvent event = new EnrollmentCreatedEvent(7L, 3L, 1L, 5L, EnrollmentType.NEW);
 
     @Test
     void createsEnrollmentInvoiceWhenFeeConfigured() {
         when(schoolFeeRepository.findByClassIdAndType(3L, FeeType.ENROLLMENT)).thenReturn(List.of(
-                SchoolFee.builder().id(99L).amount(new BigDecimal("250.00")).build()));
+                SchoolFee.builder().id(99L).tenantId(10L).amount(new BigDecimal("250.00")).build()));
         when(invoiceUseCase.existsByStudentIdAndFeeId(7L, 99L)).thenReturn(false);
 
-        listener.onEnrollmentValidated(event);
+        listener.onEnrollmentCreated(event);
 
         verify(invoiceUseCase).create(any(CreateInvoiceCommand.class));
     }
@@ -42,7 +44,7 @@ class EnrollmentInvoiceListenerTest {
     void skipsWhenNoEnrollmentFee() {
         when(schoolFeeRepository.findByClassIdAndType(3L, FeeType.ENROLLMENT)).thenReturn(List.of());
 
-        listener.onEnrollmentValidated(event);
+        listener.onEnrollmentCreated(event);
 
         verify(invoiceUseCase, never()).create(any());
     }
@@ -50,10 +52,10 @@ class EnrollmentInvoiceListenerTest {
     @Test
     void idempotent_skipsWhenInvoiceAlreadyExists() {
         when(schoolFeeRepository.findByClassIdAndType(3L, FeeType.ENROLLMENT)).thenReturn(List.of(
-                SchoolFee.builder().id(99L).amount(new BigDecimal("250.00")).build()));
+                SchoolFee.builder().id(99L).tenantId(10L).amount(new BigDecimal("250.00")).build()));
         when(invoiceUseCase.existsByStudentIdAndFeeId(7L, 99L)).thenReturn(true);
 
-        listener.onEnrollmentValidated(event);
+        listener.onEnrollmentCreated(event);
 
         verify(invoiceUseCase, never()).create(any());
     }

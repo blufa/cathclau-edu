@@ -11,5 +11,7 @@ public record InitiatePaymentRequest(
     @NotNull Long invoiceId,
     @NotNull @Positive BigDecimal amount,
     @NotNull PaymentChannel channel,
-    @NotNull PaymentType paymentType
+    @NotNull PaymentType paymentType,
+    /** Payer phone number — required by aggregator channels (Djomy). */
+    String payerNumber
 ) {}

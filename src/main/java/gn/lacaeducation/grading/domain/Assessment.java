@@ -11,6 +11,8 @@ public class Assessment {
     private Long teacherId;
     private Long periodId;
     private AssessmentType type;
+    /** Type d'évaluation configurable (§3) choisi par l'établissement ; null = type intégré uniquement. */
+    private Long assessmentTypeId;
     private String label;
     private LocalDate date;
     private BigDecimal coefficient;

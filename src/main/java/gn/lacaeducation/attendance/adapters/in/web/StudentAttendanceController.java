@@ -6,6 +6,8 @@ import gn.lacaeducation.attendance.application.port.in.StudentAttendanceUseCase.
 import gn.lacaeducation.attendance.application.port.in.StudentAttendanceUseCase.AttendanceStatsResponse;
 import gn.lacaeducation.attendance.domain.AttendanceStatus;
 import gn.lacaeducation.attendance.domain.StudentAttendance;
+import gn.lacaeducation.common.PortalAccess;
+import gn.lacaeducation.students.ParentAccessProvider;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -14,6 +16,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 import java.util.List;
@@ -22,6 +26,15 @@ import java.util.Optional;
 @RestController @RequestMapping("/api/v1/attendance/students") @RequiredArgsConstructor
 public class StudentAttendanceController {
     private final StudentAttendanceUseCase useCase;
+    private final ParentAccessProvider parentAccessProvider;
+
+    private void assertParentScope(Jwt jwt, Long studentId) {
+        if (jwt == null) return;
+        Long userId;
+        try { userId = Long.parseLong(jwt.getSubject()); } catch (RuntimeException e) { userId = null; }
+        PortalAccess.assertParentCanAccessStudent(jwt.getClaimAsStringList("roles"), userId, studentId,
+                parentAccessProvider::isParentOfStudent);
+    }
 
     public record BulkAttendanceRequest(
             @NotNull Long classId,
@@ -54,7 +67,9 @@ public class StudentAttendanceController {
     public AttendanceStatsResponse getStats(
             @PathVariable Long studentId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) Optional<LocalDate> from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) Optional<LocalDate> to) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) Optional<LocalDate> to,
+            @AuthenticationPrincipal Jwt jwt) {
+        assertParentScope(jwt, studentId);
         return useCase.getStats(studentId, from.orElse(null), to.orElse(null));
     }
 
@@ -66,12 +81,58 @@ public class StudentAttendanceController {
     @GetMapping("/student/{studentId}")
     public List<StudentAttendance> findByStudent(@PathVariable Long studentId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) { return useCase.findByStudent(studentId, from, to); }
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @AuthenticationPrincipal Jwt jwt) { assertParentScope(jwt, studentId); return useCase.findByStudent(studentId, from, to); }
+
+    @Operation(summary = "Liste des absents d'une classe pour une date (PDF)")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER','SECRETARY')")
+    @GetMapping("/class/{classId}/absentees/download")
+    public ResponseEntity<byte[]> absenteesDownload(@PathVariable Long classId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"absents-classe-" + classId + "-" + date + ".pdf\"")
+                .body(useCase.absenteeListPdf(classId, date));
+    }
+
+    @Operation(summary = "Rapport des retards d'une classe sur une période (PDF)")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER','SECRETARY')")
+    @GetMapping("/class/{classId}/lateness/download")
+    public ResponseEntity<byte[]> latenessDownload(@PathVariable Long classId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"retards-classe-" + classId + ".pdf\"")
+                .body(useCase.latenessReportPdf(classId, from, to));
+    }
 
     @Operation(summary = "Update the status of an attendance record")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER','SECRETARY')")
     @PutMapping("/{id}")
     public StudentAttendance update(@PathVariable Long id, @RequestParam AttendanceStatus status, @RequestParam(required=false) String reason) { return useCase.update(id, status, reason); }
+
+    public record JustifyRequest(Boolean justified, String reason, String justificationDoc) {}
+
+    @Operation(summary = "Justifier (ou non) une absence : justifié + motif + pièce")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER','SECRETARY')")
+    @PatchMapping("/{id}/justify")
+    public StudentAttendance justify(@PathVariable Long id, @RequestBody JustifyRequest r) {
+        return useCase.justify(id, r.justified(), r.reason(), r.justificationDoc());
+    }
+
+    @Operation(summary = "Alertes : élèves d'une classe avec ≥ seuil absences non justifiées sur la période")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER','SECRETARY')")
+    @GetMapping("/class/{classId}/unjustified-alerts")
+    public List<StudentAttendanceUseCase.UnjustifiedAlert> unjustifiedAlerts(
+            @PathVariable Long classId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue = "2") int threshold) {
+        return useCase.unjustifiedAlerts(classId, from, to, threshold);
+    }
 
     @Operation(summary = "Mark parent as notified about an absence or late arrival")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")

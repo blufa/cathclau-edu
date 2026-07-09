@@ -1,0 +1,30 @@
+# HTTPS automatique (Let's Encrypt). Route les 2 environnements vers leurs conteneurs.
+# Les conteneurs sont nommés <STACK>-frontend / <STACK>-backend (STACK = laca-prod | laca-dev).
+
+# ---- PRODUCTION ----
+cathclau-edu.com, www.cathclau-edu.com {
+	encode zstd gzip
+	reverse_proxy laca-prod-frontend:3000
+}
+
+api.cathclau-edu.com {
+	encode zstd gzip
+	request_body {
+		max_size 20MB
+	}
+	reverse_proxy laca-prod-backend:8284
+}
+
+# ---- DEV / STAGING ----
+dev.cathclau-edu.com {
+	encode zstd gzip
+	reverse_proxy laca-dev-frontend:3000
+}
+
+api-dev.cathclau-edu.com {
+	encode zstd gzip
+	request_body {
+		max_size 20MB
+	}
+	reverse_proxy laca-dev-backend:8284
+}

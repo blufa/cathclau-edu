@@ -11,7 +11,8 @@ public interface AuthUseCase {
     void changePassword(ChangePasswordCommand command);
     MeResult me(Long userId);
 
-    record LoginCommand(String email, String password) {}
+    /** {@code identifier} est le username (comptes créés par l'école) OU l'email (self-service). */
+    record LoginCommand(String identifier, String password) {}
 
     record MeResult(
         Long userId,
@@ -30,7 +31,8 @@ public interface AuthUseCase {
         long expiresIn,
         Long userId,
         Long tenantId,
-        List<String> roles
+        List<String> roles,
+        boolean mustChangePassword
     ) {}
 
     record ResetPasswordCommand(String token, String newPassword) {}

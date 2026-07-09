@@ -28,6 +28,15 @@ class EleveJpaEntity {
     private String phone;
     private String email;
     private String nationality;
+    @Column(name = "origin_school") private String originSchool;
+    @Column(name = "birth_certificate_number") private String birthCertificateNumber;
+    @Column(name = "blood_group") private String bloodGroup;
+    private String neighborhood;
+    private String landmark;
+    @Column(name = "previous_class") private String previousClass;
+    private Boolean repeating;
+    @Column(name = "transfer_reason") private String transferReason;
+    @Column(name = "medical_notes", length = 2000) private String medicalNotes;
     @CreationTimestamp @Column(name = "created_at", updatable = false) private LocalDateTime createdAt;
     @Column(name = "deleted_at") private LocalDateTime deletedAt;
 }

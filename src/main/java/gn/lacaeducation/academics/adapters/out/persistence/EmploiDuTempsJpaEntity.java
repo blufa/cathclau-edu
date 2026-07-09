@@ -22,7 +22,7 @@ import java.time.LocalTime;
 public class EmploiDuTempsJpaEntity {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
     @Column(name = "tenant_id", nullable = false) private Long tenantId;
-    @Column(name = "school_class_id", nullable = false) private Long schoolClassId;
+    @Column(name = "class_id", nullable = false) private Long schoolClassId;
     @Column(name = "subject_id") private Long subjectId;
     @Column(name = "teacher_id") private Long teacherId;
     @Column(name = "room_id") private Long roomId;

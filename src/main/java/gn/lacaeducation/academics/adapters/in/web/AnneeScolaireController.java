@@ -113,7 +113,7 @@ public class AnneeScolaireController {
     public ResponseEntity<Periode> createPeriod(@PathVariable Long academicYearId,
                                                 @RequestBody CreatePeriodCommand cmd) {
         Periode p = useCase.createPeriod(new CreatePeriodCommand(
-                academicYearId, cmd.label(), cmd.type(), cmd.sortOrder(), cmd.startDate(), cmd.endDate()
+                academicYearId, cmd.label(), cmd.type(), cmd.cycle(), cmd.sortOrder(), cmd.startDate(), cmd.endDate()
         ));
         return ResponseEntity.created(URI.create("/api/academics/periods/" + p.getId())).body(p);
     }
@@ -130,7 +130,7 @@ public class AnneeScolaireController {
     public ResponseEntity<Periode> updatePeriod(@PathVariable Long periodId,
                                                 @RequestBody CreatePeriodCommand cmd) {
         return ResponseEntity.ok(useCase.updatePeriod(periodId, new CreatePeriodCommand(
-                null, cmd.label(), cmd.type(), cmd.sortOrder(), cmd.startDate(), cmd.endDate())));
+                null, cmd.label(), cmd.type(), cmd.cycle(), cmd.sortOrder(), cmd.startDate(), cmd.endDate())));
     }
 
     @Operation(summary = "Close a period, freezing grades and triggering report card generation")

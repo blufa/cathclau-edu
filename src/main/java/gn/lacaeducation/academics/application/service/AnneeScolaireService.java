@@ -133,6 +133,7 @@ public class AnneeScolaireService implements GererAnneeScolaireUseCase {
                 .academicYearId(command.academicYearId())
                 .label(command.label())
                 .type(command.type())
+                .cycle(command.cycle())
                 .sortOrder(command.sortOrder())
                 .startDate(command.startDate())
                 .endDate(command.endDate())
@@ -150,6 +151,7 @@ public class AnneeScolaireService implements GererAnneeScolaireUseCase {
         }
         periode.setLabel(command.label());
         periode.setType(command.type());
+        periode.setCycle(command.cycle());
         periode.setSortOrder(command.sortOrder());
         periode.setStartDate(command.startDate());
         periode.setEndDate(command.endDate());

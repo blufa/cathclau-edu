@@ -6,7 +6,9 @@ import gn.lacaeducation.platform.adapters.out.persistence.SubscriptionInvoiceJpa
 import gn.lacaeducation.platform.adapters.out.persistence.SubscriptionJpaEntity;
 import gn.lacaeducation.platform.adapters.out.persistence.SubscriptionPaymentJpaEntity;
 import gn.lacaeducation.platform.adapters.out.persistence.SubscriptionReceiptJpaEntity;
+import gn.lacaeducation.platform.adapters.out.persistence.EmailVerificationTokenJpaEntity;
 import gn.lacaeducation.platform.adapters.out.persistence.TenantJpaEntity;
+import gn.lacaeducation.platform.domain.EmailVerificationToken;
 import gn.lacaeducation.platform.domain.Plan;
 import gn.lacaeducation.platform.domain.PlanChange;
 import gn.lacaeducation.platform.domain.Subscription;
@@ -46,4 +48,8 @@ public interface PlatformMapper {
     PlanChange toDomain(PlanChangeJpaEntity entity);
 
     PlanChangeJpaEntity toEntity(PlanChange domain);
+
+    EmailVerificationToken toDomain(EmailVerificationTokenJpaEntity entity);
+
+    EmailVerificationTokenJpaEntity toEntity(EmailVerificationToken domain);
 }

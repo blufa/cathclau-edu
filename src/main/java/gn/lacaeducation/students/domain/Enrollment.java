@@ -1,5 +1,6 @@
 package gn.lacaeducation.students.domain;
 
+import gn.lacaeducation.students.EnrollmentType;
 import lombok.*;
 import java.time.LocalDate;
 

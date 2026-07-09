@@ -31,11 +31,16 @@ class EleveServiceTest {
     @Mock StudentDocumentRepository documentRepository;
     @Mock TenantQuotaService tenantQuotaService;
     @Mock ApplicationEventPublisher eventPublisher;
+    @Mock gn.lacaeducation.common.TenantInfoProvider tenantInfoProvider;
+    @Mock gn.lacaeducation.students.PortalAccountProvisioner portalAccountProvisioner;
     @InjectMocks EleveService service;
 
     private CreateStudentCommand cmd(String number) {
         return new CreateStudentCommand(10L, null, number, "Mariama", "Bah",
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null,
+                null, null, null, null, null, null,
+                null, null, null, null,
+                null, null);
     }
 
     @Test
@@ -57,7 +62,8 @@ class EleveServiceTest {
 
         Student result = service.create(cmd(null));
 
-        assertThat(result.getStudentNumber()).matches("\\d{4}-\\d{5}");
+        // Matricule auto-généré au format <sigleÉcole>-ELV-<année>-<séquence>, ex. EC-ELV-2026-00042.
+        assertThat(result.getStudentNumber()).matches("[A-Z]{2,6}-ELV-\\d{4}-\\d{5}");
         verify(eventPublisher).publishEvent(any(StudentCreatedEvent.class));
     }
 

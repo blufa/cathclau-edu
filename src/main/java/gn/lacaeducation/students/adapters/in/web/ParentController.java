@@ -16,6 +16,8 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
@@ -49,10 +51,43 @@ public class ParentController {
         return PageResponse.of(new PageImpl<>(list.subList(start, end), pageable, list.size()));
     }
 
+    @Operation(summary = "Get the parent record of the currently authenticated user (parent portal)")
+    @GetMapping("/me")
+    public ResponseEntity<Parent> me(@AuthenticationPrincipal Jwt jwt) {
+        return parentUseCase.findByUserId(currentUserId(jwt)).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
+    }
+
+    @Operation(summary = "Get the children (students) of the currently authenticated parent")
+    @GetMapping("/me/children")
+    public List<gn.lacaeducation.students.domain.Student> myChildren(@AuthenticationPrincipal Jwt jwt) {
+        return parentUseCase.findByUserId(currentUserId(jwt))
+                .map(p -> parentUseCase.findStudentsByParent(p.getId()))
+                .orElseGet(List::of);
+    }
+
+    @Operation(summary = "Mise à jour self-service du profil du parent connecté (tél, email, adresse, profession)")
+    @PreAuthorize("hasRole('PARENT')")
+    @PutMapping("/me")
+    public Parent updateMyProfile(@AuthenticationPrincipal Jwt jwt,
+                                  @RequestBody ParentUseCase.UpdateProfileCommand cmd) {
+        return parentUseCase.updateOwnProfile(currentUserId(jwt), cmd);
+    }
+
+    @Operation(summary = "Mise à jour de la photo de profil du parent connecté")
+    @PreAuthorize("hasRole('PARENT')")
+    @PatchMapping("/me/photo")
+    public Parent updateMyPhoto(@AuthenticationPrincipal Jwt jwt, @RequestParam String photoUrl) {
+        return parentUseCase.updateOwnPhoto(currentUserId(jwt), photoUrl);
+    }
+
     @Operation(summary = "Get parent by ID")
     @GetMapping("/{id}")
     public ResponseEntity<Parent> findById(@PathVariable Long id) {
         return parentUseCase.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
+    }
+
+    private Long currentUserId(Jwt jwt) {
+        try { return Long.parseLong(jwt.getSubject()); } catch (RuntimeException e) { return null; }
     }
 
     @Operation(summary = "Update parent information")
@@ -75,6 +110,14 @@ public class ParentController {
     public StudentParent linkStudent(@PathVariable Long parentId, @PathVariable Long studentId,
                                       @RequestParam Relationship relationship) {
         return parentUseCase.linkStudent(studentId, parentId, relationship);
+    }
+
+    @Operation(summary = "Désigner le responsable principal (« responsable 1 ») de l'élève")
+    @PatchMapping("/{parentId}/students/{studentId}/primary")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','SECRETARY','DIRECTOR')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void setPrimary(@PathVariable Long parentId, @PathVariable Long studentId) {
+        parentUseCase.setPrimaryGuardian(studentId, parentId);
     }
 
     @Operation(summary = "Remove a student-parent link")

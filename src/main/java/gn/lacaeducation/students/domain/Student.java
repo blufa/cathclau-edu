@@ -20,6 +20,19 @@ public class Student {
     private String phone;
     private String email;
     private String nationality;
+    private String originSchool;
+    // Identity extras
+    private String birthCertificateNumber;
+    private String bloodGroup;
+    // Address extras
+    private String neighborhood;
+    private String landmark;
+    // Previous schooling
+    private String previousClass;
+    private Boolean repeating;
+    private String transferReason;
+    // Health
+    private String medicalNotes;
     private LocalDateTime createdAt;
     private LocalDateTime deletedAt;
 }

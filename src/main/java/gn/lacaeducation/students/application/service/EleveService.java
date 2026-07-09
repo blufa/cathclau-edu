@@ -3,6 +3,8 @@ package gn.lacaeducation.students.application.service;
 import gn.lacaeducation.common.ConflictException;
 import gn.lacaeducation.common.QuotaExceededException;
 import gn.lacaeducation.common.ResourceNotFoundException;
+import gn.lacaeducation.common.SchoolCode;
+import gn.lacaeducation.common.TenantInfoProvider;
 import gn.lacaeducation.platform.TenantQuotaService;
 import gn.lacaeducation.students.application.event.StudentCreatedEvent;
 import gn.lacaeducation.students.application.port.in.StudentUseCase;
@@ -29,6 +31,8 @@ public class EleveService implements StudentUseCase {
     private final StudentDocumentRepository documentRepository;
     private final TenantQuotaService tenantQuotaService;
     private final ApplicationEventPublisher eventPublisher;
+    private final TenantInfoProvider tenantInfoProvider;
+    private final gn.lacaeducation.students.PortalAccountProvisioner portalAccountProvisioner;
 
     @Override
     public Student create(CreateStudentCommand cmd) {
@@ -37,19 +41,33 @@ public class EleveService implements StudentUseCase {
             throw new QuotaExceededException("Student quota exceeded for tenant " + cmd.tenantId());
         }
         String matricule = resolveStudentNumber(cmd.tenantId(), cmd.studentNumber());
+
+        // Accès portail optionnel : login = matricule SANS tirets (« enlève le tiret du 6 »), pas d'email.
+        Long userId = cmd.userId();
+        if (Boolean.TRUE.equals(cmd.createLogin()) && cmd.loginPassword() != null && !cmd.loginPassword().isBlank()) {
+            String username = matricule.replace("-", "");
+            userId = portalAccountProvisioner.createStudentLogin(
+                    cmd.tenantId(), cmd.firstName(), cmd.lastName(), username, cmd.loginPassword());
+        }
+
         Student saved = studentRepository.save(Student.builder()
-                .tenantId(cmd.tenantId()).userId(cmd.userId())
+                .tenantId(cmd.tenantId()).userId(userId)
                 .studentNumber(matricule).firstName(cmd.firstName()).lastName(cmd.lastName())
                 .gender(cmd.gender()).birthDate(cmd.birthDate()).birthPlace(cmd.birthPlace())
                 .address(cmd.address()).phone(cmd.phone()).email(cmd.email())
-                .nationality(cmd.nationality()).createdAt(LocalDateTime.now()).build());
+                .nationality(cmd.nationality()).originSchool(cmd.originSchool()).photo(cmd.photo())
+                .birthCertificateNumber(cmd.birthCertificateNumber()).bloodGroup(cmd.bloodGroup())
+                .neighborhood(cmd.neighborhood()).landmark(cmd.landmark())
+                .previousClass(cmd.previousClass()).repeating(cmd.repeating()).transferReason(cmd.transferReason())
+                .medicalNotes(cmd.medicalNotes())
+                .createdAt(LocalDateTime.now()).build());
         eventPublisher.publishEvent(new StudentCreatedEvent(saved.getTenantId(), saved.getId(), saved.getStudentNumber()));
         return saved;
     }
 
     /**
      * Returns a tenant-unique matricule: validates a provided one, or auto-generates one in the
-     * {@code YEAR-SEQ} format (e.g. {@code 2026-00042}).
+     * {@code SIGLE-ELV-YEAR-SEQ} format (e.g. {@code GSC-ELV-2026-00042}).
      */
     private String resolveStudentNumber(Long tenantId, String provided) {
         if (provided != null && !provided.isBlank()) {
@@ -58,11 +76,12 @@ public class EleveService implements StudentUseCase {
             }
             return provided;
         }
+        String prefix = SchoolCode.prefix(tenantInfoProvider, tenantId);
         String year = String.valueOf(Year.now().getValue());
         long seq = studentRepository.countByTenantId(tenantId) + 1;
         String candidate;
         do {
-            candidate = String.format("%s-%05d", year, seq++);
+            candidate = String.format("%s-ELV-%s-%05d", prefix, year, seq++);
         } while (studentRepository.existsByTenantIdAndStudentNumber(tenantId, candidate));
         return candidate;
     }
@@ -74,13 +93,22 @@ public class EleveService implements StudentUseCase {
         s.setStudentNumber(cmd.studentNumber()); s.setFirstName(cmd.firstName()); s.setLastName(cmd.lastName());
         s.setGender(cmd.gender()); s.setBirthDate(cmd.birthDate()); s.setBirthPlace(cmd.birthPlace());
         s.setAddress(cmd.address()); s.setPhone(cmd.phone()); s.setEmail(cmd.email());
-        s.setNationality(cmd.nationality());
+        s.setNationality(cmd.nationality()); s.setOriginSchool(cmd.originSchool());
+        s.setBirthCertificateNumber(cmd.birthCertificateNumber()); s.setBloodGroup(cmd.bloodGroup());
+        s.setNeighborhood(cmd.neighborhood()); s.setLandmark(cmd.landmark());
+        s.setPreviousClass(cmd.previousClass()); s.setRepeating(cmd.repeating()); s.setTransferReason(cmd.transferReason());
+        s.setMedicalNotes(cmd.medicalNotes());
+        if (cmd.photo() != null) s.setPhoto(cmd.photo());
         return studentRepository.save(s);
     }
 
     @Override
     @Transactional(readOnly = true)
     public Optional<Student> findById(Long id) { return studentRepository.findById(id); }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<Student> findByUserId(Long userId) { return studentRepository.findByUserId(userId); }
 
     @Override
     @Transactional(readOnly = true)
@@ -91,9 +119,9 @@ public class EleveService implements StudentUseCase {
     public org.springframework.data.domain.Page<Student> search(
             Long tenantId, gn.lacaeducation.students.domain.Gender gender, String search,
             Long classId, gn.lacaeducation.students.domain.EnrollmentStatus enrollmentStatus,
-            org.springframework.data.domain.Pageable pageable) {
+            boolean notEnrolled, org.springframework.data.domain.Pageable pageable) {
         String q = (search == null || search.isBlank()) ? null : search.toLowerCase();
-        return studentRepository.search(tenantId, gender, q, classId, enrollmentStatus, pageable);
+        return studentRepository.search(tenantId, gender, q, classId, enrollmentStatus, notEnrolled, pageable);
     }
 
     @Override

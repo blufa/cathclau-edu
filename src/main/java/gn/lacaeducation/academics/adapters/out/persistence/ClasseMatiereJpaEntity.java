@@ -15,7 +15,8 @@ import lombok.Setter;
 @Getter @Setter @NoArgsConstructor
 public class ClasseMatiereJpaEntity {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
-    @Column(name = "school_class_id", nullable = false) private Long schoolClassId;
+    @Column(name = "class_id", nullable = false) private Long schoolClassId;
     @Column(name = "subject_id", nullable = false) private Long subjectId;
     @Column(name = "teacher_id") private Long teacherId;
+    @Column(name = "coefficient") private java.math.BigDecimal coefficient;
 }

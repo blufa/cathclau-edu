@@ -45,6 +45,13 @@ public class TeacherAttendanceController {
         return useCase.getStats(teacherId, from.orElse(null), to.orElse(null));
     }
 
+    @Operation(summary = "Récapitulatif mensuel d'un enseignant (présences, retard cumulé, heures prévues/effectives)")
+    @GetMapping("/{teacherId}/monthly-summary")
+    public TeacherAttendanceUseCase.MonthlySummary monthlySummary(
+            @PathVariable Long teacherId, @RequestParam int year, @RequestParam int month) {
+        return useCase.monthlySummary(teacherId, year, month);
+    }
+
     @Operation(summary = "Get attendance records for a teacher over a date range")
     @GetMapping("/teacher/{teacherId}")
     public List<TeacherAttendance> findByTeacher(@PathVariable Long teacherId,

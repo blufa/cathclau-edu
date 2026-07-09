@@ -11,8 +11,9 @@ import java.util.Optional;
 public interface StudentRepository {
     Student save(Student student);
     Optional<Student> findById(Long id);
+    Optional<Student> findByUserId(Long userId);
     List<Student> findByTenantId(Long tenantId);
-    Page<Student> search(Long tenantId, Gender gender, String q, Long classId, EnrollmentStatus status, Pageable pageable);
+    Page<Student> search(Long tenantId, Gender gender, String q, Long classId, EnrollmentStatus status, boolean notEnrolled, Pageable pageable);
     void deleteById(Long id);
     boolean existsById(Long id);
     long countByTenantId(Long tenantId);

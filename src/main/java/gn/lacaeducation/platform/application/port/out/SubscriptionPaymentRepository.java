@@ -8,6 +8,7 @@ import java.util.Optional;
 public interface SubscriptionPaymentRepository {
     SubscriptionPayment save(SubscriptionPayment payment);
     Optional<SubscriptionPayment> findById(Long id);
+    Optional<SubscriptionPayment> findByExternalTransactionId(String externalTransactionId);
     List<SubscriptionPayment> findAll();
     void deleteById(Long id);
     boolean existsById(Long id);

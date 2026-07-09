@@ -1,5 +1,6 @@
 package gn.lacaeducation.students.application.port.in;
 
+import gn.lacaeducation.students.EnrollmentType;
 import gn.lacaeducation.students.domain.*;
 import java.util.List;
 
@@ -8,6 +9,7 @@ public interface EnrollmentUseCase {
 
     Enrollment enroll(EnrollCommand command);
     Enrollment reenroll(EnrollCommand command);
+    Enrollment update(Long id, EnrollCommand command);
     Enrollment validate(Long id);
     Enrollment cancel(Long id);
     Enrollment findById(Long id);

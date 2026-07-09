@@ -47,4 +47,37 @@ public class PlanJpaEntity {
 
     @Column(nullable = false)
     private Boolean archived = false;
+
+    /** Trial plan = price 0 + trialDays; one plan can be flagged as the default trial. */
+    @Column(name = "is_trial", nullable = false)
+    private Boolean trial = false;
+
+    @Column(name = "trial_days")
+    private Integer trialDays;
+
+    @Column(name = "default_trial", nullable = false)
+    private Boolean defaultTrial = false;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "plan_type", length = 16)
+    private gn.lacaeducation.platform.domain.PlanType planType;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 24)
+    private gn.lacaeducation.platform.domain.Periodicity periodicity;
+
+    @Column(name = "user_limit")
+    private Integer userLimit;
+
+    @Column(name = "sms_limit")
+    private Integer smsLimit;
+
+    @Column(name = "public_visible", nullable = false)
+    private Boolean publicVisible = true;
+
+    @Column(name = "display_order")
+    private Integer displayOrder;
+
+    @Column(nullable = false)
+    private Boolean highlighted = false;
 }

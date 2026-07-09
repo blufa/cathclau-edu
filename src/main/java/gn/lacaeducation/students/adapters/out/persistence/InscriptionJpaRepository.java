@@ -13,6 +13,8 @@ interface InscriptionJpaRepository extends JpaRepository<InscriptionJpaEntity, L
 
     long countByClassIdAndStatus(Long classId, EnrollmentStatus status);
     boolean existsByStudentIdAndAcademicYearIdAndStatus(Long studentId, Long academicYearId, EnrollmentStatus status);
+    boolean existsByStudentIdAndAcademicYearIdAndStatusNot(Long studentId, Long academicYearId, EnrollmentStatus status);
+    java.util.Optional<InscriptionJpaEntity> findFirstByStudentIdAndClassIdAndStatus(Long studentId, Long classId, EnrollmentStatus status);
 
     @Query("SELECT e FROM InscriptionJpaEntity e WHERE "
             + "(:studentId IS NULL OR e.studentId = :studentId) AND "
