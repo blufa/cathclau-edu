@@ -3,6 +3,8 @@ package gn.lacaeducation.platform.application.port.in;
 import gn.lacaeducation.platform.domain.EstablishmentType;
 import gn.lacaeducation.platform.domain.TenantStatus;
 
+import java.util.Set;
+
 /** Self-service school registration & email verification (features/01-platform.md §1). */
 public interface SignupUseCase {
 
@@ -18,8 +20,8 @@ public interface SignupUseCase {
     /** Public branding for a school's login page, resolved by slug. */
     BrandingView getBranding(String slug);
 
-    record SignupCommand(String schoolName, String desiredSlug, String adminEmail, String password,
-                         String city, String country, EstablishmentType establishmentType,
+    record SignupCommand(String schoolName, String desiredSlug, String adminEmail, String adminUsername,
+                         String password, String city, String country, Set<EstablishmentType> establishmentTypes,
                          String director, String desiredPlan,
                          String adminFirstName, String adminLastName, String adminPhone) {}
 
