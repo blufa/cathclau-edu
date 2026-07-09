@@ -79,12 +79,15 @@ public class TenantProvisioningService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void provisionUnverifiedAdmin(Long tenantId, String schoolName, String adminEmail,
                                          String director, String rawPassword,
-                                         String adminFirstName, String adminLastName, String adminPhone) {
-        if (adminEmail == null || adminEmail.isBlank()) {
-            log.warn("Cannot provision admin for tenant {}: no admin email provided", tenantId);
+                                         String adminFirstName, String adminLastName, String adminPhone,
+                                         String adminUsername, boolean active) {
+        boolean hasEmail = adminEmail != null && !adminEmail.isBlank();
+        boolean hasUsername = adminUsername != null && !adminUsername.isBlank();
+        if (!hasEmail && !hasUsername) {
+            log.warn("Cannot provision admin for tenant {}: no email nor username provided", tenantId);
             return;
         }
-        if (userRepository.existsByTenantIdAndEmail(tenantId, adminEmail)) {
+        if (hasEmail && userRepository.existsByTenantIdAndEmail(tenantId, adminEmail)) {
             log.info("Admin user already exists for tenant {} ({})", tenantId, adminEmail);
             return;
         }
@@ -96,17 +99,21 @@ public class TenantProvisioningService {
             if (firstName == null) firstName = name[0];
             if (lastName == null) lastName = name[1];
         }
+        // Username choisi par l'utilisateur (unicité garantie par suffixe), sinon généré depuis le nom.
+        String username = hasUsername
+                ? uniqueUsername(adminUsername.trim())
+                : UsernameGenerator.generate(firstName, lastName, userRepository::existsByUsername);
         String hash = passwordHasher.hash(
                 rawPassword != null && !rawPassword.isBlank() ? rawPassword : UUID.randomUUID().toString());
         User admin = User.builder()
                 .tenantId(tenantId)
                 .firstName(firstName)
                 .lastName(lastName)
-                .username(UsernameGenerator.generate(firstName, lastName, userRepository::existsByUsername))
-                .email(adminEmail)
+                .username(username)
+                .email(hasEmail ? adminEmail : null)
                 .phone(adminPhone)
                 .passwordHash(hash)
-                .active(false) // unverified until email is confirmed
+                .active(active) // actif immédiatement si inscription sans vérification email
                 .createdAt(LocalDateTime.now())
                 .build();
         User saved = userRepository.save(admin);
@@ -139,6 +146,16 @@ public class TenantProvisioningService {
         userRepository.findByTenantId(tenantId)
                 .forEach(u -> refreshTokenRepository.revokeAllByUserId(u.getId()));
         log.info("Revoked active sessions for tenant {}", tenantId);
+    }
+
+    /** Garantit l'unicité du username (ajoute un suffixe numérique si déjà pris). */
+    private String uniqueUsername(String base) {
+        String candidate = base;
+        int i = 1;
+        while (userRepository.existsByUsername(candidate)) {
+            candidate = base + i++;
+        }
+        return candidate;
     }
 
     private String[] splitName(String director, String schoolName) {

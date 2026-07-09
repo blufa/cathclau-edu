@@ -16,5 +16,9 @@ public record TenantSignupRequestedEvent(
         String verificationToken,
         String adminFirstName,
         String adminLastName,
-        String adminPhone
+        String adminPhone,
+        /** Identifiant de connexion souhaité (username) ; si vide, généré depuis le nom. */
+        String adminUsername,
+        /** true = compte admin actif immédiatement (inscription sans vérification email). */
+        boolean autoActivate
 ) {}

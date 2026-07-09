@@ -54,10 +54,12 @@ class SignupServiceTest {
         when(tenantRepository.save(any(Tenant.class)))
                 .thenAnswer(inv -> { Tenant t = inv.getArgument(0); t.setId(7L); return t; });
         when(tokenRepository.save(any(EmailVerificationToken.class))).thenAnswer(inv -> inv.getArgument(0));
+        // Ce test couvre le flux avec vérification email (PENDING + token).
+        ReflectionTestUtils.setField(service, "requireEmailVerification", true);
 
         SignupResult result = service.signup(new SignupCommand(
-                "École Claire", "École Claire", "dir@ecole.gn", "password123",
-                "Conakry", "Guinée", EstablishmentType.COLLEGE, "Mamadou Diallo", null, null, null, null));
+                "École Claire", "École Claire", "dir@ecole.gn", "admin", "password123",
+                "Conakry", "Guinée", java.util.Set.of(EstablishmentType.COLLEGE), "Mamadou Diallo", null, null, null, null));
 
         assertThat(result.tenantId()).isEqualTo(7L);
         assertThat(result.slug()).isEqualTo("ecole-claire");
@@ -77,8 +79,8 @@ class SignupServiceTest {
         when(tenantRepository.existsBySlug("ecole-claire")).thenReturn(true);
 
         assertThatThrownBy(() -> service.signup(new SignupCommand(
-                "École Claire", "ecole-claire", "dir@ecole.gn", "password123",
-                null, null, EstablishmentType.LYCEE, "Dir", null, null, null, null)))
+                "École Claire", "ecole-claire", "dir@ecole.gn", "admin", "password123",
+                null, null, java.util.Set.of(EstablishmentType.LYCEE), "Dir", null, null, null, null)))
                 .isInstanceOf(ConflictException.class);
     }
 

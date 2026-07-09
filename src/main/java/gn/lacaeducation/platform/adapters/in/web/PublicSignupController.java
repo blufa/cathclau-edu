@@ -46,8 +46,8 @@ public class PublicSignupController {
     @ResponseStatus(HttpStatus.ACCEPTED)
     public SignupResponse signup(@Valid @RequestBody SignupRequest req) {
         return SignupResponse.from(signupUseCase.signup(new SignupCommand(
-                req.nomEcole(), req.slugSouhaite(), req.emailDirecteur(), req.password(),
-                req.ville(), req.pays(), req.typeEtablissement(), req.directeur(), req.planSouhaite(),
+                req.nomEcole(), req.slugSouhaite(), req.emailDirecteur(), req.username(), req.password(),
+                req.ville(), req.pays(), req.typesEtablissement(), req.directeur(), req.planSouhaite(),
                 req.prenomAdmin(), req.nomAdmin(), req.telephoneAdmin())));
     }
 

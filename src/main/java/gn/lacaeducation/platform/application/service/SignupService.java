@@ -3,6 +3,7 @@ package gn.lacaeducation.platform.application.service;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ConflictException;
 import gn.lacaeducation.common.ResourceNotFoundException;
+import gn.lacaeducation.platform.application.event.TenantActivatedEvent;
 import gn.lacaeducation.platform.application.event.TenantSignupRequestedEvent;
 import gn.lacaeducation.platform.application.port.in.SignupUseCase;
 import gn.lacaeducation.platform.application.port.in.SubscriptionUseCase;
@@ -49,6 +50,14 @@ public class SignupService implements SignupUseCase {
     @Value("${app.platform.verification-token-hours:48}")
     private int verificationTokenHours;
 
+    /**
+     * Vérification email requise à l'inscription ? Par défaut FALSE (l'email n'est pas encore
+     * branché en prod) → l'école est active immédiatement et peut se connecter. Passez à true
+     * une fois un fournisseur SMTP intégré.
+     */
+    @Value("${app.signup.require-email-verification:false}")
+    private boolean requireEmailVerification;
+
     @Override
     public SignupResult signup(SignupCommand c) {
         String slug = normalizeSlug(c.desiredSlug() != null && !c.desiredSlug().isBlank()
@@ -61,26 +70,40 @@ public class SignupService implements SignupUseCase {
         }
 
         LocalDateTime now = LocalDateTime.now();
+        // Sans vérification email : école ACTIVE (TRIAL) tout de suite. Sinon PENDING_VERIFICATION.
+        boolean autoActivate = !requireEmailVerification;
         Tenant tenant = tenantRepository.save(Tenant.builder()
                 .schoolName(c.schoolName()).slug(slug).email(c.adminEmail()).director(c.director())
                 .city(c.city()).country(c.country())
-                .establishmentTypes(c.establishmentType() == null
-                        ? new java.util.LinkedHashSet<>() : new java.util.LinkedHashSet<>(java.util.List.of(c.establishmentType())))
-                .status(TenantStatus.PENDING_VERIFICATION)
+                .establishmentTypes(c.establishmentTypes() == null
+                        ? new java.util.LinkedHashSet<>() : new java.util.LinkedHashSet<>(c.establishmentTypes()))
+                .status(autoActivate ? TenantStatus.TRIAL : TenantStatus.PENDING_VERIFICATION)
                 .requestedPlanCode(c.desiredPlan())
+                .activatedAt(autoActivate ? now : null)
                 .trialEndsAt(now.plusDays(trialDays))
                 .createdAt(now).build());
 
-        String token = UUID.randomUUID().toString().replace("-", "");
-        tokenRepository.save(EmailVerificationToken.builder()
-                .tenantId(tenant.getId()).email(c.adminEmail()).token(token)
-                .expiresAt(now.plusHours(verificationTokenHours)).createdAt(now).build());
+        String token = null;
+        if (!autoActivate) {
+            token = UUID.randomUUID().toString().replace("-", "");
+            tokenRepository.save(EmailVerificationToken.builder()
+                    .tenantId(tenant.getId()).email(c.adminEmail()).token(token)
+                    .expiresAt(now.plusHours(verificationTokenHours)).createdAt(now).build());
+        }
 
-        // IAM creates the unverified ADMIN_ECOLE (with password); communication emails the link.
+        // IAM crée le compte ADMIN_ECOLE (actif si autoActivate) ; communication envoie le lien (si requis).
         eventPublisher.publishEvent(new TenantSignupRequestedEvent(
                 tenant.getId(), tenant.getSchoolName(), slug, c.adminEmail(), c.director(),
-                c.password(), token, c.adminFirstName(), c.adminLastName(), c.adminPhone()));
+                c.password(), token, c.adminFirstName(), c.adminLastName(), c.adminPhone(),
+                c.adminUsername(), autoActivate));
 
+        if (autoActivate) {
+            // Onboarding immédiat (année scolaire, abonnement d'essai, etc.).
+            eventPublisher.publishEvent(new TenantActivatedEvent(
+                    tenant.getId(), tenant.getSchoolName(), c.adminEmail(), c.director()));
+            return new SignupResult(tenant.getId(), slug, tenant.getStatus(),
+                    "Votre école est créée et active. Connectez-vous avec votre email et votre mot de passe.");
+        }
         return new SignupResult(tenant.getId(), slug, tenant.getStatus(),
                 "Inscription enregistrée. Vérifiez votre email pour activer l'école.");
     }
@@ -150,7 +173,7 @@ public class SignupService implements SignupUseCase {
         // Renvoi du lien : l'admin existe déjà (provisioning idempotent), pas besoin des infos admin.
         eventPublisher.publishEvent(new TenantSignupRequestedEvent(
                 tenant.getId(), tenant.getSchoolName(), tenant.getSlug(), email,
-                tenant.getDirector(), null, token, null, null, null));
+                tenant.getDirector(), null, token, null, null, null, null, false));
     }
 
     @Override
