@@ -72,6 +72,17 @@ ufw allow 22 && ufw allow 80 && ufw allow 443 && ufw --force enable
 docker network create web                          # réseau partagé proxy <-> applications
 mkdir -p /opt/lacaeducation/proxy
 ```
+
+> ⚠️ **DNS des conteneurs (piège fréquent Contabo / `systemd-resolved`)** : sans ça, les conteneurs
+> ne résolvent aucun domaine (`127.0.0.53:53 connection refused`) → **Caddy ne peut pas obtenir de
+> certificat HTTPS** et le backend ne joint pas Cloudinary/Djomy/SMTP. Fixez le DNS Docker :
+> ```bash
+> mkdir -p /etc/docker
+> cat > /etc/docker/daemon.json <<'EOF'
+> { "dns": ["1.1.1.1", "8.8.8.8"] }
+> EOF
+> systemctl restart docker
+> ```
 Vérifier : `docker --version` et `docker compose version` doivent répondre.
 **Rien d'autre à installer** (pas de Java, Node, PostgreSQL ni Nginx : tout est conteneurisé).
 
@@ -147,8 +158,91 @@ api-dev.cathclau-edu.com {
 }
 EOF
 ```
-Le fichier `docker-compose.yml` de l'application (celui à la racine `/opt/lacaeducation/`) et les
-`.env.*.example` restent copiés via la Méthode A (ou recréés de la même façon).
+Puis créez le **`docker-compose.yml` de l'application** (racine `/opt/lacaeducation/`) — copiez-collez
+ce bloc entier sur le VPS :
+```bash
+cat > /opt/lacaeducation/docker-compose.yml <<'COMPOSE_EOF'
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ${STACK}-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${DB_HOST_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [internal]
+
+  backend:
+    image: ghcr.io/${GHCR_OWNER}/lacaeducation-backend:${BACKEND_TAG}
+    container_name: ${STACK}-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILE}
+      SERVER_PORT: "8284"
+      DB_URL: jdbc:postgresql://db:5432/${POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET}
+      APP_QR_SECRET: ${APP_QR_SECRET}
+      BOOTSTRAP_SUPERADMIN_EMAIL: ${SUPER_ADMIN_EMAIL}
+      BOOTSTRAP_SUPERADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD}
+      APP_CORS_ALLOWED_ORIGINS: ${FRONT_URL}
+      VERIFICATION_URL: ${FRONT_URL}/verify-email
+      APP_PLATFORM_VERIFICATION_URL: ${FRONT_URL}/verify-email
+      APP_PLATFORM_LOGIN_URL: ${FRONT_URL}/login
+      MAIL_HOST: ${MAIL_HOST}
+      MAIL_PORT: ${MAIL_PORT}
+      MAIL_USERNAME: ${MAIL_USERNAME}
+      MAIL_PASSWORD: ${MAIL_PASSWORD}
+      APP_MAIL_FROM: ${MAIL_FROM}
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
+      DJOMY_CLIENT_ID: ${DJOMY_CLIENT_ID}
+      DJOMY_CLIENT_SECRET: ${DJOMY_CLIENT_SECRET}
+      DJOMY_BASE_URL: ${DJOMY_BASE_URL}
+      DJOMY_WEBHOOK_SECRET: ${DJOMY_WEBHOOK_SECRET}
+      DJOMY_RETURN_URL: ${FRONT_URL}/subscription/payment
+      DJOMY_CANCEL_URL: ${FRONT_URL}/subscription/payment
+    expose:
+      - "8284"
+    networks: [internal, web]
+
+  frontend:
+    image: ghcr.io/${GHCR_OWNER}/lacaeducation-frontend:${FRONTEND_TAG}
+    container_name: ${STACK}-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    expose:
+      - "3000"
+    networks: [web]
+
+volumes:
+  pgdata:
+
+networks:
+  internal:
+  web:
+    external: true
+    name: web
+COMPOSE_EOF
+```
+Les fichiers `.env.prod` / `.env.dev` se créent à la section suivante.
 
 ### Fichiers de variables d'environnement à créer (sur le VPS)
 De retour sur le VPS, créez les vrais fichiers de secrets à partir des exemples :
@@ -281,28 +375,34 @@ docker compose --env-file .env.prod -p laca-prod exec db \
   pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" > backup_$(date +%F).sql
 ```
 
-## Accès à la base depuis pgAdmin (local) — tunnel SSH
-La base n'est **jamais exposée à Internet** : elle écoute uniquement sur `127.0.0.1` du VPS
-(prod = 5432, dev = 5433). Vous y accédez via un **tunnel SSH** depuis votre PC.
+## Accès à la base depuis pgAdmin — connexion directe par l'IP
+La base est exposée sur l'IP du VPS (prod = 5432, dev = 5433). Vous ajoutez simplement le serveur
+dans pgAdmin avec l'IP + la base + les identifiants.
 
-1. Ouvrir le tunnel (laisser la fenêtre ouverte pendant l'utilisation) :
+1. **Ouvrir le port** dans le pare-feu du VPS :
    ```bash
-   # PROD  -> base dispo sur votre PC en localhost:5432
-   ssh -N -L 5432:127.0.0.1:5432 root@IP_DU_VPS
-   # DEV   -> base dispo sur votre PC en localhost:5433
-   ssh -N -L 5433:127.0.0.1:5433 root@IP_DU_VPS
+   # Option SÛRE (recommandée) : n'autoriser QUE votre IP (trouvez-la sur https://ifconfig.me)
+   ufw allow from VOTRE_IP_PUBLIQUE to any port 5432 proto tcp
+   ufw allow from VOTRE_IP_PUBLIQUE to any port 5433 proto tcp
+   # Option simple (moins sûre : ouvert à tous) :
+   # ufw allow 5432/tcp && ufw allow 5433/tcp
    ```
-2. Dans **pgAdmin** → *Add New Server* :
+2. Dans **pgAdmin** → clic droit *Servers* → *Register → Server* :
    | Champ | Prod | Dev |
    |---|---|---|
-   | Host | `127.0.0.1` | `127.0.0.1` |
+   | Host | **IP_DU_VPS** | **IP_DU_VPS** |
    | Port | `5432` | `5433` |
    | Maintenance DB | `cathclau` | `cathclau_dev` |
    | Username | `cathclau` | `cathclau_dev` |
    | Password | (`POSTGRES_PASSWORD` du `.env.prod`) | (celui du `.env.dev`) |
 
-> Le tunnel nécessite que les stacks soient **déjà déployées** (le conteneur `db` doit tourner).
-> Après avoir ajouté `DB_HOST_PORT`, relancez la stack : `docker compose --env-file .env.dev -p laca-dev up -d`.
+> ⚠️ **SÉCURITÉ** : un port Postgres ouvert sur Internet est une cible. **Impératif** :
+> mot de passe `POSTGRES_PASSWORD` **fort et unique**, et de préférence **restreindre à votre IP**
+> (option sûre ci-dessus). Alternative 100 % privée : tunnel SSH
+> `ssh -N -L 5432:127.0.0.1:5432 root@IP_DU_VPS` puis pgAdmin sur `127.0.0.1:5432`.
+>
+> Nécessite que la stack soit **déployée** (conteneur `db` en marche). Après mise à jour du compose,
+> relancez : `docker compose --env-file .env.dev -p laca-dev up -d`.
 
 ## Checklist Mailing (prod)
 1. Fournisseur SMTP : **Brevo**, **Mailgun**, **SendGrid** ou le SMTP de votre hébergeur.

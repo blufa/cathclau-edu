@@ -14,10 +14,11 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    # Postgres accessible UNIQUEMENT en local du VPS (127.0.0.1) → à joindre par tunnel SSH (pgAdmin).
-    # Jamais exposé à Internet. Prod = 5432, Dev = 5433 (défini dans chaque .env).
+    # Postgres exposé sur l'IP du VPS pour pgAdmin (Prod = 5432, Dev = 5433, défini dans chaque .env).
+    # ⚠️ SÉCURITÉ : port ouvert sur Internet → mot de passe fort OBLIGATOIRE, et de préférence
+    # restreindre l'accès à votre IP via le pare-feu (voir README « Accès base pgAdmin »).
     ports:
-      - "127.0.0.1:${DB_HOST_PORT:-5432}:5432"
+      - "${DB_HOST_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
