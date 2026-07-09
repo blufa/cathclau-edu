@@ -11,6 +11,14 @@ Internet ─▶ Caddy :443 (HTTPS auto) ─┬─ cathclau-edu.com / www   ─�
 ```  
 Tout tourne en conteneurs Docker sur le VPS. Le domaine (Hostinger) pointe simplement vers l'IP du VPS.
 
+> **Ce guide couvre les DEUX applications** (backend **et** frontend). Rôle de chaque dépôt :
+> - **Dépôt backend** (`lacaeducation`) : contient la **stack de déploiement** (`deploy/` : docker-compose,
+>   proxy Caddy, .env, ce guide) + son `Dockerfile` + son workflow. C'est **la source unique** du déploiement.
+> - **Dépôt frontend** (`lacaeducation-ui`) : contient uniquement son `Dockerfile` + son workflow CI/CD.
+>   Il pousse son image sur GHCR ; le `docker-compose.yml` (côté backend) l'utilise.
+>
+> Sur le VPS, une seule commande `docker compose up` démarre backend + frontend + base + proxy.
+
 ---
 
 ## ÉTAPE 1 — Configurer le domaine sur Hostinger (DNS)
@@ -25,13 +33,18 @@ But : faire pointer `cathclau-edu.com` (et ses sous-domaines) vers **l'adresse I
 4. **Supprimez** les enregistrements A par défaut sur `@` et `www` qui pointent vers le parking Hostinger.
 5. **Ajoutez** ces 5 enregistrements **A** (Type = A, TTL = 3600 ou par défaut) :
 
-   | Type | Nom (Host) | Pointe vers (Points to) |
-   |------|------------|-------------------------|
-   | A    | `@`        | IP_DU_VPS               |
-   | A    | `www`      | IP_DU_VPS               |
-   | A    | `api`      | IP_DU_VPS               |
-   | A    | `dev`      | IP_DU_VPS               |
-   | A    | `api-dev`  | IP_DU_VPS               |
+   | Type  | Nom (Host) | Pointe vers (Points to) |
+   |-------|------------|-------------------------|
+   | A     | `@`        | IP_DU_VPS               |
+   | CNAME | `www`      | `cathclau-edu.com`      |
+   | A     | `api`      | IP_DU_VPS               |
+   | A     | `dev`      | IP_DU_VPS               |
+   | A     | `api-dev`  | IP_DU_VPS               |
+
+   > ⚠️ **`www`** : Hostinger crée souvent déjà un **CNAME `www → cathclau-edu.com`**. Gardez-le tel
+   > quel (il suit l'apex `@`). On ne peut PAS avoir un CNAME **et** un A sur le même nom : n'ajoutez
+   > donc pas d'enregistrement A pour `www` (sinon « conflit »). Alternative : supprimer le CNAME puis
+   > ajouter un A `www → IP_DU_VPS`.
 
 6. Enregistrez. La propagation DNS prend de quelques minutes à quelques heures.
    Vérifier : `ping api.cathclau-edu.com` doit renvoyer l'IP du VPS.
@@ -66,14 +79,76 @@ Vérifier : `docker --version` et `docker compose version` doivent répondre.
 
 ## ÉTAPE 3 — Déposer les fichiers de configuration sur le VPS
 
-Ces fichiers sont dans le dépôt **backend** (dossier `deploy/`). Depuis **votre PC** (pas le VPS),
-dans le dossier du dépôt backend :
+Deux méthodes. **La méthode B (créer les fichiers directement sur le VPS) est la plus fiable** — à
+utiliser si le `scp` ne fonctionne pas ou si des fichiers n'arrivent pas au bon endroit.
+
+### Méthode A — copie depuis votre PC (`scp`)
+Depuis **votre PC** (pas le VPS), dans le dossier du dépôt backend :
 ```bash
 cd chemin/vers/lacaeducation
 scp deploy/docker-compose.yml            root@IP_DU_VPS:/opt/lacaeducation/
 scp deploy/.env.prod.example deploy/.env.dev.example root@IP_DU_VPS:/opt/lacaeducation/
 scp deploy/proxy/docker-compose.yml deploy/proxy/Caddyfile root@IP_DU_VPS:/opt/lacaeducation/proxy/
 ```
+
+### Méthode B — créer les fichiers du proxy directement sur le VPS (recommandé)
+> ⚠️ **Piège fréquent** : si `/opt/lacaeducation/proxy/docker-compose.yml` est absent, la commande
+> `docker compose` **remonte au dossier parent** et lance par erreur le compose de l'application
+> (d'où des dizaines de « variable not set » et `ghcr.io//...:`). Créez donc bien les fichiers du proxy.
+
+Sur le **VPS**, copiez-collez ce bloc (crée `proxy/docker-compose.yml` + `proxy/Caddyfile`) :
+```bash
+mkdir -p /opt/lacaeducation/proxy
+cat > /opt/lacaeducation/proxy/docker-compose.yml <<'EOF'
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: proxy-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [web]
+volumes:
+  caddy_data:
+  caddy_config:
+networks:
+  web:
+    external: true
+    name: web
+EOF
+
+cat > /opt/lacaeducation/proxy/Caddyfile <<'EOF'
+cathclau-edu.com, www.cathclau-edu.com {
+	encode zstd gzip
+	reverse_proxy laca-prod-frontend:3000
+}
+api.cathclau-edu.com {
+	encode zstd gzip
+	request_body {
+		max_size 20MB
+	}
+	reverse_proxy laca-prod-backend:8284
+}
+dev.cathclau-edu.com {
+	encode zstd gzip
+	reverse_proxy laca-dev-frontend:3000
+}
+api-dev.cathclau-edu.com {
+	encode zstd gzip
+	request_body {
+		max_size 20MB
+	}
+	reverse_proxy laca-dev-backend:8284
+}
+EOF
+```
+Le fichier `docker-compose.yml` de l'application (celui à la racine `/opt/lacaeducation/`) et les
+`.env.*.example` restent copiés via la Méthode A (ou recréés de la même façon).
 
 ### Fichiers de variables d'environnement à créer (sur le VPS)
 De retour sur le VPS, créez les vrais fichiers de secrets à partir des exemples :
@@ -97,11 +172,20 @@ nano .env.dev
 > Ces fichiers `.env.prod` / `.env.dev` **restent sur le VPS** et ne sont jamais commités (déjà dans `.gitignore`).
 
 ### Connexion à GHCR (images Docker privées)
-Le VPS doit pouvoir télécharger les images depuis GitHub Container Registry :
+**GHCR** = GitHub Container Registry (`ghcr.io`), le magasin d'images Docker de GitHub. La CI y publie
+vos images en **privé** ; le VPS doit s'y **authentifier** pour les télécharger (`docker compose pull`).
+
+On n'utilise PAS le mot de passe GitHub mais un **PAT** (jeton) avec la seule permission `read:packages` :
+1. github.com → votre photo → **Settings** → **Developer settings** (tout en bas)
+2. **Personal access tokens** → **Tokens (classic)** → **Generate new token (classic)**
+3. Nom `vps-ghcr`, cochez **`read:packages`**, **Generate**, puis **copiez** le jeton (`ghp_…`).
+4. Sur le VPS (remplacez le jeton et votre user GitHub, ex. `blufa`) :
 ```bash
-# PAT = jeton GitHub avec le scope « read:packages » (créé sur github.com/settings/tokens)
-echo "VOTRE_PAT_GITHUB" | docker login ghcr.io -u VOTRE_USER_GITHUB --password-stdin
+echo "ghp_votreJeton" | docker login ghcr.io -u blufa --password-stdin
+# -> doit afficher « Login Succeeded »
 ```
+> Alternative : rendre les packages **publics** (Profil ▸ Packages ▸ Package settings ▸ Change visibility)
+> — pas de `docker login` nécessaire, mais l'image backend devient téléchargeable par tous. Recommandé : privé + PAT.
 
 ---
 
@@ -140,9 +224,12 @@ Vous n'avez donc **rien à lancer à la main** pour déployer : il suffit de mer
 
 ## ÉTAPE 5 — Premier démarrage
 
-1. Démarrer le reverse-proxy **une fois** (sur le VPS) :
+1. Créer le réseau partagé (si pas déjà fait) et démarrer le reverse-proxy **une fois** (sur le VPS).
+   On précise le fichier avec `-f` pour éviter que Compose remonte au dossier parent :
    ```bash
-   cd /opt/lacaeducation/proxy && docker compose -p proxy up -d
+   docker network create web 2>/dev/null || true
+   docker compose -f /opt/lacaeducation/proxy/docker-compose.yml -p proxy up -d
+   docker compose -f /opt/lacaeducation/proxy/docker-compose.yml -p proxy ps   # doit lister « proxy-caddy »
    ```
 2. Fusionner `chore/deploy-cicd` → **`develop`** dans les 2 dépôts (via Pull Request GitHub).
    → GitHub Actions construit et déploie automatiquement l'environnement **dev**.
@@ -153,6 +240,22 @@ Vous n'avez donc **rien à lancer à la main** pour déployer : il suffit de mer
    ```
    Caddy obtient les certificats HTTPS tout seul au 1er accès. Le **SUPER_ADMIN** est créé au démarrage.
 4. Quand le dev est validé → fusionner `develop` → **`main`** = mise en **production**.
+
+### Dépannage — le proxy ne démarre pas (« port 80 already in use »)
+Un autre serveur web (souvent **Apache** ou **nginx** pré-installé sur le VPS) occupe déjà le port 80/443.
+```bash
+ss -tlnp | grep -E ':80 |:443 '                 # identifier le service
+systemctl stop apache2 nginx 2>/dev/null; systemctl disable apache2 nginx 2>/dev/null
+docker compose -f /opt/lacaeducation/proxy/docker-compose.yml -p proxy up -d   # relancer
+```
+
+### Dépannage — « variable not set » / `ghcr.io//...:`
+`docker compose` lancé sans trouver de fichier dans le dossier courant **remonte au parent** et prend le
+mauvais compose. Toujours préciser le fichier avec `-f`, ou lancer l'app avec `--env-file` :
+```bash
+docker compose -f /opt/lacaeducation/proxy/docker-compose.yml -p proxy up -d
+docker compose --env-file .env.prod -p laca-prod up -d
+```
 
 ---
 
@@ -178,6 +281,29 @@ docker compose --env-file .env.prod -p laca-prod exec db \
   pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" > backup_$(date +%F).sql
 ```
 
+## Accès à la base depuis pgAdmin (local) — tunnel SSH
+La base n'est **jamais exposée à Internet** : elle écoute uniquement sur `127.0.0.1` du VPS
+(prod = 5432, dev = 5433). Vous y accédez via un **tunnel SSH** depuis votre PC.
+
+1. Ouvrir le tunnel (laisser la fenêtre ouverte pendant l'utilisation) :
+   ```bash
+   # PROD  -> base dispo sur votre PC en localhost:5432
+   ssh -N -L 5432:127.0.0.1:5432 root@IP_DU_VPS
+   # DEV   -> base dispo sur votre PC en localhost:5433
+   ssh -N -L 5433:127.0.0.1:5433 root@IP_DU_VPS
+   ```
+2. Dans **pgAdmin** → *Add New Server* :
+   | Champ | Prod | Dev |
+   |---|---|---|
+   | Host | `127.0.0.1` | `127.0.0.1` |
+   | Port | `5432` | `5433` |
+   | Maintenance DB | `cathclau` | `cathclau_dev` |
+   | Username | `cathclau` | `cathclau_dev` |
+   | Password | (`POSTGRES_PASSWORD` du `.env.prod`) | (celui du `.env.dev`) |
+
+> Le tunnel nécessite que les stacks soient **déjà déployées** (le conteneur `db` doit tourner).
+> Après avoir ajouté `DB_HOST_PORT`, relancez la stack : `docker compose --env-file .env.dev -p laca-dev up -d`.
+
 ## Checklist Mailing (prod)
 1. Fournisseur SMTP : **Brevo**, **Mailgun**, **SendGrid** ou le SMTP de votre hébergeur.
 2. Remplir `MAIL_HOST` / `MAIL_PORT` (587) / `MAIL_USERNAME` / `MAIL_PASSWORD` dans `.env.prod`.
@@ -193,3 +319,49 @@ docker compose --env-file .env.prod -p laca-prod exec db \
 3. `DJOMY_WEBHOOK_SECRET` = clé de signature Djomy.
 4. L'endpoint webhook est **public** (hors JWT) et vérifie la **signature** — ne pas le protéger.
 5. Tester un paiement de frais bout-en-bout : initiation → redirection → retour → webhook → reçu.
+
+---
+
+## ✅ Checklist finale de vérification (à cocher)
+
+Parcourez cette liste : chaque case a **la commande pour vérifier** que c'est bien fait.
+
+### A. DNS (Hostinger)
+- [ ] A `@` → IP du VPS · A `api` · A `dev` · A `api-dev` · CNAME `www` → `cathclau-edu.com`
+  ```bash
+  # depuis votre PC (remplacez par votre IP VPS) :
+  dig +short cathclau-edu.com api.cathclau-edu.com dev.cathclau-edu.com api-dev.cathclau-edu.com
+  ```
+
+### B. VPS préparé
+- [ ] Docker installé — `docker --version && docker compose version`
+- [ ] Réseau partagé — `docker network ls | grep web`
+- [ ] Aucun service sur 80/443 à part Caddy — `ss -tlnp | grep -E ':80 |:443 '` (ne doit montrer que `docker-proxy`)
+- [ ] nginx/apache désactivés — `systemctl is-enabled nginx apache2 2>/dev/null` (doit dire `disabled`/absent)
+
+### C. Fichiers présents sur le VPS
+- [ ] `ls -la /opt/lacaeducation/` → **docker-compose.yml**, **.env.prod**, **.env.dev**
+- [ ] `ls -la /opt/lacaeducation/proxy/` → **docker-compose.yml**, **Caddyfile**
+- [ ] `.env.prod` et `.env.dev` remplis (pas de « CHANGER ») — `grep -c CHANGER /opt/lacaeducation/.env.prod` doit renvoyer `0`
+- [ ] Le `docker-compose.yml` du VPS est **à jour** (contient `DB_HOST_PORT`) — `grep DB_HOST_PORT /opt/lacaeducation/docker-compose.yml`
+
+### D. Accès aux images (GHCR)
+- [ ] Connecté à GHCR — `cat ~/.docker/config.json | grep ghcr.io` (doit exister)
+
+### E. GitHub (dans les 2 dépôts)
+- [ ] Secrets `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY` créés (Settings ▸ Secrets ▸ Actions)
+
+### F. Proxy démarré (une fois)
+- [ ] `docker compose -f /opt/lacaeducation/proxy/docker-compose.yml -p proxy ps` → `proxy-caddy` **Up**
+
+### G. Déploiement de l'app
+- [ ] Merge `chore/deploy-cicd` → **`develop`** effectué (onglet **Actions** GitHub : workflow vert)
+- [ ] `docker ps` sur le VPS montre `laca-dev-backend`, `laca-dev-frontend`, `laca-dev-db`
+- [ ] Sites qui répondent : https://dev.cathclau-edu.com et https://api-dev.cathclau-edu.com
+- [ ] (prod) Merge `develop` → **`main`** → `laca-prod-*` + https://cathclau-edu.com
+
+### H. Base dans pgAdmin (optionnel)
+- [ ] Tunnel : `ssh -N -L 5433:127.0.0.1:5433 root@IP_DU_VPS` puis pgAdmin `127.0.0.1:5433` (dev)
+
+> Si une case ne passe pas, la section « Dépannage » (Étape 5) couvre les cas fréquents
+> (port 80 occupé, « variable not set », dossier proxy vide).
