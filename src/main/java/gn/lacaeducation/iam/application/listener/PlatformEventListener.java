@@ -45,7 +45,8 @@ public class PlatformEventListener {
         provisioningService.provisionUnverifiedAdmin(
                 event.tenantId(), event.schoolName(), event.adminEmail(),
                 event.director(), event.rawPassword(),
-                event.adminFirstName(), event.adminLastName(), event.adminPhone());
+                event.adminFirstName(), event.adminLastName(), event.adminPhone(),
+                event.adminUsername(), event.autoActivate());
     }
 
     /** School became usable (email verified or manual activation): activate the admin account. */
