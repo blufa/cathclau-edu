@@ -32,6 +32,7 @@ public class EleveService implements StudentUseCase {
     private final TenantQuotaService tenantQuotaService;
     private final ApplicationEventPublisher eventPublisher;
     private final TenantInfoProvider tenantInfoProvider;
+    private final gn.lacaeducation.students.PortalAccountProvisioner portalAccountProvisioner;
 
     @Override
     public Student create(CreateStudentCommand cmd) {
@@ -40,8 +41,17 @@ public class EleveService implements StudentUseCase {
             throw new QuotaExceededException("Student quota exceeded for tenant " + cmd.tenantId());
         }
         String matricule = resolveStudentNumber(cmd.tenantId(), cmd.studentNumber());
+
+        // Accès portail optionnel : login = matricule SANS tirets (« enlève le tiret du 6 »), pas d'email.
+        Long userId = cmd.userId();
+        if (Boolean.TRUE.equals(cmd.createLogin()) && cmd.loginPassword() != null && !cmd.loginPassword().isBlank()) {
+            String username = matricule.replace("-", "");
+            userId = portalAccountProvisioner.createStudentLogin(
+                    cmd.tenantId(), cmd.firstName(), cmd.lastName(), username, cmd.loginPassword());
+        }
+
         Student saved = studentRepository.save(Student.builder()
-                .tenantId(cmd.tenantId()).userId(cmd.userId())
+                .tenantId(cmd.tenantId()).userId(userId)
                 .studentNumber(matricule).firstName(cmd.firstName()).lastName(cmd.lastName())
                 .gender(cmd.gender()).birthDate(cmd.birthDate()).birthPlace(cmd.birthPlace())
                 .address(cmd.address()).phone(cmd.phone()).email(cmd.email())

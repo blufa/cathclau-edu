@@ -72,7 +72,8 @@ public class StudentImportService {
                         parseGender(get(c, iGender)), parseDate(get(c, iBirth)), blankToNull(get(c, iBirthPlace)),
                         null, blankToNull(get(c, iPhone)), blankToNull(get(c, iEmail)), blankToNull(get(c, iNat)),
                         blankToNull(get(c, iOrigin)), null,
-                        null, null, null, null, null, null, null, null));
+                        null, null, null, null, null, null, null, null,
+                        null, null));
                 created++;
             } catch (RuntimeException e) {
                 errors.add(new RowError(n + 1, e.getMessage()));

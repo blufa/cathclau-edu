@@ -11,7 +11,9 @@ public interface StudentUseCase {
                                 LocalDate birthDate, String birthPlace, String address,
                                 String phone, String email, String nationality, String originSchool, String photo,
                                 String birthCertificateNumber, String bloodGroup, String neighborhood, String landmark,
-                                String previousClass, Boolean repeating, String transferReason, String medicalNotes) {}
+                                String previousClass, Boolean repeating, String transferReason, String medicalNotes,
+                                /** Créer un accès au portail (connexion par matricule) + son mot de passe. */
+                                Boolean createLogin, String loginPassword) {}
     record UpdateStudentCommand(String studentNumber, String firstName, String lastName,
                                 Gender gender, LocalDate birthDate, String birthPlace,
                                 String address, String phone, String email, String nationality, String originSchool, String photo,
