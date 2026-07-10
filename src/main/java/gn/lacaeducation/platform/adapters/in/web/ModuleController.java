@@ -12,6 +12,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.util.EnumSet;
 import java.util.List;
 
 /**
@@ -89,6 +90,18 @@ public class ModuleController {
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public TenantModuleResponse deactivateTenantModule(@PathVariable Long id, @PathVariable ModuleCode moduleCode) {
         return TenantModuleResponse.from(moduleService.setTenantModuleActive(id, moduleCode, false, null));
+    }
+
+    /** Modules d'une école « comptabilité seule » : gestion utilisateurs + comptabilité + dépenses. */
+    private static final EnumSet<ModuleCode> ACCOUNTING_ONLY =
+            EnumSet.of(ModuleCode.IAM, ModuleCode.ACCOUNTING, ModuleCode.EXPENSES);
+
+    @Operation(summary = "Preset « comptabilité seule » : active IAM + Comptabilité + Dépenses, désactive le reste")
+    @PostMapping("/tenants/{id}/modules/preset/comptabilite")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public List<TenantModuleResponse> presetAccountingOnly(@PathVariable Long id) {
+        return moduleService.applyModulePreset(id, ACCOUNTING_ONLY).stream()
+                .map(TenantModuleResponse::from).toList();
     }
 
     // ── DTOs ──────────────────────────────────────────────────────────

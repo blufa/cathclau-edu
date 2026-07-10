@@ -22,6 +22,9 @@ public record TenantResponse(
     String director,
     String accreditationNumber,
     String openingAuthorization,
+    String payoutMerchantNumber,
+    String payoutOperator,
+    String payoutAccountName,
     Set<EstablishmentType> establishmentTypes,
     TenantStatus status,
     LocalDateTime trialEndsAt,
@@ -39,7 +42,9 @@ public record TenantResponse(
             tenant.getId(), tenant.getSchoolName(), tenant.getSlug(), tenant.getEmail(),
             tenant.getPhone(), tenant.getLogo(), tenant.getBrandColor(), tenant.getAddress(), tenant.getCity(),
             tenant.getCountry(), tenant.getWebsite(), tenant.getDirector(),
-            tenant.getAccreditationNumber(), tenant.getOpeningAuthorization(), tenant.getEstablishmentTypes(),
+            tenant.getAccreditationNumber(), tenant.getOpeningAuthorization(),
+            tenant.getPayoutMerchantNumber(), tenant.getPayoutOperator(), tenant.getPayoutAccountName(),
+            tenant.getEstablishmentTypes(),
             tenant.getStatus(), tenant.getTrialEndsAt(), tenant.getActivatedAt(), tenant.getCreatedAt(),
             temporaryPassword
         );

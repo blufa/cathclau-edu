@@ -38,7 +38,8 @@ public class UserJpaEntity {
     @Column(unique = true)
     private String username;
 
-    @Column(nullable = false, unique = true)
+    // Email facultatif : l'admin peut se connecter par username. Unicité gérée par tenant (uk_users_tenant_email).
+    @Column(unique = true)
     private String email;
 
     @Column(name = "password_hash", nullable = false)

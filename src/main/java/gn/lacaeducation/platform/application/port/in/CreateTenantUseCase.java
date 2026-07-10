@@ -32,7 +32,8 @@ public interface CreateTenantUseCase {
     record CreatedTenant(Tenant tenant, String temporaryPassword) {}
     record UpdateTenantCommand(String schoolName, String logo, String brandColor,
             String address, String city, String country, String phone, String email,
-            String website, String director, String accreditationNumber, String openingAuthorization) {}
+            String website, String director, String accreditationNumber, String openingAuthorization,
+            String payoutMerchantNumber, String payoutOperator, String payoutAccountName) {}
 
     /** Tenant detail with its current subscription, plan and consumed student quota (§1.1). */
     record TenantDetail(Tenant tenant, Subscription currentSubscription, Plan plan,

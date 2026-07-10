@@ -110,6 +110,11 @@ public class TenantService implements CreateTenantUseCase {
         t.setAddress(c.address()); t.setCity(c.city()); t.setCountry(c.country());
         t.setPhone(c.phone()); t.setEmail(c.email()); t.setWebsite(c.website()); t.setDirector(c.director());
         t.setAccreditationNumber(c.accreditationNumber()); t.setOpeningAuthorization(c.openingAuthorization());
+        // Payout : ne pas écraser avec null (les éditions SUPER_ADMIN n'envoient pas ces champs).
+        // Le formulaire de l'école envoie "" pour effacer, jamais null.
+        if (c.payoutMerchantNumber() != null) t.setPayoutMerchantNumber(c.payoutMerchantNumber());
+        if (c.payoutOperator() != null) t.setPayoutOperator(c.payoutOperator());
+        if (c.payoutAccountName() != null) t.setPayoutAccountName(c.payoutAccountName());
         Tenant saved = tenantRepository.save(t);
         if (brandingChanged) {
             eventPublisher.publishEvent(new TenantBrandingUpdatedEvent(id));
