@@ -48,7 +48,8 @@ public class PublicSignupController {
         return SignupResponse.from(signupUseCase.signup(new SignupCommand(
                 req.nomEcole(), req.slugSouhaite(), req.emailDirecteur(), req.username(), req.password(),
                 req.ville(), req.pays(), req.typesEtablissement(), req.directeur(), req.planSouhaite(),
-                req.prenomAdmin(), req.nomAdmin(), req.telephoneAdmin())));
+                req.prenomAdmin(), req.nomAdmin(), req.telephoneAdmin(),
+                req.numeroMarchand(), req.operateurMarchand())));
     }
 
     @Operation(summary = "Verify the director's email (PENDING_VERIFICATION → TRIAL). Idempotent.")

@@ -22,6 +22,10 @@ public record SignupRequest(
     /** Un ou plusieurs types d'enseignement (primaire, collège, lycée…). */
     Set<EstablishmentType> typesEtablissement,
     String planSouhaite,
+    /** Numéro marchand de reversement (facultatif à l'inscription, complétable dans les paramètres). */
+    String numeroMarchand,
+    /** Opérateur du numéro marchand (ORANGE_MONEY, MTN_MONEY, WAVE…). */
+    String operateurMarchand,
     // Compte administrateur de l'école (distinct du directeur affiché sur les documents).
     @NotBlank String prenomAdmin,
     @NotBlank String nomAdmin,

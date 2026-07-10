@@ -33,6 +33,16 @@ public class Tenant {
     private String accreditationNumber;
     /** Référence de l'autorisation d'ouverture délivrée par le ministère. */
     private String openingAuthorization;
+    /**
+     * Numéro marchand de reversement de l'école (compte Mobile Money). L'encaissement des parents se
+     * fait sur le compte plateforme Djomy ; ce numéro est celui sur lequel la plateforme reverse à
+     * l'école les sommes qui lui reviennent. Renseignable à l'inscription et dans les paramètres.
+     */
+    private String payoutMerchantNumber;
+    /** Opérateur du numéro marchand (ORANGE_MONEY, MTN_MONEY, WAVE…). */
+    private String payoutOperator;
+    /** Nom du titulaire du compte marchand (contrôle avant reversement). */
+    private String payoutAccountName;
     /** Types d'enseignement de l'école (une école peut cumuler primaire, collège, lycée…). */
     @Builder.Default
     private Set<EstablishmentType> establishmentTypes = new LinkedHashSet<>();
