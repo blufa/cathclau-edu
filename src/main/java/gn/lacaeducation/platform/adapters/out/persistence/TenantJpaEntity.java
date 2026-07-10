@@ -59,6 +59,16 @@ public class TenantJpaEntity {
     @Column(name = "opening_authorization")
     private String openingAuthorization;
 
+    /** Numéro marchand de reversement de l'école (Mobile Money) ; voir {@code Tenant#payoutMerchantNumber}. */
+    @Column(name = "payout_merchant_number")
+    private String payoutMerchantNumber;
+
+    @Column(name = "payout_operator")
+    private String payoutOperator;
+
+    @Column(name = "payout_account_name")
+    private String payoutAccountName;
+
     /** Un ou plusieurs types (primaire, collège, lycée…) stockés en CSV via le converter. */
     @Convert(converter = EstablishmentTypeSetConverter.class)
     @Column(name = "establishment_types")

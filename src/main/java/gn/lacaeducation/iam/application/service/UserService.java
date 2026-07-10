@@ -66,10 +66,12 @@ public class UserService implements UserUseCase {
         boolean generated = rawPassword == null || rawPassword.isBlank();
         String password = generated ? TemporaryPassword.generate() : rawPassword;
         user.setPasswordHash(passwordHasher.hash(password));
-        user.setMustChangePassword(true);
+        // Mot de passe généré (temporaire) → à changer à la 1re connexion. Mot de passe choisi
+        // explicitement par l'admin → définitif, aucun changement forcé.
+        user.setMustChangePassword(generated);
         userRepository.save(user);
         refreshTokenRepository.revokeAllByUserId(userId);
-        return new TemporaryAccess(userId, user.getUsername(), password, true);
+        return new TemporaryAccess(userId, user.getUsername(), password, generated);
     }
 
     @Override

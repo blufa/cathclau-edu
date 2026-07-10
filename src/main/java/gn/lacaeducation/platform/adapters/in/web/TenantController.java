@@ -71,7 +71,8 @@ public class TenantController {
         return TenantResponse.from(tenantUseCase.update(id, new CreateTenantUseCase.UpdateTenantCommand(
                 req.schoolName(), req.logo(), req.brandColor(), req.address(), req.city(),
                 req.country(), req.phone(), req.email(), req.website(), req.director(),
-                req.accreditationNumber(), req.openingAuthorization())));
+                req.accreditationNumber(), req.openingAuthorization(),
+                req.payoutMerchantNumber(), req.payoutOperator(), req.payoutAccountName())));
     }
 
     @Operation(summary = "Suspend a tenant (blocks all users)")

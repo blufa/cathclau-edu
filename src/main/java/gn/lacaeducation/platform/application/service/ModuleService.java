@@ -104,6 +104,21 @@ public class ModuleService implements ModuleAccessProvider {
         return saved;
     }
 
+    /**
+     * Applique un « preset » de modules à une école : chaque module de l'enum est activé s'il figure
+     * dans {@code active}, désactivé sinon. Les désactivations sont faites d'abord pour éviter les
+     * conflits de dépendances à l'activation. Sert notamment au preset « comptabilité seule ».
+     */
+    public List<TenantModule> applyModulePreset(Long tenantId, Set<ModuleCode> active) {
+        for (ModuleCode code : ModuleCode.values()) {
+            if (!active.contains(code)) setTenantModuleActive(tenantId, code, false, null);
+        }
+        for (ModuleCode code : active) {
+            setTenantModuleActive(tenantId, code, true, null);
+        }
+        return tenantModules(tenantId);
+    }
+
     /** Copies the plan's active modules onto the tenant (idempotent). Called at provisioning. */
     public void provisionFromPlan(Long tenantId, Long planId) {
         provisionFromPlan(tenantId, planId, null);

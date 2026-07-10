@@ -59,7 +59,7 @@ class SignupServiceTest {
 
         SignupResult result = service.signup(new SignupCommand(
                 "École Claire", "École Claire", "dir@ecole.gn", "admin", "password123",
-                "Conakry", "Guinée", java.util.Set.of(EstablishmentType.COLLEGE), "Mamadou Diallo", null, null, null, null));
+                "Conakry", "Guinée", java.util.Set.of(EstablishmentType.COLLEGE), "Mamadou Diallo", null, null, null, null, null, null));
 
         assertThat(result.tenantId()).isEqualTo(7L);
         assertThat(result.slug()).isEqualTo("ecole-claire");
@@ -80,7 +80,7 @@ class SignupServiceTest {
 
         assertThatThrownBy(() -> service.signup(new SignupCommand(
                 "École Claire", "ecole-claire", "dir@ecole.gn", "admin", "password123",
-                null, null, java.util.Set.of(EstablishmentType.LYCEE), "Dir", null, null, null, null)))
+                null, null, java.util.Set.of(EstablishmentType.LYCEE), "Dir", null, null, null, null, null, null)))
                 .isInstanceOf(ConflictException.class);
     }
 

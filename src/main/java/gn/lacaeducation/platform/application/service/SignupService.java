@@ -77,6 +77,7 @@ public class SignupService implements SignupUseCase {
                 .city(c.city()).country(c.country())
                 .establishmentTypes(c.establishmentTypes() == null
                         ? new java.util.LinkedHashSet<>() : new java.util.LinkedHashSet<>(c.establishmentTypes()))
+                .payoutMerchantNumber(c.payoutMerchantNumber()).payoutOperator(c.payoutOperator())
                 .status(autoActivate ? TenantStatus.TRIAL : TenantStatus.PENDING_VERIFICATION)
                 .requestedPlanCode(c.desiredPlan())
                 .activatedAt(autoActivate ? now : null)

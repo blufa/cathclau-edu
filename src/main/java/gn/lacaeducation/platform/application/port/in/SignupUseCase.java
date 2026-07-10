@@ -23,7 +23,8 @@ public interface SignupUseCase {
     record SignupCommand(String schoolName, String desiredSlug, String adminEmail, String adminUsername,
                          String password, String city, String country, Set<EstablishmentType> establishmentTypes,
                          String director, String desiredPlan,
-                         String adminFirstName, String adminLastName, String adminPhone) {}
+                         String adminFirstName, String adminLastName, String adminPhone,
+                         String payoutMerchantNumber, String payoutOperator) {}
 
     record SignupResult(Long tenantId, String slug, TenantStatus status, String message) {}
 
