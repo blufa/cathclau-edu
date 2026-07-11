@@ -25,6 +25,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.math.BigDecimal;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -190,11 +191,22 @@ public class CommunicationEventListener {
 
     private Resolved resolve(Long tenantId, CommunicationReason reason, String defaultSubject,
                              String defaultBody, Map<String, String> vars) {
+        String school = schoolName(tenantId);
+        // Variable {{ecole}} disponible pour les modèles, sans toucher aux appelants.
+        Map<String, String> allVars = new HashMap<>(vars == null ? Map.of() : vars);
+        allVars.putIfAbsent("ecole", school);
+
         Optional<MessageTemplate> template = templateRepository.findByTenantIdAndReason(tenantId, reason);
         CommunicationChannel channel = template.map(MessageTemplate::getChannel).orElse(CommunicationChannel.SMS);
         if (channel == null) channel = CommunicationChannel.SMS;
-        String subject = template.map(t -> MessageTemplate.render(t.getSubject(), vars)).orElse(defaultSubject);
-        String content = template.map(t -> MessageTemplate.render(t.getBody(), vars)).orElse(defaultBody);
+        String subject = template.map(t -> MessageTemplate.render(t.getSubject(), allVars)).orElse(defaultSubject);
+        String content = template.map(t -> MessageTemplate.render(t.getBody(), allVars)).orElse(defaultBody);
+
+        // SMS : le sender Orange global est « CathClau » ; on préfixe le nom de l'école pour que le parent
+        // identifie l'expéditeur. Pas de doublon si le contenu contient déjà le nom (ex. modèle {{ecole}}).
+        if (channel == CommunicationChannel.SMS && content != null && !content.contains(school)) {
+            content = "[" + school + "] " + content;
+        }
         return new Resolved(channel, subject, content);
     }
 

@@ -63,6 +63,18 @@ app:
     # link works without a front-end (Mailtrap, dev). In prod, override with the SPA page URL.
     verification-url: ${VERIFICATION_URL:http://localhost:8284/api/v1/public/verify-email}
 
+# SMS Orange (Orange Developer) — identifiants UNIQUEMENT via l'environnement. Tant que enabled=false
+# ou que les clés manquent, l'envoi SMS se replie sur la journalisation (aucun échec).
+orange:
+  sms:
+    enabled: ${ORANGE_SMS_ENABLED:false}
+    client-id: ${ORANGE_SMS_CLIENT_ID:}
+    client-secret: ${ORANGE_SMS_CLIENT_SECRET:}
+    base-url: ${ORANGE_SMS_BASE_URL:https://api.orange.com}
+    sender-address: ${ORANGE_SMS_SENDER_ADDRESS:}
+    sender-name: ${ORANGE_SMS_SENDER_NAME:}
+    default-country-code: ${ORANGE_SMS_DEFAULT_DIALING:224}
+
 # Djomy (agrégateur de paiement) — identifiants UNIQUEMENT via l'environnement (.env non commité).
 djomy:
   client-id: ${DJOMY_CLIENT_ID:}

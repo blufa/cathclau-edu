@@ -40,24 +40,30 @@ public class TenantProvisioningService {
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void provisionTenantAdmin(Long tenantId, String schoolName, String adminEmail, String director,
-                                     String rawPassword, boolean temporaryPassword) {
-        if (adminEmail == null || adminEmail.isBlank()) {
-            log.warn("Cannot provision admin for tenant {}: no admin email provided", tenantId);
+                                     String rawPassword, boolean temporaryPassword, String adminUsername) {
+        boolean hasEmail = adminEmail != null && !adminEmail.isBlank();
+        boolean hasUsername = adminUsername != null && !adminUsername.isBlank();
+        if (!hasEmail && !hasUsername) {
+            log.warn("Cannot provision admin for tenant {}: no email nor username provided", tenantId);
             return;
         }
-        if (userRepository.existsByTenantIdAndEmail(tenantId, adminEmail)) {
+        if (hasEmail && userRepository.existsByTenantIdAndEmail(tenantId, adminEmail)) {
             log.info("Admin user already exists for tenant {} ({})", tenantId, adminEmail);
             return;
         }
 
         String[] name = splitName(director, schoolName);
         boolean hasPassword = rawPassword != null && !rawPassword.isBlank();
+        // Identifiant choisi par le SUPER_ADMIN (unicité garantie par suffixe), sinon généré depuis le nom.
+        String username = hasUsername
+                ? uniqueUsername(adminUsername.trim())
+                : UsernameGenerator.generate(name[0], name[1], userRepository::existsByUsername);
         User admin = User.builder()
                 .tenantId(tenantId)
                 .firstName(name[0])
                 .lastName(name[1])
-                .username(UsernameGenerator.generate(name[0], name[1], userRepository::existsByUsername))
-                .email(adminEmail)
+                .username(username)
+                .email(hasEmail ? adminEmail : null)
                 .passwordHash(passwordHasher.hash(hasPassword ? rawPassword : UUID.randomUUID().toString()))
                 .mustChangePassword(temporaryPassword || !hasPassword)
                 .active(true)
