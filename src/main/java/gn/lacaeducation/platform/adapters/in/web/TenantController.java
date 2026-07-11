@@ -39,7 +39,8 @@ public class TenantController {
     public ResponseEntity<TenantResponse> create(@Valid @RequestBody CreateTenantRequest req) {
         var created = tenantUseCase.create(new CreateTenantUseCase.CreateTenantCommand(
                 req.schoolName(), req.slug(), req.email(), req.phone(), req.address(), req.city(),
-                req.country(), req.director(), req.establishmentTypes(), req.initialState(), req.adminPassword()));
+                req.country(), req.director(), req.establishmentTypes(), req.initialState(), req.adminPassword(),
+                req.username()));
         var tenant = created.tenant();
         return ResponseEntity.created(URI.create("/api/v1/platform/tenants/" + tenant.getId()))
                 .body(TenantResponse.from(tenant, created.temporaryPassword()));

@@ -23,7 +23,8 @@ public interface CreateTenantUseCase {
     /** Manual creation by SUPER_ADMIN. {@code initialState} defaults to TRIAL (null → TRIAL). */
     record CreateTenantCommand(String schoolName, String slug, String email, String phone,
             String address, String city, String country, String director,
-            Set<EstablishmentType> establishmentTypes, TenantStatus initialState, String adminPassword) {}
+            Set<EstablishmentType> establishmentTypes, TenantStatus initialState, String adminPassword,
+            String adminUsername) {}
 
     /**
      * Résultat d'une création manuelle. {@code temporaryPassword} n'est renseigné que si aucun mot de

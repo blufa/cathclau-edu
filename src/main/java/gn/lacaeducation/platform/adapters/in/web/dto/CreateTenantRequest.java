@@ -11,7 +11,10 @@ import java.util.Set;
 public record CreateTenantRequest(
     @NotBlank String schoolName,
     String slug,
-    @NotBlank @Email String email,
+    // Email facultatif (login possible par identifiant) ; validé seulement s'il est fourni.
+    @Email String email,
+    /** Identifiant de connexion de l'admin (login par username OU email) ; généré si vide. */
+    String username,
     @NotBlank String phone,
     String address,
     String city,

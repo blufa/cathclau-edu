@@ -8,10 +8,12 @@ import gn.lacaeducation.common.BusinessRuleException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.util.function.Supplier;
 
 /**
  * Pointage de présence par scan de la carte scolaire (QR). Le QR encode l'identifiant de l'élève ;
@@ -41,12 +43,25 @@ public class AttendanceScanController {
         if (type == SubjectType.TEACHER) {
             TeacherAttendanceStatus ts = status == AttendanceStatus.ABSENT
                     ? TeacherAttendanceStatus.ABSENT : TeacherAttendanceStatus.PRESENT;
-            teacherAttendance.recordByScan(r.subjectId(), ts);
+            idempotent(() -> teacherAttendance.recordByScan(r.subjectId(), ts));
             return new ScanResponse("TEACHER", r.subjectId(), null,
                     ts == TeacherAttendanceStatus.ABSENT ? AttendanceStatus.ABSENT : AttendanceStatus.PRESENT, LocalDate.now());
         }
-        var saved = studentAttendance.recordByScan(r.subjectId(), status);
+        var saved = idempotent(() -> studentAttendance.recordByScan(r.subjectId(), status));
         return new ScanResponse("STUDENT", r.subjectId(), studentAttendance.studentName(r.subjectId()),
                 saved.getStatus(), saved.getDate());
+    }
+
+    /**
+     * Scans quasi simultanés du même sujet → deux transactions insèrent en parallèle et l'une viole
+     * l'unicité (élève/classe/jour). On réessaie une fois : la 2e tentative trouve la ligne déjà créée
+     * et la met à jour, rendant le pointage réellement idempotent (au lieu d'un 409).
+     */
+    private <T> T idempotent(Supplier<T> op) {
+        try {
+            return op.get();
+        } catch (DataIntegrityViolationException e) {
+            return op.get();
+        }
     }
 }

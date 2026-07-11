@@ -65,7 +65,7 @@ public class TenantService implements CreateTenantUseCase {
         // iam provisions the (verified) ADMIN_ECOLE + roles; onboarding/communication via TenantActivated.
         eventPublisher.publishEvent(new TenantCreatedEvent(
                 saved.getId(), saved.getSchoolName(), saved.getEmail(), saved.getDirector(),
-                effectivePassword, !chosen));
+                effectivePassword, !chosen, c.adminUsername()));
         if (!chosen) {
             // Envoi des identifiants (email + mot de passe temporaire) à l'administrateur de l'école.
             eventPublisher.publishEvent(new TenantAdminCredentialsIssuedEvent(
