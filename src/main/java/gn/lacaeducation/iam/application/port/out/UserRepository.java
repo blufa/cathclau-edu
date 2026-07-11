@@ -10,6 +10,8 @@ public interface UserRepository {
     Optional<User> findById(Long id);
     Optional<User> findByEmail(String email);
     Optional<User> findByUsername(String username);
+    /** Connexion par numéro de téléphone (premier utilisateur portant ce numéro). */
+    Optional<User> findByPhone(String phone);
     Optional<User> findByEmailAndTenantId(String email, Long tenantId);
     boolean existsByTenantIdAndEmail(Long tenantId, String email);
     boolean existsByUsername(String username);

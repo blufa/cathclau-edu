@@ -33,7 +33,7 @@ public class PlatformEventListener {
         try {
             provisioningService.provisionTenantAdmin(
                     event.tenantId(), event.schoolName(), event.adminEmail(), event.director(),
-                    event.adminPassword(), event.temporaryPassword());
+                    event.adminPassword(), event.temporaryPassword(), event.adminUsername());
         } catch (RuntimeException e) {
             log.error("Provisioning de l'admin échoué pour le tenant {} : {}", event.tenantId(), e.getMessage(), e);
         }

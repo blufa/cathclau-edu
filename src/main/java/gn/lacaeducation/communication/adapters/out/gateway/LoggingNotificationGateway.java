@@ -27,7 +27,6 @@ public class LoggingNotificationGateway implements NotificationGateway {
         return new DeliveryResult(true, "logged");
     }
 
-    // EMAIL is handled by the real SmtpEmailGateway (SMTP / Mailtrap). SMS & WhatsApp stay logging stubs.
-    @Component static class SmsGateway extends LoggingNotificationGateway { SmsGateway() { super(CommunicationChannel.SMS); } }
+    // EMAIL → SmtpEmailGateway, SMS → OrangeSmsGateway (réels). Seul WhatsApp reste un stub de journalisation.
     @Component static class WhatsAppGateway extends LoggingNotificationGateway { WhatsAppGateway() { super(CommunicationChannel.WHATSAPP); } }
 }

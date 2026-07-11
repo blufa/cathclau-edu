@@ -11,5 +11,7 @@ public record TenantCreatedEvent(
         String director,
         String adminPassword,
         /** true si le mot de passe est temporaire (généré) et doit être changé à la 1re connexion. */
-        boolean temporaryPassword
+        boolean temporaryPassword,
+        /** Identifiant de connexion choisi pour l'admin (login par username OU email) ; généré si null. */
+        String adminUsername
 ) {}

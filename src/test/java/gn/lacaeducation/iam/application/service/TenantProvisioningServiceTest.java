@@ -42,7 +42,7 @@ class TenantProvisioningServiceTest {
         when(roleRepository.findByCode(RoleCode.SCHOOL_ADMIN))
                 .thenReturn(Optional.of(Role.builder().id(2L).code(RoleCode.SCHOOL_ADMIN).build()));
 
-        service.provisionTenantAdmin(10L, "École Test", "admin@ecole.gn", "Mamadou Diallo", "Kdrp-4827-Muxs", true);
+        service.provisionTenantAdmin(10L, "École Test", "admin@ecole.gn", "Mamadou Diallo", "Kdrp-4827-Muxs", true, null);
 
         ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
         verify(userRepository).save(captor.capture());
@@ -65,7 +65,7 @@ class TenantProvisioningServiceTest {
         when(roleRepository.findByCode(RoleCode.SCHOOL_ADMIN))
                 .thenReturn(Optional.of(Role.builder().id(2L).code(RoleCode.SCHOOL_ADMIN).build()));
 
-        service.provisionTenantAdmin(10L, "École Test", "admin@ecole.gn", "Mamadou Diallo", "Secret123", false);
+        service.provisionTenantAdmin(10L, "École Test", "admin@ecole.gn", "Mamadou Diallo", "Secret123", false, null);
 
         ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
         verify(userRepository).save(captor.capture());
@@ -79,7 +79,7 @@ class TenantProvisioningServiceTest {
     void provisionTenantAdmin_idempotent_whenAdminAlreadyExists() {
         when(userRepository.existsByTenantIdAndEmail(10L, "admin@ecole.gn")).thenReturn(true);
 
-        service.provisionTenantAdmin(10L, "École Test", "admin@ecole.gn", "Mamadou Diallo", null, true);
+        service.provisionTenantAdmin(10L, "École Test", "admin@ecole.gn", "Mamadou Diallo", null, true, null);
 
         verify(userRepository, never()).save(any());
         verify(userRepository, never()).assignRole(any(), any());
