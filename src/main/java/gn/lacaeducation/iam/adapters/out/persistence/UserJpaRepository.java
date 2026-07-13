@@ -2,6 +2,7 @@ package gn.lacaeducation.iam.adapters.out.persistence;
 
 import gn.lacaeducation.iam.domain.RoleCode;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import java.util.Collection;
@@ -16,6 +17,12 @@ interface UserJpaRepository extends JpaRepository<UserJpaEntity, Long> {
     boolean existsByTenantIdAndEmail(Long tenantId, String email);
     boolean existsByUsername(String username);
     List<UserJpaEntity> findByTenantId(Long tenantId);
+
+    /** Horodatage d'activité (dernière requête authentifiée) — mis à jour à chaque requête, throttlé
+     * en amont par {@code UserActivityFilter} pour ne pas écrire à chaque appel. */
+    @Modifying
+    @Query("UPDATE UserJpaEntity u SET u.lastActivityAt = CURRENT_TIMESTAMP WHERE u.id = :id")
+    void touchActivity(@Param("id") Long id);
 
     /** Comptes actifs (email renseigné) du tenant portant l'un des rôles donnés. */
     @Query("SELECT u FROM UserJpaEntity u WHERE u.tenantId = :tenantId AND u.active = true "

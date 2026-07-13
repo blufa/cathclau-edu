@@ -10,6 +10,8 @@ public interface UserUseCase {
     User create(CreateUserCommand command);
     Optional<User> findById(Long id);
     List<User> findByTenantId(Long tenantId);
+    /** Tous les utilisateurs, toutes écoles confondues — réservé aux vues plateforme (SUPER_ADMIN). */
+    List<User> findAll();
     User update(Long id, UpdateUserCommand command);
     void delete(Long id);
     void assignRole(Long userId, Long roleId);

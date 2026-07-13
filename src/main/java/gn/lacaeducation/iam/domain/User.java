@@ -27,6 +27,8 @@ public class User {
     private String phone;
     private Boolean active;
     private LocalDateTime lastLoginAt;
+    /** Dernière requête authentifiée reçue (throttlé côté filtre) — sert à dériver un statut « en ligne ». */
+    private LocalDateTime lastActivityAt;
     private LocalDateTime createdAt;
     private int failedAttempts;
     private LocalDateTime lockedUntil;
