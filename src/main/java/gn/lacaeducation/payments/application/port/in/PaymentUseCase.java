@@ -7,7 +7,9 @@ import java.util.Optional;
 public interface PaymentUseCase {
     record InitiatePaymentCommand(Long tenantId, Long invoiceId, Long studentId, String reference, BigDecimal amount, PaymentChannel channel, PaymentType type,
                                   /** Payer phone number — required by aggregator channels (e.g. Djomy). */
-                                  String payerNumber) {}
+                                  String payerNumber,
+                                  /** Utilisateur connecté ayant saisi l'encaissement — imprimé sur le reçu (« Opérateur »). */
+                                  Long collectedByUserId) {}
     Payment initiate(InitiatePaymentCommand command) throws JsonProcessingException;
 
     /** Part d'un paiement groupé affectée à une facture-mois. */
@@ -19,7 +21,9 @@ public interface PaymentUseCase {
      */
     record GroupPaymentCommand(Long tenantId, Long studentId, PaymentChannel channel, String payerNumber,
                                String coverageLabel, Integer monthsCount, BigDecimal remainingAfter,
-                               List<InvoiceShare> shares) {}
+                               List<InvoiceShare> shares,
+                               /** Utilisateur connecté ayant saisi l'encaissement — imprimé sur le reçu (« Opérateur »). */
+                               Long collectedByUserId) {}
     Payment initiateGroup(GroupPaymentCommand command);
 
     /**

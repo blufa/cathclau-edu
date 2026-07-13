@@ -9,6 +9,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 import java.util.List;
@@ -25,8 +27,8 @@ public class PaymentController {
     public record InitiateResponse(Payment payment, String redirectUrl) {}
     @Operation(summary = "Initiate a new payment for a student invoice (returns redirectUrl for aggregator channels)")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT','SECRETARY')")
-    @PostMapping public ResponseEntity<InitiateResponse> initiate(@RequestBody InitiateRequest r) throws JsonProcessingException {
-        return ResponseEntity.ok(doInitiate(r));
+    @PostMapping public ResponseEntity<InitiateResponse> initiate(@RequestBody InitiateRequest r, @AuthenticationPrincipal Jwt jwt) throws JsonProcessingException {
+        return ResponseEntity.ok(doInitiate(r, currentUserId(jwt)));
     }
 
     public record GroupRequest(Long tenantId, Long studentId, PaymentChannel channel, String payerNumber,
@@ -36,15 +38,24 @@ public class PaymentController {
     @Operation(summary = "Group payment of several months / the whole year — one payment, one receipt. "
             + "Desk channels are immediate; Djomy returns a redirectUrl for a single online transaction.")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT','SECRETARY')")
-    @PostMapping("/group") public ResponseEntity<InitiateResponse> group(@RequestBody GroupRequest r) {
+    @PostMapping("/group") public ResponseEntity<InitiateResponse> group(@RequestBody GroupRequest r, @AuthenticationPrincipal Jwt jwt) {
         Payment payment = useCase.initiateGroup(new PaymentUseCase.GroupPaymentCommand(
                 r.tenantId(), r.studentId(), r.channel(), r.payerNumber(),
-                r.coverageLabel(), r.monthsCount(), r.remainingAfter(), r.shares()));
+                r.coverageLabel(), r.monthsCount(), r.remainingAfter(), r.shares(), currentUserId(jwt)));
         String redirectUrl = transactionUseCase.findByPaymentId(payment.getId()).stream()
                 .map(PaymentTransaction::getRedirectUrl)
                 .filter(u -> u != null && !u.isBlank())
                 .findFirst().orElse(null);
         return ResponseEntity.ok(new InitiateResponse(payment, redirectUrl));
+    }
+
+    /** Utilisateur connecté ayant saisi l'encaissement (« Opérateur » sur le reçu) — extrait du JWT (sub). */
+    private static Long currentUserId(Jwt jwt) {
+        try {
+            return jwt == null ? null : Long.valueOf(jwt.getSubject());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     @Operation(summary = "Confirm a payment by polling Djomy on demand (no webhook): on success, "
@@ -61,12 +72,12 @@ public class PaymentController {
             throw new gn.lacaeducation.common.BusinessRuleException(
                     "Ce mode d'encaissement est réservé au guichet ; en ligne, utilisez le portail Djomy");
         }
-        return ResponseEntity.ok(doInitiate(r));
+        return ResponseEntity.ok(doInitiate(r, null)); // paiement en ligne par le parent/élève lui-même : pas d'« opérateur » guichet
     }
 
-    private InitiateResponse doInitiate(InitiateRequest r) throws JsonProcessingException {
+    private InitiateResponse doInitiate(InitiateRequest r, Long collectedByUserId) throws JsonProcessingException {
         Payment payment = useCase.initiate(new PaymentUseCase.InitiatePaymentCommand(
-                r.tenantId(), r.invoiceId(), r.studentId(), r.reference(), r.amount(), r.channel(), r.type(), r.payerNumber()));
+                r.tenantId(), r.invoiceId(), r.studentId(), r.reference(), r.amount(), r.channel(), r.type(), r.payerNumber(), collectedByUserId));
         String redirectUrl = transactionUseCase.findByPaymentId(payment.getId()).stream()
                 .map(PaymentTransaction::getRedirectUrl)
                 .filter(u -> u != null && !u.isBlank())

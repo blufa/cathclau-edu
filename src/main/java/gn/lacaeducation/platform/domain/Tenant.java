@@ -33,6 +33,10 @@ public class Tenant {
     private String accreditationNumber;
     /** Référence de l'autorisation d'ouverture délivrée par le ministère. */
     private String openingAuthorization;
+    /** Devise de l'établissement (phrase courte et formelle), imprimée au verso des badges/cartes. */
+    private String motto;
+    /** Slogan de l'établissement (accroche marketing), imprimé au verso des badges/cartes. */
+    private String slogan;
     /**
      * Numéro marchand de reversement de l'école (compte Mobile Money). L'encaissement des parents se
      * fait sur le compte plateforme Djomy ; ce numéro est celui sur lequel la plateforme reverse à

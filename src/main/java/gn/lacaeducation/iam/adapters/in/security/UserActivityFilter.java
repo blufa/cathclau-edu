@@ -6,6 +6,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
@@ -25,6 +26,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>L'écriture en base est throttlée en mémoire (au plus une par utilisateur par minute) pour ne pas
  * transformer chaque requête en écriture — un cache en mémoire suffit ici, une précision à la minute
  * près est largement suffisante pour un indicateur « en ligne / hors ligne ».</p>
+ *
+ * <p>La dépendance est résolue en différé via {@link ObjectProvider} : dans un test de slice web
+ * (ex. {@code @WebMvcTest}), la couche de persistance n'est pas chargée et aucun bean
+ * {@link UserRepository} n'existe — le filtre doit rester un no-op silencieux plutôt que de faire
+ * échouer le démarrage du contexte Spring.</p>
  */
 @Component
 @RequiredArgsConstructor
@@ -32,7 +38,7 @@ public class UserActivityFilter extends OncePerRequestFilter {
 
     private static final Duration THROTTLE = Duration.ofSeconds(60);
 
-    private final UserRepository userRepository;
+    private final ObjectProvider<UserRepository> userRepositoryProvider;
     private final ConcurrentHashMap<Long, Instant> lastTouched = new ConcurrentHashMap<>();
 
     @Override
@@ -46,10 +52,13 @@ public class UserActivityFilter extends OncePerRequestFilter {
                     Instant now = Instant.now();
                     Instant previous = lastTouched.put(userId, now);
                     if (previous == null || previous.isBefore(now.minus(THROTTLE))) {
-                        try {
-                            userRepository.touchActivity(userId);
-                        } catch (RuntimeException ignored) {
-                            // Best-effort : une écriture de télémétrie ratée ne doit jamais faire échouer la requête.
+                        UserRepository userRepository = userRepositoryProvider.getIfAvailable();
+                        if (userRepository != null) {
+                            try {
+                                userRepository.touchActivity(userId);
+                            } catch (RuntimeException ignored) {
+                                // Best-effort : une écriture de télémétrie ratée ne doit jamais faire échouer la requête.
+                            }
                         }
                     }
                 }
