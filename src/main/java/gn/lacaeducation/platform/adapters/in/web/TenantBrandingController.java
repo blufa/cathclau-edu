@@ -18,14 +18,18 @@ public class TenantBrandingController {
 
     private final CreateTenantUseCase tenantUseCase;
 
-    public record BrandingResponse(Long tenantId, String schoolName, String logo, String brandColor) {}
+    // La devise/le slogan sont inclus ici (et non uniquement dans /school/profile, réservé à
+    // SCHOOL_ADMIN) car tout utilisateur du tenant pouvant émettre un badge (ex. SECRETARY) doit
+    // pouvoir en imprimer le verso officiel.
+    public record BrandingResponse(Long tenantId, String schoolName, String logo, String brandColor,
+                                    String motto, String slogan) {}
     public record BrandingRequest(String logo, String brandColor) {}
 
     @Operation(summary = "Get the current school's branding")
     @GetMapping
     public BrandingResponse get() {
         Tenant t = tenantUseCase.findById(TenantContext.get());
-        return new BrandingResponse(t.getId(), t.getSchoolName(), t.getLogo(), t.getBrandColor());
+        return new BrandingResponse(t.getId(), t.getSchoolName(), t.getLogo(), t.getBrandColor(), t.getMotto(), t.getSlogan());
     }
 
     @Operation(summary = "Update the current school's logo and brand colour")
@@ -33,6 +37,6 @@ public class TenantBrandingController {
     @PutMapping
     public BrandingResponse update(@RequestBody BrandingRequest r) {
         Tenant t = tenantUseCase.updateBranding(TenantContext.get(), r.logo(), r.brandColor());
-        return new BrandingResponse(t.getId(), t.getSchoolName(), t.getLogo(), t.getBrandColor());
+        return new BrandingResponse(t.getId(), t.getSchoolName(), t.getLogo(), t.getBrandColor(), t.getMotto(), t.getSlogan());
     }
 }

@@ -22,4 +22,5 @@ public class PaymentJpaEntity {
     @Column(name = "months_count") private Integer monthsCount;
     @Column(name = "remaining_after", precision = 15, scale = 2) private BigDecimal remainingAfter;
     @Column(name = "group_lines", columnDefinition = "text") private String groupLines;
+    @Column(name = "collected_by_user_id") private Long collectedByUserId;
 }

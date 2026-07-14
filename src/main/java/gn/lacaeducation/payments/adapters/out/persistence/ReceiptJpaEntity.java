@@ -16,4 +16,5 @@ public class ReceiptJpaEntity {
     @Column(name = "months_count") private Integer monthsCount;
     @Column(name = "remaining_after", precision = 15, scale = 2) private BigDecimal remainingAfter;
     @Column(name = "student_name", length = 200) private String studentName;
+    @Column(name = "collected_by_name", length = 200) private String collectedByName;
 }

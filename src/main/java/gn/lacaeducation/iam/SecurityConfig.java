@@ -2,6 +2,7 @@ package gn.lacaeducation.iam;
 
 import gn.lacaeducation.iam.adapters.in.security.IamPermissionEvaluator;
 import gn.lacaeducation.iam.adapters.in.security.TenantContextFilter;
+import gn.lacaeducation.iam.adapters.in.security.UserActivityFilter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -95,7 +96,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, UserActivityFilter userActivityFilter) throws Exception {
         TenantContextFilter tenantContextFilter = new TenantContextFilter();
         http
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
@@ -123,7 +124,8 @@ public class SecurityConfig {
                 .decoder(jwtDecoder())
                 .jwtAuthenticationConverter(jwtAuthenticationConverter())
             ))
-            .addFilterAfter(tenantContextFilter, BearerTokenAuthenticationFilter.class);
+            .addFilterAfter(tenantContextFilter, BearerTokenAuthenticationFilter.class)
+            .addFilterAfter(userActivityFilter, TenantContextFilter.class);
         return http.build();
     }
 

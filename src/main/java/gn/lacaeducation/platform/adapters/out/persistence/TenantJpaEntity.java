@@ -59,6 +59,12 @@ public class TenantJpaEntity {
     @Column(name = "opening_authorization")
     private String openingAuthorization;
 
+    @Column(name = "motto")
+    private String motto;
+
+    @Column(name = "slogan")
+    private String slogan;
+
     /** Numéro marchand de reversement de l'école (Mobile Money) ; voir {@code Tenant#payoutMerchantNumber}. */
     @Column(name = "payout_merchant_number")
     private String payoutMerchantNumber;

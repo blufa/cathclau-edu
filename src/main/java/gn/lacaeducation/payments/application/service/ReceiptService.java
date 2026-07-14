@@ -47,6 +47,7 @@ public class ReceiptService implements ReceiptUseCase {
         Receipt receipt = repo.save(Receipt.builder().paymentId(paymentId)
                 .reference(reference).amount(p.getAmount())
                 .studentName(resolveStudentName(p.getStudentId()))
+                .collectedByName(resolveCollectedByName(p.getCollectedByUserId()))
                 .generatedAt(LocalDateTime.now()).build());
         // Génération du PDF + upload Cloudinary, sans bloquer le paiement si l'upload échoue.
         String url = renderAndUpload(receipt, p);
@@ -72,6 +73,7 @@ public class ReceiptService implements ReceiptUseCase {
         Receipt receipt = repo.save(Receipt.builder().paymentId(paymentId)
                 .reference(reference).amount(p.getAmount())
                 .studentName(resolveStudentName(p.getStudentId()))
+                .collectedByName(resolveCollectedByName(p.getCollectedByUserId()))
                 .coveredMonths(coveredMonths).monthsCount(monthsCount).remainingAfter(remainingAfter)
                 .generatedAt(LocalDateTime.now()).build());
         String url = renderAndUpload(receipt, p);
@@ -122,6 +124,17 @@ public class ReceiptService implements ReceiptUseCase {
             return payerDirectory.studentName(studentId).orElse(null);
         } catch (RuntimeException e) {
             log.warn("Nom d'élève non résolu pour le reçu (élève {}) : {}", studentId, e.getMessage());
+            return null;
+        }
+    }
+
+    /** Snapshot du nom de l'agent ayant encaissé (« Opérateur ») ; ne bloque jamais la génération du reçu. */
+    private String resolveCollectedByName(Long userId) {
+        if (userId == null) return null;
+        try {
+            return payerDirectory.operatorName(userId).orElse(null);
+        } catch (RuntimeException e) {
+            log.warn("Nom de l'opérateur non résolu pour le reçu (utilisateur {}) : {}", userId, e.getMessage());
             return null;
         }
     }

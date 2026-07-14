@@ -16,7 +16,11 @@ public interface UserRepository {
     boolean existsByTenantIdAndEmail(Long tenantId, String email);
     boolean existsByUsername(String username);
     List<User> findByTenantId(Long tenantId);
+    /** Tous les utilisateurs, toutes écoles confondues — réservé aux vues plateforme (SUPER_ADMIN). */
+    List<User> findAll();
     void deleteById(Long id);
     boolean existsById(Long id);
     void assignRole(Long userId, Long roleId);
+    /** Enregistre l'activité de l'utilisateur (throttlé en amont). Best-effort : ne doit jamais faire échouer l'appelant. */
+    void touchActivity(Long userId);
 }
