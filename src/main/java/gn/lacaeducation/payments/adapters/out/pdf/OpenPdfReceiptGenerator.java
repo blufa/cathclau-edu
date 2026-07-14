@@ -1,7 +1,7 @@
 package gn.lacaeducation.payments.adapters.out.pdf;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 import com.lowagie.text.Document;
 import com.lowagie.text.Element;
 import com.lowagie.text.Font;
@@ -215,7 +215,7 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
         if (json == null || json.isBlank()) return List.of();
         try {
             return objectMapper.readValue(json, new TypeReference<List<GroupLine>>() {});
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             return List.of();
         }
     }
