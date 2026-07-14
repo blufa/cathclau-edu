@@ -24,6 +24,8 @@ public class Payment {
     private Integer monthsCount;
     private BigDecimal remainingAfter;
     private String groupLines;
+    /** Utilisateur ayant physiquement encaissé (canal CASH uniquement) — imprimé sur le reçu. */
+    private Long collectedByUserId;
 
     /**
      * Strict payment state machine (features/09-payments.md §9.1):

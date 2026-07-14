@@ -39,7 +39,8 @@ public class PaymentService implements PaymentUseCase {
         // Facture → Paiement → TransactionPaiement (appel fournisseur) → EN_ATTENTE (§9.1).
         Payment payment = repo.save(Payment.builder().tenantId(c.tenantId()).invoiceId(c.invoiceId()).studentId(c.studentId())
                 .reference(c.reference()).amount(c.amount()).channel(c.channel()).type(c.type())
-                .status(PaymentStatus.INITIATED).paidAt(LocalDateTime.now()).build());
+                .status(PaymentStatus.INITIATED).paidAt(LocalDateTime.now())
+                .collectedByUserId(c.collectedByUserId()).build());
 
         // Encaissement manuel au guichet (espèces, Orange Money, virement) : l'argent est déjà reçu,
         // aucun fournisseur en ligne — on confirme immédiatement et on émet le reçu. L'événement
@@ -86,7 +87,7 @@ public class PaymentService implements PaymentUseCase {
                 .reference(reference).amount(total).channel(c.channel()).type(PaymentType.COMPLETE)
                 .status(PaymentStatus.INITIATED).paidAt(LocalDateTime.now())
                 .coveredMonths(c.coverageLabel()).monthsCount(c.monthsCount()).remainingAfter(c.remainingAfter())
-                .groupLines(serializeShares(c.shares()))
+                .groupLines(serializeShares(c.shares())).collectedByUserId(c.collectedByUserId())
                 .build());
 
         if (c.channel().isDeskManual()) {

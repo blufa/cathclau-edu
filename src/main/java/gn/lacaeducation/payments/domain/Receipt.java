@@ -18,4 +18,6 @@ public class Receipt {
     private BigDecimal remainingAfter;
     /** Nom de l'élève payeur, figé au moment de l'émission (snapshot) pour l'impression du reçu. */
     private String studentName;
+    /** Nom de l'agent ayant encaissé (canal CASH), figé au moment de l'émission (snapshot). */
+    private String collectedByName;
 }

@@ -123,7 +123,8 @@ public final class SchoolPdfHeader {
         return f;
     }
 
-    private static Image loadLogo(String url) {
+    /** Charge le logo de l'école depuis son URL (Cloudinary…) ; null si absent/illisible. */
+    public static Image loadLogo(String url) {
         if (url == null || url.isBlank()) return null;
         try {
             return Image.getInstance(new java.net.URI(url).toURL());
