@@ -18,4 +18,8 @@ public class ClasseMatiere {
     private Long teacherId;
     /** Coefficient de la matière pour cette classe (null = coefficient par défaut de la matière). */
     private java.math.BigDecimal coefficient;
+    /** Code unique affecté par le Directeur des Études pour identifier ce professeur sur cette
+     * matière (ex. "CH1", "CH2" pour le 1er/2e professeur de chimie) — utilisé dans la grille
+     * d'emploi du temps pour affecter/réaffecter rapidement un professeur par matière. */
+    private String code;
 }

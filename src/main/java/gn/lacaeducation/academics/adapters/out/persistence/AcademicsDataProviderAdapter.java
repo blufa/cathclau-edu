@@ -23,7 +23,8 @@ public class AcademicsDataProviderAdapter implements AcademicsDataProvider {
     private final AnneeScolaireJpaRepository anneeRepo;
     @Override
     public Optional<ClassPublicInfo> findClass(Long classId) {
-        return classeRepo.findById(classId).map(c -> new ClassPublicInfo(c.getId(), c.getLabel(), null));
+        return classeRepo.findById(classId).map(c -> new ClassPublicInfo(c.getId(), c.getLabel(), null,
+                c.getClassType() != null ? c.getClassType().name() : null));
     }
     @Override
     public Map<Long, String> subjectLabels(Collection<Long> subjectIds) {
@@ -34,7 +35,8 @@ public class AcademicsDataProviderAdapter implements AcademicsDataProvider {
     @Override
     public Optional<PeriodPublicInfo> findPeriod(Long periodId) {
         return periodeRepo.findById(periodId).map(p ->
-                new PeriodPublicInfo(p.getId(), p.getLabel(), p.getType() != null ? p.getType().name() : null));
+                new PeriodPublicInfo(p.getId(), p.getLabel(), p.getType() != null ? p.getType().name() : null,
+                        p.getStartDate(), p.getEndDate()));
     }
     @Override
     public boolean isPeriodOpenForGrades(Long periodId) {
@@ -60,16 +62,19 @@ public class AcademicsDataProviderAdapter implements AcademicsDataProvider {
                         s -> s.getCoefficient() != null ? s.getCoefficient() : BigDecimal.ONE));
         return assignments.stream()
                 .map(a -> new ClassSubjectPublicInfo(
+                        a.getSchoolClassId(),
                         a.getSubjectId(),
                         coeffBySubject.getOrDefault(a.getSubjectId(), BigDecimal.ONE),
-                        a.getTeacherId()))
+                        a.getTeacherId(),
+                        a.getCode()))
                 .toList();
     }
 
     @Override
     public List<ClassPublicInfo> findClassesByHeadTeacher(Long teacherId) {
         return classeRepo.findByHeadTeacherId(teacherId).stream()
-                .map(c -> new ClassPublicInfo(c.getId(), c.getLabel(), null))
+                .map(c -> new ClassPublicInfo(c.getId(), c.getLabel(), null,
+                        c.getClassType() != null ? c.getClassType().name() : null))
                 .toList();
     }
 
@@ -88,9 +93,11 @@ public class AcademicsDataProviderAdapter implements AcademicsDataProvider {
                         s -> s.getCoefficient() != null ? s.getCoefficient() : BigDecimal.ONE));
         return assignments.stream()
                 .map(a -> new ClassSubjectPublicInfo(
+                        a.getSchoolClassId(),
                         a.getSubjectId(),
                         coeffBySubject.getOrDefault(a.getSubjectId(), BigDecimal.ONE),
-                        a.getTeacherId()))
+                        a.getTeacherId(),
+                        a.getCode()))
                 .toList();
     }
 

@@ -43,6 +43,7 @@ interface MatiereJpaRepository extends JpaRepository<MatiereJpaEntity, Long> {
 interface ClasseMatiereJpaRepository extends JpaRepository<ClasseMatiereJpaEntity, Long> {
     List<ClasseMatiereJpaEntity> findBySchoolClassId(Long schoolClassId);
     List<ClasseMatiereJpaEntity> findByTeacherId(Long teacherId);
+    List<ClasseMatiereJpaEntity> findBySubjectId(Long subjectId);
 }
 
 interface EmploiDuTempsJpaRepository extends JpaRepository<EmploiDuTempsJpaEntity, Long> {

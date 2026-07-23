@@ -3,6 +3,7 @@ package gn.lacaeducation.payroll.adapters.in.web;
 import gn.lacaeducation.common.TenantContext;
 import gn.lacaeducation.payroll.application.service.PayrollService;
 import gn.lacaeducation.payroll.application.service.PayrollService.MonthlyPay;
+import gn.lacaeducation.payroll.application.service.PayrollService.TheoreticalMonthlyPay;
 import gn.lacaeducation.payroll.domain.PayMode;
 import gn.lacaeducation.payroll.domain.Payslip;
 import gn.lacaeducation.payroll.domain.TeacherCompensation;
@@ -24,7 +25,7 @@ public class TeacherCompensationController {
 
     private final PayrollService service;
 
-    public record CompensationRequest(PayMode payMode, BigDecimal hourlyRate, BigDecimal fixedSalary) {}
+    public record CompensationRequest(PayMode payMode, BigDecimal hourlyRateNormal, BigDecimal hourlyRateExam, BigDecimal fixedSalary) {}
 
     @Operation(summary = "Lister les rémunérations paramétrées")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
@@ -42,7 +43,8 @@ public class TeacherCompensationController {
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
     @PutMapping("/compensation/{teacherId}")
     public TeacherCompensation set(@PathVariable Long teacherId, @RequestBody CompensationRequest r) {
-        return service.setCompensation(TenantContext.get(), teacherId, r.payMode(), r.hourlyRate(), r.fixedSalary());
+        return service.setCompensation(TenantContext.get(), teacherId, r.payMode(),
+                r.hourlyRateNormal(), r.hourlyRateExam(), r.fixedSalary());
     }
 
     @Operation(summary = "Calcul de la paie mensuelle (heures réalisées − retards × tarif, + fixe le cas échéant)")
@@ -50,6 +52,13 @@ public class TeacherCompensationController {
     @GetMapping("/teachers/{teacherId}/monthly-pay")
     public MonthlyPay monthlyPay(@PathVariable Long teacherId, @RequestParam int year, @RequestParam int month) {
         return service.computeMonthlyPay(teacherId, year, month);
+    }
+
+    @Operation(summary = "Calcul automatique de la paie mensuelle depuis l'emploi du temps validé, par typologie de classe (§6), sans saisie manuelle")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @GetMapping("/teachers/{teacherId}/theoretical-pay")
+    public TheoreticalMonthlyPay theoreticalPay(@PathVariable Long teacherId, @RequestParam int year, @RequestParam int month) {
+        return service.computeTheoreticalMonthlyPay(teacherId, year, month);
     }
 
     public record GenPayslipRequest(String teacherName, Long structureId) {}
@@ -60,6 +69,15 @@ public class TeacherCompensationController {
     public Payslip generatePayslip(@PathVariable Long teacherId, @RequestParam int year, @RequestParam int month,
                                    @RequestBody(required = false) GenPayslipRequest r) {
         return service.generateFromHours(TenantContext.get(), teacherId, r != null ? r.teacherName() : null,
+                year, month, r != null ? r.structureId() : null);
+    }
+
+    @Operation(summary = "Générer automatiquement la fiche de paie du mois depuis l'emploi du temps validé (§6), sans saisie manuelle")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PostMapping("/teachers/{teacherId}/payslip-timetable")
+    public Payslip generatePayslipFromTimetable(@PathVariable Long teacherId, @RequestParam int year, @RequestParam int month,
+                                                @RequestBody(required = false) GenPayslipRequest r) {
+        return service.generateFromTimetable(TenantContext.get(), teacherId, r != null ? r.teacherName() : null,
                 year, month, r != null ? r.structureId() : null);
     }
 }

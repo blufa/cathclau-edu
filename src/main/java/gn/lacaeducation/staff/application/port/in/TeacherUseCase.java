@@ -4,6 +4,7 @@ import gn.lacaeducation.academics.ClassPublicInfo;
 import gn.lacaeducation.academics.ClassSubjectPublicInfo;
 import gn.lacaeducation.academics.ScheduleSlotPublicInfo;
 import gn.lacaeducation.staff.domain.Teacher;
+import gn.lacaeducation.staff.domain.TeacherMonthlyWorkload;
 import gn.lacaeducation.staff.domain.TeacherWorkload;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -37,4 +38,8 @@ public interface TeacherUseCase {
 
     /** Charge horaire hebdomadaire consolidée (somme des créneaux d'emploi du temps). */
     TeacherWorkload computeWorkload(Long teacherId);
+
+    /** Charge horaire d'un mois donné (1-12), en projetant l'emploi du temps hebdomadaire récurrent
+     * sur le nombre d'occurrences de chaque jour dans ce mois — alimente le compteur mensuel (§2). */
+    TeacherMonthlyWorkload computeMonthlyWorkload(Long teacherId, int year, int month);
 }

@@ -32,7 +32,7 @@ class ClasseServiceTest {
     @InjectMocks ClasseService service;
 
     private CreateClassCommand cmd(Long yearId) {
-        return new CreateClassCommand(10L, 1L, yearId, 2L, 3L, "6e A", 40);
+        return new CreateClassCommand(10L, 1L, yearId, 2L, 3L, "6e A", 40, null);
     }
 
     @Test

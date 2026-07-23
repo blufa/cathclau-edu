@@ -22,6 +22,8 @@ class TeacherAvailabilityPersistenceAdapter implements TeacherAvailabilityReposi
         e.setDay(a.getDay());
         e.setStartTime(a.getStartTime());
         e.setEndTime(a.getEndTime());
+        e.setSchoolClassId(a.getSchoolClassId());
+        e.setSubjectId(a.getSubjectId());
         return toDomain(jpa.save(e));
     }
 
@@ -39,6 +41,7 @@ class TeacherAvailabilityPersistenceAdapter implements TeacherAvailabilityReposi
         return TeacherAvailability.builder()
                 .id(e.getId()).tenantId(e.getTenantId()).teacherId(e.getTeacherId())
                 .day(e.getDay()).startTime(e.getStartTime()).endTime(e.getEndTime())
+                .schoolClassId(e.getSchoolClassId()).subjectId(e.getSubjectId())
                 .build();
     }
 }

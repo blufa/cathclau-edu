@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 
 /**
  * Public view of a class-subject assignment (ClasseMatiere) exposed to other modules:
- * the subject, its coefficient and the assigned teacher for a given class.
+ * the class, the subject, its coefficient, the assigned teacher and their code (e.g. "CH1") for
+ * that subject, if one has been assigned.
  */
-public record ClassSubjectPublicInfo(Long subjectId, BigDecimal coefficient, Long teacherId) {}
+public record ClassSubjectPublicInfo(Long classId, Long subjectId, BigDecimal coefficient, Long teacherId, String teacherCode) {}

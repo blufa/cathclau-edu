@@ -1,5 +1,8 @@
 package gn.lacaeducation.payroll.application.service;
 
+import gn.lacaeducation.academics.AcademicsDataProvider;
+import gn.lacaeducation.academics.ClassPublicInfo;
+import gn.lacaeducation.academics.ScheduleSlotPublicInfo;
 import gn.lacaeducation.attendance.TeacherWorkProvider;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
@@ -16,9 +19,15 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.DayOfWeek;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.YearMonth;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Paie (inspiré OpenEduCat Payroll) : règles de paie, structures salariales, génération de fiches
@@ -40,6 +49,7 @@ public class PayrollService {
     private final TeacherTeachingProvider teachingProvider;
     private final TeacherWorkProvider workProvider;
     private final gn.lacaeducation.payroll.application.port.in.SalaryFeeDeductionUseCase salaryFeeDeductionUseCase;
+    private final AcademicsDataProvider academics;
 
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
 
@@ -49,11 +59,13 @@ public class PayrollService {
                              int realizedMinutes, int lateMinutes, int effectiveMinutes,
                              BigDecimal hourlyRate, BigDecimal fixedSalary, BigDecimal teachingPay, BigDecimal grossPay) {}
 
-    public TeacherCompensation setCompensation(Long tenantId, Long teacherId, PayMode mode, BigDecimal hourlyRate, BigDecimal fixedSalary) {
+    public TeacherCompensation setCompensation(Long tenantId, Long teacherId, PayMode mode,
+                                                BigDecimal hourlyRateNormal, BigDecimal hourlyRateExam, BigDecimal fixedSalary) {
         TeacherCompensation c = compRepo.findByTeacherId(teacherId)
                 .orElseGet(() -> TeacherCompensation.builder().tenantId(tenantId).teacherId(teacherId).build());
         c.setPayMode(mode != null ? mode : PayMode.HOURLY);
-        c.setHourlyRate(hourlyRate != null ? hourlyRate : BigDecimal.ZERO);
+        c.setHourlyRateNormal(hourlyRateNormal != null ? hourlyRateNormal : BigDecimal.ZERO);
+        c.setHourlyRateExam(hourlyRateExam != null ? hourlyRateExam : BigDecimal.ZERO);
         c.setFixedSalary(fixedSalary != null ? fixedSalary : BigDecimal.ZERO);
         return compRepo.save(c);
     }
@@ -79,7 +91,10 @@ public class PayrollService {
 
         TeacherCompensation comp = compRepo.findByTeacherId(teacherId).orElse(null);
         PayMode mode = comp != null && comp.getPayMode() != null ? comp.getPayMode() : PayMode.HOURLY;
-        BigDecimal rate = comp != null && comp.getHourlyRate() != null ? comp.getHourlyRate() : BigDecimal.ZERO;
+        // Les heures réalisées (cahier de textes) ne distinguent pas la typologie de classe : on
+        // applique le tarif "classe normale" par défaut (voir computeTheoreticalMonthlyPay pour le
+        // calcul automatique par typologie, basé sur l'emploi du temps — §6).
+        BigDecimal rate = comp != null && comp.getHourlyRateNormal() != null ? comp.getHourlyRateNormal() : BigDecimal.ZERO;
         BigDecimal fixed = comp != null && comp.getFixedSalary() != null ? comp.getFixedSalary() : BigDecimal.ZERO;
 
         BigDecimal effHours = BigDecimal.valueOf(effective).divide(BigDecimal.valueOf(60), 2, RoundingMode.HALF_UP);
@@ -104,6 +119,79 @@ public class PayrollService {
         return generate(new GenerateCommand(tenantId, gn.lacaeducation.payroll.domain.EmployeeType.TEACHER,
                 teacherId, teacherName, periodLabel, from, to,
                 mp.grossPay(), structureId, notes, null, null, null, null, null));
+    }
+
+    // ── Calcul automatique par typologie de classe, depuis l'emploi du temps validé (§6) ──────
+
+    private static final Map<String, DayOfWeek> DAY_OF_WEEK = Map.of(
+            "LUNDI", DayOfWeek.MONDAY, "MARDI", DayOfWeek.TUESDAY, "MERCREDI", DayOfWeek.WEDNESDAY,
+            "JEUDI", DayOfWeek.THURSDAY, "VENDREDI", DayOfWeek.FRIDAY, "SAMEDI", DayOfWeek.SATURDAY,
+            "DIMANCHE", DayOfWeek.SUNDAY);
+
+    public record TheoreticalMonthlyPay(Long teacherId, int year, int month, String payMode,
+                                        int normalMinutes, int examMinutes,
+                                        BigDecimal hourlyRateNormal, BigDecimal hourlyRateExam,
+                                        BigDecimal fixedSalary, BigDecimal teachingPay, BigDecimal grossPay) {}
+
+    /**
+     * Calcule automatiquement, sans saisie manuelle, le nombre d'heures théoriques que l'enseignant
+     * devait effectuer ce mois-ci (projection de son emploi du temps hebdomadaire sur les
+     * occurrences de chaque jour ouvré du mois), séparément pour les classes normales et les classes
+     * d'examen, puis applique le tarif horaire correspondant à chacune (§6).
+     */
+    @Transactional(readOnly = true)
+    public TheoreticalMonthlyPay computeTheoreticalMonthlyPay(Long teacherId, int year, int month) {
+        YearMonth ym = YearMonth.of(year, month);
+        Map<DayOfWeek, Integer> occurrencesByDay = new HashMap<>();
+        for (int day = 1; day <= ym.lengthOfMonth(); day++) {
+            occurrencesByDay.merge(ym.atDay(day).getDayOfWeek(), 1, Integer::sum);
+        }
+
+        Map<Long, ClassPublicInfo> classCache = new HashMap<>();
+        int normalMinutes = 0;
+        int examMinutes = 0;
+        for (ScheduleSlotPublicInfo slot : academics.findScheduleByTeacher(teacherId)) {
+            if (slot.startTime() == null || slot.endTime() == null || slot.day() == null) continue;
+            DayOfWeek dayOfWeek = DAY_OF_WEEK.get(slot.day().toUpperCase());
+            if (dayOfWeek == null) continue;
+            int occurrences = occurrencesByDay.getOrDefault(dayOfWeek, 0);
+            if (occurrences == 0) continue;
+            int minutes = (int) Duration.between(LocalTime.parse(slot.startTime()), LocalTime.parse(slot.endTime())).toMinutes()
+                    * occurrences;
+            ClassPublicInfo classInfo = slot.classId() != null
+                    ? classCache.computeIfAbsent(slot.classId(), id -> academics.findClass(id).orElse(null))
+                    : null;
+            boolean exam = classInfo != null && "EXAMEN".equals(classInfo.classType());
+            if (exam) examMinutes += minutes; else normalMinutes += minutes;
+        }
+
+        TeacherCompensation comp = compRepo.findByTeacherId(teacherId).orElse(null);
+        PayMode mode = comp != null && comp.getPayMode() != null ? comp.getPayMode() : PayMode.HOURLY;
+        BigDecimal rateNormal = comp != null && comp.getHourlyRateNormal() != null ? comp.getHourlyRateNormal() : BigDecimal.ZERO;
+        BigDecimal rateExam = comp != null && comp.getHourlyRateExam() != null ? comp.getHourlyRateExam() : BigDecimal.ZERO;
+        BigDecimal fixed = comp != null && comp.getFixedSalary() != null ? comp.getFixedSalary() : BigDecimal.ZERO;
+
+        BigDecimal normalHours = BigDecimal.valueOf(normalMinutes).divide(BigDecimal.valueOf(60), 2, RoundingMode.HALF_UP);
+        BigDecimal examHours = BigDecimal.valueOf(examMinutes).divide(BigDecimal.valueOf(60), 2, RoundingMode.HALF_UP);
+        BigDecimal teachingPay = normalHours.multiply(rateNormal).add(examHours.multiply(rateExam)).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal gross = mode == PayMode.FIXED ? fixed.add(teachingPay) : teachingPay;
+        return new TheoreticalMonthlyPay(teacherId, year, month, mode.name(), normalMinutes, examMinutes,
+                rateNormal, rateExam, fixed, teachingPay, gross);
+    }
+
+    /** Génère automatiquement la fiche de paie du mois à partir de l'emploi du temps validé (§6),
+     * sans aucune saisie manuelle : heures théoriques par typologie de classe × tarif correspondant. */
+    public Payslip generateFromTimetable(Long tenantId, Long teacherId, String teacherName, int year, int month, Long structureId) {
+        TheoreticalMonthlyPay tp = computeTheoreticalMonthlyPay(teacherId, year, month);
+        LocalDate from = LocalDate.of(year, month, 1);
+        LocalDate to = from.withDayOfMonth(from.lengthOfMonth());
+        String periodLabel = FR_MONTHS[month - 1] + " " + year;
+        String notes = String.format("%dh%02d (classes normales) + %dh%02d (classes d'examen), depuis l'emploi du temps%s",
+                tp.normalMinutes() / 60, tp.normalMinutes() % 60, tp.examMinutes() / 60, tp.examMinutes() % 60,
+                "FIXED".equals(tp.payMode()) ? " + salaire fixe" : "");
+        return generate(new GenerateCommand(tenantId, gn.lacaeducation.payroll.domain.EmployeeType.TEACHER,
+                teacherId, teacherName, periodLabel, from, to,
+                tp.grossPay(), structureId, notes, null, null, null, null, null));
     }
 
     // ── Structures salariales ────────────────────────────────────────────────
