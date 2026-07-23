@@ -5,14 +5,20 @@ import gn.lacaeducation.academics.application.port.out.ReferentielRepository;
 import gn.lacaeducation.academics.domain.Matiere;
 import gn.lacaeducation.academics.domain.Niveau;
 import gn.lacaeducation.academics.domain.Salle;
+import gn.lacaeducation.academics.domain.referentiel.CatalogueMepua;
+import gn.lacaeducation.academics.domain.referentiel.MatiereModele;
+import gn.lacaeducation.academics.domain.valueobject.SchoolCycle;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional
@@ -103,4 +109,26 @@ public class ReferentielAcademicsService implements GererReferentielUseCase {
     @Override @Transactional(readOnly = true)
     public Optional<Matiere> findSubjectById(Long id) { return referentielRepository.findSubjectById(id); }
     @Override public void deleteSubject(Long id) { referentielRepository.deleteSubjectById(id); }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MatiereModele> catalogueMepua(SchoolCycle cycle, String serie) {
+        return CatalogueMepua.pour(cycle, serie);
+    }
+
+    @Override
+    public List<Matiere> importerMatieresMepua(Long tenantId, SchoolCycle cycle, String serie) {
+        List<MatiereModele> modeles = CatalogueMepua.pour(cycle, serie);
+        Set<String> labelsExistants = referentielRepository.findSubjectsByTenantId(tenantId).stream()
+                .map(m -> m.getLabel().toLowerCase())
+                .collect(Collectors.toSet());
+        List<Matiere> creees = new ArrayList<>();
+        for (MatiereModele modele : modeles) {
+            if (labelsExistants.contains(modele.libelle().toLowerCase())) continue;
+            creees.add(referentielRepository.saveSubject(
+                    Matiere.builder().tenantId(tenantId).label(modele.libelle())
+                            .coefficient(modele.coefficient()).build()));
+        }
+        return creees;
+    }
 }

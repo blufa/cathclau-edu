@@ -5,8 +5,8 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 public interface SchoolFeeUseCase {
-    record CreateFeeCommand(Long tenantId, Long classId, FeeType type, BigDecimal amount, String academicYear) {}
-    record UpdateFeeCommand(Long classId, FeeType type, BigDecimal amount, String academicYear) {}
+    record CreateFeeCommand(Long tenantId, Long classId, FeeType type, BigDecimal amount, String academicYear, String label) {}
+    record UpdateFeeCommand(Long classId, FeeType type, BigDecimal amount, String academicYear, String label) {}
     SchoolFee create(CreateFeeCommand command);
     SchoolFee update(Long id, UpdateFeeCommand command);
     Optional<SchoolFee> findById(Long id);

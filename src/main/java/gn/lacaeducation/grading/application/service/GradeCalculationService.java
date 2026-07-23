@@ -1,18 +1,25 @@
 package gn.lacaeducation.grading.application.service;
 
+import gn.lacaeducation.academics.AcademicsDataProvider;
+import gn.lacaeducation.academics.PeriodPublicInfo;
 import gn.lacaeducation.grading.application.event.ReportCardGeneratedEvent;
 import gn.lacaeducation.grading.application.port.out.AssessmentRepository;
 import gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort;
 import gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort.ClassSubjectInfo;
 import gn.lacaeducation.grading.application.port.out.GradeRepository;
+import gn.lacaeducation.grading.application.port.out.GradingFormulaRepository;
 import gn.lacaeducation.grading.application.port.out.GradingScaleRepository;
 import gn.lacaeducation.grading.application.port.out.ReportCardRepository;
 import gn.lacaeducation.grading.domain.Assessment;
+import gn.lacaeducation.grading.domain.GradingFormula;
+import gn.lacaeducation.grading.domain.GradingFormulaEngine;
+import gn.lacaeducation.grading.domain.GradingFormulaStep;
 import gn.lacaeducation.grading.domain.GradingScale;
 import gn.lacaeducation.grading.domain.Grade;
 import gn.lacaeducation.grading.domain.ReportCard;
 import gn.lacaeducation.grading.domain.ReportCardLine;
 import gn.lacaeducation.grading.domain.ReportCardStatus;
+import gn.lacaeducation.grading.domain.StepKind;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -21,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -57,6 +65,8 @@ public class GradeCalculationService {
     private final gn.lacaeducation.grading.application.port.out.EliminatoryRuleRepository eliminatoryRuleRepository;
     private final gn.lacaeducation.grading.application.port.out.DecisionRuleRepository decisionRuleRepository;
     private final gn.lacaeducation.grading.application.port.out.AssessmentTypeConfigRepository assessmentTypeConfigRepository;
+    private final GradingFormulaRepository gradingFormulaRepository;
+    private final AcademicsDataProvider academicsDataProvider;
     private final ApplicationEventPublisher eventPublisher;
 
     /** Internal value object pairing a report card with its computed lines. */
@@ -177,8 +187,8 @@ public class GradeCalculationService {
                 continue;
             }
 
-            BigDecimal subjectAverage = computeSubjectAverage(grades, subjectAssessments, calcSettings, categoryWeights);
             BigDecimal subjectCoeff = subjectCoeffMap.getOrDefault(subjectId, BigDecimal.ONE);
+            BigDecimal subjectAverage = computeSubjectAverage(grades, subjectAssessments, calcSettings, categoryWeights, subjectCoeff);
             BigDecimal weighted = subjectAverage.multiply(subjectCoeff, MC).setScale(SCALE, RoundingMode.HALF_UP);
 
             Long teacherId = subjectTeacherMap.get(subjectId);
@@ -330,42 +340,64 @@ public class GradeCalculationService {
 
     /**
      * Moyenne d'un élève dans une matière (sur les évaluations données), calculée avec exactement le
-     * même paramétrage que les bulletins (méthode, décimales, arrondi, poids de catégorie). Renvoie
-     * {@code null} si l'élève n'a aucune note. Exposée pour le relevé de notes par matière.
+     * même paramétrage que les bulletins (formule, méthode, décimales, arrondi, poids de catégorie).
+     * Renvoie {@code null} si l'élève n'a aucune note. Exposée pour le relevé de notes par matière.
+     *
+     * @param subjectCoefficient coefficient de la matière (poids « SUBJECT_COEFFICIENT » d'une éventuelle
+     *                           étape de combinaison de la formule) ; {@code null} équivaut à 1.
      */
-    public BigDecimal subjectAverage(List<Assessment> subjectAssessments, List<Grade> studentGrades) {
+    public BigDecimal subjectAverage(List<Assessment> subjectAssessments, List<Grade> studentGrades,
+                                     BigDecimal subjectCoefficient) {
         if (subjectAssessments == null || subjectAssessments.isEmpty()
                 || studentGrades == null || studentGrades.isEmpty()) {
             return null;
         }
         var settings = resolveCalcSettings(subjectAssessments);
         var categoryWeights = resolveCategoryWeights(subjectAssessments);
-        return computeSubjectAverage(studentGrades, subjectAssessments, settings, categoryWeights);
+        return computeSubjectAverage(studentGrades, subjectAssessments, settings, categoryWeights, subjectCoefficient);
     }
 
     /**
-     * Moyenne d'une matière selon la méthode et l'arrondi configurés par l'établissement (§2/§5).
-     * Par défaut : moyenne pondérée par le coefficient d'évaluation, 2 décimales, arrondi mathématique.
+     * Moyenne d'une matière : exécute la {@link GradingFormula} active du tenant pour le type de
+     * période des évaluations (§ Refonte du moteur de calcul des notes), via {@link GradingFormulaEngine}.
+     * Si aucune formule n'est encore configurée pour ce (tenant, type de période), une formule
+     * « Héritée » équivalente à l'ancien calcul plat pondéré est créée automatiquement au premier
+     * calcul (voir {@link #resolveFormula}) — aucune régression pour les tenants non migrés.
      */
     private BigDecimal computeSubjectAverage(List<Grade> grades, List<Assessment> assessments,
                                              gn.lacaeducation.grading.domain.GradingCalculationSettings settings,
-                                             Map<Long, BigDecimal> categoryWeights) {
-        Map<Long, BigDecimal> coeffByAssessment = assessments.stream()
-                .collect(Collectors.toMap(Assessment::getId,
-                        a -> a.getCoefficient() != null ? a.getCoefficient() : BigDecimal.ONE));
-        Map<Long, Long> categoryByAssessment = assessments.stream()
-                .filter(a -> a.getAssessmentTypeId() != null)
-                .collect(Collectors.toMap(Assessment::getId, Assessment::getAssessmentTypeId));
+                                             Map<Long, BigDecimal> categoryWeights,
+                                             BigDecimal subjectCoefficient) {
+        Long tenantId = assessments.stream()
+                .map(Assessment::getTenantId).filter(java.util.Objects::nonNull).findFirst().orElse(null);
+        Long periodId = assessments.stream()
+                .map(Assessment::getPeriodId).filter(java.util.Objects::nonNull).findFirst().orElse(null);
 
-        List<gn.lacaeducation.grading.domain.SubjectAverageCalculator.WeightedGrade> weighted = grades.stream()
-                .map(g -> new gn.lacaeducation.grading.domain.SubjectAverageCalculator.WeightedGrade(
-                        g.getValue(), coeffByAssessment.getOrDefault(g.getAssessmentId(), BigDecimal.ONE),
-                        categoryByAssessment.get(g.getAssessmentId())))
-                .toList();
+        Optional<PeriodPublicInfo> period = (tenantId != null && periodId != null)
+                ? academicsDataProvider.findPeriod(periodId) : Optional.empty();
 
-        return gn.lacaeducation.grading.domain.SubjectAverageCalculator.compute(
-                settings.methodOrDefault(), weighted, categoryWeights,
-                settings.decimalsOrDefault(), settings.roundingOrDefault());
+        List<GradingFormulaStep> steps = period
+                .map(p -> resolveFormula(tenantId, p.type()).getSteps())
+                .orElse(List.of());
+        LocalDate periodStart = period.map(PeriodPublicInfo::startDate).orElse(null);
+
+        return GradingFormulaEngine.compute(steps, assessments, grades, subjectCoefficient,
+                periodStart, settings, categoryWeights);
+    }
+
+    /**
+     * Formule active du tenant pour ce type de période, ou création automatique (et persistance)
+     * d'une formule « Héritée » à une seule étape couvrant toute la période — mathématiquement
+     * identique à l'ancien calcul plat pondéré — la première fois qu'elle est nécessaire.
+     */
+    private GradingFormula resolveFormula(Long tenantId, String periodType) {
+        return gradingFormulaRepository.findActiveByTenantIdAndPeriodType(tenantId, periodType)
+                .orElseGet(() -> gradingFormulaRepository.save(GradingFormula.builder()
+                        .tenantId(tenantId).label("Héritée").periodType(periodType).active(true)
+                        .steps(List.of(GradingFormulaStep.builder()
+                                .stepOrder(1).stepKind(StepKind.GROUP)
+                                .label("Héritée (calcul historique)").finalStep(true).build()))
+                        .build()));
     }
 
     /**

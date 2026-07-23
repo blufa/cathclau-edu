@@ -1,7 +1,10 @@
 package gn.lacaeducation.academics.adapters.out.persistence;
 
+import gn.lacaeducation.academics.domain.valueobject.ClassType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -24,4 +27,6 @@ public class ClasseJpaEntity {
     @Column(nullable = false) private String label;
     private Integer headcount;
     @Column(name = "max_capacity") private Integer maxCapacity;
+    @Enumerated(EnumType.STRING) @Column(name = "class_type", nullable = false)
+    private ClassType classType;
 }

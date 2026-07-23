@@ -13,10 +13,11 @@ public class SchoolFeeService implements SchoolFeeUseCase {
     private final SchoolFeeRepository repo;
     @Override public SchoolFee create(CreateFeeCommand c) {
         return repo.save(SchoolFee.builder().tenantId(c.tenantId()).classId(c.classId())
-                .type(c.type()).amount(c.amount()).academicYear(c.academicYear()).build());
+                .type(c.type()).amount(c.amount()).academicYear(c.academicYear()).label(c.label()).build());
     }
     @Override public SchoolFee update(Long id, UpdateFeeCommand c) {
-        SchoolFee f = load(id); f.setClassId(c.classId()); f.setType(c.type()); f.setAmount(c.amount()); f.setAcademicYear(c.academicYear());
+        SchoolFee f = load(id); f.setClassId(c.classId()); f.setType(c.type()); f.setAmount(c.amount());
+        f.setAcademicYear(c.academicYear()); f.setLabel(c.label());
         return repo.save(f);
     }
     @Override

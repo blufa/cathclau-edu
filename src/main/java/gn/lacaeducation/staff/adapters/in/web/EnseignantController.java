@@ -7,6 +7,7 @@ import gn.lacaeducation.common.TenantContext;
 import gn.lacaeducation.staff.application.port.in.TeacherUseCase;
 import gn.lacaeducation.staff.application.port.in.TeacherUseCase.CreateTeacherCommand;
 import gn.lacaeducation.staff.domain.Teacher;
+import gn.lacaeducation.staff.domain.TeacherMonthlyWorkload;
 import gn.lacaeducation.staff.domain.TeacherWorkload;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -93,4 +94,11 @@ public class EnseignantController {
     @Operation(summary = "Charge horaire hebdomadaire de l'enseignant (total heures + répartition par jour)")
     @GetMapping("/{id}/workload")
     public TeacherWorkload workload(@PathVariable Long id) { return teacherUseCase.computeWorkload(id); }
+
+    @Operation(summary = "Charge horaire mensuelle de l'enseignant, projetée depuis son emploi du temps hebdomadaire (§2)")
+    @GetMapping("/{id}/workload/monthly")
+    public TeacherMonthlyWorkload monthlyWorkload(@PathVariable Long id,
+            @RequestParam int year, @RequestParam int month) {
+        return teacherUseCase.computeMonthlyWorkload(id, year, month);
+    }
 }

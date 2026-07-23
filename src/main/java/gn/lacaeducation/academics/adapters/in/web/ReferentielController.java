@@ -1,11 +1,15 @@
 package gn.lacaeducation.academics.adapters.in.web;
 
 import gn.lacaeducation.common.TenantContext;
+import gn.lacaeducation.academics.application.port.in.GererClasseUseCase;
 import gn.lacaeducation.academics.application.port.in.GererReferentielUseCase;
 import gn.lacaeducation.academics.application.port.in.GererReferentielUseCase.CreateRoomCommand;
+import gn.lacaeducation.academics.domain.ClasseMatiere;
 import gn.lacaeducation.academics.domain.Matiere;
 import gn.lacaeducation.academics.domain.Niveau;
 import gn.lacaeducation.academics.domain.Salle;
+import gn.lacaeducation.academics.domain.referentiel.MatiereModele;
+import gn.lacaeducation.academics.domain.valueobject.SchoolCycle;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +39,7 @@ import java.util.List;
 public class ReferentielController {
 
     private final GererReferentielUseCase useCase;
+    private final GererClasseUseCase classeUseCase;
 
     @Operation(summary = "Create a new room")
     @PostMapping("/rooms")
@@ -126,4 +131,23 @@ public class ReferentielController {
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteSubject(@PathVariable Long id) { useCase.deleteSubject(id); }
+
+    @Operation(summary = "Get the official MEPUA subject/coefficient catalog for a cycle (série required for LYCEE: SCIENCES/SOCIALES for 11ème, SM/SE/SS for 12ème-Terminale)")
+    @GetMapping("/subjects/catalogue-mepua")
+    public List<MatiereModele> catalogueMepua(@RequestParam SchoolCycle cycle, @RequestParam(required = false) String serie) {
+        return useCase.catalogueMepua(cycle, serie);
+    }
+
+    @Operation(summary = "Import the MEPUA subjects/coefficients for a cycle (and série) as subjects of the current tenant, skipping subjects that already exist")
+    @PostMapping("/subjects/importer-mepua")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    public List<Matiere> importerMepua(@RequestParam SchoolCycle cycle, @RequestParam(required = false) String serie) {
+        return useCase.importerMatieresMepua(TenantContext.get(), cycle, serie);
+    }
+
+    @Operation(summary = "List the teacher codes already assigned for a subject (e.g. CH1, CH2), across all classes — used by the timetable grid to assign/reassign a teacher by code")
+    @GetMapping("/subjects/{subjectId}/teacher-codes")
+    public List<ClasseMatiere> teacherCodesForSubject(@PathVariable Long subjectId) {
+        return classeUseCase.findTeacherCodesForSubject(subjectId);
+    }
 }

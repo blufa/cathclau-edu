@@ -12,4 +12,5 @@ public class BudgetJpaEntity {
     @Column(name = "category_id", nullable = false) private Long categoryId;
     @Column(name = "academic_year", nullable = false) private String academicYear;
     @Column(name = "allocated_amount", nullable = false, precision = 15, scale = 2) private BigDecimal allocatedAmount;
+    @Column(name = "consumed_amount", nullable = false, precision = 15, scale = 2) private BigDecimal consumedAmount;
 }

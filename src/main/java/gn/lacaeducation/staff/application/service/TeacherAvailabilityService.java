@@ -24,12 +24,18 @@ public class TeacherAvailabilityService {
         return repository.findByTeacherId(teacherId);
     }
 
-    public TeacherAvailability add(Long teacherId, String day, LocalTime start, LocalTime end) {
+    public TeacherAvailability add(Long teacherId, String day, LocalTime start, LocalTime end,
+                                    Long schoolClassId, Long subjectId) {
         if (day == null || day.isBlank()) {
             throw new BusinessRuleException("Jour requis");
         }
         if (start == null || end == null || !start.isBefore(end)) {
             throw new BusinessRuleException("Plage horaire invalide : l'heure de début doit précéder l'heure de fin");
+        }
+        // La disponibilité est déclarée pour enseigner une matière donnée à une classe donnée
+        // (jamais un créneau ouvert) : cela alimente directement la grille d'emploi du temps.
+        if (schoolClassId == null || subjectId == null) {
+            throw new BusinessRuleException("Classe et matière requises pour déclarer une disponibilité");
         }
         // Conflit : la plage chevauche une disponibilité déjà saisie pour cet enseignant le même jour.
         boolean overlap = repository.findByTeacherId(teacherId).stream()
@@ -45,6 +51,8 @@ public class TeacherAvailabilityService {
                 .day(day)
                 .startTime(start)
                 .endTime(end)
+                .schoolClassId(schoolClassId)
+                .subjectId(subjectId)
                 .build());
     }
 

@@ -22,4 +22,7 @@ public class SchoolFeeJpaEntity {
 
     @Column(name = "academic_year", nullable = false)
     private String academicYear;
+
+    @Column(name = "label")
+    private String label;
 }
