@@ -54,7 +54,8 @@ public class SuperAdminBootstrap implements ApplicationRunner {
                 .tenantId(null) // le SUPER_ADMIN n'appartient à aucun tenant
                 .firstName("Super")
                 .lastName("Admin")
-                .username(UsernameGenerator.generate("Super", "Admin", userRepository::existsByUsername))
+                .username(UsernameGenerator.generate("Super", "Admin",
+                        candidate -> userRepository.existsByTenantIdAndUsername(null, candidate)))
                 .email(email)
                 .passwordHash(passwordHasher.hash(password))
                 .active(true)

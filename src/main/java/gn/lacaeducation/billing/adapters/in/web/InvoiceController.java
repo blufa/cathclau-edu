@@ -27,25 +27,25 @@ public class InvoiceController {
         PortalAccess.assertParentCanAccessStudent(jwt.getClaimAsStringList("roles"), userId, studentId,
                 parentAccessProvider::isParentOfStudent);
     }
-    public record CreateRequest(Long tenantId, Long studentId, Long feeId, String reference, BigDecimal totalAmount) {}
+    public record CreateRequest(Long tenantId, Long studentId, Long feeId, String reference, BigDecimal totalAmount, Long academicYearId) {}
     public record PaymentRequest(BigDecimal amount) {}
     public record DiscountRequest(BigDecimal amount, String reason) {}
-    public record BulkGenerateRequest(Long tenantId, Long classId, Long feeId) {}
-    public record GenerateMonthlyRequest(Long tenantId, Long studentId, Long feeId) {}
+    public record BulkGenerateRequest(Long tenantId, Long classId, Long feeId, Long academicYearId) {}
+    public record GenerateMonthlyRequest(Long tenantId, Long studentId, Long feeId, Long academicYearId) {}
     @Operation(summary = "Create a new invoice for a student")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT','SECRETARY')")
     @PostMapping public ResponseEntity<Invoice> create(@RequestBody CreateRequest r) {
-        return ResponseEntity.ok(useCase.create(new InvoiceUseCase.CreateInvoiceCommand(r.tenantId(), r.studentId(), r.feeId(), r.reference(), r.totalAmount())));
+        return ResponseEntity.ok(useCase.create(new InvoiceUseCase.CreateInvoiceCommand(r.tenantId(), r.studentId(), r.feeId(), r.reference(), r.totalAmount(), r.academicYearId())));
     }
     @Operation(summary = "Generate invoices in bulk for all students enrolled in a class")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
     @PostMapping("/generate-bulk") public ResponseEntity<List<Invoice>> generateBulk(@RequestBody BulkGenerateRequest r) {
-        return ResponseEntity.ok(useCase.generateBulk(new InvoiceUseCase.BulkGenerateCommand(r.tenantId(), r.classId(), r.feeId())));
+        return ResponseEntity.ok(useCase.generateBulk(new InvoiceUseCase.BulkGenerateCommand(r.tenantId(), r.classId(), r.feeId(), r.academicYearId())));
     }
     @Operation(summary = "Generate one invoice per month (installment) of a MONTHLY fee for a student")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT','SECRETARY')")
     @PostMapping("/generate-monthly") public ResponseEntity<List<Invoice>> generateMonthly(@RequestBody GenerateMonthlyRequest r) {
-        return ResponseEntity.ok(useCase.generateMonthly(new InvoiceUseCase.GenerateMonthlyCommand(r.tenantId(), r.studentId(), r.feeId())));
+        return ResponseEntity.ok(useCase.generateMonthly(new InvoiceUseCase.GenerateMonthlyCommand(r.tenantId(), r.studentId(), r.feeId(), r.academicYearId())));
     }
     @Operation(summary = "Get an invoice by ID")
     @GetMapping("/{id}") public ResponseEntity<Invoice> findById(@PathVariable Long id) {
@@ -76,8 +76,10 @@ public class InvoiceController {
     @Operation(summary = "List all invoices for a student")
     @GetMapping("/student/{studentId}") public List<Invoice> findByStudent(@PathVariable Long studentId,
             @AuthenticationPrincipal Jwt jwt) { assertParentScope(jwt, studentId); return useCase.findByStudentId(studentId); }
-    @Operation(summary = "List all invoices for a tenant")
-    @GetMapping("/tenant/{tenantId}") public List<Invoice> findByTenant(@PathVariable Long tenantId) { return useCase.findByTenantId(tenantId); }
+    @Operation(summary = "List all invoices for a tenant — pass academicYearId to scope to one school year (recommended: an unscoped call mixes every year ever created)")
+    @GetMapping("/tenant/{tenantId}") public List<Invoice> findByTenant(@PathVariable Long tenantId, @RequestParam(required = false) Long academicYearId) {
+        return academicYearId != null ? useCase.findByTenantIdAndAcademicYearId(tenantId, academicYearId) : useCase.findByTenantId(tenantId);
+    }
     @Operation(summary = "List invoices for a tenant filtered by payment status")
     @GetMapping("/tenant/{tenantId}/status/{status}") public List<Invoice> findByStatus(@PathVariable Long tenantId, @PathVariable InvoiceStatus status) { return useCase.findByTenantIdAndStatus(tenantId, status); }
     @Operation(summary = "Apply a payment amount to an invoice")

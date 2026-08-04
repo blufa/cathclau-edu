@@ -35,9 +35,10 @@ public class UserService implements UserUseCase {
         if (command.email() != null && userRepository.existsByTenantIdAndEmail(command.tenantId(), command.email())) {
             throw new ConflictException("A user with this email already exists in this tenant");
         }
-        // Identifiant de connexion généré (prenom.nom, unique) pour les comptes créés par l'école.
-        String username = UsernameGenerator.generate(
-                command.firstName(), command.lastName(), userRepository::existsByUsername);
+        // Identifiant de connexion généré (prenom.nom, unique PAR TENANT) — la même personne peut
+        // avoir un compte dans plusieurs écoles avec le même prénom/nom sans collision.
+        String username = UsernameGenerator.generate(command.firstName(), command.lastName(),
+                candidate -> userRepository.existsByTenantIdAndUsername(command.tenantId(), candidate));
         // Mot de passe : celui choisi par l'admin, sinon un mot de passe temporaire à changer.
         boolean generated = command.password() == null || command.password().isBlank();
         String rawPassword = generated ? TemporaryPassword.generate() : command.password();

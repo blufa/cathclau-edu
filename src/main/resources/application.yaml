@@ -63,6 +63,15 @@ app:
     # link works without a front-end (Mailtrap, dev). In prod, override with the SPA page URL.
     verification-url: ${VERIFICATION_URL:http://localhost:8284/api/v1/public/verify-email}
 
+# Resend (resend.com) — envoi d'e-mails RÉELS aux parents/enseignants. Tant que enabled=false (défaut,
+# dev) ou que la clé manque, le canal EMAIL reste sur SMTP/Mailtrap (voir SmtpEmailGateway). En prod,
+# mettre RESEND_ENABLED=true + RESEND_API_KEY + RESEND_FROM (domaine vérifié sur Resend).
+resend:
+  enabled: ${RESEND_ENABLED:false}
+  api-key: ${RESEND_API_KEY:}
+  from: ${RESEND_FROM:CathClau Edu <no-reply@cathclau-edu.com>}
+  base-url: ${RESEND_BASE_URL:https://api.resend.com}
+
 # SMS Orange (Orange Developer) — identifiants UNIQUEMENT via l'environnement. Tant que enabled=false
 # ou que les clés manquent, l'envoi SMS se replie sur la journalisation (aucun échec).
 orange:

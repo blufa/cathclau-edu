@@ -7,6 +7,7 @@ import gn.lacaeducation.expenses.application.service.AnnualBudgetService.LineCom
 import gn.lacaeducation.expenses.domain.AnnualBudget;
 import gn.lacaeducation.expenses.domain.BudgetLine;
 import gn.lacaeducation.expenses.domain.BudgetLineType;
+import gn.lacaeducation.expenses.domain.FinancingMode;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -27,9 +28,10 @@ public class AnnualBudgetController {
 
     private final AnnualBudgetService service;
 
-    public record BudgetRequest(String academicYear, String label, String notes) {}
-    public record LineRequest(BudgetLineType lineType, String category, BigDecimal plannedAmount,
-                              BigDecimal actualAmount, String notes) {}
+    public record BudgetRequest(String academicYear, String label, String notes,
+                                FinancingMode financingMode, BigDecimal financingAmount) {}
+    public record LineRequest(BudgetLineType lineType, String category, Integer quantity, BigDecimal unitPrice,
+                              BigDecimal plannedAmount, BigDecimal actualAmount, String notes) {}
 
     @Operation(summary = "Lister les budgets annuels du tenant")
     @GetMapping
@@ -51,14 +53,31 @@ public class AnnualBudgetController {
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
     @PostMapping
     public AnnualBudget create(@RequestBody BudgetRequest r) {
-        return service.create(new BudgetCommand(TenantContext.get(), r.academicYear(), r.label(), r.notes()));
+        return service.create(new BudgetCommand(TenantContext.get(), r.academicYear(), r.label(), r.notes(),
+                r.financingMode(), r.financingAmount()));
     }
 
     @Operation(summary = "Modifier un budget annuel")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
     @PutMapping("/{id}")
     public AnnualBudget update(@PathVariable Long id, @RequestBody BudgetRequest r) {
-        return service.update(id, new BudgetCommand(TenantContext.get(), r.academicYear(), r.label(), r.notes()));
+        return service.update(id, new BudgetCommand(TenantContext.get(), r.academicYear(), r.label(), r.notes(),
+                r.financingMode(), r.financingAmount()));
+    }
+
+    @Operation(summary = "Obtenir (en la générant si besoin) l'URL du PDF récapitulatif du budget")
+    @GetMapping("/{id}/pdf")
+    public ResponseEntity<java.util.Map<String, String>> pdf(@PathVariable Long id) {
+        return ResponseEntity.ok(java.util.Map.of("url", service.pdfUrl(id)));
+    }
+
+    @Operation(summary = "Flux des octets du PDF du budget (aperçu direct, indépendant de Cloudinary)")
+    @GetMapping("/{id}/pdf/download")
+    public ResponseEntity<byte[]> pdfDownload(@PathVariable Long id) {
+        return ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"budget-" + id + ".pdf\"")
+                .body(service.pdfBytes(id));
     }
 
     @Operation(summary = "Soumettre le budget à la validation de la direction (comptable)")
@@ -98,14 +117,16 @@ public class AnnualBudgetController {
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
     @PostMapping("/{id}/lines")
     public BudgetLine addLine(@PathVariable Long id, @RequestBody LineRequest r) {
-        return service.addLine(id, new LineCommand(r.lineType(), r.category(), r.plannedAmount(), r.actualAmount(), r.notes()));
+        return service.addLine(id, new LineCommand(r.lineType(), r.category(), r.quantity(), r.unitPrice(),
+                r.plannedAmount(), r.actualAmount(), r.notes()));
     }
 
     @Operation(summary = "Modifier une ligne de budget")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
     @PutMapping("/lines/{lineId}")
     public BudgetLine updateLine(@PathVariable Long lineId, @RequestBody LineRequest r) {
-        return service.updateLine(lineId, new LineCommand(r.lineType(), r.category(), r.plannedAmount(), r.actualAmount(), r.notes()));
+        return service.updateLine(lineId, new LineCommand(r.lineType(), r.category(), r.quantity(), r.unitPrice(),
+                r.plannedAmount(), r.actualAmount(), r.notes()));
     }
 
     @Operation(summary = "Supprimer une ligne de budget")

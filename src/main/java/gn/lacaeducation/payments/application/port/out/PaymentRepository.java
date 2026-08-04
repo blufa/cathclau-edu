@@ -11,5 +11,6 @@ public interface PaymentRepository {
     List<Payment> findByStudentId(Long studentId);
     List<Payment> findByTenantId(Long tenantId);
     List<Payment> findByTenantIdAndStatus(Long tenantId, PaymentStatus status);
+    List<Payment> findByTenantIdAndAcademicYearId(Long tenantId, Long academicYearId);
     void deleteById(Long id);
 }

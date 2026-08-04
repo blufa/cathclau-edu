@@ -4,12 +4,15 @@ import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.attendance.TeacherWorkProvider;
 import gn.lacaeducation.billing.SchoolBillingStatsProvider;
 import gn.lacaeducation.billing.SchoolBillingStatsProvider.BillingStats;
+import gn.lacaeducation.billing.SchoolBillingStatsProvider.RecoveryBreakdown;
+import gn.lacaeducation.billing.SchoolBillingStatsProvider.SubsidyStats;
 import gn.lacaeducation.common.TenantContext;
 import gn.lacaeducation.grading.SchoolAcademicStatsProvider;
 import gn.lacaeducation.grading.SchoolAcademicStatsProvider.AcademicStats;
 import gn.lacaeducation.payments.SchoolCollectionStatsProvider;
 import gn.lacaeducation.payments.SchoolCollectionStatsProvider.MonthlyCollection;
 import gn.lacaeducation.payroll.SchoolPayrollStatsProvider;
+import gn.lacaeducation.payroll.SchoolPayrollStatsProvider.PayrollMassSummary;
 import gn.lacaeducation.staff.TeacherPublicInfoProvider;
 import gn.lacaeducation.students.StudentDataProvider;
 import io.swagger.v3.oas.annotations.Operation;
@@ -91,7 +94,7 @@ public class SchoolDashboardController {
     public record ProjectionMonth(int year, int month, BigDecimal expectedInflow, BigDecimal expectedOutflow,
                                   BigDecimal net, BigDecimal cumulativeNet) {}
     public record CashflowProjection(BigDecimal outstandingReceivables, BigDecimal avgMonthlyCollection,
-                                     BigDecimal recurringPayroll, List<ProjectionMonth> months) {}
+                                     BigDecimal recurringPayroll, String collectionTrend, List<ProjectionMonth> months) {}
 
     @Operation(summary = "Prévisionnel de trésorerie : encaissements attendus (tendance) − masse salariale récurrente sur N mois")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
@@ -106,6 +109,13 @@ public class SchoolDashboardController {
         BigDecimal avgCollection = completed.isEmpty() ? BigDecimal.ZERO
                 : completed.stream().map(MonthlyCollection::amount).reduce(BigDecimal.ZERO, BigDecimal::add)
                         .divide(BigDecimal.valueOf(completed.size()), 2, java.math.RoundingMode.HALF_UP);
+
+        // Tendance (§6, Vision Fondateur) : régression linéaire simple (pente/moyenne) sur les 6
+        // derniers mois civils réalisés — aucun modèle externe, juste une lecture de la direction.
+        List<MonthlyCollection> trendHistory = collectionStatsProvider.monthlyCollections(tenantId, 7);
+        List<MonthlyCollection> trendCompleted = trendHistory.size() > 1
+                ? trendHistory.subList(0, trendHistory.size() - 1) : trendHistory;
+        String collectionTrend = computeCollectionTrend(trendCompleted);
 
         BigDecimal outstanding = billingStatsProvider.billingStats(tenantId).outstanding();
         BigDecimal payroll = payrollStatsProvider.recurringMonthlyPayroll(tenantId);
@@ -123,7 +133,111 @@ public class SchoolDashboardController {
             rows.add(new ProjectionMonth(ym.getYear(), ym.getMonthValue(), inflow, payroll, net, cumulative));
             ym = ym.plusMonths(1);
         }
-        return new CashflowProjection(outstanding, avgCollection, payroll, rows);
+        return new CashflowProjection(outstanding, avgCollection, payroll, collectionTrend, rows);
+    }
+
+    /**
+     * Tendance des encaissements mensuels par régression linéaire simple (méthode des moindres
+     * carrés sur l'indice du mois) : compare la pente à la moyenne pour classer la direction sans
+     * seuil arbitraire en valeur absolue (§6 — pas de modèle externe, juste une lecture statistique).
+     */
+    private static String computeCollectionTrend(List<MonthlyCollection> points) {
+        int n = points.size();
+        if (n < 2) return "STABLE";
+        double sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+        for (int i = 0; i < n; i++) {
+            double x = i;
+            double y = points.get(i).amount().doubleValue();
+            sumX += x; sumY += y; sumXY += x * y; sumXX += x * x;
+        }
+        double denominator = n * sumXX - sumX * sumX;
+        if (denominator == 0) return "STABLE";
+        double slope = (n * sumXY - sumX * sumY) / denominator;
+        double average = sumY / n;
+        if (average == 0) return "STABLE";
+        double relativeSlope = slope / average;
+        if (relativeSlope > 0.05) return "HAUSSE";
+        if (relativeSlope < -0.05) return "BAISSE";
+        return "STABLE";
+    }
+
+    // ── Vision Fondateur (features/14) ──────────────────────────────────────
+    public record FounderAlert(String level, String code, String message) {}
+    public record FounderYearComparison(Long compareAcademicYearId, BigDecimal invoicedDelta,
+                                        BigDecimal collectedDelta, BigDecimal recoveryRateDelta) {}
+    public record ClassRecoveryRow(Long classId, String className, BigDecimal invoiced, BigDecimal collected,
+                                   BigDecimal outstanding, BigDecimal recoveryRate) {}
+    public record TopDebtorRow(Long studentId, String studentName, Long classId, String className,
+                               BigDecimal outstanding) {}
+    public record RecoveryView(BillingStats overall, List<ClassRecoveryRow> byClass,
+                              List<SchoolBillingStatsProvider.PeriodRecovery> byPeriod, List<TopDebtorRow> topDebtors) {}
+    public record FounderDashboard(Long academicYearId, RecoveryView recovery, PayrollMassSummary payroll,
+                                   SubsidyStats subsidy, List<FounderAlert> alerts,
+                                   FounderYearComparison comparison) {}
+
+    @Operation(summary = "Vision Fondateur : recouvrement détaillé, masse salariale, élèves pris en charge, "
+            + "alertes automatiques et comparatif inter-années (features/14)")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @GetMapping("/founder")
+    public FounderDashboard founder(@RequestParam Long academicYearId,
+                                    @RequestParam(required = false) Integer year,
+                                    @RequestParam(required = false) Integer month,
+                                    @RequestParam(required = false) Long compareAcademicYearId,
+                                    @RequestParam(defaultValue = "10") int topDebtors) {
+        Long tenantId = TenantContext.get();
+        java.time.YearMonth now = java.time.YearMonth.now();
+        int y = year != null ? year : now.getYear();
+        int m = month != null ? month : now.getMonthValue();
+
+        RecoveryBreakdown rawRecovery = billingStatsProvider.recoveryBreakdown(tenantId, academicYearId, topDebtors);
+        RecoveryView recovery = new RecoveryView(rawRecovery.overall(),
+                rawRecovery.byClass().stream()
+                        .map(c -> new ClassRecoveryRow(c.classId(), className(c.classId()), c.invoiced(),
+                                c.collected(), c.outstanding(), c.recoveryRate()))
+                        .toList(),
+                rawRecovery.byPeriod(),
+                rawRecovery.topDebtors().stream()
+                        .map(d -> new TopDebtorRow(d.studentId(), studentName(d.studentId()), d.classId(),
+                                className(d.classId()), d.outstanding()))
+                        .toList());
+        PayrollMassSummary payroll = payrollStatsProvider.payrollMassSummary(tenantId, y, m);
+        SubsidyStats subsidy = billingStatsProvider.subsidyStats(tenantId, academicYearId);
+
+        List<FounderAlert> alerts = new java.util.ArrayList<>();
+        if (recovery.overall().recoveryRate().compareTo(BigDecimal.valueOf(60)) < 0) {
+            alerts.add(new FounderAlert("WARNING", "LOW_RECOVERY_RATE",
+                    "Taux de recouvrement de " + recovery.overall().recoveryRate() + " % — sous le seuil de 60 %."));
+        }
+        List<MonthlyCollection> history = collectionStatsProvider.monthlyCollections(tenantId, 4);
+        List<MonthlyCollection> completed = history.size() > 1 ? history.subList(0, history.size() - 1) : history;
+        BigDecimal avgCollection = completed.isEmpty() ? BigDecimal.ZERO
+                : completed.stream().map(MonthlyCollection::amount).reduce(BigDecimal.ZERO, BigDecimal::add)
+                        .divide(BigDecimal.valueOf(completed.size()), 2, java.math.RoundingMode.HALF_UP);
+        if (avgCollection.signum() > 0 && payroll.totalMonthlyPayroll().compareTo(avgCollection) > 0) {
+            alerts.add(new FounderAlert("CRITICAL", "PAYROLL_EXCEEDS_COLLECTION",
+                    "La masse salariale mensuelle (" + payroll.totalMonthlyPayroll()
+                            + ") dépasse la moyenne des encaissements mensuels (" + avgCollection + ")."));
+        }
+        if (!recovery.topDebtors().isEmpty()) {
+            BigDecimal topOutstanding = recovery.topDebtors().get(0).outstanding();
+            if (recovery.overall().outstanding().signum() > 0
+                    && topOutstanding.multiply(BigDecimal.valueOf(5)).compareTo(recovery.overall().outstanding()) > 0) {
+                alerts.add(new FounderAlert("INFO", "DEBT_CONCENTRATION",
+                        "Le plus gros débiteur représente plus de 20 % du reste dû total."));
+            }
+        }
+
+        FounderYearComparison comparison = null;
+        if (compareAcademicYearId != null) {
+            BillingStats compareStats = billingStatsProvider
+                    .recoveryBreakdown(tenantId, compareAcademicYearId, 1).overall();
+            comparison = new FounderYearComparison(compareAcademicYearId,
+                    recovery.overall().invoiced().subtract(compareStats.invoiced()),
+                    recovery.overall().collected().subtract(compareStats.collected()),
+                    recovery.overall().recoveryRate().subtract(compareStats.recoveryRate()));
+        }
+
+        return new FounderDashboard(academicYearId, recovery, payroll, subsidy, alerts, comparison);
     }
 
     // ── 10.3 RH ─────────────────────────────────────────────────────────────

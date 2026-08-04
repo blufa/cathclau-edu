@@ -10,6 +10,7 @@ public interface InvoiceRepository {
     List<Invoice> findByStudentId(Long studentId);
     List<Invoice> findByTenantId(Long tenantId);
     List<Invoice> findByTenantIdAndStatus(Long tenantId, InvoiceStatus status);
+    List<Invoice> findByTenantIdAndAcademicYearId(Long tenantId, Long academicYearId);
     List<Invoice> findByFeeId(Long feeId);
     boolean existsByStudentIdAndFeeId(Long studentId, Long feeId);
     boolean existsByStudentIdAndInstallmentId(Long studentId, Long installmentId);

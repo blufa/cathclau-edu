@@ -44,7 +44,7 @@ class PaymentServiceTest {
     }
 
     private final InitiatePaymentCommand cmd = new InitiatePaymentCommand(
-            10L, 3L, 7L, "PAY-1", new BigDecimal("100.00"), PaymentChannel.ORANGE_MONEY, PaymentType.COMPLETE, null, null);
+            10L, 3L, 7L, "PAY-1", new BigDecimal("100.00"), PaymentChannel.ORANGE_MONEY, PaymentType.COMPLETE, null, null, 99L);
 
     @Test
     void initiate_deskManualChannel_confirmsImmediately_generatesReceipt() throws Exception {
@@ -70,7 +70,7 @@ class PaymentServiceTest {
 
         // MTN Money est un canal en ligne (non desk-manual) : sans passerelle configurée → règle métier.
         InitiatePaymentCommand onlineCmd = new InitiatePaymentCommand(
-                10L, 3L, 7L, "PAY-2", BigDecimal.TEN, PaymentChannel.MTN_MONEY, PaymentType.COMPLETE, null, null);
+                10L, 3L, 7L, "PAY-2", BigDecimal.TEN, PaymentChannel.MTN_MONEY, PaymentType.COMPLETE, null, null, 99L);
 
         assertThatThrownBy(() -> service().initiate(onlineCmd)).isInstanceOf(BusinessRuleException.class);
     }

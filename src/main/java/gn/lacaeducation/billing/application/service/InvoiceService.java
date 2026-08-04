@@ -71,6 +71,7 @@ public class InvoiceService implements InvoiceUseCase {
         String reference = (c.reference() == null || c.reference().isBlank())
                 ? generateReference(c.tenantId()) : c.reference();
         Invoice inv = repo.save(Invoice.builder().tenantId(c.tenantId()).studentId(c.studentId()).feeId(c.feeId())
+                .academicYearId(c.academicYearId())
                 .reference(reference).totalAmount(c.totalAmount()).paidAmount(BigDecimal.ZERO).discountAmount(BigDecimal.ZERO)
                 .remainingBalance(c.totalAmount()).status(InvoiceStatus.UNPAID).issueDate(LocalDate.now()).recoveryStage(RecoveryStage.NONE).build());
         eventPublisher.publishEvent(new InvoiceGeneratedEvent(c.tenantId(), c.studentId(), inv.getId(), inv.getReference()));
@@ -109,6 +110,7 @@ public class InvoiceService implements InvoiceUseCase {
             String reference = generateReference(c.tenantId());
             Invoice inv = repo.save(Invoice.builder()
                     .tenantId(c.tenantId()).studentId(c.studentId()).feeId(c.feeId())
+                    .academicYearId(c.academicYearId())
                     .reference(reference).totalAmount(amount).paidAmount(BigDecimal.ZERO).discountAmount(discount)
                     .discountReason(discount.signum() > 0 ? "Réduction familiale : " + familyDiscount.ruleLabel() : null)
                     .remainingBalance(net).status(InvoiceStatus.UNPAID).issueDate(LocalDate.now())
@@ -146,7 +148,7 @@ public class InvoiceService implements InvoiceUseCase {
             String reference = "BULK-" + cmd.tenantId() + "-" + studentId + "-" + cmd.feeId()
                     + "-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
             var fee = schoolFeeRepository.findById(cmd.feeId()).orElseThrow();
-            Invoice inv = create(new CreateInvoiceCommand(cmd.tenantId(), studentId, cmd.feeId(), reference, fee.getAmount()));
+            Invoice inv = create(new CreateInvoiceCommand(cmd.tenantId(), studentId, cmd.feeId(), reference, fee.getAmount(), cmd.academicYearId()));
             created.add(inv);
         }
         log.info("Bulk invoice generation: created {} invoices for class id={} fee id={}", created.size(), cmd.classId(), cmd.feeId());
@@ -158,6 +160,7 @@ public class InvoiceService implements InvoiceUseCase {
     @Override @Transactional(readOnly=true) public List<Invoice> findByStudentId(Long s) { return repo.findByStudentId(s); }
     @Override @Transactional(readOnly=true) public List<Invoice> findByTenantId(Long t) { return repo.findByTenantId(t); }
     @Override @Transactional(readOnly=true) public List<Invoice> findByTenantIdAndStatus(Long t, InvoiceStatus s) { return repo.findByTenantIdAndStatus(t, s); }
+    @Override @Transactional(readOnly=true) public List<Invoice> findByTenantIdAndAcademicYearId(Long t, Long y) { return repo.findByTenantIdAndAcademicYearId(t, y); }
     @Override @Transactional(readOnly=true) public List<Invoice> findByFeeId(Long feeId) { return repo.findByFeeId(feeId); }
     @Override @Transactional(readOnly=true) public boolean existsByStudentIdAndFeeId(Long studentId, Long feeId) { return repo.existsByStudentIdAndFeeId(studentId, feeId); }
     @Override public Invoice applyPayment(Long invoiceId, BigDecimal amount) {

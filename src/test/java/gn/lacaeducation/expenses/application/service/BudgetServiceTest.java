@@ -41,7 +41,7 @@ class BudgetServiceTest {
         when(repository.findByTenantId(1L)).thenReturn(List.of(budget));
         when(repository.save(any())).thenAnswer(i -> i.getArgument(0));
 
-        service.onExpensePaid(new ExpensePaidEvent(1L, 42L, 10L, BigDecimal.valueOf(150_000)));
+        service.onExpensePaid(new ExpensePaidEvent(1L, 42L, 10L, null, BigDecimal.valueOf(150_000)));
 
         assertThat(budget.getConsumedAmount()).isEqualByComparingTo(BigDecimal.valueOf(350_000));
         assertThat(budget.getRemainingBalance()).isEqualByComparingTo(BigDecimal.valueOf(650_000));
@@ -53,7 +53,7 @@ class BudgetServiceTest {
                 .allocatedAmount(BigDecimal.valueOf(1_000_000)).consumedAmount(BigDecimal.ZERO).build();
         when(repository.findByTenantId(1L)).thenReturn(List.of(budget));
 
-        service.onExpensePaid(new ExpensePaidEvent(1L, 42L, 99L, BigDecimal.valueOf(150_000)));
+        service.onExpensePaid(new ExpensePaidEvent(1L, 42L, 99L, null, BigDecimal.valueOf(150_000)));
 
         assertThat(budget.getConsumedAmount()).isEqualByComparingTo(BigDecimal.ZERO);
         verify(repository, never()).save(any());

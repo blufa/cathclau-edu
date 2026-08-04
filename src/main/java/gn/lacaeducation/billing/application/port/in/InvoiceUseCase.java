@@ -5,10 +5,10 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 public interface InvoiceUseCase {
-    record CreateInvoiceCommand(Long tenantId, Long studentId, Long feeId, String reference, BigDecimal totalAmount) {}
-    record BulkGenerateCommand(Long tenantId, Long classId, Long feeId) {}
+    record CreateInvoiceCommand(Long tenantId, Long studentId, Long feeId, String reference, BigDecimal totalAmount, Long academicYearId) {}
+    record BulkGenerateCommand(Long tenantId, Long classId, Long feeId, Long academicYearId) {}
     /** Génère une facture par mois (échéance) du frais MENSUALITE pour un élève, idempotent par échéance. */
-    record GenerateMonthlyCommand(Long tenantId, Long studentId, Long feeId) {}
+    record GenerateMonthlyCommand(Long tenantId, Long studentId, Long feeId, Long academicYearId) {}
     Invoice create(CreateInvoiceCommand command);
     List<Invoice> generateMonthly(GenerateMonthlyCommand command);
     List<Invoice> generateBulk(BulkGenerateCommand command);
@@ -21,6 +21,7 @@ public interface InvoiceUseCase {
     List<Invoice> findByStudentId(Long studentId);
     List<Invoice> findByTenantId(Long tenantId);
     List<Invoice> findByTenantIdAndStatus(Long tenantId, InvoiceStatus status);
+    List<Invoice> findByTenantIdAndAcademicYearId(Long tenantId, Long academicYearId);
     List<Invoice> findByFeeId(Long feeId);
     boolean existsByStudentIdAndFeeId(Long studentId, Long feeId);
     Invoice applyPayment(Long invoiceId, BigDecimal amount);
