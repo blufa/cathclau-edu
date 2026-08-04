@@ -13,5 +13,8 @@ public interface ClasseRepository {
     ClasseMatiere saveClassSubject(ClasseMatiere cm);
     void deleteClassSubjectById(Long id);
     List<ClasseMatiere> findSubjectsByClassId(Long classId);
+    /** Toutes les affectations existantes d'une matière (tenant-wide) — sert à lister les codes
+     * enseignants déjà attribués pour cette matière (ex. CH1, CH2), toutes classes confondues. */
+    List<ClasseMatiere> findSubjectsBySubjectId(Long subjectId);
     List<ClassStudent> findStudentsByClassId(Long classId);
 }

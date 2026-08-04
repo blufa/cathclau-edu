@@ -1,2 +1,3 @@
 package gn.lacaeducation.academics;
-public record PeriodPublicInfo(Long id, String label, String type) {}
+import java.time.LocalDate;
+public record PeriodPublicInfo(Long id, String label, String type, LocalDate startDate, LocalDate endDate) {}

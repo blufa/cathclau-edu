@@ -21,13 +21,15 @@ class TeacherCompensationPersistenceAdapter implements TeacherCompensationReposi
 
     private TeacherCompensation toDomain(TeacherCompensationJpaEntity e) {
         return TeacherCompensation.builder().id(e.getId()).tenantId(e.getTenantId()).teacherId(e.getTeacherId())
-                .payMode(e.getPayMode()).hourlyRate(e.getHourlyRate()).fixedSalary(e.getFixedSalary()).build();
+                .payMode(e.getPayMode()).hourlyRateNormal(e.getHourlyRateNormal()).hourlyRateExam(e.getHourlyRateExam())
+                .fixedSalary(e.getFixedSalary()).build();
     }
     private TeacherCompensationJpaEntity toEntity(TeacherCompensation c) {
         TeacherCompensationJpaEntity e = new TeacherCompensationJpaEntity();
         e.setId(c.getId()); e.setTenantId(c.getTenantId()); e.setTeacherId(c.getTeacherId());
         e.setPayMode(c.getPayMode() != null ? c.getPayMode() : PayMode.HOURLY);
-        e.setHourlyRate(c.getHourlyRate() != null ? c.getHourlyRate() : BigDecimal.ZERO);
+        e.setHourlyRateNormal(c.getHourlyRateNormal() != null ? c.getHourlyRateNormal() : BigDecimal.ZERO);
+        e.setHourlyRateExam(c.getHourlyRateExam() != null ? c.getHourlyRateExam() : BigDecimal.ZERO);
         e.setFixedSalary(c.getFixedSalary() != null ? c.getFixedSalary() : BigDecimal.ZERO);
         return e;
     }

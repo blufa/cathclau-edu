@@ -15,7 +15,10 @@ interface UserJpaRepository extends JpaRepository<UserJpaEntity, Long> {
     Optional<UserJpaEntity> findFirstByPhone(String phone);
     Optional<UserJpaEntity> findByEmailAndTenantId(String email, Long tenantId);
     boolean existsByTenantIdAndEmail(Long tenantId, String email);
-    boolean existsByUsername(String username);
+    /** {@code tenantId} peut être {@code null} (comptes SUPER_ADMIN, hors tenant) : comparaison explicite pour gérer NULL correctement. */
+    @Query("SELECT COUNT(u) > 0 FROM UserJpaEntity u WHERE u.username = :username "
+            + "AND ((:tenantId IS NULL AND u.tenantId IS NULL) OR u.tenantId = :tenantId)")
+    boolean existsByTenantIdAndUsername(@Param("tenantId") Long tenantId, @Param("username") String username);
     List<UserJpaEntity> findByTenantId(Long tenantId);
 
     /** Horodatage d'activité (dernière requête authentifiée) — mis à jour à chaque requête, throttlé

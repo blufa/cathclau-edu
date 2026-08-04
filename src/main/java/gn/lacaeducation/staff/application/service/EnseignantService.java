@@ -13,6 +13,7 @@ import gn.lacaeducation.staff.application.event.StaffCreatedEvent;
 import gn.lacaeducation.staff.application.port.in.TeacherUseCase;
 import gn.lacaeducation.staff.application.port.out.TeacherRepository;
 import gn.lacaeducation.staff.domain.Teacher;
+import gn.lacaeducation.staff.domain.TeacherMonthlyWorkload;
 import gn.lacaeducation.staff.domain.TeacherWorkload;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -123,10 +124,18 @@ public class EnseignantService implements TeacherUseCase {
 
     @Override @Transactional(readOnly = true)
     public TeacherWorkload computeWorkload(Long teacherId) {
-        List<TeacherWorkload.Slot> slots = academicsDataProvider.findScheduleByTeacher(teacherId).stream()
+        return TeacherWorkload.from(teacherId, scheduleSlots(teacherId));
+    }
+
+    @Override @Transactional(readOnly = true)
+    public TeacherMonthlyWorkload computeMonthlyWorkload(Long teacherId, int year, int month) {
+        return TeacherMonthlyWorkload.from(teacherId, year, month, scheduleSlots(teacherId));
+    }
+
+    private List<TeacherWorkload.Slot> scheduleSlots(Long teacherId) {
+        return academicsDataProvider.findScheduleByTeacher(teacherId).stream()
                 .map(s -> new TeacherWorkload.Slot(s.day(), parseTime(s.startTime()), parseTime(s.endTime())))
                 .toList();
-        return TeacherWorkload.from(teacherId, slots);
     }
 
     /** Parse une heure ISO ("HH:mm" / "HH:mm:ss"), ou {@code null} si absente/illisible. */

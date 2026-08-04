@@ -31,13 +31,15 @@ public class ExpenseService {
 
     public record CreateExpenseCommand(Long tenantId, Long categoryId, Long supplierId, String label,
                                        BigDecimal amount, String currency, LocalDate expenseDate,
-                                       ExpensePaymentMode paymentMode, String reference, String justificationUrl) {}
+                                       ExpensePaymentMode paymentMode, String reference, String justificationUrl,
+                                       Long budgetLineId) {}
 
     public Expense create(CreateExpenseCommand c) {
         if (c.label() == null || c.label().isBlank()) throw new BusinessRuleException("Le libellé est requis");
         if (c.amount() == null || c.amount().signum() <= 0) throw new BusinessRuleException("Le montant doit être positif");
         return repo.save(Expense.builder()
                 .tenantId(c.tenantId()).categoryId(c.categoryId()).supplierId(c.supplierId())
+                .budgetLineId(c.budgetLineId())
                 .label(c.label()).amount(c.amount())
                 .currency(c.currency() != null && !c.currency().isBlank() ? c.currency() : "GNF")
                 .expenseDate(c.expenseDate() != null ? c.expenseDate() : LocalDate.now())
@@ -49,6 +51,7 @@ public class ExpenseService {
         Expense e = load(id);
         if (e.getStatus() != ExpenseStatus.DRAFT) throw new BusinessRuleException("Seule une dépense en brouillon peut être modifiée");
         e.setCategoryId(c.categoryId()); e.setSupplierId(c.supplierId()); e.setLabel(c.label());
+        e.setBudgetLineId(c.budgetLineId());
         e.setAmount(c.amount()); if (c.currency() != null) e.setCurrency(c.currency());
         e.setExpenseDate(c.expenseDate()); e.setPaymentMode(c.paymentMode());
         e.setReference(c.reference()); e.setJustificationUrl(c.justificationUrl());
@@ -66,14 +69,12 @@ public class ExpenseService {
     }
 
     public Expense pay(Long id) {
-        Expense paid = transition(id, ExpenseStatus.APPROVED, ExpenseStatus.PAID, e -> {
-            if (e.getJustificationUrl() == null || e.getJustificationUrl().isBlank()) {
-                throw new BusinessRuleException("Un justificatif est requis avant le paiement");
-            }
-            e.setPaidAt(LocalDateTime.now());
-        });
-        // Accounting records an OUT cash-flow / entry from this event.
-        eventPublisher.publishEvent(new ExpensePaidEvent(paid.getTenantId(), paid.getId(), paid.getCategoryId(), paid.getAmount()));
+        // Le justificatif reste possible à joindre (voir création/édition) mais n'est plus exigé pour
+        // payer — simplification demandée : ne pas bloquer le paiement faute de pièce jointe.
+        Expense paid = transition(id, ExpenseStatus.APPROVED, ExpenseStatus.PAID, e -> e.setPaidAt(LocalDateTime.now()));
+        // Accounting records an OUT cash-flow / entry from this event ; AnnualBudgetService increments
+        // the linked BudgetLine's actualAmount when budgetLineId is set.
+        eventPublisher.publishEvent(new ExpensePaidEvent(paid.getTenantId(), paid.getId(), paid.getCategoryId(), paid.getBudgetLineId(), paid.getAmount()));
         return paid;
     }
 

@@ -12,6 +12,9 @@ public class Payment {
     private Long tenantId;
     private Long invoiceId;
     private Long studentId;
+    /** Année scolaire de la facture réglée — évite qu'un paiement d'une année clôturée réapparaisse
+     * dans l'année en cours. */
+    private Long academicYearId;
     private String reference;
     private BigDecimal amount;
     private PaymentChannel channel;

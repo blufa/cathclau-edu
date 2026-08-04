@@ -14,17 +14,17 @@ import java.util.List;
 @RestController @RequestMapping("/api/v1/billing/fees") @RequiredArgsConstructor
 public class SchoolFeeController {
     private final SchoolFeeUseCase useCase;
-    public record CreateRequest(Long tenantId, Long classId, FeeType type, BigDecimal amount, String academicYear) {}
-    public record UpdateRequest(Long classId, FeeType type, BigDecimal amount, String academicYear) {}
+    public record CreateRequest(Long tenantId, Long classId, FeeType type, BigDecimal amount, String academicYear, String label) {}
+    public record UpdateRequest(Long classId, FeeType type, BigDecimal amount, String academicYear, String label) {}
     @Operation(summary = "Create a new school fee configuration")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
     @PostMapping public ResponseEntity<SchoolFee> create(@RequestBody CreateRequest r) {
-        return ResponseEntity.ok(useCase.create(new SchoolFeeUseCase.CreateFeeCommand(r.tenantId(), r.classId(), r.type(), r.amount(), r.academicYear())));
+        return ResponseEntity.ok(useCase.create(new SchoolFeeUseCase.CreateFeeCommand(r.tenantId(), r.classId(), r.type(), r.amount(), r.academicYear(), r.label())));
     }
     @Operation(summary = "Update an existing school fee configuration")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
     @PutMapping("/{id}") public ResponseEntity<SchoolFee> update(@PathVariable Long id, @RequestBody UpdateRequest r) {
-        return ResponseEntity.ok(useCase.update(id, new SchoolFeeUseCase.UpdateFeeCommand(r.classId(), r.type(), r.amount(), r.academicYear())));
+        return ResponseEntity.ok(useCase.update(id, new SchoolFeeUseCase.UpdateFeeCommand(r.classId(), r.type(), r.amount(), r.academicYear(), r.label())));
     }
     @Operation(summary = "Get a school fee configuration by ID")
     @GetMapping("/{id}") public ResponseEntity<SchoolFee> findById(@PathVariable Long id) {

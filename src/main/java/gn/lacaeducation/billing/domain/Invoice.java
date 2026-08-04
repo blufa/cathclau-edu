@@ -8,6 +8,9 @@ public class Invoice {
     private Long tenantId;
     private Long studentId;
     private Long feeId;
+    /** Année scolaire à laquelle rattacher la facture — évite qu'une facture d'une année clôturée
+     * réapparaisse dans l'année en cours. */
+    private Long academicYearId;
     private String reference;
     private BigDecimal totalAmount;
     private BigDecimal paidAmount;

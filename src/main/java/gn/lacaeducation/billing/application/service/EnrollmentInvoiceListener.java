@@ -73,7 +73,8 @@ public class EnrollmentInvoiceListener {
                         event.studentId(),
                         fee.getId(),
                         reference,
-                        fee.getAmount()
+                        fee.getAmount(),
+                        event.academicYearId()
                 ));
                 log.info("Facture d'inscription créée automatiquement réf={} pour l'élève id={} classe id={} frais id={} montant={}",
                         reference, event.studentId(), event.classId(), fee.getId(), fee.getAmount());

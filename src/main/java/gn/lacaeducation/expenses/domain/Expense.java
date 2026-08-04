@@ -21,6 +21,9 @@ public class Expense {
     private Long tenantId;
     private Long categoryId;
     private Long supplierId;
+    /** Ligne d'un budget annuel (AnnualBudget) sur laquelle imputer la dépense — son montant
+     * "réalisé" se met alors à jour automatiquement au paiement (voir AnnualBudgetService). */
+    private Long budgetLineId;
     private String label;
     private BigDecimal amount;
     private String currency;

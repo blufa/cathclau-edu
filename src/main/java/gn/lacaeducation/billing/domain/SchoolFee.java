@@ -9,4 +9,6 @@ public class SchoolFee {
     private FeeType type;
     private BigDecimal amount;
     private String academicYear;
+    /** Nom de la catégorie quand {@code type == OTHER} (ex. "Tenue scolaire", "Bus de transport"). */
+    private String label;
 }

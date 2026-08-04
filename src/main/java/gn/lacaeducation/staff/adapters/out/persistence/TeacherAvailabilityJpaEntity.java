@@ -18,4 +18,6 @@ public class TeacherAvailabilityJpaEntity {
     @Column(nullable = false) private String day;
     @Column(name = "start_time", nullable = false) private LocalTime startTime;
     @Column(name = "end_time", nullable = false) private LocalTime endTime;
+    @Column(name = "school_class_id") private Long schoolClassId;
+    @Column(name = "subject_id") private Long subjectId;
 }

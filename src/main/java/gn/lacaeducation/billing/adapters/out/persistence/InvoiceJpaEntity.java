@@ -12,6 +12,7 @@ public class InvoiceJpaEntity {
     @Column(name = "tenant_id", nullable = false) private Long tenantId;
     @Column(name = "student_id", nullable = false) private Long studentId;
     @Column(name = "fee_id") private Long feeId;
+    @Column(name = "academic_year_id") private Long academicYearId;
     @Column(unique = true, nullable = false) private String reference;
     @Column(name = "total_amount", nullable = false, precision = 15, scale = 2) private BigDecimal totalAmount;
     @Column(name = "paid_amount", nullable = false, precision = 15, scale = 2) private BigDecimal paidAmount;

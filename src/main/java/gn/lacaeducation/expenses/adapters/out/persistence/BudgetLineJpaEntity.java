@@ -13,6 +13,8 @@ public class BudgetLineJpaEntity {
     @Column(name = "budget_id", nullable = false) private Long budgetId;
     @Enumerated(EnumType.STRING) @Column(name = "line_type", nullable = false, length = 8) private BudgetLineType lineType;
     @Column(nullable = false, length = 160) private String category;
+    @Column private Integer quantity;
+    @Column(name = "unit_price", precision = 15, scale = 2) private BigDecimal unitPrice;
     @Column(name = "planned_amount", nullable = false, precision = 15, scale = 2) private BigDecimal plannedAmount;
     @Column(name = "actual_amount", nullable = false, precision = 15, scale = 2) private BigDecimal actualAmount;
     @Column(columnDefinition = "text") private String notes;

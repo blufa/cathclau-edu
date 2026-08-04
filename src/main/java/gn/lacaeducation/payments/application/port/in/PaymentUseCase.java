@@ -9,7 +9,9 @@ public interface PaymentUseCase {
                                   /** Payer phone number — required by aggregator channels (e.g. Djomy). */
                                   String payerNumber,
                                   /** Utilisateur connecté ayant saisi l'encaissement — imprimé sur le reçu (« Opérateur »). */
-                                  Long collectedByUserId) {}
+                                  Long collectedByUserId,
+                                  /** Année scolaire de la facture réglée (évite qu'un paiement d'une année clôturée réapparaisse dans l'année en cours). */
+                                  Long academicYearId) {}
     Payment initiate(InitiatePaymentCommand command) throws JsonProcessingException;
 
     /** Part d'un paiement groupé affectée à une facture-mois. */
@@ -23,7 +25,9 @@ public interface PaymentUseCase {
                                String coverageLabel, Integer monthsCount, BigDecimal remainingAfter,
                                List<InvoiceShare> shares,
                                /** Utilisateur connecté ayant saisi l'encaissement — imprimé sur le reçu (« Opérateur »). */
-                               Long collectedByUserId) {}
+                               Long collectedByUserId,
+                               /** Année scolaire des factures réglées (toutes les parts sont supposées de la même année). */
+                               Long academicYearId) {}
     Payment initiateGroup(GroupPaymentCommand command);
 
     /**
@@ -47,5 +51,6 @@ public interface PaymentUseCase {
     List<Payment> findByStudentId(Long studentId);
     List<Payment> findByTenantId(Long tenantId);
     List<Payment> findByTenantIdAndStatus(Long tenantId, PaymentStatus status);
+    List<Payment> findByTenantIdAndAcademicYearId(Long tenantId, Long academicYearId);
     void delete(Long id);
 }

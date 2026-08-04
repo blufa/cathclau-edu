@@ -2,6 +2,8 @@ package gn.lacaeducation.academics.application.port.in;
 import gn.lacaeducation.academics.domain.Matiere;
 import gn.lacaeducation.academics.domain.Niveau;
 import gn.lacaeducation.academics.domain.Salle;
+import gn.lacaeducation.academics.domain.referentiel.MatiereModele;
+import gn.lacaeducation.academics.domain.valueobject.SchoolCycle;
 import gn.lacaeducation.academics.domain.valueobject.TypeSalle;
 import java.math.BigDecimal;
 import java.util.List;
@@ -26,5 +28,8 @@ public interface GererReferentielUseCase {
     Optional<Matiere> findSubjectById(Long id);
     List<Matiere> findSubjects(Long tenantId);
     void deleteSubject(Long id);
+    // MEPUA reference catalog (matières/coefficients officiels par cycle et série)
+    List<MatiereModele> catalogueMepua(SchoolCycle cycle, String serie);
+    List<Matiere> importerMatieresMepua(Long tenantId, SchoolCycle cycle, String serie);
     record CreateRoomCommand(Long tenantId, String label, String building, Integer capacity, TypeSalle type) {}
 }

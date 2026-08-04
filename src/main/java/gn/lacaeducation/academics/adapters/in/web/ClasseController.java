@@ -43,7 +43,7 @@ public class ClasseController {
     public ResponseEntity<Classe> create(@Valid @RequestBody CreateClassCommand cmd) {
         Classe classe = useCase.create(new CreateClassCommand(
                 TenantContext.get(), cmd.levelId(), cmd.academicYearId(),
-                cmd.headTeacherId(), cmd.roomId(), cmd.label(), cmd.maxCapacity()
+                cmd.headTeacherId(), cmd.roomId(), cmd.label(), cmd.maxCapacity(), cmd.classType()
         ));
         return ResponseEntity.created(URI.create("/api/academics/classes/" + classe.getId())).body(classe);
     }
@@ -66,7 +66,7 @@ public class ClasseController {
     public Classe update(@PathVariable Long id, @Valid @RequestBody CreateClassCommand cmd) {
         return useCase.update(id, new CreateClassCommand(
                 TenantContext.get(), cmd.levelId(), cmd.academicYearId(),
-                cmd.headTeacherId(), cmd.roomId(), cmd.label(), cmd.maxCapacity()));
+                cmd.headTeacherId(), cmd.roomId(), cmd.label(), cmd.maxCapacity(), cmd.classType()));
     }
 
     @Operation(summary = "Désigner (ou retirer) le professeur principal de la classe, depuis le tableau matières/enseignants")
@@ -76,7 +76,7 @@ public class ClasseController {
         Classe c = useCase.findById(id)
                 .orElseThrow(() -> new gn.lacaeducation.common.ResourceNotFoundException("Classe", id));
         return useCase.update(id, new CreateClassCommand(TenantContext.get(), c.getLevelId(), c.getAcademicYearId(),
-                teacherId, c.getRoomId(), c.getLabel(), c.getMaxCapacity()));
+                teacherId, c.getRoomId(), c.getLabel(), c.getMaxCapacity(), c.getClassType()));
     }
 
     @Operation(summary = "Delete a class")
@@ -106,8 +106,9 @@ public class ClasseController {
             @PathVariable Long classId,
             @RequestParam Long subjectId,
             @RequestParam(required = false) Long teacherId,
-            @RequestParam(required = false) java.math.BigDecimal coefficient) {
-        return ResponseEntity.ok(useCase.assignSubject(classId, subjectId, teacherId, coefficient));
+            @RequestParam(required = false) java.math.BigDecimal coefficient,
+            @RequestParam(required = false) String code) {
+        return ResponseEntity.ok(useCase.assignSubject(classId, subjectId, teacherId, coefficient, code));
     }
 
     @Operation(summary = "List all subjects assigned to a class")

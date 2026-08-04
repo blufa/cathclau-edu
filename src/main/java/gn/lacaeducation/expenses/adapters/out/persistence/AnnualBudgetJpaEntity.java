@@ -1,8 +1,10 @@
 package gn.lacaeducation.expenses.adapters.out.persistence;
 import gn.lacaeducation.expenses.domain.BudgetStatus;
+import gn.lacaeducation.expenses.domain.FinancingMode;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 @Entity @Table(name = "annual_budgets")
@@ -18,5 +20,8 @@ public class AnnualBudgetJpaEntity {
     @Column(name = "approved_at") private LocalDate approvedAt;
     @Column(name = "rejection_reason", columnDefinition = "text") private String rejectionReason;
     @Column(columnDefinition = "text") private String notes;
+    @Enumerated(EnumType.STRING) @Column(name = "financing_mode", length = 16) private FinancingMode financingMode;
+    @Column(name = "financing_amount", precision = 15, scale = 2) private BigDecimal financingAmount;
+    @Column(name = "pdf_file", length = 1024) private String pdfFile;
     @Column(name = "created_at") private LocalDateTime createdAt;
 }

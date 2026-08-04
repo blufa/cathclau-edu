@@ -1,5 +1,6 @@
 package gn.lacaeducation.academics.domain;
 
+import gn.lacaeducation.academics.domain.valueobject.ClassType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -21,4 +22,7 @@ public class Classe {
     private String label;
     private Integer headcount;
     private Integer maxCapacity;
+    /** Classe normale ou classe d'examen (§6) — détermine le tarif horaire de paie appliqué. */
+    @Builder.Default
+    private ClassType classType = ClassType.NORMALE;
 }

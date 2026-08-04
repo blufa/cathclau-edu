@@ -38,6 +38,7 @@ public class PaymentService implements PaymentUseCase {
     @Override public Payment initiate(InitiatePaymentCommand c) throws JsonProcessingException {
         // Facture → Paiement → TransactionPaiement (appel fournisseur) → EN_ATTENTE (§9.1).
         Payment payment = repo.save(Payment.builder().tenantId(c.tenantId()).invoiceId(c.invoiceId()).studentId(c.studentId())
+                .academicYearId(c.academicYearId())
                 .reference(c.reference()).amount(c.amount()).channel(c.channel()).type(c.type())
                 .status(PaymentStatus.INITIATED).paidAt(LocalDateTime.now())
                 .collectedByUserId(c.collectedByUserId()).build());
@@ -84,6 +85,7 @@ public class PaymentService implements PaymentUseCase {
 
         Payment payment = repo.save(Payment.builder()
                 .tenantId(c.tenantId()).studentId(c.studentId()).invoiceId(null)
+                .academicYearId(c.academicYearId())
                 .reference(reference).amount(total).channel(c.channel()).type(PaymentType.COMPLETE)
                 .status(PaymentStatus.INITIATED).paidAt(LocalDateTime.now())
                 .coveredMonths(c.coverageLabel()).monthsCount(c.monthsCount()).remainingAfter(c.remainingAfter())
@@ -228,6 +230,7 @@ public class PaymentService implements PaymentUseCase {
     @Override @Transactional(readOnly=true) public List<Payment> findByStudentId(Long s) { return repo.findByStudentId(s); }
     @Override @Transactional(readOnly=true) public List<Payment> findByTenantId(Long t) { return repo.findByTenantId(t); }
     @Override @Transactional(readOnly=true) public List<Payment> findByTenantIdAndStatus(Long t, PaymentStatus s) { return repo.findByTenantIdAndStatus(t, s); }
+    @Override @Transactional(readOnly=true) public List<Payment> findByTenantIdAndAcademicYearId(Long t, Long y) { return repo.findByTenantIdAndAcademicYearId(t, y); }
     @Override public void delete(Long id) { repo.deleteById(id); }
 
     private PaymentProviderGateway resolveGateway(PaymentChannel channel) {

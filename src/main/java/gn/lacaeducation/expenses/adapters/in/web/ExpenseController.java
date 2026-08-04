@@ -29,7 +29,7 @@ public class ExpenseController {
 
     public record ExpenseRequest(Long categoryId, Long supplierId, String label, BigDecimal amount,
                                  String currency, LocalDate expenseDate, ExpensePaymentMode paymentMode,
-                                 String reference, String justificationUrl) {}
+                                 String reference, String justificationUrl, Long budgetLineId) {}
     public record RejectRequest(String reason) {}
 
     @Operation(summary = "List expenses for the current tenant (optional status filter)")
@@ -88,7 +88,8 @@ public class ExpenseController {
 
     private CreateExpenseCommand toCommand(ExpenseRequest r) {
         return new CreateExpenseCommand(TenantContext.get(), r.categoryId(), r.supplierId(), r.label(),
-                r.amount(), r.currency(), r.expenseDate(), r.paymentMode(), r.reference(), r.justificationUrl());
+                r.amount(), r.currency(), r.expenseDate(), r.paymentMode(), r.reference(), r.justificationUrl(),
+                r.budgetLineId());
     }
 
     private Long currentUserId(Jwt jwt) {

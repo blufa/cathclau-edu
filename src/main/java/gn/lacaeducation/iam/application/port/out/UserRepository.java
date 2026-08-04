@@ -14,7 +14,8 @@ public interface UserRepository {
     Optional<User> findByPhone(String phone);
     Optional<User> findByEmailAndTenantId(String email, Long tenantId);
     boolean existsByTenantIdAndEmail(Long tenantId, String email);
-    boolean existsByUsername(String username);
+    /** Unicité du username scopée par tenant (tenantId {@code null} = comptes plateforme/SUPER_ADMIN). */
+    boolean existsByTenantIdAndUsername(Long tenantId, String username);
     List<User> findByTenantId(Long tenantId);
     /** Tous les utilisateurs, toutes écoles confondues — réservé aux vues plateforme (SUPER_ADMIN). */
     List<User> findAll();

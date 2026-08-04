@@ -20,7 +20,8 @@ public class TeacherAvailabilityController {
 
     private final TeacherAvailabilityService service;
 
-    public record AvailabilityRequest(String day, LocalTime startTime, LocalTime endTime) {}
+    public record AvailabilityRequest(String day, LocalTime startTime, LocalTime endTime,
+                                       Long schoolClassId, Long subjectId) {}
 
     @Operation(summary = "List a teacher's availability slots")
     @GetMapping("/{teacherId}/availability")
@@ -32,7 +33,7 @@ public class TeacherAvailabilityController {
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
     @PostMapping("/{teacherId}/availability")
     public TeacherAvailability add(@PathVariable Long teacherId, @RequestBody AvailabilityRequest r) {
-        return service.add(teacherId, r.day(), r.startTime(), r.endTime());
+        return service.add(teacherId, r.day(), r.startTime(), r.endTime(), r.schoolClassId(), r.subjectId());
     }
 
     @Operation(summary = "Delete an availability slot")
