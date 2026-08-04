@@ -56,8 +56,9 @@ public class TenantProvisioningService {
         boolean hasPassword = rawPassword != null && !rawPassword.isBlank();
         // Identifiant choisi par le SUPER_ADMIN (unicité garantie par suffixe), sinon généré depuis le nom.
         String username = hasUsername
-                ? uniqueUsername(adminUsername.trim())
-                : UsernameGenerator.generate(name[0], name[1], userRepository::existsByUsername);
+                ? uniqueUsername(tenantId, adminUsername.trim())
+                : UsernameGenerator.generate(name[0], name[1],
+                        candidate -> userRepository.existsByTenantIdAndUsername(tenantId, candidate));
         User admin = User.builder()
                 .tenantId(tenantId)
                 .firstName(name[0])
@@ -107,8 +108,9 @@ public class TenantProvisioningService {
         }
         // Username choisi par l'utilisateur (unicité garantie par suffixe), sinon généré depuis le nom.
         String username = hasUsername
-                ? uniqueUsername(adminUsername.trim())
-                : UsernameGenerator.generate(firstName, lastName, userRepository::existsByUsername);
+                ? uniqueUsername(tenantId, adminUsername.trim())
+                : UsernameGenerator.generate(firstName, lastName,
+                        candidate -> userRepository.existsByTenantIdAndUsername(tenantId, candidate));
         String hash = passwordHasher.hash(
                 rawPassword != null && !rawPassword.isBlank() ? rawPassword : UUID.randomUUID().toString());
         User admin = User.builder()
@@ -154,11 +156,11 @@ public class TenantProvisioningService {
         log.info("Revoked active sessions for tenant {}", tenantId);
     }
 
-    /** Garantit l'unicité du username (ajoute un suffixe numérique si déjà pris). */
-    private String uniqueUsername(String base) {
+    /** Garantit l'unicité du username par tenant (ajoute un suffixe numérique si déjà pris). */
+    private String uniqueUsername(Long tenantId, String base) {
         String candidate = base;
         int i = 1;
-        while (userRepository.existsByUsername(candidate)) {
+        while (userRepository.existsByTenantIdAndUsername(tenantId, candidate)) {
             candidate = base + i++;
         }
         return candidate;

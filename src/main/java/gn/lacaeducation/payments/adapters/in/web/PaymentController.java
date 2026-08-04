@@ -22,7 +22,7 @@ public class PaymentController {
     private final PaymentTransactionUseCase transactionUseCase;
     private final ReceiptUseCase receiptUseCase;
     public record InitiateRequest(Long tenantId, Long invoiceId, Long studentId, String reference, BigDecimal amount, PaymentChannel channel, PaymentType type,
-                                  String payerNumber) {}
+                                  String payerNumber, Long academicYearId) {}
     /** Initiation result: the payment plus the aggregator redirect URL (Djomy) when present. */
     public record InitiateResponse(Payment payment, String redirectUrl) {}
     @Operation(summary = "Initiate a new payment for a student invoice (returns redirectUrl for aggregator channels)")
@@ -33,7 +33,7 @@ public class PaymentController {
 
     public record GroupRequest(Long tenantId, Long studentId, PaymentChannel channel, String payerNumber,
                                String coverageLabel, Integer monthsCount, java.math.BigDecimal remainingAfter,
-                               java.util.List<PaymentUseCase.InvoiceShare> shares) {}
+                               java.util.List<PaymentUseCase.InvoiceShare> shares, Long academicYearId) {}
 
     @Operation(summary = "Group payment of several months / the whole year — one payment, one receipt. "
             + "Desk channels are immediate; Djomy returns a redirectUrl for a single online transaction.")
@@ -41,7 +41,7 @@ public class PaymentController {
     @PostMapping("/group") public ResponseEntity<InitiateResponse> group(@RequestBody GroupRequest r, @AuthenticationPrincipal Jwt jwt) {
         Payment payment = useCase.initiateGroup(new PaymentUseCase.GroupPaymentCommand(
                 r.tenantId(), r.studentId(), r.channel(), r.payerNumber(),
-                r.coverageLabel(), r.monthsCount(), r.remainingAfter(), r.shares(), currentUserId(jwt)));
+                r.coverageLabel(), r.monthsCount(), r.remainingAfter(), r.shares(), currentUserId(jwt), r.academicYearId()));
         String redirectUrl = transactionUseCase.findByPaymentId(payment.getId()).stream()
                 .map(PaymentTransaction::getRedirectUrl)
                 .filter(u -> u != null && !u.isBlank())
@@ -77,7 +77,7 @@ public class PaymentController {
 
     private InitiateResponse doInitiate(InitiateRequest r, Long collectedByUserId) throws JsonProcessingException {
         Payment payment = useCase.initiate(new PaymentUseCase.InitiatePaymentCommand(
-                r.tenantId(), r.invoiceId(), r.studentId(), r.reference(), r.amount(), r.channel(), r.type(), r.payerNumber(), collectedByUserId));
+                r.tenantId(), r.invoiceId(), r.studentId(), r.reference(), r.amount(), r.channel(), r.type(), r.payerNumber(), collectedByUserId, r.academicYearId()));
         String redirectUrl = transactionUseCase.findByPaymentId(payment.getId()).stream()
                 .map(PaymentTransaction::getRedirectUrl)
                 .filter(u -> u != null && !u.isBlank())
@@ -134,8 +134,10 @@ public class PaymentController {
     @GetMapping("/student/{studentId}") public List<Payment> findByStudent(@PathVariable Long studentId) {
         return useCase.findByStudentId(studentId);
     }
-    @Operation(summary = "List all payments for a tenant")
-    @GetMapping("/tenant/{tenantId}") public List<Payment> findByTenant(@PathVariable Long tenantId) { return useCase.findByTenantId(tenantId); }
+    @Operation(summary = "List all payments for a tenant — pass academicYearId to scope to one school year (recommended: an unscoped call mixes every year ever created)")
+    @GetMapping("/tenant/{tenantId}") public List<Payment> findByTenant(@PathVariable Long tenantId, @RequestParam(required = false) Long academicYearId) {
+        return academicYearId != null ? useCase.findByTenantIdAndAcademicYearId(tenantId, academicYearId) : useCase.findByTenantId(tenantId);
+    }
     @Operation(summary = "Delete a payment record")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
     @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id) { useCase.delete(id); return ResponseEntity.noContent().build(); }

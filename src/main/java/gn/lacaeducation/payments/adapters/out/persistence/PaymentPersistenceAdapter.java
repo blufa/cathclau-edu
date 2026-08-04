@@ -17,5 +17,6 @@ class PaymentPersistenceAdapter implements PaymentRepository {
     @Override public List<Payment> findByStudentId(Long id) { return jpa.findByStudentId(id).stream().map(mapper::toDomain).toList(); }
     @Override public List<Payment> findByTenantId(Long id) { return jpa.findByTenantId(id).stream().map(mapper::toDomain).toList(); }
     @Override public List<Payment> findByTenantIdAndStatus(Long t, PaymentStatus s) { return jpa.findByTenantIdAndStatus(t, s).stream().map(mapper::toDomain).toList(); }
+    @Override public List<Payment> findByTenantIdAndAcademicYearId(Long t, Long y) { return jpa.findByTenantIdAndAcademicYearId(t, y).stream().map(mapper::toDomain).toList(); }
     @Override public void deleteById(Long id) { jpa.deleteById(id); }
 }

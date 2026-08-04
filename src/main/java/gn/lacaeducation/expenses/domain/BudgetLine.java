@@ -16,6 +16,11 @@ public class BudgetLine {
     private Long budgetId;
     private BudgetLineType lineType;
     private String category;
+    /** Quantité (optionnelle) — certains articles (ex. « chaises à louer ») se chiffrent en
+     * quantité × prix unitaire, d'autres directement par un montant global. */
+    private Integer quantity;
+    /** Prix unitaire (optionnel) — pertinent seulement si quantity est renseignée. */
+    private BigDecimal unitPrice;
     private BigDecimal plannedAmount;
     private BigDecimal actualAmount;
     private String notes;

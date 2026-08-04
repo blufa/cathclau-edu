@@ -31,7 +31,7 @@ public class StudentPortalAccountAdapter implements PortalAccountProvisioner {
     @Override
     @Transactional
     public Long createStudentLogin(Long tenantId, String firstName, String lastName, String username, String rawPassword) {
-        String finalUsername = uniqueUsername(username);
+        String finalUsername = uniqueUsername(tenantId, username);
         User user = User.builder()
                 .tenantId(tenantId)
                 .firstName(firstName)
@@ -51,11 +51,11 @@ public class StudentPortalAccountAdapter implements PortalAccountProvisioner {
         return saved.getId();
     }
 
-    /** Le matricule est unique par tenant ; on garantit l'unicité globale du username par un suffixe si besoin. */
-    private String uniqueUsername(String base) {
+    /** Le matricule est unique par tenant ; on garantit l'unicité du username par tenant par un suffixe si besoin. */
+    private String uniqueUsername(Long tenantId, String base) {
         String candidate = base;
         int i = 1;
-        while (userRepository.existsByUsername(candidate)) {
+        while (userRepository.existsByTenantIdAndUsername(tenantId, candidate)) {
             candidate = base + i++;
         }
         return candidate;

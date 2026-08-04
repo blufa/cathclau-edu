@@ -14,6 +14,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 import java.net.URI;
 import java.util.List;
@@ -38,7 +40,7 @@ public class EnseignantController {
 
     @Operation(summary = "Get the teacher record of the currently authenticated user")
     @GetMapping("/me")
-    public ResponseEntity<Teacher> me(@org.springframework.security.core.annotation.AuthenticationPrincipal org.springframework.security.oauth2.jwt.Jwt jwt) {
+    public ResponseEntity<Teacher> me(@AuthenticationPrincipal Jwt jwt) {
         Long userId;
         try { userId = Long.parseLong(jwt.getSubject()); } catch (RuntimeException e) { userId = null; }
         return teacherUseCase.findByUserId(userId).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());

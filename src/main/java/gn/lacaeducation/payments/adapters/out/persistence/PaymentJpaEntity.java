@@ -12,6 +12,7 @@ public class PaymentJpaEntity {
     @Column(name = "tenant_id", nullable = false) private Long tenantId;
     @Column(name = "invoice_id") private Long invoiceId;
     @Column(name = "student_id", nullable = false) private Long studentId;
+    @Column(name = "academic_year_id") private Long academicYearId;
     @Column(unique = true, nullable = false) private String reference;
     @Column(nullable = false, precision = 15, scale = 2) private BigDecimal amount;
     @Enumerated(EnumType.STRING) @Column(nullable = false) private PaymentChannel channel;

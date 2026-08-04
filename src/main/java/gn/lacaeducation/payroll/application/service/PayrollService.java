@@ -133,6 +133,29 @@ public class PayrollService {
                                         BigDecimal hourlyRateNormal, BigDecimal hourlyRateExam,
                                         BigDecimal fixedSalary, BigDecimal teachingPay, BigDecimal grossPay) {}
 
+    /** Masse salariale des enseignants d'un tenant (Vision Fondateur §10.2) : cumul des taux horaires
+     * configurés + paie mensuelle théorique (heures réelles × tarif normal/examen, ou salaire fixe). */
+    public record TeacherPayrollMass(BigDecimal totalHourlyRateNormal, BigDecimal totalHourlyRateExam,
+                                     BigDecimal monthlyPayroll, int teacherCount) {}
+
+    @Transactional(readOnly = true)
+    public TeacherPayrollMass teacherPayrollMass(Long tenantId, int year, int month) {
+        List<TeacherCompensation> comps = compRepo.findByTenantId(tenantId);
+        BigDecimal totalNormal = BigDecimal.ZERO;
+        BigDecimal totalExam = BigDecimal.ZERO;
+        BigDecimal monthly = BigDecimal.ZERO;
+        for (TeacherCompensation c : comps) {
+            totalNormal = totalNormal.add(c.getHourlyRateNormal() != null ? c.getHourlyRateNormal() : BigDecimal.ZERO);
+            totalExam = totalExam.add(c.getHourlyRateExam() != null ? c.getHourlyRateExam() : BigDecimal.ZERO);
+            if (c.getPayMode() == PayMode.FIXED) {
+                monthly = monthly.add(c.getFixedSalary() != null ? c.getFixedSalary() : BigDecimal.ZERO);
+            } else {
+                monthly = monthly.add(computeTheoreticalMonthlyPay(c.getTeacherId(), year, month).grossPay());
+            }
+        }
+        return new TeacherPayrollMass(totalNormal, totalExam, monthly, comps.size());
+    }
+
     /**
      * Calcule automatiquement, sans saisie manuelle, le nombre d'heures théoriques que l'enseignant
      * devait effectuer ce mois-ci (projection de son emploi du temps hebdomadaire sur les

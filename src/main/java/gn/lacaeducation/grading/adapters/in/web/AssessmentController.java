@@ -40,7 +40,11 @@ public class AssessmentController {
     @GetMapping("/class/{classId}") public List<Assessment> findByClass(@PathVariable Long classId) { return useCase.findByClass(classId); }
     @Operation(summary = "List all assessments for a period")
     @GetMapping("/period/{periodId}") public List<Assessment> findByPeriod(@PathVariable Long periodId) { return useCase.findByPeriod(periodId); }
+
+
     @Operation(summary = "Delete an assessment")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
-    @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id) { useCase.delete(id); return ResponseEntity.noContent().build(); }
+    @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id) {
+        useCase.delete(id); return ResponseEntity.noContent().build();
+    }
 }

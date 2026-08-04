@@ -9,4 +9,5 @@ interface PaymentJpaRepository extends JpaRepository<PaymentJpaEntity, Long> {
     List<PaymentJpaEntity> findByStudentId(Long studentId);
     List<PaymentJpaEntity> findByTenantId(Long tenantId);
     List<PaymentJpaEntity> findByTenantIdAndStatus(Long tenantId, PaymentStatus status);
+    List<PaymentJpaEntity> findByTenantIdAndAcademicYearId(Long tenantId, Long academicYearId);
 }

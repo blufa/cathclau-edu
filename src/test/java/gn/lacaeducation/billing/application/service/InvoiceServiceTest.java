@@ -57,7 +57,7 @@ class InvoiceServiceTest {
         when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
 
         var invoices = service().generateMonthly(
-                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 3L));
+                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 3L, 99L));
 
         assertThat(invoices).hasSize(1);
         Invoice inv = invoices.get(0);
@@ -74,7 +74,7 @@ class InvoiceServiceTest {
             return i;
         });
 
-        Invoice inv = service().create(new CreateInvoiceCommand(10L, 7L, 3L, "FAC-1", new BigDecimal("100.00")));
+        Invoice inv = service().create(new CreateInvoiceCommand(10L, 7L, 3L, "FAC-1", new BigDecimal("100.00"), 99L));
 
         assertThat(inv.getStatus()).isEqualTo(InvoiceStatus.UNPAID);
         assertThat(inv.getPaidAmount()).isEqualByComparingTo("0");
@@ -87,7 +87,7 @@ class InvoiceServiceTest {
     void create_autoGeneratesTenantScopedReferenceWhenBlank() {
         when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        Invoice inv = service().create(new CreateInvoiceCommand(42L, 7L, 3L, null, new BigDecimal("50.00")));
+        Invoice inv = service().create(new CreateInvoiceCommand(42L, 7L, 3L, null, new BigDecimal("50.00"), 99L));
 
         // Référence au format <codeÉcole>-FAC-<année>-<suffixe>, ex. EC-FAC-2026-4EAF7F.
         assertThat(inv.getReference()).matches("[A-Z]{2}-FAC-\\d{4}-.*");

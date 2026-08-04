@@ -14,6 +14,7 @@ public class ExpenseJpaEntity {
     @Column(name = "tenant_id", nullable = false) private Long tenantId;
     @Column(name = "category_id") private Long categoryId;
     @Column(name = "supplier_id") private Long supplierId;
+    @Column(name = "budget_line_id") private Long budgetLineId;
     @Column(nullable = false) private String label;
     @Column(nullable = false, precision = 15, scale = 2) private BigDecimal amount;
     @Column(nullable = false, length = 8) private String currency;
