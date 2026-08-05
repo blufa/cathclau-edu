@@ -1,5 +1,7 @@
 package gn.lacaeducation.lessons.application.service;
 
+import gn.lacaeducation.academics.AcademicsDataProvider;
+import gn.lacaeducation.academics.ClassSubjectPublicInfo;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.common.TenantContext;
@@ -14,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Cahier de textes / Lesson planning : les enseignants consignent (ou planifient) une séance par
@@ -27,6 +30,7 @@ public class LessonService {
 
     private final LessonRepository repo;
     private final StudentDataProvider studentDataProvider;
+    private final AcademicsDataProvider academics;
 
     public record CreateLessonCommand(Long tenantId, Long classId, Long subjectId, Long teacherId,
                                       LocalDate lessonDate, String title, String content, String homework,
@@ -35,12 +39,29 @@ public class LessonService {
     public LessonEntry create(CreateLessonCommand c) {
         if (c.classId() == null || c.subjectId() == null) throw new BusinessRuleException("Classe et matière requises");
         if (c.title() == null || c.title().isBlank()) throw new BusinessRuleException("Le thème de la séance est requis");
+        Long teacherId = resolveTeacherId(c.classId(), c.subjectId());
         return repo.save(LessonEntry.builder()
-                .tenantId(c.tenantId()).classId(c.classId()).subjectId(c.subjectId()).teacherId(c.teacherId())
+                .tenantId(c.tenantId()).classId(c.classId()).subjectId(c.subjectId()).teacherId(teacherId)
                 .lessonDate(c.lessonDate() != null ? c.lessonDate() : LocalDate.now())
                 .title(c.title()).content(c.content()).homework(c.homework()).durationMinutes(c.durationMinutes())
                 .status(c.status() != null ? c.status() : LessonStatus.PLANNED)
                 .createdAt(LocalDateTime.now()).build());
+    }
+
+    /**
+     * Résout systématiquement le professeur depuis l'affectation classe↔matière (ClasseMatiere),
+     * source de vérité — la paie (heures réalisées) se base sur {@code LessonEntry.teacherId} : une
+     * séance sans professeur affecté ne doit jamais être créée silencieusement (§ retour utilisateur).
+     */
+    private Long resolveTeacherId(Long classId, Long subjectId) {
+        return academics.findClassSubjects(classId).stream()
+                .filter(cs -> subjectId.equals(cs.subjectId()))
+                .map(ClassSubjectPublicInfo::teacherId)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElseThrow(() -> new BusinessRuleException(
+                        "Aucun enseignant n'est affecté à cette matière pour cette classe. "
+                                + "Affectez un enseignant (Référentiels → Classes → Matières) avant de programmer une séance."));
     }
 
     /** Durée de repli d'une séance d'évaluation, si le type (donc sa durée) n'est pas renseigné (1h). */
@@ -74,7 +95,8 @@ public class LessonService {
 
     public LessonEntry update(Long id, CreateLessonCommand c) {
         LessonEntry l = load(id);
-        l.setClassId(c.classId()); l.setSubjectId(c.subjectId()); l.setTeacherId(c.teacherId());
+        Long teacherId = resolveTeacherId(c.classId(), c.subjectId());
+        l.setClassId(c.classId()); l.setSubjectId(c.subjectId()); l.setTeacherId(teacherId);
         l.setLessonDate(c.lessonDate()); l.setTitle(c.title()); l.setContent(c.content());
         l.setHomework(c.homework()); l.setDurationMinutes(c.durationMinutes());
         if (c.status() != null) l.setStatus(c.status());
