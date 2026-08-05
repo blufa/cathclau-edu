@@ -1,5 +1,8 @@
 package gn.lacaeducation.lessons.application.service;
 
+import gn.lacaeducation.academics.AcademicsDataProvider;
+import gn.lacaeducation.academics.ClassSubjectPublicInfo;
+import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.lessons.application.port.out.LessonRepository;
 import gn.lacaeducation.lessons.domain.LessonEntry;
 import gn.lacaeducation.lessons.domain.LessonStatus;
@@ -11,7 +14,9 @@ import org.mockito.Mock;
 import org.mockito.InjectMocks;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -22,6 +27,7 @@ class LessonServiceTest {
 
     @Mock LessonRepository repo;
     @Mock StudentDataProvider studentDataProvider;
+    @Mock AcademicsDataProvider academics;
     @InjectMocks LessonService service;
 
     @Test
@@ -75,5 +81,44 @@ class LessonServiceTest {
 
         assertThat(result).isNull();
         verify(repo, never()).save(any());
+    }
+
+    @Test
+    void create_resolvesTeacherFromClassSubjectAssignment() {
+        when(academics.findClassSubjects(5L)).thenReturn(List.of(
+                new ClassSubjectPublicInfo(5L, 7L, BigDecimal.ONE, 3L, "MA1")));
+        when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        LessonEntry result = service.create(new LessonService.CreateLessonCommand(
+                1L, 5L, 7L, null, LocalDate.now(), "Fractions", null, null, 60, null));
+
+        assertThat(result.getTeacherId()).isEqualTo(3L);
+    }
+
+    @Test
+    void create_throwsWhenNoTeacherAssignedForSubject() {
+        when(academics.findClassSubjects(5L)).thenReturn(List.of(
+                new ClassSubjectPublicInfo(5L, 7L, BigDecimal.ONE, null, null)));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.create(new LessonService.CreateLessonCommand(
+                        1L, 5L, 7L, null, LocalDate.now(), "Fractions", null, null, 60, null)))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("Aucun enseignant");
+        verify(repo, never()).save(any());
+    }
+
+    @Test
+    void update_reResolvesTeacherFromClassSubjectAssignment() {
+        LessonEntry existing = LessonEntry.builder().id(10L).tenantId(1L).classId(5L).subjectId(7L).teacherId(99L).build();
+        when(repo.findById(10L)).thenReturn(java.util.Optional.of(existing));
+        when(academics.findClassSubjects(5L)).thenReturn(List.of(
+                new ClassSubjectPublicInfo(5L, 7L, BigDecimal.ONE, 3L, "MA1")));
+        when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        LessonEntry result = service.update(10L, new LessonService.CreateLessonCommand(
+                1L, 5L, 7L, 99L, LocalDate.now(), "Fractions", null, null, 60, null));
+
+        // Le professeur envoyé par le client (99L, obsolète) est ignoré au profit de l'affectation réelle.
+        assertThat(result.getTeacherId()).isEqualTo(3L);
     }
 }
