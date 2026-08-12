@@ -12,4 +12,6 @@ public interface AssessmentUseCase {
     List<Assessment> findByClass(Long classId);
     List<Assessment> findByPeriod(Long periodId);
     void delete(Long id);
+    /** Fiche de notes vierge (PDF) à imprimer et donner à l'enseignant : liste des élèves de la classe. */
+    byte[] planPdf(Long classId, Long subjectId, Long academicYearId);
 }

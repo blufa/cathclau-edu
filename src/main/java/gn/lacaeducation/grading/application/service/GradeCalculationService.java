@@ -188,7 +188,9 @@ public class GradeCalculationService {
             }
 
             BigDecimal subjectCoeff = subjectCoeffMap.getOrDefault(subjectId, BigDecimal.ONE);
-            BigDecimal subjectAverage = computeSubjectAverage(grades, subjectAssessments, calcSettings, categoryWeights, subjectCoeff);
+            GradingFormulaEngine.SubjectFormulaResult formulaResult =
+                    computeSubjectAverage(grades, subjectAssessments, calcSettings, categoryWeights, subjectCoeff);
+            BigDecimal subjectAverage = formulaResult.finalValue();
             BigDecimal weighted = subjectAverage.multiply(subjectCoeff, MC).setScale(SCALE, RoundingMode.HALF_UP);
 
             Long teacherId = subjectTeacherMap.get(subjectId);
@@ -199,6 +201,8 @@ public class GradeCalculationService {
                     .subjectAverage(subjectAverage)
                     .coefficient(subjectCoeff)
                     .weightedAverage(weighted)
+                    .coursAverage(formulaResult.coursValue())
+                    .compoAverage(formulaResult.compoValue())
                     .teacherName(teacherLabel)
                     .build());
 
@@ -206,9 +210,7 @@ public class GradeCalculationService {
             sumSubjectCoeffs = sumSubjectCoeffs.add(subjectCoeff);
         }
 
-        BigDecimal generalAverage = sumSubjectCoeffs.compareTo(BigDecimal.ZERO) == 0
-                ? BigDecimal.ZERO
-                : sumWeighted.divide(sumSubjectCoeffs, SCALE, RoundingMode.HALF_UP);
+        BigDecimal generalAverage = computeOverallAverage(lines, sumWeighted, sumSubjectCoeffs, calcSettings);
 
         // Notes éliminatoires (§7) : une moyenne matière sous le seuil impose la décision de la règle.
         String decision = scale.decisionFor(generalAverage);
@@ -264,6 +266,56 @@ public class GradeCalculationService {
         eventPublisher.publishEvent(new ReportCardGeneratedEvent(saved.getId(), saved.getStudentId(), null));
 
         return saved;
+    }
+
+    /**
+     * Moyenne générale de l'élève (toutes matières confondues). Méthode officielle confirmée : si
+     * <b>toutes</b> les lignes portent une moyenne de cours <b>et</b> une moyenne de composition
+     * (étapes de la formule active étiquetées {@code COURS}/{@code COMPOSITION}, §StepRole), la
+     * moyenne de cours générale est une moyenne simple entre matières (non pondérée par coefficient)
+     * tandis que la moyenne de composition générale est pondérée par coefficient — les deux étant
+     * ensuite combinées selon les poids de {@link gn.lacaeducation.grading.domain.GradingCalculationSettings}
+     * (composition double du cours, par défaut). Sinon (formule sans étapes étiquetées), retombe sur
+     * l'ancien calcul plat pondéré (Σ moyenne pondérée / Σ coefficient) — aucune régression pour les
+     * tenants qui n'utilisent pas ce modèle.
+     */
+    private BigDecimal computeOverallAverage(List<ReportCardLine> lines, BigDecimal sumWeighted,
+                                             BigDecimal sumSubjectCoeffs,
+                                             gn.lacaeducation.grading.domain.GradingCalculationSettings settings) {
+        List<ReportCardLine> coursLines = lines.stream().filter(l -> l.getCoursAverage() != null).toList();
+        List<ReportCardLine> compoLines = lines.stream().filter(l -> l.getCompoAverage() != null).toList();
+
+        if (coursLines.isEmpty() || compoLines.isEmpty()) {
+            return sumSubjectCoeffs.compareTo(BigDecimal.ZERO) == 0
+                    ? BigDecimal.ZERO
+                    : sumWeighted.divide(sumSubjectCoeffs, SCALE, RoundingMode.HALF_UP);
+        }
+
+        BigDecimal coursGeneral = coursLines.stream()
+                .map(ReportCardLine::getCoursAverage)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .divide(BigDecimal.valueOf(coursLines.size()), MC);
+
+        BigDecimal compoNum = BigDecimal.ZERO;
+        BigDecimal compoDen = BigDecimal.ZERO;
+        for (ReportCardLine l : compoLines) {
+            BigDecimal coeff = l.getCoefficient() != null ? l.getCoefficient() : BigDecimal.ONE;
+            compoNum = compoNum.add(l.getCompoAverage().multiply(coeff, MC));
+            compoDen = compoDen.add(coeff);
+        }
+        BigDecimal compoGeneral = compoDen.compareTo(BigDecimal.ZERO) == 0
+                ? BigDecimal.ZERO : compoNum.divide(compoDen, MC);
+
+        BigDecimal coursWeight = settings.generalCoursWeightOrDefault();
+        BigDecimal compoWeight = settings.generalCompoWeightOrDefault();
+        BigDecimal totalWeight = coursWeight.add(compoWeight);
+        if (totalWeight.compareTo(BigDecimal.ZERO) == 0) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal blended = coursGeneral.multiply(coursWeight, MC)
+                .add(compoGeneral.multiply(compoWeight, MC))
+                .divide(totalWeight, MC);
+        return blended.setScale(SCALE, RoundingMode.HALF_UP);
     }
 
     /**
@@ -354,7 +406,8 @@ public class GradeCalculationService {
         }
         var settings = resolveCalcSettings(subjectAssessments);
         var categoryWeights = resolveCategoryWeights(subjectAssessments);
-        return computeSubjectAverage(studentGrades, subjectAssessments, settings, categoryWeights, subjectCoefficient);
+        return computeSubjectAverage(studentGrades, subjectAssessments, settings, categoryWeights, subjectCoefficient)
+                .finalValue();
     }
 
     /**
@@ -364,7 +417,7 @@ public class GradeCalculationService {
      * « Héritée » équivalente à l'ancien calcul plat pondéré est créée automatiquement au premier
      * calcul (voir {@link #resolveFormula}) — aucune régression pour les tenants non migrés.
      */
-    private BigDecimal computeSubjectAverage(List<Grade> grades, List<Assessment> assessments,
+    private GradingFormulaEngine.SubjectFormulaResult computeSubjectAverage(List<Grade> grades, List<Assessment> assessments,
                                              gn.lacaeducation.grading.domain.GradingCalculationSettings settings,
                                              Map<Long, BigDecimal> categoryWeights,
                                              BigDecimal subjectCoefficient) {
@@ -381,7 +434,7 @@ public class GradeCalculationService {
                 .orElse(List.of());
         LocalDate periodStart = period.map(PeriodPublicInfo::startDate).orElse(null);
 
-        return GradingFormulaEngine.compute(steps, assessments, grades, subjectCoefficient,
+        return GradingFormulaEngine.computeDetailed(steps, assessments, grades, subjectCoefficient,
                 periodStart, settings, categoryWeights);
     }
 

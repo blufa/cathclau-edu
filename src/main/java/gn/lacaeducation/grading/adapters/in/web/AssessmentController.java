@@ -47,4 +47,16 @@ public class AssessmentController {
     @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id) {
         useCase.delete(id); return ResponseEntity.noContent().build();
     }
+
+    @Operation(summary = "Fiche de notes vierge (PDF) à imprimer et donner à l'enseignant : liste des élèves de la classe")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','RESPONSABLE_PEDAGOGIQUE','TEACHER','SECRETARY')")
+    @GetMapping("/plan/pdf")
+    public ResponseEntity<byte[]> planPdf(@RequestParam Long classId, @RequestParam Long subjectId,
+                                          @RequestParam Long academicYearId) {
+        return ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"fiche-notes-classe-" + classId + "-matiere-" + subjectId + ".pdf\"")
+                .body(useCase.planPdf(classId, subjectId, academicYearId));
+    }
 }

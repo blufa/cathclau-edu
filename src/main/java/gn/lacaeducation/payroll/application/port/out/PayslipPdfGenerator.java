@@ -7,5 +7,12 @@ import java.util.List;
 
 /** Génère le PDF (A5 stylé, aux couleurs de l'école) d'une fiche de paie. */
 public interface PayslipPdfGenerator {
-    byte[] generate(Payslip payslip, List<PayslipLine> lines);
+    /**
+     * Heures du mois pour un enseignant : dues (projection de l'emploi du temps), réalisées (cahier
+     * de textes, séances marquées « Réalisée ») et non réalisées (dues − réalisées, jamais négatif).
+     * {@code null} pour le personnel non-enseignant ou si la période n'est pas connue.
+     */
+    record TeacherHours(int dueMinutes, int realizedMinutes, int missingMinutes) {}
+
+    byte[] generate(Payslip payslip, List<PayslipLine> lines, TeacherHours hours);
 }

@@ -83,13 +83,22 @@ public class PaymentService implements PaymentUseCase {
         String reference = "PAY-GRP-" + c.studentId() + "-"
                 + Long.toString(System.currentTimeMillis(), 36).toUpperCase();
 
+        // Fratrie (§payments) : chaque part porte son propre élève (retombe sur c.studentId() si absent,
+        // paiement mono-élève classique) — studentIds retient tous les enfants couverts, dans l'ordre
+        // d'apparition, pour que le reçu et l'historique de paiement de CHAQUE enfant retrouvent ce paiement.
+        List<Long> distinctStudentIds = c.shares().stream()
+                .map(x -> x.studentId() != null ? x.studentId() : c.studentId())
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+
         Payment payment = repo.save(Payment.builder()
-                .tenantId(c.tenantId()).studentId(c.studentId()).invoiceId(null)
+                .tenantId(c.tenantId()).studentId(c.studentId()).studentIds(distinctStudentIds).invoiceId(null)
                 .academicYearId(c.academicYearId())
                 .reference(reference).amount(total).channel(c.channel()).type(PaymentType.COMPLETE)
                 .status(PaymentStatus.INITIATED).paidAt(LocalDateTime.now())
                 .coveredMonths(c.coverageLabel()).monthsCount(c.monthsCount()).remainingAfter(c.remainingAfter())
-                .groupLines(serializeShares(c.shares())).collectedByUserId(c.collectedByUserId())
+                .groupLines(serializeShares(c.shares(), c.studentId())).collectedByUserId(c.collectedByUserId())
                 .build());
 
         if (c.channel().isDeskManual()) {
@@ -134,9 +143,10 @@ public class PaymentService implements PaymentUseCase {
                 p.getTenantId(), p.getStudentId(), p.getId(), deserializeShares(p.getGroupLines())));
     }
 
-    private String serializeShares(List<PaymentUseCase.InvoiceShare> shares) {
+    private String serializeShares(List<PaymentUseCase.InvoiceShare> shares, Long fallbackStudentId) {
         List<GroupedInvoiceSettlementEvent.Share> s = shares.stream()
-                .map(x -> new GroupedInvoiceSettlementEvent.Share(x.invoiceId(), x.amount()))
+                .map(x -> new GroupedInvoiceSettlementEvent.Share(
+                        x.invoiceId(), x.studentId() != null ? x.studentId() : fallbackStudentId, x.amount()))
                 .toList();
         try {
             return objectMapper.writeValueAsString(s);

@@ -34,7 +34,9 @@ public class ReportCardService implements ReportCardUseCase {
     private final DocumentStoragePort documentStorage;
     private final StudentDataProvider studentProvider;
     private final AcademicsDataProvider academicsProvider;
+    private final gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort classSubjectQueryPort;
     private final gn.lacaeducation.grading.application.port.out.ClassHonorRollPdfGenerator honorRollGenerator;
+    private final gn.lacaeducation.grading.application.port.out.ClassCentralizerPdfGenerator centralizerGenerator;
 
     @Override
     public ReportCard generate(GenerateReportCardCommand c) {
@@ -144,6 +146,52 @@ public class ReportCardService implements ReportCardUseCase {
         java.math.BigDecimal classAvg = cards.isEmpty() ? null : cards.get(0).getClassAverage();
         return honorRollGenerator.generate(new gn.lacaeducation.grading.application.port.out.ClassHonorRollPdfGenerator.HonorRoll(
                 tenantId, className, periodLabel, schoolYear, classAvg, rows));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] classCentralizerPdf(Long classId, Long periodId) {
+        List<ReportCard> cards = repo.findByClassIdAndPeriodId(classId, periodId);
+        var subjectInfos = classSubjectQueryPort.findByClassId(classId);
+        List<Long> subjectIds = subjectInfos.stream()
+                .map(gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort.ClassSubjectInfo::subjectId)
+                .toList();
+        java.util.Map<Long, java.math.BigDecimal> coeffs = subjectInfos.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort.ClassSubjectInfo::subjectId,
+                        gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort.ClassSubjectInfo::coefficient,
+                        (a, b) -> a));
+
+        var rows = cards.stream()
+                .sorted(java.util.Comparator
+                        .comparing((ReportCard rc) -> rc.getRank() == null ? Integer.MAX_VALUE : rc.getRank()))
+                .map(rc -> {
+                    StudentPublicInfo student = studentProvider.findStudent(rc.getStudentId()).orElse(null);
+                    java.util.Map<Long, gn.lacaeducation.grading.application.port.out.ClassCentralizerPdfGenerator.SubjectCell> bySubject =
+                            repo.findLines(rc.getId()).stream()
+                                    .filter(l -> l.getSubjectId() != null)
+                                    .collect(java.util.stream.Collectors.toMap(ReportCardLine::getSubjectId,
+                                            l -> new gn.lacaeducation.grading.application.port.out.ClassCentralizerPdfGenerator.SubjectCell(
+                                                    l.getCoursAverage(), l.getCompoAverage()),
+                                            (a, b) -> a));
+                    return new gn.lacaeducation.grading.application.port.out.ClassCentralizerPdfGenerator.StudentRow(
+                            studentName(rc.getStudentId()), student != null ? student.studentNumber() : null,
+                            bySubject, rc.getOverallAverage(), rc.getRank());
+                })
+                .toList();
+
+        Long tenantId = cards.stream()
+                .map(rc -> studentProvider.findStudent(rc.getStudentId()).map(StudentPublicInfo::tenantId).orElse(null))
+                .filter(java.util.Objects::nonNull).findFirst().orElse(null);
+        String className = academicsProvider.findClass(classId)
+                .map(c -> c.levelLabel() != null && !c.levelLabel().isBlank() ? c.label() + " (" + c.levelLabel() + ")" : c.label())
+                .orElse(null);
+        String periodLabel = academicsProvider.findPeriod(periodId).map(p -> p.label()).orElse(null);
+        String schoolYear = tenantId == null ? null : academicsProvider.currentAcademicYearLabel(tenantId).orElse(null);
+
+        return centralizerGenerator.generate(new gn.lacaeducation.grading.application.port.out.ClassCentralizerPdfGenerator.Centralizer(
+                tenantId, className, periodLabel, schoolYear, subjectIds, academicsProvider.subjectLabels(subjectIds),
+                coeffs, rows));
     }
 
     private String studentName(Long studentId) {

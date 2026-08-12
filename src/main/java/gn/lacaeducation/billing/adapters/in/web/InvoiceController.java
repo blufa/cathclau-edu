@@ -88,6 +88,13 @@ public class InvoiceController {
     @Operation(summary = "Appliquer une remise / bourse à une facture (recalcule le reste à payer)")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
     @PatchMapping("/{id}/discount") public ResponseEntity<Invoice> applyDiscount(@PathVariable Long id, @RequestBody DiscountRequest r) { return ResponseEntity.ok(useCase.applyDiscount(id, r.amount(), r.reason())); }
+    @Operation(summary = "Appliquer la remise pour paiement annuel complet sur les factures restantes d'un frais (§billing) — "
+            + "à appeler juste avant un paiement groupé couvrant toutes les tranches restantes")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT','SECRETARY')")
+    @PostMapping("/early-payment-discount")
+    public List<Invoice> applyEarlyPaymentDiscount(@RequestParam Long studentId, @RequestParam Long feeId) {
+        return useCase.applyEarlyPaymentDiscount(studentId, feeId);
+    }
     @Operation(summary = "Avancer le recouvrement d'une étape (relance 1 → relance 2 → exclusion)")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
     @PatchMapping("/{id}/recovery/advance") public ResponseEntity<Invoice> advanceRecovery(@PathVariable Long id) { return ResponseEntity.ok(useCase.advanceRecovery(id)); }

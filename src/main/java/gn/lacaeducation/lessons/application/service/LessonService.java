@@ -103,7 +103,22 @@ public class LessonService {
         return repo.save(l);
     }
 
-    public LessonEntry markDone(Long id) { return setStatus(id, LessonStatus.DONE); }
+    public LessonEntry markDone(Long id) { return markDone(id, null); }
+
+    /**
+     * Marque la séance réalisée, en corrigeant éventuellement sa durée avec le temps réellement
+     * effectué (ex. un professeur en retard rattrape les heures perdues) — c'est cette durée réalisée,
+     * jamais la durée planifiée, qui alimente ensuite la masse salariale (§payroll).
+     */
+    public LessonEntry markDone(Long id, Integer realizedDurationMinutes) {
+        LessonEntry l = load(id);
+        if (realizedDurationMinutes != null) {
+            if (realizedDurationMinutes < 0) throw new BusinessRuleException("La durée réalisée ne peut pas être négative");
+            l.setDurationMinutes(realizedDurationMinutes);
+        }
+        l.setStatus(LessonStatus.DONE);
+        return repo.save(l);
+    }
 
     public LessonEntry markPlanned(Long id) { return setStatus(id, LessonStatus.PLANNED); }
 

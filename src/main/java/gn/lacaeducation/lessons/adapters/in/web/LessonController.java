@@ -32,6 +32,9 @@ public class LessonController {
                                 String title, String content, String homework, Integer durationMinutes,
                                 LessonStatus status) {}
 
+    /** Durée réellement effectuée (optionnelle) — corrige la durée planifiée au moment de la réalisation. */
+    public record MarkDoneRequest(Integer durationMinutes) {}
+
     @Operation(summary = "Lister les séances (filtres classe / matière)")
     @GetMapping
     public List<LessonEntry> list(@RequestParam(required = false) Long classId,
@@ -65,10 +68,12 @@ public class LessonController {
     @PutMapping("/{id}")
     public LessonEntry update(@PathVariable Long id, @RequestBody LessonRequest r) { return service.update(id, toCommand(r)); }
 
-    @Operation(summary = "Marquer la séance comme réalisée")
+    @Operation(summary = "Marquer la séance comme réalisée (durée réalisée optionnelle, sinon la durée planifiée est conservée)")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
     @PatchMapping("/{id}/done")
-    public LessonEntry markDone(@PathVariable Long id) { return service.markDone(id); }
+    public LessonEntry markDone(@PathVariable Long id, @RequestBody(required = false) MarkDoneRequest r) {
+        return service.markDone(id, r != null ? r.durationMinutes() : null);
+    }
 
     @Operation(summary = "Remettre la séance en planifié")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
