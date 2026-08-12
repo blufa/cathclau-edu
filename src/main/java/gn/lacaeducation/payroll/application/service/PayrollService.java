@@ -440,11 +440,22 @@ public class PayrollService {
     @Transactional(readOnly = true)
     public List<PayslipLine> lines(Long payslipId) { return lineRepo.findByPayslipId(payslipId); }
 
-    /** Octets du PDF (A5 stylé) de la fiche de paie. */
+    /** Octets du PDF (A5 stylé) de la fiche de paie, avec les heures dues/réalisées du mois pour un enseignant. */
     @Transactional(readOnly = true)
     public byte[] pdfBytes(Long id) {
         Payslip p = loadPayslip(id);
-        return pdfGenerator.generate(p, lineRepo.findByPayslipId(id));
+        gn.lacaeducation.payroll.application.port.out.PayslipPdfGenerator.TeacherHours hours = null;
+        boolean isTeacher = p.getEmployeeType() == null || p.getEmployeeType() == gn.lacaeducation.payroll.domain.EmployeeType.TEACHER;
+        if (isTeacher && p.getTeacherId() != null && p.getPeriodStart() != null) {
+            int year = p.getPeriodStart().getYear();
+            int month = p.getPeriodStart().getMonthValue();
+            TheoreticalMonthlyPay theoretical = computeTheoreticalMonthlyPay(p.getTeacherId(), year, month);
+            int due = theoretical.normalMinutes() + theoretical.examMinutes();
+            int realized = computeMonthlyPay(p.getTeacherId(), year, month).realizedMinutes();
+            hours = new gn.lacaeducation.payroll.application.port.out.PayslipPdfGenerator.TeacherHours(
+                    due, realized, Math.max(0, due - realized));
+        }
+        return pdfGenerator.generate(p, lineRepo.findByPayslipId(id), hours);
     }
 
     /** Fichier bancaire simple (CSV) : une ligne par fiche payée/validée avec le net à virer. */

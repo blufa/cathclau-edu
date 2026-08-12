@@ -1,7 +1,10 @@
 package gn.lacaeducation.grading.adapters.in.web;
 
 import gn.lacaeducation.common.PortalAccess;
+import gn.lacaeducation.common.TenantContext;
+import gn.lacaeducation.grading.application.port.in.AnnualReportCardUseCase;
 import gn.lacaeducation.grading.application.port.in.ReportCardUseCase;
+import gn.lacaeducation.grading.domain.AnnualReportCard;
 import gn.lacaeducation.grading.domain.ReportCard;
 import gn.lacaeducation.grading.domain.ReportCardLine;
 import gn.lacaeducation.grading.domain.ReportCardStatus;
@@ -26,6 +29,7 @@ import java.util.Map;
 public class ReportCardController {
 
     private final ReportCardUseCase useCase;
+    private final AnnualReportCardUseCase annualUseCase;
     private final ParentAccessProvider parentAccessProvider;
 
     /**
@@ -127,6 +131,17 @@ public class ReportCardController {
                 .body(useCase.classHonorRollPdf(classId, periodId));
     }
 
+    @Operation(summary = "Centralisateur de classe (PDF) : une ligne par élève, colonnes Cours/Composition par matière")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','RESPONSABLE_PEDAGOGIQUE','TEACHER','SECRETARY')")
+    @GetMapping("/class/{classId}/period/{periodId}/centralisateur/download")
+    public ResponseEntity<byte[]> centralizerDownload(@PathVariable Long classId, @PathVariable Long periodId) {
+        return ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"centralisateur-classe-" + classId + "-periode-" + periodId + ".pdf\"")
+                .body(useCase.classCentralizerPdf(classId, periodId));
+    }
+
     @Operation(summary = "Get the report card for a student in a given period")
     @GetMapping("/student/{studentId}/period/{periodId}")
     public ResponseEntity<ReportCard> findByStudent(@PathVariable Long studentId, @PathVariable Long periodId,
@@ -176,5 +191,32 @@ public class ReportCardController {
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         useCase.delete(id);
         return ResponseEntity.noContent().build();
+    }
+
+    // ── Bulletin annuel (agrégation des 2 semestres, §documents ministère) ──────
+
+    @Operation(summary = "Bulletins annuels de tous les élèves d'une classe (1er + 2ème semestre), classés par rang")
+    @GetMapping("/annual")
+    public List<AnnualReportCard> annualByClass(@RequestParam Long classId, @RequestParam Long academicYearId) {
+        return annualUseCase.findByClass(TenantContext.get(), classId, academicYearId);
+    }
+
+    @Operation(summary = "Bulletin annuel d'un élève")
+    @GetMapping("/annual/{studentId}")
+    public ResponseEntity<AnnualReportCard> annualByStudent(@PathVariable Long studentId,
+                                                            @RequestParam Long classId, @RequestParam Long academicYearId) {
+        return annualUseCase.findByStudent(TenantContext.get(), studentId, classId, academicYearId)
+                .map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
+    }
+
+    @Operation(summary = "PDF du bulletin annuel officiel d'un élève")
+    @GetMapping("/annual/{studentId}/pdf/download")
+    public ResponseEntity<byte[]> annualPdfDownload(@PathVariable Long studentId,
+                                                     @RequestParam Long classId, @RequestParam Long academicYearId) {
+        return ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"bulletin-annuel-" + studentId + ".pdf\"")
+                .body(annualUseCase.pdfBytes(TenantContext.get(), studentId, classId, academicYearId));
     }
 }

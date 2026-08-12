@@ -14,8 +14,12 @@ public interface PaymentUseCase {
                                   Long academicYearId) {}
     Payment initiate(InitiatePaymentCommand command) throws JsonProcessingException;
 
-    /** Part d'un paiement groupé affectée à une facture-mois. */
-    record InvoiceShare(Long invoiceId, BigDecimal amount) {}
+    /**
+     * Part d'un paiement groupé affectée à une facture-mois. {@code studentId} identifie l'élève
+     * propriétaire de la facture (fratrie, §payments) ; {@code null} retombe sur le
+     * {@link GroupPaymentCommand#studentId()} de la commande (paiement mono-élève classique).
+     */
+    record InvoiceShare(Long invoiceId, Long studentId, BigDecimal amount) {}
     /**
      * Paiement groupé de plusieurs mois (ou de l'année) en une fois : un seul paiement, un seul reçu
      * listant les mois réglés et le reste à payer. Au guichet (canal manuel) la confirmation est

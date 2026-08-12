@@ -27,6 +27,13 @@ public interface InvoiceUseCase {
     Invoice applyPayment(Long invoiceId, BigDecimal amount);
     /** Applique une remise / bourse (montant + motif) et recalcule le reste à payer / le statut. */
     Invoice applyDiscount(Long invoiceId, BigDecimal amount, String reason);
+    /**
+     * Applique la remise pour paiement annuel complet (§billing) sur toutes les factures restantes
+     * (non soldées) d'un élève pour un frais donné, si une règle est active pour le type de ce frais.
+     * Sans effet (renvoie les factures inchangées) s'il n'y a qu'une seule tranche restante ou si
+     * aucune règle n'est applicable.
+     */
+    List<Invoice> applyEarlyPaymentDiscount(Long studentId, Long feeId);
     /** Avance d'une étape le recouvrement (relance 1 → relance 2 → exclusion). */
     Invoice advanceRecovery(Long invoiceId);
     /** Positionne directement l'étape de recouvrement. */

@@ -25,7 +25,25 @@ public final class GradingFormulaEngine {
 
     private GradingFormulaEngine() {}
 
+    /**
+     * Résultat détaillé d'une formule : la valeur finale (moyenne de matière), et, si des étapes sont
+     * étiquetées {@link StepRole#COURS}/{@link StepRole#COMPOSITION}, leurs résultats respectifs
+     * (sinon {@code null}) — utilisés par {@code GradeCalculationService} pour la moyenne générale.
+     */
+    public record SubjectFormulaResult(BigDecimal finalValue, BigDecimal coursValue, BigDecimal compoValue) {}
+
     public static BigDecimal compute(List<GradingFormulaStep> steps,
+                                     List<Assessment> assessments,
+                                     List<Grade> studentGrades,
+                                     BigDecimal subjectCoefficient,
+                                     LocalDate periodStart,
+                                     GradingCalculationSettings settings,
+                                     Map<Long, BigDecimal> categoryWeights) {
+        return computeDetailed(steps, assessments, studentGrades, subjectCoefficient, periodStart, settings, categoryWeights)
+                .finalValue();
+    }
+
+    public static SubjectFormulaResult computeDetailed(List<GradingFormulaStep> steps,
                                      List<Assessment> assessments,
                                      List<Grade> studentGrades,
                                      BigDecimal subjectCoefficient,
@@ -37,8 +55,9 @@ public final class GradingFormulaEngine {
                 .collect(java.util.stream.Collectors.toMap(Grade::getAssessmentId, g -> g, (a, b) -> a));
 
         if (steps == null || steps.isEmpty()) {
-            return computeGroup(GradingFormulaStep.builder().build(), periodAssessments, gradeByAssessment,
+            BigDecimal result = computeGroup(GradingFormulaStep.builder().build(), periodAssessments, gradeByAssessment,
                     periodStart, settings, categoryWeights);
+            return new SubjectFormulaResult(result, null, null);
         }
 
         List<GradingFormulaStep> ordered = steps.stream()
@@ -47,6 +66,8 @@ public final class GradingFormulaEngine {
 
         Map<Integer, BigDecimal> resultsByOrder = new LinkedHashMap<>();
         BigDecimal finalResult = BigDecimal.ZERO;
+        BigDecimal coursValue = null;
+        BigDecimal compoValue = null;
         for (GradingFormulaStep step : ordered) {
             BigDecimal result = step.getStepKind() == StepKind.COMBINE
                     ? computeCombine(step, resultsByOrder, subjectCoefficient, settings)
@@ -55,8 +76,11 @@ public final class GradingFormulaEngine {
             if (step.isFinalStep()) {
                 finalResult = result;
             }
+            StepRole role = step.getRole();
+            if (role == StepRole.COURS) coursValue = result;
+            else if (role == StepRole.COMPOSITION) compoValue = result;
         }
-        return finalResult;
+        return new SubjectFormulaResult(finalResult, coursValue, compoValue);
     }
 
     /** Moyenne des évaluations correspondant au filtre de l'étape (mois, type d'évaluation, ou tout si aucun filtre). */

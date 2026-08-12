@@ -22,7 +22,7 @@ public class InstallmentService implements InstallmentUseCase {
         validateInstallmentSum(c.feeId(), null, c.amount());
         return repo.save(Installment.builder()
                 .feeId(c.feeId()).label(c.label()).amount(c.amount())
-                .dueDate(c.dueDate()).status(InstallmentStatus.PENDING).build());
+                .dueDate(c.dueDate()).status(InstallmentStatus.PENDING).months(c.months()).build());
     }
 
     @Override public List<Installment> generateTerms(GenerateTermsCommand c) {
@@ -51,7 +51,7 @@ public class InstallmentService implements InstallmentUseCase {
     @Override public Installment update(Long id, UpdateInstallmentCommand c) {
         Installment i = load(id);
         validateInstallmentSum(i.getFeeId(), id, c.amount());
-        i.setLabel(c.label()); i.setAmount(c.amount()); i.setDueDate(c.dueDate());
+        i.setLabel(c.label()); i.setAmount(c.amount()); i.setDueDate(c.dueDate()); i.setMonths(c.months());
         return repo.save(i);
     }
 

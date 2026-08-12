@@ -4,6 +4,7 @@ import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 @Getter @Setter @Builder @NoArgsConstructor @AllArgsConstructor
@@ -11,7 +12,10 @@ public class Payment {
     private Long id;
     private Long tenantId;
     private Long invoiceId;
+    /** Élève "principal" (premier enfant pour un paiement groupé multi-enfants) — voir {@link #studentIds}. */
     private Long studentId;
+    /** Tous les élèves couverts par ce paiement (fratrie) ; contient un seul id pour un paiement classique. */
+    private List<Long> studentIds;
     /** Année scolaire de la facture réglée — évite qu'un paiement d'une année clôturée réapparaisse
      * dans l'année en cours. */
     private Long academicYearId;

@@ -25,6 +25,8 @@ class GradingCalculationSettingsPersistenceAdapter implements GradingCalculation
         e.setAverageMethod(s.methodOrDefault());
         e.setDecimals(s.decimalsOrDefault());
         e.setRounding(s.roundingOrDefault());
+        e.setGeneralCoursWeight(s.getGeneralCoursWeight());
+        e.setGeneralCompoWeight(s.getGeneralCompoWeight());
         return toDomain(repo.save(e));
     }
 
@@ -32,6 +34,7 @@ class GradingCalculationSettingsPersistenceAdapter implements GradingCalculation
         return GradingCalculationSettings.builder()
                 .id(e.getId()).tenantId(e.getTenantId()).averageMethod(e.getAverageMethod())
                 .decimals(e.getDecimals()).rounding(e.getRounding())
+                .generalCoursWeight(e.getGeneralCoursWeight()).generalCompoWeight(e.getGeneralCompoWeight())
                 .build();
     }
 }

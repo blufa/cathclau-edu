@@ -7,6 +7,9 @@ interface PaymentJpaRepository extends JpaRepository<PaymentJpaEntity, Long> {
     Optional<PaymentJpaEntity> findByReference(String reference);
     List<PaymentJpaEntity> findByInvoiceId(Long invoiceId);
     List<PaymentJpaEntity> findByStudentId(Long studentId);
+    /** Paiements groupés (fratrie) du tenant — bornés aux lignes ayant des élèves additionnels, filtrés
+     * en mémoire par appartenance (voir {@link PaymentPersistenceAdapter#findByStudentId}). */
+    List<PaymentJpaEntity> findByStudentIdsIsNotNull();
     List<PaymentJpaEntity> findByTenantId(Long tenantId);
     List<PaymentJpaEntity> findByTenantIdAndStatus(Long tenantId, PaymentStatus status);
     List<PaymentJpaEntity> findByTenantIdAndAcademicYearId(Long tenantId, Long academicYearId);

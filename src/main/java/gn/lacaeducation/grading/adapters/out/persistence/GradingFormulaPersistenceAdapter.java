@@ -56,6 +56,7 @@ class GradingFormulaPersistenceAdapter implements GradingFormulaRepository {
             stepEntity.setMonthIndex(step.getMonthIndex());
             stepEntity.setAssessmentTypeId(step.getAssessmentTypeId());
             stepEntity.setFinalStep(step.isFinalStep());
+            stepEntity.setRole(step.getRole() != null ? step.getRole() : gn.lacaeducation.grading.domain.StepRole.NONE);
             GradingFormulaStepJpaEntity savedStep = stepJpa.save(stepEntity);
 
             if (step.getInputs() != null) {
@@ -112,7 +113,7 @@ class GradingFormulaPersistenceAdapter implements GradingFormulaRepository {
         return GradingFormulaStep.builder()
                 .id(e.getId()).formulaId(e.getFormulaId()).stepOrder(e.getStepOrder()).label(e.getLabel())
                 .stepKind(e.getStepKind()).monthIndex(e.getMonthIndex()).assessmentTypeId(e.getAssessmentTypeId())
-                .finalStep(e.isFinalStep()).inputs(inputs)
+                .finalStep(e.isFinalStep()).inputs(inputs).role(e.getRole())
                 .build();
     }
 

@@ -35,6 +35,7 @@ public class InvoiceService implements InvoiceUseCase {
     private final MediaUploadService mediaUploadService;
     private final TenantInfoProvider tenantInfoProvider;
     private final gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase familyDiscountUseCase;
+    private final gn.lacaeducation.billing.application.port.in.EarlyPaymentDiscountUseCase earlyPaymentDiscountUseCase;
 
     @Override @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public byte[] pdfBytes(Long invoiceId) {
@@ -189,6 +190,37 @@ public class InvoiceService implements InvoiceUseCase {
         inv.setDiscountReason(reason);
         recomputeBalance(inv);
         return repo.save(inv);
+    }
+
+    @Override
+    public List<Invoice> applyEarlyPaymentDiscount(Long studentId, Long feeId) {
+        var fee = schoolFeeRepository.findById(feeId)
+                .orElseThrow(() -> new ResourceNotFoundException("SchoolFee", feeId));
+        List<Invoice> outstanding = repo.findByStudentId(studentId).stream()
+                .filter(i -> feeId.equals(i.getFeeId()))
+                .filter(i -> i.getStatus() != InvoiceStatus.PAID)
+                .toList();
+        // Pas de « tranches » à regrouper : rien à faire (une seule facture restante, ou aucune).
+        if (outstanding.size() < 2) {
+            return outstanding;
+        }
+        var discount = earlyPaymentDiscountUseCase.computeApplicable(fee.getTenantId(), fee.getType());
+        if (discount.percentage() == null || discount.percentage().signum() <= 0) {
+            return outstanding;
+        }
+        // Le taux est intégré au libellé (pas seulement le nom de la règle) pour que le pourcentage de
+        // remise reste visible partout où discountReason est affiché (reçu, facture, liste des élèves).
+        String reason = "Remise paiement anticipé : " + discount.ruleLabel()
+                + " (" + discount.percentage().stripTrailingZeros().toPlainString() + "%)";
+        List<Invoice> updated = new ArrayList<>();
+        for (Invoice inv : outstanding) {
+            BigDecimal amount = inv.getTotalAmount().multiply(discount.percentage())
+                    .divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
+            updated.add(applyDiscount(inv.getId(), amount, reason));
+        }
+        log.info("Remise paiement anticipé appliquée : {} facture(s), élève id={} frais id={}, taux={}%",
+                updated.size(), studentId, feeId, discount.percentage());
+        return updated;
     }
 
     /** Recalcule le reste à payer et le statut : net dû = total - remise ; reste = net - payé. */

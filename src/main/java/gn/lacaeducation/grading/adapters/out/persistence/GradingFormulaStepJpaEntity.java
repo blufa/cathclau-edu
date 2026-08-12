@@ -1,6 +1,7 @@
 package gn.lacaeducation.grading.adapters.out.persistence;
 
 import gn.lacaeducation.grading.domain.StepKind;
+import gn.lacaeducation.grading.domain.StepRole;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -20,4 +21,5 @@ class GradingFormulaStepJpaEntity {
     @Column(name = "month_index") private Integer monthIndex;
     @Column(name = "assessment_type_id") private Long assessmentTypeId;
     @Column(name = "is_final", nullable = false) private boolean finalStep;
+    @Enumerated(EnumType.STRING) @Column(name = "role", nullable = false, length = 20) private StepRole role = StepRole.NONE;
 }

@@ -38,9 +38,10 @@ class InvoiceServiceTest {
     @Mock MediaUploadService mediaUploadService;
     @Mock TenantInfoProvider tenantInfoProvider;
     @Mock gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase familyDiscountUseCase;
+    @Mock gn.lacaeducation.billing.application.port.in.EarlyPaymentDiscountUseCase earlyPaymentDiscountUseCase;
 
     InvoiceService service() {
-        return new InvoiceService(repo, schoolFeeRepository, installmentRepository, enrollmentQueryPort, eventPublisher, invoicePdfGenerator, mediaUploadService, tenantInfoProvider, familyDiscountUseCase);
+        return new InvoiceService(repo, schoolFeeRepository, installmentRepository, enrollmentQueryPort, eventPublisher, invoicePdfGenerator, mediaUploadService, tenantInfoProvider, familyDiscountUseCase, earlyPaymentDiscountUseCase);
 
     }
 

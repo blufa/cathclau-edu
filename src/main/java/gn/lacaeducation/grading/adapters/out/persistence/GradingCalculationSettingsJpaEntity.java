@@ -7,6 +7,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
+
 @Entity
 @Table(name = "grading_calculation_settings")
 @Getter @Setter @NoArgsConstructor
@@ -16,4 +18,6 @@ class GradingCalculationSettingsJpaEntity {
     @Enumerated(EnumType.STRING) @Column(name = "average_method", nullable = false, length = 20) private AverageMethod averageMethod;
     @Column(nullable = false) private Integer decimals;
     @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20) private RoundingPolicy rounding;
+    @Column(name = "general_cours_weight", precision = 5, scale = 2) private BigDecimal generalCoursWeight;
+    @Column(name = "general_compo_weight", precision = 5, scale = 2) private BigDecimal generalCompoWeight;
 }

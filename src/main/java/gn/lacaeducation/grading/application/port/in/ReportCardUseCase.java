@@ -18,6 +18,8 @@ public interface ReportCardUseCase {
     Optional<String> getPdf(Long id);
     /** Palmarès / tableau d'honneur d'une classe pour une période (PDF, élèves classés par rang). */
     byte[] classHonorRollPdf(Long classId, Long periodId);
+    /** Centralisateur de classe (PDF) : une ligne par élève, colonnes Cours/Composition par matière. */
+    byte[] classCentralizerPdf(Long classId, Long periodId);
     /** Génère et renvoie les octets du PDF du bulletin (pour affichage direct, sans Cloudinary). */
     byte[] pdfBytes(Long id);
     void generatePdfAsync(Long id);

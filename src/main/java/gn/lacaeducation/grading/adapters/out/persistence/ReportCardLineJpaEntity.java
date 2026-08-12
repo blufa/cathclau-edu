@@ -11,6 +11,8 @@ public class ReportCardLineJpaEntity {
     @Column(name = "subject_average", precision = 5, scale = 2) private BigDecimal subjectAverage;
     @Column(nullable = false, precision = 5, scale = 2) private BigDecimal coefficient;
     @Column(name = "weighted_average", precision = 5, scale = 2) private BigDecimal weightedAverage;
+    @Column(name = "cours_average", precision = 5, scale = 2) private BigDecimal coursAverage;
+    @Column(name = "compo_average", precision = 5, scale = 2) private BigDecimal compoAverage;
     @Column(name = "subject_rank") private Integer subjectRank;
     private String comment;
     @Column(name = "teacher_name") private String teacherName;

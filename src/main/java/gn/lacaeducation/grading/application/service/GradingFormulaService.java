@@ -8,6 +8,7 @@ import gn.lacaeducation.grading.domain.GradingFormula;
 import gn.lacaeducation.grading.domain.GradingFormulaStep;
 import gn.lacaeducation.grading.domain.GradingFormulaStepInput;
 import gn.lacaeducation.grading.domain.StepKind;
+import gn.lacaeducation.grading.domain.StepRole;
 import gn.lacaeducation.grading.domain.WeightMode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -90,6 +91,7 @@ public class GradingFormulaService implements GradingFormulaUseCase {
                         .assessmentTypeId(s.assessmentTypeId())
                         .finalStep(s.finalStep() != null && s.finalStep())
                         .inputs(toInputs(s.inputs()))
+                        .role(s.role() != null ? s.role() : StepRole.NONE)
                         .build())
                 .toList();
     }
@@ -112,6 +114,11 @@ public class GradingFormulaService implements GradingFormulaUseCase {
 
         Set<Integer> orders = new java.util.HashSet<>();
         long finalCount = 0;
+        long coursRoleCount = c.steps().stream().filter(s -> s.role() == StepRole.COURS).count();
+        long compoRoleCount = c.steps().stream().filter(s -> s.role() == StepRole.COMPOSITION).count();
+        if (coursRoleCount > 1 || compoRoleCount > 1) {
+            throw new BusinessRuleException("Une seule étape peut être étiquetée « Cours », et une seule « Composition ».");
+        }
         for (StepCommand s : c.steps()) {
             if (s.stepOrder() == null) throw new BusinessRuleException("Chaque étape doit avoir un ordre.");
             if (!orders.add(s.stepOrder())) {
