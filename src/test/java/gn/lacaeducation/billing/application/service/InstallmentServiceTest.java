@@ -44,7 +44,7 @@ class InstallmentServiceTest {
         when(repo.save(any(Installment.class))).thenAnswer(i -> i.getArgument(0));
 
         Installment created = service.create(new CreateInstallmentCommand(
-                1L, "Tranche 2", new BigDecimal("60.00"), LocalDate.now().plusDays(30)));
+                1L, "Tranche 2", new BigDecimal("60.00"), LocalDate.now().plusDays(30), List.of("2025-10", "2025-11")));
 
         assertThat(created.getStatus()).isEqualTo(InstallmentStatus.PENDING);
         assertThat(created.getAmount()).isEqualByComparingTo("60.00");
@@ -57,7 +57,7 @@ class InstallmentServiceTest {
                 Installment.builder().id(5L).amount(new BigDecimal("80.00")).build()));
 
         assertThatThrownBy(() -> service.create(new CreateInstallmentCommand(
-                1L, "Tranche 2", new BigDecimal("30.00"), LocalDate.now())))
+                1L, "Tranche 2", new BigDecimal("30.00"), LocalDate.now(), List.of())))
                 .isInstanceOf(BusinessRuleException.class);
     }
 
@@ -66,7 +66,7 @@ class InstallmentServiceTest {
         when(schoolFeeRepository.findById(1L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.create(new CreateInstallmentCommand(
-                1L, "Tranche", BigDecimal.TEN, LocalDate.now())))
+                1L, "Tranche", BigDecimal.TEN, LocalDate.now(), List.of())))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 }

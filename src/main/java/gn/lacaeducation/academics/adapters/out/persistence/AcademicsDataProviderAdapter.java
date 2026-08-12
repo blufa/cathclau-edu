@@ -39,6 +39,14 @@ public class AcademicsDataProviderAdapter implements AcademicsDataProvider {
                         p.getStartDate(), p.getEndDate()));
     }
     @Override
+    public List<PeriodPublicInfo> findPeriodsByAcademicYear(Long academicYearId) {
+        return periodeRepo.findByAcademicYearIdOrderBySortOrder(academicYearId).stream()
+                .map(p -> new PeriodPublicInfo(p.getId(), p.getLabel(), p.getType() != null ? p.getType().name() : null,
+                        p.getStartDate(), p.getEndDate()))
+                .toList();
+    }
+
+    @Override
     public boolean isPeriodOpenForGrades(Long periodId) {
         return periodeRepo.findById(periodId)
                 .filter(p -> !Boolean.TRUE.equals(p.getClosed()))

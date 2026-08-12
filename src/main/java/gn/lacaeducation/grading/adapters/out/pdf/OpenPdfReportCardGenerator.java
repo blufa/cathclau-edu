@@ -76,10 +76,19 @@ class OpenPdfReportCardGenerator implements ReportCardPdfGenerator {
             doc.add(ident);
 
             // ── Tableau des matières ───────────────────────────────────────────
-            PdfPTable table = new PdfPTable(new float[]{3.2f, 1.2f, 1f, 1.5f, 1f});
+            // Colonnes Cours/Composition affichées seulement si la formule active les renseigne
+            // (étapes étiquetées §StepRole) — sinon tableau classique, aucune régression visuelle.
+            boolean showCoursCompo = lines.stream().anyMatch(l -> l.getCoursAverage() != null || l.getCompoAverage() != null);
+            int columns = showCoursCompo ? 7 : 5;
+            PdfPTable table = new PdfPTable(showCoursCompo
+                    ? new float[]{2.6f, 1f, 1f, 1f, 0.9f, 1.3f, 0.9f}
+                    : new float[]{3.2f, 1.2f, 1f, 1.5f, 1f});
             table.setWidthPercentage(100);
             table.setSpacingAfter(12f);
-            for (String h : new String[]{"Matière", "Moyenne", "Coef.", "Moy. pondérée", "Rang"}) {
+            String[] headers = showCoursCompo
+                    ? new String[]{"Matière", "Cours", "Compo.", "Moyenne", "Coef.", "Moy. pondérée", "Rang"}
+                    : new String[]{"Matière", "Moyenne", "Coef.", "Moy. pondérée", "Rang"};
+            for (String h : headers) {
                 headerCell(table, h, brand);
             }
             boolean zebra = false;
@@ -91,6 +100,10 @@ class OpenPdfReportCardGenerator implements ReportCardPdfGenerator {
                     subject += "\n" + line.getTeacherName();
                 }
                 bodyCell(table, subject, Element.ALIGN_LEFT, bg, line.getTeacherName() != null);
+                if (showCoursCompo) {
+                    bodyCell(table, dec(line.getCoursAverage()), Element.ALIGN_CENTER, bg, false);
+                    bodyCell(table, dec(line.getCompoAverage()), Element.ALIGN_CENTER, bg, false);
+                }
                 bodyCell(table, dec(line.getSubjectAverage()), Element.ALIGN_CENTER, bg, false);
                 bodyCell(table, dec(line.getCoefficient()), Element.ALIGN_CENTER, bg, false);
                 bodyCell(table, dec(line.getWeightedAverage()), Element.ALIGN_CENTER, bg, false);
@@ -99,7 +112,7 @@ class OpenPdfReportCardGenerator implements ReportCardPdfGenerator {
             if (lines.isEmpty()) {
                 PdfPCell empty = new PdfPCell(new Phrase("Aucune note pour cette période.",
                         SchoolPdfHeader.font(FontFactory.HELVETICA_OBLIQUE, 9.5f, GREY)));
-                empty.setColspan(5);
+                empty.setColspan(columns);
                 empty.setHorizontalAlignment(Element.ALIGN_CENTER);
                 empty.setPadding(10f);
                 table.addCell(empty);

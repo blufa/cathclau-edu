@@ -8,6 +8,8 @@ import gn.lacaeducation.grading.application.port.out.AssessmentRepository;
 import gn.lacaeducation.grading.application.port.out.AssessmentSessionSettingsRepository;
 import gn.lacaeducation.grading.domain.Assessment;
 import gn.lacaeducation.grading.domain.AssessmentSessionSettings;
+import gn.lacaeducation.students.StudentDataProvider;
+import gn.lacaeducation.students.StudentPublicInfo;
 import lombok.RequiredArgsConstructor;
 import java.math.BigDecimal;
 import org.springframework.context.ApplicationEventPublisher;
@@ -21,6 +23,8 @@ public class AssessmentService implements AssessmentUseCase {
     private final AcademicsDataProvider academicsDataProvider;
     private final AssessmentSessionSettingsRepository sessionSettingsRepository;
     private final gn.lacaeducation.grading.application.port.out.AssessmentTypeConfigRepository assessmentTypeConfigRepository;
+    private final StudentDataProvider studentDataProvider;
+    private final gn.lacaeducation.grading.application.port.out.AssessmentPlanPdfGenerator planPdfGenerator;
     private final ApplicationEventPublisher eventPublisher;
 
     @Override public Assessment create(CreateAssessmentCommand c) {
@@ -65,6 +69,24 @@ public class AssessmentService implements AssessmentUseCase {
         Assessment a = load(id);
         requireOpenPeriod(a.getPeriodId());
         repo.deleteById(id);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] planPdf(Long classId, Long subjectId, Long academicYearId) {
+        Long tenantId = gn.lacaeducation.common.TenantContext.get();
+        String className = academicsDataProvider.findClass(classId)
+                .map(c -> c.levelLabel() != null && !c.levelLabel().isBlank() ? c.label() + " (" + c.levelLabel() + ")" : c.label())
+                .orElse(null);
+        String subjectName = academicsDataProvider.subjectLabels(java.util.Set.of(subjectId)).get(subjectId);
+        String schoolYear = tenantId == null ? null : academicsDataProvider.currentAcademicYearLabel(tenantId).orElse(null);
+        List<String> studentNames = studentDataProvider.findStudentsByClass(classId).stream()
+                .sorted(java.util.Comparator.comparing(StudentPublicInfo::lastName,
+                        java.util.Comparator.nullsLast(String::compareToIgnoreCase)))
+                .map(s -> ((s.firstName() != null ? s.firstName() : "") + " " + (s.lastName() != null ? s.lastName() : "")).trim())
+                .toList();
+        return planPdfGenerator.generate(new gn.lacaeducation.grading.application.port.out.AssessmentPlanPdfGenerator.AssessmentPlan(
+                tenantId, className, subjectName, schoolYear, studentNames));
     }
 
     /** Creating/modifying an assessment is forbidden on a closed period (or a non-EN_COURS year). */

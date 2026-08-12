@@ -6,6 +6,8 @@ import java.util.Optional;
 public interface AcademicsDataProvider {
     Optional<ClassPublicInfo> findClass(Long classId);
     Optional<PeriodPublicInfo> findPeriod(Long periodId);
+    /** Périodes d'une année scolaire, triées par ordre (ex. les 2 semestres, pour le bulletin annuel). */
+    List<PeriodPublicInfo> findPeriodsByAcademicYear(Long academicYearId);
     /** Libellés des matières par identifiant (pour les documents : bulletins, relevés). */
     Map<Long, String> subjectLabels(Collection<Long> subjectIds);
     /** True only if the period is not closed and its academic year is EN_COURS (grade entry allowed). */

@@ -11,6 +11,6 @@ import java.util.List;
  */
 public record GroupedInvoiceSettlementEvent(Long tenantId, Long studentId, Long paymentId,
                                             List<Share> shares) {
-    /** Part d'un paiement groupé affectée à une facture-mois. */
-    public record Share(Long invoiceId, BigDecimal amount) {}
+    /** Part d'un paiement groupé affectée à une facture-mois, avec l'élève propriétaire (fratrie). */
+    public record Share(Long invoiceId, Long studentId, BigDecimal amount) {}
 }

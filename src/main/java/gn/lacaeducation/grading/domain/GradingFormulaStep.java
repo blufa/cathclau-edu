@@ -33,4 +33,7 @@ public class GradingFormulaStep {
     private List<GradingFormulaStepInput> inputs;
 
     private boolean finalStep;
+
+    /** Rôle de cette étape pour la moyenne générale (§StepRole) ; {@code NONE} si non étiquetée. */
+    private StepRole role;
 }

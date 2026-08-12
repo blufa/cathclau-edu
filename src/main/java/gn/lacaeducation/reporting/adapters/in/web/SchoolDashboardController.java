@@ -13,6 +13,7 @@ import gn.lacaeducation.payments.SchoolCollectionStatsProvider;
 import gn.lacaeducation.payments.SchoolCollectionStatsProvider.MonthlyCollection;
 import gn.lacaeducation.payroll.SchoolPayrollStatsProvider;
 import gn.lacaeducation.payroll.SchoolPayrollStatsProvider.PayrollMassSummary;
+import gn.lacaeducation.payroll.SchoolPayrollStatsProvider.TeacherHoursProgress;
 import gn.lacaeducation.staff.TeacherPublicInfoProvider;
 import gn.lacaeducation.students.StudentDataProvider;
 import io.swagger.v3.oas.annotations.Operation;
@@ -172,8 +173,8 @@ public class SchoolDashboardController {
     public record RecoveryView(BillingStats overall, List<ClassRecoveryRow> byClass,
                               List<SchoolBillingStatsProvider.PeriodRecovery> byPeriod, List<TopDebtorRow> topDebtors) {}
     public record FounderDashboard(Long academicYearId, RecoveryView recovery, PayrollMassSummary payroll,
-                                   SubsidyStats subsidy, List<FounderAlert> alerts,
-                                   FounderYearComparison comparison) {}
+                                   List<TeacherHoursProgress> teacherHours, SubsidyStats subsidy,
+                                   List<FounderAlert> alerts, FounderYearComparison comparison) {}
 
     @Operation(summary = "Vision Fondateur : recouvrement détaillé, masse salariale, élèves pris en charge, "
             + "alertes automatiques et comparatif inter-années (features/14)")
@@ -201,6 +202,11 @@ public class SchoolDashboardController {
                                 className(d.classId()), d.outstanding()))
                         .toList());
         PayrollMassSummary payroll = payrollStatsProvider.payrollMassSummary(tenantId, y, m);
+        // Triée par progression croissante : met en avant les enseignants les plus en retard sur
+        // leurs heures dues du mois.
+        List<TeacherHoursProgress> teacherHours = payrollStatsProvider.teacherHoursProgress(tenantId, y, m).stream()
+                .sorted(Comparator.comparing(t -> t.dueMinutes() <= 0 ? 0.0 : (double) t.realizedMinutes() / t.dueMinutes()))
+                .toList();
         SubsidyStats subsidy = billingStatsProvider.subsidyStats(tenantId, academicYearId);
 
         List<FounderAlert> alerts = new java.util.ArrayList<>();
@@ -237,7 +243,7 @@ public class SchoolDashboardController {
                     recovery.overall().recoveryRate().subtract(compareStats.recoveryRate()));
         }
 
-        return new FounderDashboard(academicYearId, recovery, payroll, subsidy, alerts, comparison);
+        return new FounderDashboard(academicYearId, recovery, payroll, teacherHours, subsidy, alerts, comparison);
     }
 
     // ── 10.3 RH ─────────────────────────────────────────────────────────────

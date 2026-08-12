@@ -36,6 +36,8 @@ public class GradingCalculationSettingsService implements GradingCalculationSett
                 .averageMethod(c.averageMethod() != null ? c.averageMethod() : defaults.getAverageMethod())
                 .decimals(c.decimals() != null ? c.decimals() : defaults.getDecimals())
                 .rounding(c.rounding() != null ? c.rounding() : defaults.getRounding())
+                .generalCoursWeight(c.generalCoursWeight())
+                .generalCompoWeight(c.generalCompoWeight())
                 .build());
     }
 }

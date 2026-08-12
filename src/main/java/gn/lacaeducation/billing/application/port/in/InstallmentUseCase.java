@@ -5,8 +5,8 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 public interface InstallmentUseCase {
-    record CreateInstallmentCommand(Long feeId, String label, BigDecimal amount, LocalDate dueDate) {}
-    record UpdateInstallmentCommand(String label, BigDecimal amount, LocalDate dueDate) {}
+    record CreateInstallmentCommand(Long feeId, String label, BigDecimal amount, LocalDate dueDate, List<String> months) {}
+    record UpdateInstallmentCommand(String label, BigDecimal amount, LocalDate dueDate, List<String> months) {}
     /** Une période de la répartition trimestrielle pondérée (ex. « Trimestre 1 », 40 %, échéance). */
     record TermSpec(String label, BigDecimal percentage, LocalDate dueDate) {}
     /** Génère N échéances depuis un total annuel et une répartition en % (ex. 40/30/30). */

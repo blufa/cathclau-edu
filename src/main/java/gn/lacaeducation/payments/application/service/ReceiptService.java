@@ -72,7 +72,7 @@ public class ReceiptService implements ReceiptUseCase {
         String reference = generateReference(p.getTenantId());
         Receipt receipt = repo.save(Receipt.builder().paymentId(paymentId)
                 .reference(reference).amount(p.getAmount())
-                .studentName(resolveStudentName(p.getStudentId()))
+                .studentName(resolveGroupStudentName(p))
                 .collectedByName(resolveCollectedByName(p.getCollectedByUserId()))
                 .coveredMonths(coveredMonths).monthsCount(monthsCount).remainingAfter(remainingAfter)
                 .generatedAt(LocalDateTime.now()).build());
@@ -126,6 +126,22 @@ public class ReceiptService implements ReceiptUseCase {
             log.warn("Nom d'élève non résolu pour le reçu (élève {}) : {}", studentId, e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * Nom(s) affiché(s) sur un reçu groupé : le nom de l'élève pour un paiement classique, ou « N
+     * enfants : liste » pour un paiement groupé multi-enfants (fratrie, §payments — le détail par
+     * enfant est ensuite imprimé sur le PDF via {@code Payment.groupLines}).
+     */
+    private String resolveGroupStudentName(Payment p) {
+        List<Long> ids = p.getStudentIds() != null && !p.getStudentIds().isEmpty()
+                ? p.getStudentIds() : java.util.Collections.singletonList(p.getStudentId());
+        List<String> names = ids.stream().distinct()
+                .map(this::resolveStudentName).filter(n -> n != null && !n.isBlank()).toList();
+        if (names.size() <= 1) {
+            return names.isEmpty() ? resolveStudentName(p.getStudentId()) : names.get(0);
+        }
+        return names.size() + " enfants : " + String.join(", ", names);
     }
 
     /** Snapshot du nom de l'agent ayant encaissé (« Opérateur ») ; ne bloque jamais la génération du reçu. */

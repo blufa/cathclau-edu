@@ -2,6 +2,7 @@ package gn.lacaeducation.grading.application.port.in;
 
 import gn.lacaeducation.grading.domain.GradingFormula;
 import gn.lacaeducation.grading.domain.StepKind;
+import gn.lacaeducation.grading.domain.StepRole;
 import gn.lacaeducation.grading.domain.WeightMode;
 
 import java.math.BigDecimal;
@@ -12,7 +13,7 @@ public interface GradingFormulaUseCase {
     record StepInputCommand(Integer refStepOrder, WeightMode weightMode, BigDecimal fixedWeight) {}
 
     record StepCommand(Integer stepOrder, String label, StepKind stepKind, Integer monthIndex,
-                       Long assessmentTypeId, List<StepInputCommand> inputs, Boolean finalStep) {}
+                       Long assessmentTypeId, List<StepInputCommand> inputs, Boolean finalStep, StepRole role) {}
 
     record FormulaCommand(String label, String periodType, Boolean active, List<StepCommand> steps) {}
 

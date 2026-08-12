@@ -2,12 +2,7 @@ package gn.lacaeducation.billing.adapters.out.pdf;
 
 import com.lowagie.text.Document;
 import com.lowagie.text.Element;
-import com.lowagie.text.FontFactory;
 import com.lowagie.text.PageSize;
-import com.lowagie.text.Paragraph;
-import com.lowagie.text.Phrase;
-import com.lowagie.text.Rectangle;
-import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
 import gn.lacaeducation.billing.application.port.out.InvoicePdfGenerator;
@@ -20,22 +15,20 @@ import gn.lacaeducation.students.StudentDataProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-import java.awt.Color;
 import java.io.ByteArrayOutputStream;
-import java.math.BigDecimal;
-import java.text.DecimalFormat;
-import java.text.DecimalFormatSymbols;
 import java.time.format.DateTimeFormatter;
-import java.util.Locale;
 
-/** Rend une facture scolaire en PDF A5 soigné, aux couleurs de l'école (logo + couleur de marque). */
+import static gn.lacaeducation.common.pdf.AdminDocumentLayout.*;
+
+/**
+ * Rend une facture scolaire en PDF A5, sobre (noir sur blanc) — même mise en page que le reçu de
+ * paiement et la fiche de paie (voir {@code gn.lacaeducation.common.pdf.AdminDocumentLayout}) :
+ * en-tête établissement, titre encadré, bloc élève, détail des montants, total et cadre de signature.
+ */
 @Component
 @RequiredArgsConstructor
 class OpenPdfInvoiceGenerator implements InvoicePdfGenerator {
 
-    private static final Color GREY = new Color(110, 110, 110);
-    private static final Color DARK = new Color(33, 37, 41);
-    private static final Color LINE = new Color(232, 232, 232);
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     private final TenantInfoProvider tenantInfoProvider;
@@ -44,7 +37,7 @@ class OpenPdfInvoiceGenerator implements InvoicePdfGenerator {
     @Override
     public byte[] generate(Invoice inv) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        Document doc = new Document(PageSize.A5, 30, 30, 28, 40);
+        Document doc = new Document(PageSize.A5, 28, 28, 24, 36);
         try {
             TenantPublicInfo info = inv.getTenantId() == null ? null
                     : tenantInfoProvider.findTenantInfo(inv.getTenantId()).orElse(null);
@@ -53,32 +46,40 @@ class OpenPdfInvoiceGenerator implements InvoicePdfGenerator {
                     SchoolPdfHeader.parseColor(info == null ? null : info.brandColor())));
             doc.open();
 
-            Color brand = SchoolPdfHeader.render(doc, tenantInfoProvider, inv.getTenantId());
+            header(doc, info);
+            titleBox(doc, "FACTURE");
 
-            titleCard(doc, brand, "FACTURE",
-                    "N° " + safe(inv.getReference()) + "   ·   "
-                            + (inv.getIssueDate() == null ? "-" : inv.getIssueDate().format(DATE)));
+            PdfPTable idBlock = infoTable();
+            row(idBlock, "N° facture", safe(inv.getReference()));
+            row(idBlock, "Date d'émission", inv.getIssueDate() == null ? "-" : inv.getIssueDate().format(DATE));
+            row(idBlock, "Statut", statusLabel(inv));
+            doc.add(idBlock);
 
-            PdfPTable det = card();
-            row(det, "Élève", studentName(inv.getStudentId()));
-            if (inv.getPeriodLabel() != null && !inv.getPeriodLabel().isBlank()) {
-                row(det, "Objet", inv.getPeriodLabel());
-            } else {
-                row(det, "Objet", "Frais de scolarité");
-            }
-            row(det, "Statut", inv.getStatus() == null ? "-" : statusLabel(inv));
-            row(det, "Montant total", money(inv.getTotalAmount()) + " GNF");
+            PdfPTable studentBlock = infoTable();
+            studentBlock.setSpacingBefore(10f);
+            row(studentBlock, "Élève", studentName(inv.getStudentId()));
+            row(studentBlock, "Objet", inv.getPeriodLabel() != null && !inv.getPeriodLabel().isBlank()
+                    ? inv.getPeriodLabel() : "Frais de scolarité");
+            doc.add(studentBlock);
+
+            PdfPTable amounts = dataTable(new float[]{2f, 1.5f});
+            headerCell(amounts, "Détail");
+            headerCell(amounts, "Montant");
+            cell(amounts, "Montant total", Element.ALIGN_LEFT);
+            cell(amounts, money(inv.getTotalAmount()) + " GNF", Element.ALIGN_RIGHT);
             if (inv.getDiscountAmount() != null && inv.getDiscountAmount().signum() > 0) {
                 String label = "Remise" + (inv.getDiscountReason() != null && !inv.getDiscountReason().isBlank()
                         ? " (" + inv.getDiscountReason() + ")" : "");
-                row(det, label, "− " + money(inv.getDiscountAmount()) + " GNF");
+                cell(amounts, label, Element.ALIGN_LEFT);
+                cell(amounts, "− " + money(inv.getDiscountAmount()) + " GNF", Element.ALIGN_RIGHT);
             }
-            row(det, "Déjà payé", money(inv.getPaidAmount()) + " GNF");
-            doc.add(det);
+            cell(amounts, "Déjà payé", Element.ALIGN_LEFT);
+            cell(amounts, money(inv.getPaidAmount()) + " GNF", Element.ALIGN_RIGHT);
+            doc.add(amounts);
 
-            amountBox(doc, brand, "RESTE À PAYER", money(inv.getRemainingBalance()) + " GNF");
+            totalRow(doc, "Reste à payer", money(inv.getRemainingBalance()) + " GNF");
 
-            footer(doc, "Facture émise par l'établissement — à régler selon les échéances en vigueur.");
+            signatureBox(doc, "Signature et Cachet de l'Établissement");
 
             doc.close();
             return out.toByteArray();
@@ -87,85 +88,14 @@ class OpenPdfInvoiceGenerator implements InvoicePdfGenerator {
         }
     }
 
-    // ── Briques de mise en page partagées (look A5) ──────────────────────────
-
-    private static void titleCard(Document doc, Color brand, String title, String subtitle) {
-        PdfPCell c = new PdfPCell();
-        c.setBackgroundColor(SchoolPdfHeader.tint(brand, 0.10));
-        c.setBorder(Rectangle.LEFT);
-        c.setBorderColorLeft(brand);
-        c.setBorderWidthLeft(3f);
-        c.setPadding(10f);
-        c.addElement(new Paragraph(title, SchoolPdfHeader.font(FontFactory.HELVETICA_BOLD, 15, brand)));
-        c.addElement(new Paragraph(subtitle, SchoolPdfHeader.font(FontFactory.HELVETICA, 9, GREY)));
-        PdfPTable t = new PdfPTable(1);
-        t.setWidthPercentage(100);
-        t.setSpacingBefore(12f);
-        t.setSpacingAfter(4f);
-        t.addCell(c);
-        doc.add(t);
-    }
-
-    private static PdfPTable card() {
-        PdfPTable t = new PdfPTable(new float[]{1.3f, 2f});
-        t.setWidthPercentage(100);
-        t.setSpacingBefore(10f);
-        return t;
-    }
-
-    private static void row(PdfPTable t, String label, String value) {
-        PdfPCell l = new PdfPCell(new Phrase(label, SchoolPdfHeader.font(FontFactory.HELVETICA, 9, GREY)));
-        l.setBorder(Rectangle.BOTTOM);
-        l.setBorderColor(LINE);
-        l.setBorderWidth(0.6f);
-        l.setPadding(6f);
-        PdfPCell v = new PdfPCell(new Phrase(value == null ? "-" : value, SchoolPdfHeader.font(FontFactory.HELVETICA_BOLD, 9.5f, DARK)));
-        v.setBorder(Rectangle.BOTTOM);
-        v.setBorderColor(LINE);
-        v.setBorderWidth(0.6f);
-        v.setPadding(6f);
-        v.setHorizontalAlignment(Element.ALIGN_RIGHT);
-        t.addCell(l);
-        t.addCell(v);
-    }
-
-    private static void amountBox(Document doc, Color brand, String label, String amount) {
-        PdfPCell c = new PdfPCell();
-        c.setBackgroundColor(brand);
-        c.setBorder(0);
-        c.setPadding(13f);
-        Paragraph lab = new Paragraph(label, SchoolPdfHeader.font(FontFactory.HELVETICA_BOLD, 9, Color.WHITE));
-        lab.setSpacingAfter(3f);
-        c.addElement(lab);
-        c.addElement(new Paragraph(amount, SchoolPdfHeader.font(FontFactory.HELVETICA_BOLD, 20, Color.WHITE)));
-        PdfPTable t = new PdfPTable(1);
-        t.setWidthPercentage(100);
-        t.setSpacingBefore(16f);
-        t.addCell(c);
-        doc.add(t);
-    }
-
-    private static void footer(Document doc, String text) {
-        Paragraph p = new Paragraph(text, SchoolPdfHeader.font(FontFactory.HELVETICA_OBLIQUE, 8, GREY));
-        p.setAlignment(Element.ALIGN_CENTER);
-        p.setSpacingBefore(22f);
-        doc.add(p);
-    }
-
     private static String statusLabel(Invoice inv) {
+        if (inv.getStatus() == null) return "-";
         return switch (inv.getStatus()) {
             case UNPAID -> "Impayée";
             case PARTIAL -> "Partielle";
             case PAID -> "Payée";
             default -> inv.getStatus().name();
         };
-    }
-
-    private static String money(BigDecimal a) {
-        if (a == null) return "0";
-        DecimalFormatSymbols sym = new DecimalFormatSymbols(Locale.FRANCE);
-        sym.setGroupingSeparator(' ');
-        return new DecimalFormat("#,##0", sym).format(a);
     }
 
     private String studentName(Long studentId) {
@@ -176,6 +106,4 @@ class OpenPdfInvoiceGenerator implements InvoicePdfGenerator {
                 .filter(n -> !n.isBlank())
                 .orElse("Élève #" + studentId);
     }
-
-    private static String safe(String s) { return (s == null || s.isBlank()) ? "-" : s; }
 }
