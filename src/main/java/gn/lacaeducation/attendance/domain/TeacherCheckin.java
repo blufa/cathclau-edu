@@ -15,7 +15,9 @@ public class TeacherCheckin {
     private LocalDate checkinDate;
     private Long scheduleSlotId;
     private LocalTime sessionStart;
+    private LocalTime sessionEnd;
     private LocalTime checkInTime;
+    private LocalTime checkOutTime;
     private Integer lateMinutes;
     private LocalDateTime createdAt;
 }

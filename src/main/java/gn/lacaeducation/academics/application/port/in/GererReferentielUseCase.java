@@ -17,8 +17,8 @@ public interface GererReferentielUseCase {
     List<Salle> findRooms(Long tenantId);
     void deleteRoom(Long id);
     // Level
-    Niveau createLevel(Long tenantId, String label, Integer sortOrder);
-    Niveau updateLevel(Long id, String label, Integer sortOrder);
+    Niveau createLevel(Long tenantId, String label, Integer sortOrder, SchoolCycle cycle);
+    Niveau updateLevel(Long id, String label, Integer sortOrder, SchoolCycle cycle);
     Optional<Niveau> findLevelById(Long id);
     List<Niveau> findLevels(Long tenantId);
     void deleteLevel(Long id);

@@ -4,8 +4,10 @@ import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.academics.ClassPublicInfo;
 import gn.lacaeducation.academics.ScheduleSlotPublicInfo;
 import gn.lacaeducation.attendance.TeacherWorkProvider;
+import gn.lacaeducation.calendar.CalendarDataProvider;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
+import gn.lacaeducation.common.TenantContext;
 import gn.lacaeducation.lessons.TeacherTeachingProvider;
 import gn.lacaeducation.payroll.application.port.out.PayslipLineRepository;
 import gn.lacaeducation.payroll.application.port.out.PayslipRepository;
@@ -50,6 +52,7 @@ public class PayrollService {
     private final TeacherWorkProvider workProvider;
     private final gn.lacaeducation.payroll.application.port.in.SalaryFeeDeductionUseCase salaryFeeDeductionUseCase;
     private final AcademicsDataProvider academics;
+    private final CalendarDataProvider calendar;
 
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
 
@@ -60,13 +63,15 @@ public class PayrollService {
                              BigDecimal hourlyRate, BigDecimal fixedSalary, BigDecimal teachingPay, BigDecimal grossPay) {}
 
     public TeacherCompensation setCompensation(Long tenantId, Long teacherId, PayMode mode,
-                                                BigDecimal hourlyRateNormal, BigDecimal hourlyRateExam, BigDecimal fixedSalary) {
+                                                BigDecimal hourlyRateNormal, BigDecimal hourlyRateExam, BigDecimal fixedSalary,
+                                                Boolean paidDuringVacation) {
         TeacherCompensation c = compRepo.findByTeacherId(teacherId)
                 .orElseGet(() -> TeacherCompensation.builder().tenantId(tenantId).teacherId(teacherId).build());
         c.setPayMode(mode != null ? mode : PayMode.HOURLY);
         c.setHourlyRateNormal(hourlyRateNormal != null ? hourlyRateNormal : BigDecimal.ZERO);
         c.setHourlyRateExam(hourlyRateExam != null ? hourlyRateExam : BigDecimal.ZERO);
         c.setFixedSalary(fixedSalary != null ? fixedSalary : BigDecimal.ZERO);
+        c.setPaidDuringVacation(Boolean.TRUE.equals(paidDuringVacation));
         return compRepo.save(c);
     }
 
@@ -156,6 +161,35 @@ public class PayrollService {
         return new TeacherPayrollMass(totalNormal, totalExam, monthly, comps.size());
     }
 
+    /** Salaire (mensuel courant + estimation cumulée sur monthsCount mois) de chaque enseignant du
+     * tenant (Vision Fondateur) — pas seulement le total agrégé de {@link #teacherPayrollMass}. */
+    public record TeacherSalaryBreakdown(Long teacherId, BigDecimal monthlyPay, BigDecimal annualProjection) {}
+
+    @Transactional(readOnly = true)
+    public List<TeacherSalaryBreakdown> teacherSalaryBreakdown(Long tenantId, int year, int month, int monthsCount) {
+        List<TeacherSalaryBreakdown> result = new java.util.ArrayList<>();
+        for (TeacherCompensation c : compRepo.findByTenantId(tenantId)) {
+            BigDecimal monthlyPay = monthlyGrossPayFor(c, year, month);
+            BigDecimal annual = BigDecimal.ZERO;
+            YearMonth cursor = YearMonth.of(year, month);
+            for (int i = 0; i < monthsCount; i++) {
+                annual = annual.add(monthlyGrossPayFor(c, cursor.getYear(), cursor.getMonthValue()));
+                cursor = cursor.plusMonths(1);
+            }
+            result.add(new TeacherSalaryBreakdown(c.getTeacherId(), monthlyPay, annual));
+        }
+        return result;
+    }
+
+    /** Salaire brut théorique d'un enseignant pour un mois donné : fixe s'il est en mode FIXE, sinon
+     * heures théoriques de l'emploi du temps (jours fériés exclus, sauf avantage vacances) × tarif. */
+    private BigDecimal monthlyGrossPayFor(TeacherCompensation c, int year, int month) {
+        if (c.getPayMode() == PayMode.FIXED) {
+            return c.getFixedSalary() != null ? c.getFixedSalary() : BigDecimal.ZERO;
+        }
+        return computeTheoreticalMonthlyPay(c.getTeacherId(), year, month).grossPay();
+    }
+
     /**
      * Calcule automatiquement, sans saisie manuelle, le nombre d'heures théoriques que l'enseignant
      * devait effectuer ce mois-ci (projection de son emploi du temps hebdomadaire sur les
@@ -165,9 +199,21 @@ public class PayrollService {
     @Transactional(readOnly = true)
     public TheoreticalMonthlyPay computeTheoreticalMonthlyPay(Long teacherId, int year, int month) {
         YearMonth ym = YearMonth.of(year, month);
+        TeacherCompensation comp = compRepo.findByTeacherId(teacherId).orElse(null);
+        Long tenantId = comp != null && comp.getTenantId() != null ? comp.getTenantId() : TenantContext.get();
+
+        // Jours fériés/vacances (§calendar) exclus du comptage : un enseignant programmé le lundi ne
+        // doit pas être compté sur un lundi tombant en vacances (sinon les heures dues sont surestimées).
+        // Sauf avantage accordé par la direction (paidDuringVacation) : dans ce cas, on ne retire rien.
+        boolean paidDuringVacation = comp != null && comp.isPaidDuringVacation();
+        java.util.Set<LocalDate> nonWorkingDates = tenantId != null && !paidDuringVacation
+                ? new java.util.HashSet<>(calendar.holidayDates(tenantId, ym.atDay(1), ym.atEndOfMonth()))
+                : java.util.Set.of();
         Map<DayOfWeek, Integer> occurrencesByDay = new HashMap<>();
         for (int day = 1; day <= ym.lengthOfMonth(); day++) {
-            occurrencesByDay.merge(ym.atDay(day).getDayOfWeek(), 1, Integer::sum);
+            LocalDate d = ym.atDay(day);
+            if (nonWorkingDates.contains(d)) continue;
+            occurrencesByDay.merge(d.getDayOfWeek(), 1, Integer::sum);
         }
 
         Map<Long, ClassPublicInfo> classCache = new HashMap<>();
@@ -188,7 +234,6 @@ public class PayrollService {
             if (exam) examMinutes += minutes; else normalMinutes += minutes;
         }
 
-        TeacherCompensation comp = compRepo.findByTeacherId(teacherId).orElse(null);
         PayMode mode = comp != null && comp.getPayMode() != null ? comp.getPayMode() : PayMode.HOURLY;
         BigDecimal rateNormal = comp != null && comp.getHourlyRateNormal() != null ? comp.getHourlyRateNormal() : BigDecimal.ZERO;
         BigDecimal rateExam = comp != null && comp.getHourlyRateExam() != null ? comp.getHourlyRateExam() : BigDecimal.ZERO;

@@ -134,4 +134,89 @@ class InvoiceServiceTest {
         assertThatThrownBy(() -> service().applyPayment(99L, BigDecimal.TEN))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
+
+    @Test
+    void applyEarlyPaymentDiscount_appliesOnFullAnnualTotal_whenNothingPaidYet() {
+        // Premier paiement de l'année : 3 tranches de 300 (annuel = 900), aucune encore payée. Le parent
+        // choisit de tout régler d'un coup dès ce premier paiement → remise de 10% sur les 900 (=90),
+        // répartie sur les 3 tranches (30 chacune).
+        gn.lacaeducation.billing.domain.SchoolFee fee = gn.lacaeducation.billing.domain.SchoolFee.builder()
+                .id(3L).tenantId(1L).type(gn.lacaeducation.billing.domain.FeeType.MONTHLY).build();
+        when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(fee));
+
+        Invoice unpaid1 = Invoice.builder().id(1L).feeId(3L).totalAmount(new BigDecimal("300.00")).paidAmount(BigDecimal.ZERO).status(InvoiceStatus.UNPAID).build();
+        Invoice unpaid2 = Invoice.builder().id(2L).feeId(3L).totalAmount(new BigDecimal("300.00")).paidAmount(BigDecimal.ZERO).status(InvoiceStatus.UNPAID).build();
+        Invoice unpaid3 = Invoice.builder().id(3L).feeId(3L).totalAmount(new BigDecimal("300.00")).paidAmount(BigDecimal.ZERO).status(InvoiceStatus.UNPAID).build();
+        when(repo.findByStudentId(7L)).thenReturn(java.util.List.of(unpaid1, unpaid2, unpaid3));
+        when(repo.findById(1L)).thenReturn(Optional.of(unpaid1));
+        when(repo.findById(2L)).thenReturn(Optional.of(unpaid2));
+        when(repo.findById(3L)).thenReturn(Optional.of(unpaid3));
+        when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(earlyPaymentDiscountUseCase.computeApplicable(1L, gn.lacaeducation.billing.domain.FeeType.MONTHLY))
+                .thenReturn(new gn.lacaeducation.billing.application.port.in.EarlyPaymentDiscountUseCase.ApplicableDiscount(
+                        new BigDecimal("10"), "Paiement annuel"));
+
+        var updated = service().applyEarlyPaymentDiscount(7L, 3L);
+
+        assertThat(updated).hasSize(3);
+        BigDecimal totalDiscount = updated.stream().map(Invoice::getDiscountAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertThat(totalDiscount).isEqualByComparingTo("90.00");
+    }
+
+    @Test
+    void applyEarlyPaymentDiscount_noDiscountIfAnyTrancheAlreadyPaid() {
+        // Le parent a déjà réglé une tranche (même partiellement) sans remise, puis décide de payer le
+        // reste de l'année d'un coup : trop tard pour la remise « paiement annuel » — elle ne récompense
+        // que le choix fait dès le tout premier paiement de scolarité.
+        gn.lacaeducation.billing.domain.SchoolFee fee = gn.lacaeducation.billing.domain.SchoolFee.builder()
+                .id(3L).tenantId(1L).type(gn.lacaeducation.billing.domain.FeeType.MONTHLY).build();
+        when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(fee));
+
+        Invoice paid = Invoice.builder().id(1L).feeId(3L).totalAmount(new BigDecimal("300.00"))
+                .paidAmount(new BigDecimal("300.00")).status(InvoiceStatus.PAID).build();
+        Invoice unpaid1 = Invoice.builder().id(2L).feeId(3L).totalAmount(new BigDecimal("300.00")).paidAmount(BigDecimal.ZERO).status(InvoiceStatus.UNPAID).build();
+        Invoice unpaid2 = Invoice.builder().id(3L).feeId(3L).totalAmount(new BigDecimal("300.00")).paidAmount(BigDecimal.ZERO).status(InvoiceStatus.UNPAID).build();
+        when(repo.findByStudentId(7L)).thenReturn(java.util.List.of(paid, unpaid1, unpaid2));
+
+        var updated = service().applyEarlyPaymentDiscount(7L, 3L);
+
+        assertThat(updated).extracting(Invoice::getDiscountAmount).allMatch(d -> d == null);
+        verify(earlyPaymentDiscountUseCase, never()).computeApplicable(any(), any());
+        verify(repo, never()).save(any());
+    }
+
+    @Test
+    void removeEarlyPaymentDiscount_revertsDiscountedInvoicesToOriginalAmount() {
+        // Régression : un parent coche "toute la scolarité" (remise appliquée), puis décoche un mois —
+        // la remise ne doit plus rester acquise, les factures doivent revenir à leur montant initial.
+        Invoice discounted1 = Invoice.builder().id(1L).feeId(3L).totalAmount(new BigDecimal("300.00"))
+                .paidAmount(BigDecimal.ZERO).discountAmount(new BigDecimal("30.00")).discountReason("Paiement annuel (10%)")
+                .status(InvoiceStatus.UNPAID).build();
+        Invoice discounted2 = Invoice.builder().id(2L).feeId(3L).totalAmount(new BigDecimal("300.00"))
+                .paidAmount(BigDecimal.ZERO).discountAmount(new BigDecimal("30.00")).discountReason("Paiement annuel (10%)")
+                .status(InvoiceStatus.UNPAID).build();
+        when(repo.findByStudentId(7L)).thenReturn(java.util.List.of(discounted1, discounted2));
+        when(repo.findById(1L)).thenReturn(Optional.of(discounted1));
+        when(repo.findById(2L)).thenReturn(Optional.of(discounted2));
+        when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        var reverted = service().removeEarlyPaymentDiscount(7L, 3L);
+
+        assertThat(reverted).hasSize(2);
+        assertThat(reverted).extracting(Invoice::getDiscountAmount).allMatch(d -> d.signum() == 0);
+        assertThat(reverted).extracting(Invoice::getRemainingBalance)
+                .allMatch(b -> b.compareTo(new BigDecimal("300.00")) == 0);
+    }
+
+    @Test
+    void removeEarlyPaymentDiscount_doesNothing_whenNoDiscountWasApplied() {
+        Invoice plain = Invoice.builder().id(1L).feeId(3L).totalAmount(new BigDecimal("300.00"))
+                .paidAmount(BigDecimal.ZERO).status(InvoiceStatus.UNPAID).build();
+        when(repo.findByStudentId(7L)).thenReturn(java.util.List.of(plain));
+
+        var result = service().removeEarlyPaymentDiscount(7L, 3L);
+
+        assertThat(result).containsExactly(plain);
+        verify(repo, never()).save(any());
+    }
 }

@@ -1,0 +1,853 @@
+# Plan de test — Batch paie / permissions / inscription / chef de classe / horaires / moniteur / scan
+
+> Ce document liste, fonctionnalité par fonctionnalité, où cliquer pour retrouver et vérifier chaque
+> modification livrée. Se connecter avec un compte `SCHOOL_ADMIN` ou `DIRECTOR` sauf indication contraire.
+> Mis à jour avec les correctifs du scan de badge, la réinscription d'un ancien élève absent de la
+> plateforme, l'avantage « payé pendant les vacances » et la projection de paie à durée réelle (§3, 3bis, 9, 10).
+
+---
+
+## 1. Paie — jours fériés exclus du calcul des heures dues
+
+**Où** : menu **Paie** (`/payroll`) → onglet **Rémunération**.
+
+1. Choisir un enseignant qui a un cours régulier un jour donné (ex. tous les lundis) dans son emploi du temps.
+2. Dans le menu **Année scolaire & calendrier** (`/academic-years`, PAS « Frais scolaires » — le
+   calendrier n'y est pas rattaché), sur la fiche de l'année scolaire, section **« Calendrier »**, vérifier
+   qu'un événement **Férié** ou **Vacances** existe sur un mois donné et recoupe au moins un des jours où
+   l'enseignant a cours (ex. un lundi férié dans le mois choisi). Sinon, en créer un via **« Ajouter un
+   événement »** sur cette même page.
+3. Sur la fiche enseignant (onglet Rémunération), sélectionner ce mois dans le champ **Mois**.
+4. Regarder le panneau **« Estimation prévisionnelle (emploi du temps) »** : le nombre d'heures affiché
+   doit être **inférieur** à ce qu'il aurait été si tous les lundis du mois étaient comptés (avant le
+   correctif, le jour férié était compté comme un jour de classe normal).
+
+*Résultat attendu* : le jour férié n'est plus compté dans les heures dues du mois.
+
+---
+
+## 2. Paie — distinction bulletin réel vs estimation
+
+**Où** : `/payroll` → onglet **Rémunération**, avec un enseignant sélectionné et un mois choisi.
+
+1. Constater qu'il y a maintenant **deux panneaux bien distincts** :
+   - **« Paie du mois »** (fond blanc) : basé sur les heures **réalisées** (cahier de textes, séances
+     marquées « Réalisée »). Bouton **« Générer la fiche de paie »** → c'est le bulletin réel.
+   - **« Estimation prévisionnelle (emploi du temps) »** (fond orange clair) : basé sur les heures
+     **théoriques** de l'emploi du temps, qu'une séance ait eu lieu ou non. Un texte d'avertissement
+     explique de ne pas l'utiliser comme bulletin définitif. Bouton renommé **« Générer une estimation »**.
+   - Si l'enseignant est payé **à l'heure**, un texte orange rappelle : *« Enseignant payé à l'heure :
+     préférez « Paie du mois » pour le bulletin réel »*.
+2. Cliquer sur **« Générer une estimation »** → le message de succès précise *« à ne pas confondre avec
+   le bulletin réel »*.
+
+*Résultat attendu* : impossible de confondre visuellement les deux, contrairement à avant où les deux
+boutons se ressemblaient.
+
+---
+
+## 3. Paie — projection jusqu'à la fin de l'année scolaire (durée réelle, plus de 9 mois figés)
+
+**Où** : menu **Vision Fondateur** (`/founder`).
+
+1. Descendre jusqu'à la section **« Estimation de la masse salariale sur l'année scolaire »** (juste après
+   la section « Masse salariale du mois »).
+2. Vérifier le tableau : une ligne par mois, **du mois actuellement affiché jusqu'à la date de fin réelle
+   de l'année scolaire sélectionnée** (colonne `endDate` de l'année scolaire, module Académique) — plus un
+   nombre fixe de 9. Sur une année scolaire de 10 mois, le tableau doit avoir jusqu'à 10 lignes (moins
+   celles déjà passées si le mois affiché est en cours d'année) ; changer l'année scolaire courante dans le
+   sélecteur du haut de page pour vérifier que la longueur du tableau s'ajuste.
+3. Vérifier en bas les 3 totaux : **Total enseignants**, **Total personnel**, **Total général**.
+
+*Résultat attendu* : la longueur de la projection suit la vraie durée de l'année scolaire configurée, pas
+un nombre de mois codé en dur.
+
+## 3ter. Vision Fondateur — salaire de chaque enseignant (pas seulement le total)
+
+**Où** : menu **Vision Fondateur** (`/founder`), nouvelle section **« Salaire par enseignant »** (juste
+après « Masse salariale du mois »).
+
+1. Vérifier le tableau : une ligne par enseignant, colonnes **Enseignant**, **Ce mois**, **Estimation
+   annuelle**.
+2. Vérifier que la somme de la colonne « Ce mois » correspond au total « Enseignants » affiché dans la
+   section « Masse salariale du mois » juste au-dessus.
+3. Vérifier qu'un enseignant à salaire fixe affiche le même montant chaque mois dans sa colonne « Ce
+   mois », et que « Estimation annuelle » correspond à ce montant × le nombre de mois restants jusqu'à la
+   fin de l'année scolaire (voir §3).
+
+*Résultat attendu* : on voit désormais le détail par enseignant, pas seulement l'agrégat de toute l'école.
+
+## 3bis. Paie — avantage « payé pendant les vacances »
+
+**Où** : `/payroll` → onglet **Rémunération**, formulaire **« Mode de rémunération »** d'un enseignant.
+
+1. Cocher **« Payé même pendant les vacances (avantage accordé par la direction) »**, puis **Enregistrer**.
+2. Choisir un mois contenant un jour férié/vacances où cet enseignant a normalement cours → dans le
+   panneau **« Estimation prévisionnelle »**, ce jour doit maintenant être **compté** dans les heures dues
+   (contrairement au point 1, qui reste le comportement par défaut quand la case n'est PAS cochée).
+3. Décocher la case, enregistrer à nouveau → le jour férié redevient exclu pour ce même mois.
+
+*Résultat attendu* : le comportement par défaut (jours fériés exclus, point 1) reste inchangé pour tous les
+enseignants ; seuls ceux explicitement marqués bénéficient de l'avantage.
+
+---
+
+## 4. Permissions par utilisateur (en plus du rôle)
+
+**Où** : menu **Utilisateurs** (`/users`).
+
+1. Choisir un utilisateur qui a le rôle **Comptable** (ou tout rôle autre qu'admin).
+2. Cliquer sur **« Rôles »** (bouton dans la ligne de l'utilisateur) → une modale **« Rôles & permissions
+   de l'utilisateur »** s'ouvre.
+3. En haut : la liste des rôles (inchangée). En dessous, une nouvelle section **« Permissions
+   supplémentaires »** avec un texte explicatif et une grille de permissions groupées par ressource
+   (identique à l'écran Rôles & permissions).
+4. Cocher par exemple `eleve:create` (dans le groupe « eleve »), cliquer **Enregistrer**.
+5. Message de succès : *« Permissions supplémentaires mises à jour. Elles seront rafraîchies à la
+   prochaine connexion. »*
+6. **Se déconnecter et se reconnecter avec le compte comptable concerné**, puis vérifier qu'il peut
+   maintenant créer un élève (bouton « Nouvel élève » sur la page Élèves) alors que son rôle Comptable ne
+   le permettait pas auparavant.
+
+*Résultat attendu* : le compte a la permission en plus de son rôle, sans qu'un rôle personnalisé ait dû
+être créé.
+
+---
+
+## 5. Abonnement transport/cantine à l'inscription
+
+**Où** : fiche élève → bouton **« Inscrire »** (ou depuis la liste des élèves).
+
+1. Ouvrir la modale d'inscription (**création**, pas modification) pour un élève non encore inscrit
+   dans l'année.
+2. Choisir une classe. En dessous du champ **Type**, une nouvelle section **« Abonnements (optionnel) »**
+   apparaît :
+   - **« Abonner au transport »** : si des lignes de transport existent (module Transport), cocher fait
+     apparaître 3 menus : **Ligne**, **Arrêt** (optionnel), **Sens**.
+   - **« Abonner à la cantine »** : actif seulement si un frais **CANTINE** est configuré pour la classe
+     choisie (Frais scolaires) ; sinon le texte *« Configurez le frais cantine dans Frais scolaires pour
+     cette classe »* s'affiche et la case reste grisée.
+3. Cocher transport (choisir une ligne) et/ou cantine, puis cliquer **Inscrire**.
+4. Vérifier :
+   - Module **Transport → Abonnements** : un nouvel abonnement actif pour l'élève sur la ligne choisie.
+   - Fiche élève → factures : une facture cantine créée immédiatement (si cochée) ; pour le transport,
+     les factures de la ligne s'appliquent automatiquement selon les tranches déjà configurées sur le
+     frais TRANSPORT de cette ligne (Frais scolaires).
+
+*Résultat attendu* : plus besoin de jongler entre plusieurs écrans après l'inscription pour abonner
+l'élève.
+
+---
+
+## 6. Chef de classe + scan des badges
+
+**Où** : `/classes/{id}` (fiche d'une classe).
+
+1. Sur la fiche d'une classe ayant des élèves inscrits, repérer la nouvelle carte **« Chef de classe »**
+   (sous le tableau matières/enseignants).
+2. Choisir un élève inscrit dans le menu déroulant → message *« Chef de classe mis à jour »*.
+3. **Connecté avec le compte élève désigné** (portail élève), tenter de scanner le badge d'un camarade
+   de SA classe → le pointage doit fonctionner (voir §9 ci-dessous pour le scan lui-même, corrigé).
+4. **Connecté avec un autre compte élève** (non désigné chef de classe), tenter le même scan → doit être
+   **refusé** (message : *« Seul le chef de classe désigné peut scanner les badges de cette classe »*).
+
+---
+
+## 9. Scan de badge — correctif caméra qui ne détectait rien
+
+**Contexte du bug** : la caméra s'allumait mais aucun QR n'était jamais détecté sur les navigateurs sans
+l'API native `BarcodeDetector` (Firefox, la plupart des versions de Safari iOS) — silencieux, sans message
+clair. Le scan utilise maintenant un décodeur JavaScript (bibliothèque `jsQR`) qui fonctionne sur tous les
+navigateurs, plus seulement ceux qui supportent l'API native.
+
+**Où** : menu **Pointage par scan de carte** (`/attendance/scan`).
+
+1. Imprimer ou afficher à l'écran (téléphone) le badge/carte scolaire d'un élève (page **Cartes
+   scolaires**, `/student-cards`).
+2. Sur `/attendance/scan`, choisir le sens du scan (Entrée/Sortie — voir §13), cliquer **« Démarrer le
+   scan »**, autoriser l'accès caméra.
+3. Présenter le QR du badge devant la caméra, à une distance raisonnable et bien éclairé.
+4. Vérifier qu'un pointage apparaît dans **« Pointages récents »** en quelques secondes, sans avoir besoin
+   d'un navigateur particulier (tester notamment sur le navigateur/téléphone qui posait problème
+   auparavant).
+5. Vérifier aussi le pointage manuel (recherche par nom, à droite) comme solution de secours si jamais un
+   QR reste illisible (angle, reflet, impression de mauvaise qualité).
+
+*Résultat attendu* : le scan fonctionne quel que soit le navigateur/appareil utilisé pour le test.
+
+---
+
+## 7. Horaire fixe (multi-jours) + garderie par blocs
+
+**Où** : menu **Emploi du temps** (`/timetable`), en mode **« Par classe »**.
+
+1. Choisir une classe, cliquer sur le nouveau bouton **« Horaire fixe »** (entre « Générer automatiquement »
+   et « Ajouter un créneau »).
+2. Choisir une matière, un enseignant, cocher plusieurs jours (ex. Lundi à Vendredi), renseigner une heure
+   de début/fin (ex. 08:00–13:00 pour une maternelle) → cliquer **« Créer l'horaire »**.
+3. Vérifier que l'emploi du temps de la classe affiche bien un créneau identique chaque jour coché.
+4. Recommencer en cochant **« Répéter par blocs »** avec par exemple 30 min de bloc / 10 min de pause,
+   entre 08:00 et 10:00 → vérifier l'aperçu du nombre de blocs généré, valider, et vérifier que plusieurs
+   créneaux courts sont créés dans la journée (ex. garderie).
+
+*Résultat attendu* : plus besoin de créer les créneaux un par un pour un horaire répétitif.
+
+---
+
+## 8. Raccourci « moniteur » — un enseignant sur toutes les matières d'une classe
+
+**Où** : fiche enseignant → modale de création/modification → onglet/section **« Classes & matières
+enseignées »**.
+
+1. Ouvrir la fiche d'un enseignant (ex. un moniteur de maternelle).
+2. Choisir une classe dans la ligne d'affectation → si des matières sont déjà affectées à cette classe
+   (curriculum défini par ailleurs), un bouton **« Affecter à toutes les matières »** apparaît à côté du
+   menu Matière.
+3. Cliquer dessus → message *« Affecté à X matière(s) de cette classe »*.
+4. Vérifier dans l'emploi du temps / les affectations classe↔matière que l'enseignant est bien rattaché à
+   toutes les matières de cette classe.
+
+*Résultat attendu* : plus besoin de répéter l'opération matière par matière pour un enseignant qui couvre
+tout le programme d'une classe (cas typique maternelle/primaire).
+
+---
+
+## 10. Réinscription d'un ancien élève absent de la plateforme
+
+**Contexte** : le backend supportait déjà ce cas (aucune inscription préalable n'est requise pour choisir
+« Réinscription » — seul le type d'inscription détermine le tarif facturé), mais rien à l'écran ne le
+suggérait. Deux améliorations :
+
+**Où** : liste des élèves (`/students`) → **« Nouvel élève »**.
+
+1. Créer un élève comme d'habitude (un ancien élève de l'établissement qui n'était jamais entré dans le
+   logiciel, par exemple).
+2. Juste après la création, la modale **« Inscrire l'élève »** s'ouvre automatiquement (nouveauté).
+3. Dans le champ **Type**, vérifier les nouveaux libellés :
+   - *« Inscription (nouvel élève, jamais scolarisé ici) »*
+   - *« Réinscription (déjà scolarisé ici auparavant) »* — un texte d'aide sous le champ précise qu'un
+     ancien élève absent du logiciel peut choisir cette option, et que le tarif de réinscription
+     s'appliquera même sans historique dans le système.
+4. Choisir **Réinscription**, une classe, valider.
+5. Vérifier la facture générée sur la fiche élève : elle doit correspondre au frais **RE_ENROLLMENT**
+   (réinscription) configuré pour la classe, pas au frais **ENROLLMENT** (inscription).
+
+*Résultat attendu* : un ancien élève inconnu du logiciel peut être créé puis inscrit au tarif réinscription
+en une seule séquence, sans manipulation supplémentaire.
+
+---
+
+## 11. Abonnement transport à l'encaissement (pas seulement à l'inscription)
+
+**Où** : fiche élève → **« Facture & encaissement »** (bouton ouvrant `CollectFeeModal`, ex. depuis
+Guichet d'accueil ou la fiche élève).
+
+1. Pour un élève **non encore abonné au transport**, vérifier la présence du bouton **« Abonner au
+   transport »** (juste au-dessus de « Ajouter un frais annexe »).
+2. Cliquer dessus, choisir une ligne (+ arrêt optionnel + sens), cliquer **« Abonner »**.
+3. Vérifier dans le module **Transport → Abonnements** que l'élève apparaît bien abonné.
+4. Rouvrir la modale d'encaissement pour ce même élève : le bouton **« Abonner au transport »** ne
+   doit plus apparaître (déjà abonné).
+5. Pour la cantine : vérifier qu'un frais **CANTINE** configuré pour la classe apparaît bien dans le menu
+   **« Ajouter un frais annexe »** (déjà existant, pas une nouveauté de ce point).
+
+*Résultat attendu* : un parent peut désormais s'abonner au transport aussi bien à l'inscription qu'au
+moment de payer les frais scolaires, sans devoir passer par le module Transport séparément.
+
+---
+
+## 12. Remise paiement anticipé — uniquement sur le tout premier paiement de l'année
+
+**Règle** : la remise « paiement annuel complet » ne récompense que le choix de payer TOUTE l'année dès
+le **premier** règlement de scolarité de l'élève sur ce frais. Dès qu'une tranche a été payée (même
+partiellement) sans elle, la remise ne s'applique plus jamais sur ce frais pour cet élève — même si le
+parent décide ensuite de régler le reste d'un coup.
+
+**Où** : fiche élève → **« Facture & encaissement »**, avec un frais MENSUALITE ayant plusieurs tranches,
+et une règle de remise paiement anticipé active (**Frais scolaires → Remises paiement anticipé**).
+
+**Cas 1 — premier paiement, toute l'année d'un coup (remise applicable)**
+1. Sur un élève dont **aucune tranche n'a encore été payée**, cocher directement **« Toute la
+   scolarité »** dès le premier encaissement.
+2. Vérifier le message **« Remise scolarité complète appliquée : −X »**, avec X = pourcentage × total
+   annuel du frais (toutes les tranches, puisqu'aucune n'est encore payée).
+
+**Cas 2 — une tranche déjà payée avant de vouloir régler le reste (remise NON applicable)**
+1. Sur un élève, payer normalement une seule tranche (sans cocher « Toute la scolarité »).
+2. Revenir plus tard sur la même fiche, cocher **« Toute la scolarité »** pour régler les tranches
+   restantes.
+3. Vérifier qu**aucun message de remise ne s'affiche** et qu'aucune tranche ne montre de « (remise
+   −X) » à côté de son libellé — le montant à payer reste le plein tarif des tranches restantes.
+
+*Résultat attendu* : la remise n'est jamais accordée après coup ; elle ne récompense que la décision prise
+dès le premier paiement de l'année.
+
+---
+
+## 13. Scan entrée/sortie automatique (remplace le choix manuel Présent/Absent/Retard)
+
+**Contexte** : deux bugs corrigés avant ce chantier, sans lien avec la logique métier :
+- `tenant_id` jamais enregistré sur les tables de pointage (`student_attendances`/`teacher_attendances`) —
+  les entités JPA n'avaient tout simplement jamais ce champ, malgré la colonne `NOT NULL` en base depuis le
+  début. Chaque scan échouait donc systématiquement, indépendamment du compte/session utilisé. Corrigé.
+- Le débounce anti-double-scan de la page caméra était indexé uniquement sur le contenu du QR, pas sur le
+  statut choisi : scanner « Présent » puis rescanner la même carte avec « Absent »/« Retard » dans les 3
+  secondes ne faisait rien (silencieusement). Corrigé (débounce désormais par carte + sens du scan).
+
+**Changement de fond** : les boutons manuels Présent/Absent/Retard ont disparu de la page de scan. Le
+système calcule automatiquement le statut à partir de l'emploi du temps :
+- **Entrée** : compare l'heure du scan à l'heure de début du cours en cours (classe de l'élève / emploi du
+  temps de l'enseignant) → **Présent** si à l'heure, **Retard (+N min)** sinon. Fonctionne par **séance**
+  (pas une fois par jour) : un cours 8h-10h puis 10h-12h donnent chacun leur propre pointage d'entrée.
+- **Sortie** : capture l'heure de sortie réelle et affiche la durée réalisée comparée à la durée prévue du
+  créneau (ex. « 95 min réalisées / 120 min prévues (−25 min) »).
+- **Absent** ne peut plus venir d'un scan (une personne absente ne scanne pas) : bouton manuel **« Marquer
+  absent »** sur la page de scan, plus une tâche automatique à 22h qui marque absent quiconque avait cours
+  ce jour-là sans aucun pointage.
+- Un élève **chef de classe** peut maintenant réellement ouvrir `/attendance/scan` (le rôle était déjà
+  autorisé côté serveur mais bloqué par erreur côté écran).
+
+**Où voir les résultats (tableaux)** :
+- `/attendance/scan` → **« Pointages récents »** : le flux immédiat de chaque scan (badge Présent/Retard +
+  minutes à l'entrée ; durée réalisée/prévue à la sortie ; badge Absent pour un marquage manuel).
+- `/attendance` → onglet **« Suivi & corrections »** (par classe + date) : table élève avec colonnes
+  **Statut**, **Heure d'entrée**, **Retard** — c'est ici qu'on voit qui est venu, à quelle heure, et avec
+  combien de retard, pour toute une classe un jour donné.
+- `/attendance` → onglet **« Présences enseignants »** → **« Appel »** : table enseignant avec les mêmes
+  colonnes **Statut / Heure d'entrée / Retard**, pointage réel du jour (scan ou saisie manuelle) — plus
+  seulement les clics faits dans la session du navigateur.
+- `/attendance` → onglet **« Présences enseignants »** → **« Récap mensuel »** : détail jour par jour sur
+  tout un mois pour un enseignant choisi (déjà existant).
+
+**Test** :
+1. Sur `/attendance/scan`, sélectionner **Entrée**, scanner un élève avant l'heure de son cours → feed
+   affiche **Présent**. Rescanner un autre élève après l'heure de début → feed affiche **Retard (+N min)**.
+2. Aller sur `/attendance` → classe et date du jour → **Suivi & corrections** : vérifier que les deux
+   élèves scannés apparaissent avec leur **heure d'entrée** exacte et le bon **retard**.
+3. Sélectionner **Sortie**, rescanner le même élève → feed affiche l'heure de sortie + la comparaison
+   durée réalisée/prévue.
+4. Scanner une **sortie** sans avoir scanné d'entrée pour la séance en cours → message d'erreur clair
+   (pas d'erreur technique brute).
+5. Utiliser le bouton **« Marquer absent »** (panneau de pointage manuel) sur un élève qui n'a pas scanné →
+   vérifier qu'il apparaît **Absent** dans « Suivi & corrections ».
+6. Se connecter avec le compte élève désigné **chef de classe** (§6) → vérifier qu'il peut ouvrir
+   `/attendance/scan` et scanner pour sa classe (rejeté pour une autre classe).
+7. Répéter côté enseignant : scanner son entrée sur `/attendance/scan`, puis vérifier sur `/attendance` →
+   **Présences enseignants** → **Appel**, à la date du jour, que la ligne de cet enseignant affiche le bon
+   statut, l'heure d'entrée et le retard éventuel.
+
+*Résultat attendu* : le scan aboutit toujours (plus d'erreur `tenant_id`), le sens Entrée/Sortie répond
+systématiquement même après avoir changé de sens sur la même carte, et les tableaux de suivi (élèves et
+enseignants) reflètent l'heure d'entrée et le retard réels, pas seulement un badge de statut brut.
+
+---
+
+## 14. Correction manuelle « Présent » avec heure d'entrée + affichage du retard en heures
+
+**Contexte** : deux défauts remontés sur les tableaux de suivi mis en place au §13.
+- Corriger manuellement un élève/enseignant en **« Présent »** (sans passer par le scan) ne demandait pas
+  l'heure d'entrée — impossible donc de renseigner un retard pour une correction a posteriori (appel
+  papier, panne de caméra, oubli de scan). Corrigé : le système demande maintenant l'heure d'entrée et
+  calcule automatiquement le retard vs l'emploi du temps, exactement comme le fait le scan.
+- Le retard s'affichait toujours en minutes brutes, y compris au-delà de 60 (ex. « 399 min »). Corrigé :
+  conversion automatique en heures + minutes au-delà de 60 (ex. « 6 h 39 »), partout où un retard ou une
+  durée est affiché (suivi élève, appel enseignant, flux de scan, cahier de textes).
+
+**Où** :
+- `/attendance` → classe + date → **Suivi & corrections** : colonne **Actions**, menu de statut.
+- `/attendance` → **Présences enseignants** → **Appel** : boutons Présent/Absent par enseignant.
+
+**Test — élève** :
+1. Sur **Suivi & corrections**, choisir **« Présent »** dans le menu de statut d'un élève → un champ
+   **heure** apparaît à la place du menu (au lieu d'appliquer directement).
+2. Saisir une heure **après** le début du cours de cette classe ce jour-là, cliquer **OK**.
+3. Vérifier que la ligne affiche la bonne **heure d'entrée** et un **retard** correctement calculé et
+   affiché en heures/minutes si ≥ 60 min (ex. « 1 h 15 » et non « 75 min »).
+4. Recommencer en saisissant une heure **avant** le début du cours → retard affiché « — » (aucun retard).
+5. Choisir **« Absent »** dans le même menu → toujours appliqué immédiatement, sans demande d'heure
+   (comportement inchangé).
+
+**Test — enseignant** :
+1. Sur **Présences enseignants → Appel**, cliquer **« Présent »** pour un enseignant → un champ heure +
+   bouton **OK** apparaissent à la place des deux boutons Présent/Absent.
+2. Saisir une heure, valider → la ligne affiche statut, heure d'entrée et retard (formaté en heures si
+   pertinent).
+3. Cliquer **« Absent »** → toujours immédiat, sans demande d'heure.
+
+*Résultat attendu* : impossible de marquer quelqu'un présent sans préciser son heure d'arrivée ; le retard
+qui en découle est calculé par le système (jamais saisi à la main) et toujours lisible (jamais un nombre
+de minutes à trois chiffres).
+
+---
+
+## 15. Badge de retrait (maternelle/primaire) + impression des badges corrigée + enseignant retiré du scan
+
+**Contexte** : trois changements liés à l'impression des badges et à la sécurité du scan.
+- Les badges (élève, et maintenant badge de retrait) s'imprimaient recto sur une page et verso sur une
+  deuxième — anormal pour un usage réel en papier bristol + plastification manuelle. Corrigé : recto et
+  verso sortent maintenant **côte à côte sur une seule page**, chacun à la taille réelle d'une carte
+  d'identité standard (CR80, 85,6 × 54 mm), avec une ligne de découpe pointillée entre les deux.
+- Nouveau **badge de retrait** : à la sortie d'un élève de maternelle/primaire (scan ou pointage manuel
+  sur la page de scan), le système demande obligatoirement **qui vient récupérer l'enfant** — un parent/
+  tuteur déjà lié à l'élève (liste déroulante) ou une personne saisie librement (« Autre personne » + nom
+  + lien). Une fois confirmé, un badge imprimable apparaît (même format carte que ci-dessus).
+- **L'enseignant ne peut plus scanner** (ni lui-même ni un élève) — retiré des rôles autorisés sur
+  `/attendance/scan`, par mesure d'intégrité (un enseignant ne doit pas pouvoir décider lui-même de son
+  heure d'arrivée). Le personnel (admin/direction/secrétariat) et l'élève chef de classe restent
+  autorisés ; un rôle **Surveillant** dédié est prévu pour plus tard.
+
+**Où** :
+- `/academics` (référentiel académique, onglet **Niveaux**) : chaque niveau a maintenant un champ
+  **Cycle** (Maternelle/Primaire/Collège/Lycée/Supérieur/non renseigné).
+- `/attendance/scan` : sortie d'un élève de maternelle/primaire.
+- `/student-cards` : impression du badge élève.
+
+**Test — cycle du niveau (prérequis)** :
+1. Sur `/academics` → Niveaux, éditer (ou créer) un niveau de maternelle ou de primaire (ex. « Petite
+   Section », « CP1 ») et lui assigner le cycle **Maternelle** ou **Primaire**. Enregistrer.
+2. Vérifier qu'une classe rattachée à ce niveau est bien concernée par le test suivant.
+
+**Test — badge de retrait** :
+1. Scanner (ou pointer manuellement) la **sortie** d'un élève dont la classe est de niveau
+   maternelle/primaire → une fenêtre **« Badge de retrait »** s'ouvre automatiquement, impossible à
+   ignorer sans répondre.
+2. Choisir un parent/tuteur dans la liste déroulante (déjà lié à cet élève), renseigner le lien
+   (optionnel), confirmer → le badge de retrait s'affiche avec le nom, le lien, la date et l'heure ;
+   imprimer pour vérifier une seule page, recto/verso côte à côte.
+3. Recommencer avec **« Autre personne »** → saisir un nom (obligatoire) + lien → même résultat.
+4. Scanner la sortie d'un élève de classe **secondaire** (collège/lycée) ou sans cycle renseigné →
+   **aucune** fenêtre de retrait ne s'ouvre, comportement inchangé (§13).
+
+**Test — impression sur une seule page** :
+1. Depuis `/student-cards`, ouvrir l'aperçu d'un badge élève existant et cliquer **« Imprimer / Télécharger
+   en PDF »** → vérifier dans l'aperçu d'impression du navigateur qu'**une seule page** est générée, avec
+   recto et verso **côte à côte** (pas l'un après l'autre).
+2. Comparer visuellement chaque face à une carte bancaire réelle (proportions ~1,6:1) — imprimer sur le
+   papier bristol réellement utilisé par l'école pour confirmer que la découpe puis la plastification
+   donnent un résultat correct aux bonnes dimensions.
+3. Refaire le même test pour un badge de retrait fraîchement généré (étape précédente).
+
+**Test — enseignant retiré du scan** :
+1. Se connecter avec un compte **Enseignant** et essayer d'ouvrir `/attendance/scan` → accès refusé
+   (« Accès non autorisé »), alors qu'avant ce changement l'enseignant pouvait scanner.
+2. Vérifier que le pointage des enseignants continue de fonctionner normalement quand c'est le personnel
+   (admin/direction/secrétariat) qui scanne leur badge à leur place.
+
+*Résultat attendu* : impression des badges toujours sur une seule page au format carte réel ; le badge de
+retrait est systématiquement demandé (et imprimable) à la sortie d'un enfant de maternelle/primaire, jamais
+pour les autres niveaux ; un compte enseignant n'a plus du tout accès à la page de scan.
+
+---
+
+## 16. Blog d'entreprise (public) + back-office + rôle Rédacteur restreint
+
+**Ce qui change** :
+- Nouveau **blog public** CathClau Edu, dans le style « Blog Details Right Sidebar » : liste
+  d'articles avec recherche, catégories et tags dans une colonne latérale, page détail avec image de
+  couverture, contenu riche, tags, navigation article précédent/suivant, et un vrai formulaire de
+  commentaire (nom, e-mail, site web optionnel, message).
+- Les commentaires visiteurs sont **réellement enregistrés et modérés** : un commentaire soumis reste
+  invisible publiquement tant qu'un rédacteur/admin ne l'a pas approuvé depuis le back-office.
+- Nouveau rôle plateforme **Rédacteur**, strictement limité au blog (créer/modifier/publier des
+  articles, gérer les catégories, modérer les commentaires) — **aucun accès** aux écoles, abonnements
+  ou données clients, contrairement à SUPER_ADMIN.
+- Éditeur de contenu **riche** (gras/italique/titres/liens/images/listes) pour rédiger les articles,
+  pas un simple champ texte.
+
+**Où** :
+- Public : `/blog` (liste), `/blog/{slug}` (détail).
+- Back-office : `/platform/blog/posts` (articles), `/platform/blog/categories`,
+  `/platform/blog/comments` (modération) — visible dans le menu **Plateforme** pour SUPER_ADMIN et
+  Rédacteur.
+- Création du compte Rédacteur : `/platform/users` → bouton **« Nouveau rédacteur »**.
+
+**Test — création d'un compte Rédacteur et vérification de ses limites d'accès** :
+1. En SUPER_ADMIN, sur `/platform/users`, cliquer **« Nouveau rédacteur »**, renseigner prénom/nom/
+   e-mail/mot de passe, créer.
+2. Se déconnecter, se reconnecter avec ce nouveau compte → vérifier qu'il atterrit directement sur
+   `/platform/blog/posts` (pas sur un tableau de bord d'école).
+3. Vérifier que le menu latéral ne montre **que** l'entrée Blog dans la section Plateforme — aucun
+   lien Écoles/Abonnements/Plans/Utilisateurs/Tableau de bord plateforme.
+4. Essayer de naviguer directement vers une URL non autorisée (ex. `/platform/tenants` ou `/dashboard`)
+   → redirection automatique vers `/platform/blog/posts`, pas d'accès aux données de l'école.
+
+**Test — rédaction et publication d'un article** :
+1. Depuis `/platform/blog/posts` (SUPER_ADMIN ou Rédacteur), cliquer **« Nouvel article »**.
+2. Saisir un titre → vérifier que le slug (`/blog/...`) se génère automatiquement ; le modifier
+   manuellement si besoin.
+3. Ajouter un extrait, une image de couverture, choisir une catégorie (en créer une si la liste est
+   vide via **« Catégories »**), ajouter des tags séparés par des virgules.
+4. Rédiger le contenu avec l'éditeur riche (gras, titre, lien, image insérée dans le texte).
+5. Cliquer **« Enregistrer le brouillon »** → l'article apparaît dans la liste avec le statut
+   **Brouillon**, mais n'est **pas visible** sur `/blog` public.
+6. Rouvrir l'article, cliquer **« Publier »** → le statut passe à **Publié** ; vérifier qu'il apparaît
+   maintenant sur `/blog` et à son URL `/blog/{slug}`.
+
+**Test — commentaire visiteur et modération** :
+1. Depuis la page publique de l'article publié, remplir le formulaire de commentaire (nom, e-mail,
+   message) et envoyer → message de confirmation « sera visible après validation », mais le
+   commentaire n'apparaît **pas** dans la liste des commentaires affichés sous l'article.
+2. Depuis `/platform/blog/comments` (filtre par défaut « En attente »), retrouver ce commentaire →
+   cliquer **Approuver**.
+3. Recharger la page publique de l'article → le commentaire est maintenant visible.
+4. Recommencer avec un second commentaire et cliquer **Rejeter** à la place → il ne doit jamais
+   apparaître publiquement, même après actualisation.
+
+**Test — accès direct à un brouillon (sécurité)** :
+1. Créer un article et le laisser en **Brouillon** (ne pas publier), noter son slug.
+2. Essayer d'accéder à `/blog/{slug}` sans être connecté → page « Article introuvable », le brouillon
+   n'est jamais exposé publiquement.
+
+*Résultat attendu* : le blog public ne montre jamais un brouillon ni un commentaire non approuvé ; un
+compte Rédacteur peut entièrement gérer le blog mais n'a la vue sur strictement aucune autre donnée
+plateforme ou école.
+
+---
+
+## Vérifications techniques (déjà faites côté code, rappel)
+
+- Backend : `./mvnw -o test` (inclut `ModularityTests`) — passe sans erreur après chaque phase.
+- Frontend : `npx tsc --noEmit` et `npx eslint` sur tous les fichiers modifiés — aucune erreur.
+- Aucune de ces vérifications automatiques ne remplace les tests manuels ci-dessus : elles garantissent
+  que le code compile et respecte les règles de style, pas que le comportement métier est correct à l'écran.
+
+---
+
+## 17. Correctif — erreur "duplicate key" en enregistrant les permissions d'un rôle
+
+**Ce qui changeait** : en cochant des permissions supplémentaires sur un rôle qui en avait déjà (sans
+décocher les anciennes) puis en enregistrant, le serveur renvoyait une erreur 500 (`role_permissions_role_id_permission_id_key`
+déjà existante) et rien n'était sauvegardé. Même bug sur l'attribution de permissions directes à un
+utilisateur.
+
+**Où** : `/users/roles` (gestion des rôles et permissions).
+
+**Test** :
+1. Ouvrir un rôle existant ayant déjà au moins une permission cochée.
+2. Cocher une ou plusieurs permissions supplémentaires **sans décocher** celles déjà cochées.
+3. Enregistrer → doit réussir sans erreur, et toutes les permissions (anciennes + nouvelles) doivent
+   rester cochées après rechargement de la page.
+4. Décocher une permission qui était cochée puis enregistrer → elle doit disparaître, les autres restent.
+
+*Résultat attendu* : plus aucune erreur 500 lors de la sauvegarde des permissions, quel que soit le
+mélange d'ajouts/retraits de permissions déjà accordées.
+
+---
+
+## 18. Site public — reproduction fidèle du style Vankine home-5 (couleurs, police, images, footer)
+
+**Ce qui change** : le style du site public (`/`) reproduit maintenant fidèlement la maquette de
+référence (template Vankine, style "home-5") plutôt qu'une version seulement inspirée :
+- **Police** : DM Sans sur tout le site public (`/`, `/blog`, `/a-propos`, `/tarifs`…) — l'espace
+  applicatif authentifié garde sa police actuelle (Outfit), inchangée.
+- **En-tête** : bandeau clair (coordonnées) au-dessus d'une barre de navigation bleue pleine largeur,
+  liens en pilules, bouton "Essai gratuit" blanc en pilule — au lieu de l'ancien en-tête blanc uni.
+- **Pied de page** : fond bleu marine (au lieu de noir), avec une barre inférieure encore plus sombre —
+  reproduit la structure logo/newsletter/réseaux sociaux + colonnes de liens du template.
+- **Photo du hero** : voile de lisibilité allégé pour que la photo (déjà les vraies photos de
+  l'établissement) reste nettement visible, au lieu d'un lavis bleu opaque.
+
+**Où** : page d'accueil `/`, et toutes les pages publiques qui héritent de l'en-tête/pied de page
+(`/blog`, `/a-propos`, `/tarifs`…).
+
+**Test** :
+1. Ouvrir `/` en navigation privée (pour éviter le cache) → vérifier la barre de navigation bleue
+   pleine largeur avec les liens en pilules et le bandeau clair au-dessus.
+2. Vérifier que le texte du site (titres et paragraphes) utilise une police arrondie sans-serif
+   distincte de celle de l'espace applicatif connecté (Outfit) — comparer avec `/dashboard` après
+   connexion.
+3. Faire défiler jusqu'au pied de page → fond bleu marine avec une bande inférieure plus sombre pour
+   le copyright.
+4. Vérifier que la photo de fond du hero reste bien visible (pas assombrie à l'excès).
+
+*Résultat attendu* : le site public partage désormais la même identité visuelle (couleurs, police,
+structure d'en-tête/pied de page) que la maquette de référence, tout en gardant la palette de marque
+CathClau Edu (bleu proche de celui du template).
+
+---
+
+## 19. Correctif — QR code illisible une fois le badge imprimé
+
+**Ce qui changeait** : le QR code affiché sur les badges/cartes (élèves, enseignants, personnel, badge
+de retrait) était généré **sans zone blanche de sécurité** (« quiet zone ») autour du motif — une
+exigence de la norme QR. Ça pouvait passer inaperçu à l'écran mais rendait le code difficile ou
+impossible à scanner une fois imprimé en petit format sur la carte.
+
+**Où** : tous les badges (`/student-cards`, badges enseignant/personnel, badge de retrait généré à la
+sortie d'un enfant de maternelle/primaire) — un seul composant partagé (`IdBadge`), donc un seul
+correctif couvre tous les cas.
+
+**Test** :
+1. Ouvrir l'aperçu d'un badge élève (ou tout autre badge) sur `/student-cards`, imprimer/télécharger
+   en PDF.
+2. Scanner le QR code imprimé avec un téléphone ou la page `/attendance/scan` → doit être reconnu du
+   premier coup, sans avoir à zoomer ou recadrer excessivement.
+
+*Résultat attendu* : le QR imprimé se scanne de manière fiable, y compris à la taille réduite d'une
+carte réelle.
+
+---
+
+## 20. Type d'établissement "Maternelle" (PS/MS/GS) + restriction des classes au type de l'école
+
+**Ce qui change** :
+- Le type d'établissement d'une école propose maintenant **Maternelle** en plus de
+  Primaire/Collège/Lycée/Supérieur/Mixte.
+- Le catalogue de niveaux (bouton **« Catalogue »** du référentiel Niveaux) crée directement les 3
+  vraies sections de la maternelle — **Petite Section, Moyenne Section, Grande Section** — au lieu
+  d'un niveau générique unique « Maternelle », chacune avec le cycle Maternelle déjà renseigné.
+- **Nouvelle restriction** : une fois le(s) type(s) d'établissement renseigné(s) pour une école (sauf
+  « Mixte », qui n'impose aucune limite), il devient impossible de créer une classe sur un niveau dont
+  le cycle ne correspond à aucun des types déclarés (ex. une école déclarée uniquement « Primaire » ne
+  peut pas créer de classe de niveau Collège/Lycée) — message d'erreur clair à la création.
+
+**Où** :
+- Création d'école (`/signup` ou `/platform/tenants` → nouvelle école) : sélection du/des type(s)
+  d'établissement.
+- `/academics` (référentiel académique, onglet Niveaux) → bouton **Catalogue**.
+- Création de classe (`/classes` ou classe en lot).
+
+**Test** :
+1. Créer (ou modifier) une école en cochant uniquement **Maternelle** comme type d'établissement.
+2. Sur le référentiel Niveaux de cette école, ouvrir **Catalogue** → cocher Petite/Moyenne/Grande
+   Section → vérifier que les 3 niveaux sont créés avec le cycle Maternelle.
+3. Essayer de créer une classe sur un niveau Collège/Lycée (via le catalogue, cocher aussi
+   "Secondaire" pour en avoir un disponible) pour cette école → doit être **refusé** avec un message
+   expliquant que l'école est déclarée pour un autre type.
+4. Créer une classe sur un niveau Petite/Moyenne/Grande Section → doit fonctionner normalement.
+5. Refaire le test avec une école déclarée **Mixte** → aucune restriction, tous les niveaux sont
+   utilisables pour créer une classe.
+
+*Résultat attendu* : une école configurée sur un type précis ne peut créer des classes que sur les
+niveaux compatibles avec ce type ; une école "Mixte" ou sans type renseigné n'est jamais bloquée.
+
+---
+
+## 21. Encaissement — le reçu reflète le(s) mois précisément réglé(s) sur une tranche partielle
+
+**Ce qui changeait** : à l'encaissement, quand une tranche couvre plusieurs mois (ex. « mai, juin »)
+et que le parent décoche certains mois pour ne payer qu'une partie (ex. seulement « mai »), le montant
+était bien recalculé, mais le **libellé du reçu** affichait toujours la tranche complète
+(« Tranche 2 (mai, juin) ») au lieu d'indiquer que seul « mai » avait été réglé.
+
+**Où** : `/guichet` (encaissement par élève, et encaissement groupé fratrie) — case à cocher par mois
+sous une tranche multi-mois.
+
+**Test** :
+1. Ouvrir l'encaissement d'un élève dont la scolarité a une tranche couvrant plusieurs mois.
+2. Cocher la tranche, puis **décocher un des mois** dans le détail affiché sous la tranche → le
+   montant se réduit proportionnellement.
+3. Encaisser → ouvrir le reçu PDF généré → le libellé doit préciser le(s) mois réellement payé(s)
+   (ex. « Tranche 2 (mai, juin) — mai réglé(s) »), pas juste le nom générique de la tranche.
+4. Refaire le test depuis l'encaissement groupé fratrie (plusieurs enfants à la fois) → même
+   comportement pour chaque enfant.
+
+*Résultat attendu* : le reçu reflète toujours précisément ce qui a été payé, y compris pour un
+paiement partiel mois par mois sur une tranche.
+
+---
+
+## 22. Assistant de création de classes en lot — ne plus proposer une salle déjà occupée
+
+**Ce qui changeait** : le formulaire de création de classe **au cas par cas** exclut déjà correctement
+les salles occupées par une autre classe. Mais l'**assistant en lot** (« Assistant (en lot) », qui crée
+plusieurs classes d'un coup) ne le faisait pas : le bouton « Attribuer automatiquement » et les menus
+déroulants « Salle » de chaque ligne proposaient toutes les salles, y compris celles déjà affectées à
+une classe existante.
+
+**Où** : `/classes` → **Assistant (en lot)**, étape « Salles ».
+
+**Test** :
+1. S'assurer qu'au moins une salle est déjà affectée à une classe existante de l'année en cours.
+2. Ouvrir l'Assistant (en lot), choisir un cycle/des grades/sections pour générer plusieurs nouvelles
+   classes.
+3. Cliquer **« Attribuer automatiquement »** → la salle déjà occupée ne doit jamais être proposée.
+4. Ouvrir manuellement le menu déroulant « Salle » d'une des nouvelles classes → la salle déjà occupée
+   ne doit pas apparaître dans la liste.
+5. Vérifier que modifier ensuite une classe **existante** (formulaire classe par classe, pas
+   l'assistant) montre toujours **sa propre** salle actuelle dans son menu déroulant, même si elle est
+   « prise » — l'exception ne s'applique qu'à l'édition de cette classe précise.
+
+*Résultat attendu* : une salle déjà affectée à une classe n'est jamais proposée pour une autre classe,
+ni par l'attribution automatique ni manuellement dans l'assistant en lot ; seule l'édition de la classe
+qui détient déjà cette salle continue de l'afficher.
+
+---
+
+## 23. Emploi du temps — « Créer un horaire fixe » : salle préremplie + matières enchaînées
+
+**Ce qui change** :
+- La **salle se préremplit automatiquement** avec la salle attitrée de la classe dès l'ouverture du
+  formulaire (toujours modifiable) — avant, il fallait la ressaisir alors qu'elle était déjà connue.
+- **Nouveau mode « Plusieurs matières enchaînées »**, pensé pour une monitrice de garderie/primaire qui
+  enseigne plusieurs matières à la suite dans la même classe : on choisit l'enseignant une seule fois,
+  puis on ajoute une ligne par matière avec sa propre durée et sa propre pause ; l'horaire s'enchaîne
+  automatiquement à partir de l'heure de début (aucune heure imposée à l'avance, ex. pas de 8h-10h figé).
+- Les deux modes existants (créneau unique, blocs répétés même matière) restent inchangés et toujours
+  aussi flexibles sur les horaires.
+- La **grille hebdomadaire** (vue tableau, une ligne par créneau de 2h) n'est plus limitée à la plage
+  08h-16h : si un créneau réel dépasse cette plage par défaut (ex. garderie ouvrant dès 7h, ou activités
+  après 16h), la grille étend automatiquement ses lignes pour ne jamais masquer une séance existante.
+  L'heure réelle de chaque séance reste, comme avant, entièrement libre dans sa cellule.
+
+**Où** : `/timetable` → sélectionner une classe → **« Créer un horaire fixe »**, et la grille
+hebdomadaire elle-même.
+
+**Test — salle préremplie** :
+1. S'assurer que la classe sélectionnée a une salle attitrée (référentiel Classes).
+2. Ouvrir « Créer un horaire fixe » → vérifier que le champ Salle affiche déjà cette salle, avec la
+   mention « préremplie automatiquement ».
+3. La changer manuellement → elle ne doit plus se réinitialiser toute seule.
+
+**Test — matières enchaînées (monitrice)** :
+1. Ouvrir « Créer un horaire fixe », choisir **« Plusieurs matières enchaînées »**.
+2. Choisir l'enseignant (monitrice), les jours, l'heure de début.
+3. Ajouter 2-3 lignes de matières, chacune avec sa propre durée et sa pause après (ex. Éveil 30 min +
+   5 min de pause, Motricité 45 min + 10 min de pause, Comptines 20 min).
+4. Vérifier l'aperçu de la séquence généré (matière → heure de début-fin, dans l'ordre) avant de
+   valider.
+5. Créer → vérifier sur la grille de l'emploi du temps que les créneaux apparaissent bien à la suite,
+   aux bonnes heures, avec le même enseignant partout et sans heure fixe imposée par le système.
+
+*Résultat attendu* : plus besoin de ressaisir la salle ; une monitrice enseignant plusieurs matières à
+la suite peut créer tout son horaire de la journée en une seule fois, avec des durées entièrement
+libres pour chaque matière.
+
+**Test — grille étendue au-delà de 08h-16h** :
+1. Créer un créneau qui commence avant 08h00 (ex. 07h00) ou se termine après 16h00 (ex. 17h00) pour une
+   classe, via « Créer un horaire fixe » ou directement dans une cellule de la grille.
+2. Recharger la grille hebdomadaire de cette classe → une ligne supplémentaire doit apparaître pour
+   couvrir cette plage (au lieu de faire disparaître silencieusement le créneau).
+
+*Résultat attendu* : aucun créneau réel n'est jamais invisible dans la grille, quelle que soit l'heure
+de la journée.
+
+---
+
+## 24. Frais de cantine — support des tranches (comme la scolarité et le transport)
+
+**Ce qui change** : le frais de type **Cantine** peut désormais être configuré en tranches, exactement
+comme la Mensualité et le Transport — avant, seul un montant unique (sans échéancier) était possible.
+Une cantine déjà configurée en montant unique continue de fonctionner sans changement (ajout à la
+demande à l'encaissement), aucune donnée existante n'est affectée.
+
+**Où** : `/invoices/fees` (Frais scolaires), création/modification d'un frais Cantine ; `/guichet`
+(encaissement) pour la génération et le paiement des tranches de cantine.
+
+**Test** :
+1. Créer un nouveau frais de type **Cantine** → vérifier que le générateur de tranches apparaît (mois
+   de départ, ajout de tranches avec mois couverts et montant), comme pour la Mensualité.
+2. Enregistrer, puis ouvrir l'encaissement d'un élève de la classe concernée → un bandeau propose de
+   **« Générer les tranches (cantine) »**, indépendamment de la scolarité (qui a son propre bandeau si
+   elle aussi n'est pas encore générée).
+3. Générer → les tranches de cantine apparaissent dans la liste à régler, avec le détail des mois
+   couverts (case à cocher par mois comme pour la scolarité).
+4. Encaisser une tranche de cantine → reçu généré normalement.
+5. Vérifier qu'une cantine **existante** configurée en montant unique (sans tranches) continue de
+   s'ajouter normalement via « Ajouter un frais annexe » à l'encaissement, sans bandeau de génération.
+
+*Résultat attendu* : la cantine se comporte comme la scolarité pour les écoles qui veulent l'échelonner
+en tranches, sans rien casser pour celles qui la facturent en un seul montant.
+
+---
+
+## 25. Correctif — la remise « paiement annuel complet » restait acquise après décochage
+
+**Ce qui changeait** : à l'encaissement, cocher « Toute la scolarité » appliquait une remise (ex. 5%)
+en la **sauvegardant directement sur les factures**. Mais décocher ensuite un mois ne l'annulait
+jamais : la remise restait acquise sur les factures malgré la sélection incomplète, sans jamais
+revenir au montant initial. Le calcul de la remise lui-même (basée sur la somme des 9 mensualités
+restantes, quand aucune n'est encore payée) était déjà correct — c'est bien l'absence de retrait qui
+posait problème.
+
+**Où** : `/guichet` (encaissement d'un élève), case « Toute la scolarité ».
+
+**Test** :
+1. Ouvrir l'encaissement d'un élève dont aucune mensualité n'a encore été payée, avec une règle de
+   remise paiement anticipé active.
+2. Cocher **« Toute la scolarité »** → la remise s'applique, visible dans le récapitulatif.
+3. **Décocher un seul mois** parmi ceux cochés → la remise doit immédiatement disparaître et chaque
+   facture revenir à son montant initial (plus de mention de remise).
+4. Recocher tous les mois → la remise doit se réappliquer normalement.
+5. Recharger la page en cours de route (après avoir décoché) → vérifier que la remise n'est plus
+   présente sur les factures (elle a bien été annulée côté serveur, pas seulement masquée à l'écran).
+
+*Résultat attendu* : la remise « paiement annuel complet » n'est jamais acquise en dehors du moment où
+la sélection couvre réellement la totalité des tranches restantes.
+
+---
+
+## 26. Fiche enseignant — niveaux enseignés (dropdown/checklist)
+
+**Ce qui change** : on peut désormais spécifier dans quel(s) niveau(x) (cycle) un enseignant est
+habilité à enseigner (ex. Primaire, Collège), via une liste à cocher listant les niveaux existants —
+comme cela existait déjà pour les matières enseignées. Accessible dès l'étape « Affectations » du
+formulaire d'inscription d'un enseignant, et modifiable ensuite depuis sa fiche.
+
+En passant, un bug latent identique à celui du §17 (RBAC) a été corrigé sur l'affectation des
+**matières** enseignées : cocher une matière supplémentaire sans décocher les précédentes pouvait
+provoquer la même erreur « duplicate key » (même cause : delete-then-insert sur une contrainte unique).
+
+**Où** : `/teachers` → inscrire un enseignant → étape « Affectations » ; et `/teachers/{id}` → carte
+« Niveaux enseignés ».
+
+**Test** :
+1. Inscrire un nouvel enseignant, avancer jusqu'à l'étape « Affectations » → cocher un ou plusieurs
+   niveaux dans « Niveaux enseignés », enregistrer.
+2. Ouvrir la fiche de cet enseignant (`/teachers/{id}`) → la carte « Niveaux enseignés » doit refléter
+   la sélection faite à l'inscription.
+3. Cocher un niveau supplémentaire **sans décocher** les précédents, enregistrer → doit réussir sans
+   erreur (régression du bug « duplicate key »), tous les niveaux (anciens + nouveau) restent cochés.
+4. Faire le même test sur « Matières enseignées » (cocher en plus des matières déjà cochées) → doit
+   aussi réussir sans erreur.
+
+*Résultat attendu* : les niveaux enseignés se gèrent aussi simplement que les matières enseignées, sans
+jamais provoquer d'erreur lors de l'ajout à une sélection existante.
+
+---
+
+## 27. NimbaSMS + téléphone parent obligatoire + diffusion segmentée aux parents/enseignants
+
+**Ce qui change** : le SMS réel est désormais possible via **NimbaSMS** (nouveau fournisseur actif par
+défaut pour le canal SMS, tant qu'aucune clé Orange n'est explicitement activée). Le téléphone d'un
+parent est désormais **obligatoire** à la création comme à la modification. Une nouvelle **diffusion
+segmentée** permet d'envoyer un message à *tous les parents*, aux parents d'*une classe*, aux parents
+des *garçons* ou des *filles* d'une classe, à *tous les enseignants*, ou au(x) parent(s) d'*un élève
+précis* — sans sélectionner les destinataires un par un : le serveur résout lui-même les numéros/e-mails.
+Le cas « notifier le parent d'un élève en retard/absent » était déjà automatique (`StudentAbsentEvent`)
+et enverra désormais un vrai SMS dès que NimbaSMS est configuré avec de vraies clés.
+
+**Où** :
+- Téléphone obligatoire : `/students/{id}` → onglet **Parents** → ajouter/modifier un parent.
+- Diffusion segmentée : menu **Communication** (`/communications`) → bouton **« Diffusion segmentée »**.
+- Configuration NimbaSMS (backend, pas d'UI) : variables d'environnement `NIMBA_SMS_ENABLED`,
+  `NIMBA_SMS_SERVICE_ID`, `NIMBA_SMS_SECRET_TOKEN`, `NIMBA_SMS_SENDER_NAME`.
+
+**Test — téléphone obligatoire** :
+1. Sur la fiche d'un élève, onglet **Parents** → **Ajouter un parent** → laisser le téléphone vide,
+   enregistrer → doit être bloqué avec le message « Requis ».
+2. Renseigner un téléphone valide → enregistrement réussi.
+3. Modifier un parent existant, vider le champ téléphone → doit être bloqué de la même façon.
+
+**Test — diffusion segmentée** (compte `SCHOOL_ADMIN`, `DIRECTOR`, `SECRETARY` ou `TEACHER`) :
+1. Aller sur `/communications` → **Diffusion segmentée**.
+2. Choisir l'audience **« Tous les parents »**, canal SMS, écrire un message, **Diffuser** → un
+   message apparaît dans l'historique avec le type de destinataire « Parents » ; ouvrir **Détail**
+   pour voir un destinataire par numéro de téléphone de parent existant dans l'école.
+3. Choisir **« Parents d'une classe »** → sélectionner une classe → **Diffuser** → seuls les parents
+   des élèves de cette classe apparaissent en destinataires (un parent avec plusieurs enfants dans la
+   même classe ne doit apparaître qu'une seule fois).
+4. Choisir **« Parents des garçons d'une classe »** puis **« … des filles »** sur la même classe →
+   vérifier que les destinataires changent en fonction du sexe des élèves.
+5. Choisir **« Tous les enseignants »** → **Diffuser** → les destinataires sont les numéros/e-mails des
+   enseignants de l'école (pas des parents).
+6. Choisir **« Parent(s) d'un élève précis »** sans sélectionner d'élève → **Diffuser** doit être
+   bloqué côté formulaire (« Sélectionnez un élève »).
+7. Choisir une audience dont personne n'a de numéro/e-mail renseigné (ex. école de test sans données)
+   → le serveur doit répondre par un message clair (« Aucun destinataire joignable »), pas une erreur
+   technique.
+
+*Résultat attendu* : la diffusion segmentée résout toujours de vrais destinataires (jamais une liste
+vide silencieuse), le téléphone parent est désormais une donnée fiable pour toute notification SMS, et
+les notifications automatiques de retard/absence utilisent le même fournisseur SMS réel une fois
+NimbaSMS configuré.

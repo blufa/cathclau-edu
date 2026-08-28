@@ -1,6 +1,7 @@
 package gn.lacaeducation.studentcards.application.service;
 
-import gn.lacaeducation.common.BusinessRuleException;
+import gn.lacaeducation.academics.AcademicYearPublicInfo;
+import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.common.ConflictException;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.common.SchoolCode;
@@ -32,29 +33,46 @@ public class StudentCardService {
 
     private final StudentCardRepository repo;
     private final TenantInfoProvider tenantInfoProvider;
+    private final AcademicsDataProvider academicsDataProvider;
 
     @Value("${app.qr-secret:lacaeducation-qr-secret}")
     private String qrSecret;
 
+    /**
+     * {@code photoUrl} est facultative : sans photo, la carte affiche les initiales de l'élève (voir
+     * IdBadge côté front) — pas de blocage. {@code academicYearId}/{@code expirationDate} : si absents,
+     * la carte est bornée à l'année scolaire courante (validité = l'année en cours uniquement).
+     */
     public record IssueCardCommand(Long tenantId, Long studentId, Long cardTemplateId, Long academicYearId,
                                    Long classId, String studentNumber, String photoUrl, LocalDate expirationDate) {}
 
     public StudentCard issue(IssueCardCommand c) {
-        if (c.photoUrl() == null || c.photoUrl().isBlank()) {
-            throw new BusinessRuleException("La photo de l'élève est requise pour générer la carte");
-        }
         if (repo.findByStudentIdAndStatus(c.studentId(), CardStatus.ACTIVE).isPresent()) {
             throw new ConflictException("Une carte active existe déjà pour cet élève (utilisez la réémission)");
         }
-        return create(c, null);
+        return create(withCurrentYear(c), null);
+    }
+
+    /** Complète l'année scolaire courante (id + fin) quand l'appelant ne l'a pas fournie explicitement. */
+    private IssueCardCommand withCurrentYear(IssueCardCommand c) {
+        if (c.academicYearId() != null && c.expirationDate() != null) return c;
+        AcademicYearPublicInfo year = academicsDataProvider.currentAcademicYear(c.tenantId()).orElse(null);
+        if (year == null) return c;
+        return new IssueCardCommand(c.tenantId(), c.studentId(), c.cardTemplateId(),
+                c.academicYearId() != null ? c.academicYearId() : year.id(),
+                c.classId(), c.studentNumber(), c.photoUrl(),
+                c.expirationDate() != null ? c.expirationDate() : year.endDate());
     }
 
     public StudentCard replace(Long id) {
         StudentCard old = load(id);
         old.setStatus(CardStatus.REPLACED);
         repo.save(old);
-        return create(new IssueCardCommand(old.getTenantId(), old.getStudentId(), old.getCardTemplateId(),
-                old.getAcademicYearId(), old.getClassId(), old.getStudentNumber(), old.getPhotoUrl(), old.getExpirationDate()), old.getId());
+        // Réémission = maintenant : on rebascule sur l'année scolaire courante plutôt que de reconduire
+        // l'ancienne validité (une carte perdue puis réémise reste valable l'année en cours).
+        IssueCardCommand refreshed = new IssueCardCommand(old.getTenantId(), old.getStudentId(), old.getCardTemplateId(),
+                null, old.getClassId(), old.getStudentNumber(), old.getPhotoUrl(), null);
+        return create(withCurrentYear(refreshed), old.getId());
     }
 
     public StudentCard declareLost(Long id) {
@@ -91,11 +109,11 @@ public class StudentCardService {
                 .replacesCardId(replacesId).build());
     }
 
-    /** Numéro de carte au format {@code SIGLE-CRT-YEAR-SEQ} (ex. {@code GSC-CRT-2026-000042}). */
+    /** Numéro de carte au format simple {@code SIGLESEQ} (ex. {@code AT00001}) — comme le matricule élève. */
     private String nextCardNumber(Long tenantId) {
         String prefix = SchoolCode.prefix(tenantInfoProvider, tenantId);
         long seq = repo.countByTenantId(tenantId) + 1;
-        return String.format("%s-CRT-%s-%06d", prefix, Year.now(), seq);
+        return String.format("%s%05d", prefix, seq);
     }
 
     private String sign(String payload) {

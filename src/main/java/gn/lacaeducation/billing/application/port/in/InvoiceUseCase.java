@@ -34,6 +34,14 @@ public interface InvoiceUseCase {
      * aucune règle n'est applicable.
      */
     List<Invoice> applyEarlyPaymentDiscount(Long studentId, Long feeId);
+    /**
+     * Annule la remise pour paiement annuel complet précédemment appliquée par
+     * {@link #applyEarlyPaymentDiscount} sur les factures restantes d'un élève pour un frais donné —
+     * remet chaque facture à son montant initial. À appeler dès que la condition d'éligibilité cesse
+     * (ex. le parent décoche un des mois de la scolarité), sans quoi la remise resterait acquise
+     * indéfiniment même après un changement de sélection.
+     */
+    List<Invoice> removeEarlyPaymentDiscount(Long studentId, Long feeId);
     /** Avance d'une étape le recouvrement (relance 1 → relance 2 → exclusion). */
     Invoice advanceRecovery(Long invoiceId);
     /** Positionne directement l'étape de recouvrement. */

@@ -17,7 +17,8 @@ public class LessonEntryJpaEntity {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
     @Column(name = "tenant_id", nullable = false) private Long tenantId;
     @Column(name = "class_id", nullable = false) private Long classId;
-    @Column(name = "subject_id", nullable = false) private Long subjectId;
+    /** Nullable : un enseignant unique (moniteur maternelle/primaire) consigne sa journée sans matière précise. */
+    @Column(name = "subject_id") private Long subjectId;
     @Column(name = "teacher_id") private Long teacherId;
     @Column(name = "lesson_date", nullable = false) private LocalDate lessonDate;
     @Column(nullable = false) private String title;

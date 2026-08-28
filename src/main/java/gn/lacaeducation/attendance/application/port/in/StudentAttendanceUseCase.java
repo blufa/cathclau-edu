@@ -1,8 +1,11 @@
 package gn.lacaeducation.attendance.application.port.in;
 import gn.lacaeducation.attendance.domain.AttendanceStatus;
+import gn.lacaeducation.attendance.domain.ChildPickup;
 import gn.lacaeducation.attendance.domain.StudentAttendance;
+import gn.lacaeducation.attendance.domain.StudentCheckin;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 public interface StudentAttendanceUseCase {
     record RecordAttendanceCommand(Long studentId, Long classId, LocalDate date, AttendanceStatus status, String reason) {}
@@ -12,8 +15,32 @@ public interface StudentAttendanceUseCase {
     /** Élève dépassant le seuil d'absences non justifiées sur la période. */
     record UnjustifiedAlert(Long studentId, long unjustifiedCount) {}
     StudentAttendance record(RecordAttendanceCommand command);
-    /** Pointage par scan de la carte scolaire : upsert de la présence du jour (classe résolue). */
-    StudentAttendance recordByScan(Long studentId, AttendanceStatus status);
+    /** Pointage d'entrée sur la séance en cours (classe résolue automatiquement) : calcule le retard
+     * vs l'heure de début prévue et upsert la présence du jour. {@code scannerUserId} est le compte
+     * qui effectue le scan (JWT) — si ce compte est lui-même un élève, il doit être le chef de classe
+     * désigné de la classe de l'élève scanné, sinon rejeté ; le personnel n'a pas cette restriction. */
+    StudentCheckin recordEntry(Long studentId, Long scannerUserId);
+    /** Pointage de sortie sur la séance en cours : renseigne l'heure de sortie réelle du pointage
+     * d'entrée déjà enregistré pour cette séance. Mêmes règles d'autorisation que {@link #recordEntry}. */
+    StudentCheckin recordExit(Long studentId, Long scannerUserId);
+    /** Correction manuelle (sans scan, ex. appel papier) : saisie de l'heure d'entrée pour une date
+     * donnée — le retard est calculé automatiquement vs l'emploi du temps, comme pour un scan. Écrase
+     * la valeur si un pointage existait déjà pour cette séance. Aucune vérification chef-de-classe
+     * (action staff, pas un scan). */
+    StudentCheckin recordManualEntry(Long studentId, LocalDate date, LocalTime checkInTime);
+    /** Marque manuellement l'élève absent aujourd'hui (un scan ne peut jamais produire ce statut). */
+    StudentAttendance markAbsent(Long studentId, String reason);
+    /** Pointages (par séance) d'un élève à une date donnée. */
+    List<StudentCheckin> findCheckins(Long studentId, LocalDate date);
+    /** Enregistre qui est venu récupérer l'enfant (badge de retrait, maternelle/primaire) : un parent
+     * déjà lié ({@code pickerParentId}) ou une personne saisie librement ({@code pickerName} +
+     * {@code pickerRelation}). */
+    ChildPickup recordPickup(Long studentId, Long pickerParentId, String pickerName, String pickerRelation);
+    /** Retraits d'un élève à une date donnée (historique/audit). */
+    List<ChildPickup> findPickups(Long studentId, LocalDate date);
+    /** True si la classe est de cycle maternelle/primaire — déclenche la demande obligatoire du badge
+     * de retrait à la sortie. False (jamais d'erreur) si le cycle n'est pas renseigné. */
+    boolean requiresPickup(Long classId);
     /** Nom complet d'un élève (pour la confirmation de scan), ou null. */
     String studentName(Long studentId);
     /** Marque une absence comme justifiée/non, avec motif et pièce justificative. */

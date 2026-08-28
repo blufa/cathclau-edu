@@ -15,6 +15,9 @@ interface PermissionJpaRepository extends JpaRepository<PermissionJpaEntity, Lon
                     SELECT ur.roleId FROM UserRoleJpaEntity ur WHERE ur.userId = :userId
                 )
             )
+            OR p.id IN (
+                SELECT up.permissionId FROM UserPermissionJpaEntity up WHERE up.userId = :userId
+            )
             """)
     List<PermissionJpaEntity> findByUserId(Long userId);
 }

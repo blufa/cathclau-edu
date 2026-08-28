@@ -28,60 +28,114 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
     private final TeacherAttendanceRepository attendanceRepository;
     private final TeacherCheckinRepository checkinRepository;
     private final AcademicsDataProvider academics;
+    private final SessionResolver sessionResolver;
     @Override
     public TeacherAttendance record(RecordTeacherAttendanceCommand cmd) {
         return attendanceRepository.save(TeacherAttendance.builder()
                 .tenantId(TenantContext.get())
                 .teacherId(cmd.teacherId()).date(cmd.date()).status(cmd.status()).reason(cmd.reason()).build());
     }
+
     @Override
-    public TeacherAttendance recordByScan(Long teacherId, TeacherAttendanceStatus status) {
+    public TeacherCheckin recordEntry(Long teacherId) {
         LocalDate today = LocalDate.now();
         LocalTime now = LocalTime.now();
-
-        // Rattache le pointage à la SÉANCE concernée (le cours qu'il vient assurer), pas seulement le
-        // premier du jour, et enregistre/garde son retard. Plusieurs pointages dans la journée
-        // cumulent les retards de chaque séance.
-        if (status == TeacherAttendanceStatus.PRESENT) {
-            ScheduleSlotPublicInfo session = currentSession(teacherId, today, now);
-            if (session != null && checkinRepository.findByTeacherIdAndDateAndSlot(teacherId, today, session.id()).isEmpty()) {
-                LocalTime start = LocalTime.parse(session.startTime());
-                int late = (int) Math.max(0, Duration.between(start, now).toMinutes());
-                checkinRepository.save(TeacherCheckin.builder()
-                        .tenantId(TenantContext.get()).teacherId(teacherId).checkinDate(today)
-                        .scheduleSlotId(session.id()).sessionStart(start).checkInTime(now).lateMinutes(late)
-                        .createdAt(LocalDateTime.now()).build());
-            }
+        ScheduleSlotPublicInfo session = sessionResolver.currentSession(academics.findScheduleByTeacher(teacherId), today, now);
+        if (session == null) {
+            throw new gn.lacaeducation.common.BusinessRuleException("Aucune séance programmée aujourd'hui pour cet enseignant.");
         }
-        int dayLate = checkinRepository.findByTeacherIdAndDate(teacherId, today).stream()
-                .mapToInt(c -> c.getLateMinutes() != null ? c.getLateMinutes() : 0).sum();
+        TeacherCheckin checkin = checkinRepository.findByTeacherIdAndDateAndSlot(teacherId, today, session.id())
+                .orElseGet(() -> {
+                    LocalTime start = LocalTime.parse(session.startTime());
+                    LocalTime end = LocalTime.parse(session.endTime());
+                    int late = (int) Math.max(0, Duration.between(start, now).toMinutes());
+                    return checkinRepository.save(TeacherCheckin.builder()
+                            .tenantId(TenantContext.get()).teacherId(teacherId).checkinDate(today)
+                            .scheduleSlotId(session.id()).sessionStart(start).sessionEnd(end)
+                            .checkInTime(now).lateMinutes(late).createdAt(LocalDateTime.now()).build());
+                });
+        upsertDailyAttendance(teacherId, today);
+        return checkin;
+    }
 
+    @Override
+    public TeacherCheckin recordExit(Long teacherId) {
+        LocalDate today = LocalDate.now();
+        LocalTime now = LocalTime.now();
+        ScheduleSlotPublicInfo session = sessionResolver.currentSession(academics.findScheduleByTeacher(teacherId), today, now);
+        if (session == null) {
+            throw new gn.lacaeducation.common.BusinessRuleException("Aucune séance programmée aujourd'hui pour cet enseignant.");
+        }
+        TeacherCheckin checkin = checkinRepository.findByTeacherIdAndDateAndSlot(teacherId, today, session.id())
+                .orElseThrow(() -> new gn.lacaeducation.common.BusinessRuleException(
+                        "Aucun pointage d'entrée trouvé pour cette séance : scannez d'abord l'entrée."));
+        checkin.setCheckOutTime(now);
+        if (checkin.getSessionEnd() == null) checkin.setSessionEnd(LocalTime.parse(session.endTime()));
+        return checkinRepository.save(checkin);
+    }
+
+    @Override
+    public TeacherCheckin recordManualEntry(Long teacherId, LocalDate date, LocalTime checkInTime) {
+        // Correction manuelle (saisie a posteriori) : contrairement au scan (recordEntry, idempotent —
+        // le 1er scan fait foi), ici on écrase l'heure d'entrée existante par la valeur saisie, pour
+        // permettre de corriger un pointage déjà enregistré.
+        ScheduleSlotPublicInfo session = sessionResolver.currentSession(academics.findScheduleByTeacher(teacherId), date, checkInTime);
+        if (session == null) {
+            throw new gn.lacaeducation.common.BusinessRuleException("Aucune séance programmée ce jour-là pour cet enseignant.");
+        }
+        LocalTime start = LocalTime.parse(session.startTime());
+        LocalTime end = LocalTime.parse(session.endTime());
+        int late = (int) Math.max(0, Duration.between(start, checkInTime).toMinutes());
+        TeacherCheckin checkin = checkinRepository.findByTeacherIdAndDateAndSlot(teacherId, date, session.id())
+                .orElseGet(() -> TeacherCheckin.builder()
+                        .tenantId(TenantContext.get()).teacherId(teacherId).checkinDate(date)
+                        .scheduleSlotId(session.id()).createdAt(LocalDateTime.now()).build());
+        checkin.setSessionStart(start);
+        checkin.setSessionEnd(end);
+        checkin.setCheckInTime(checkInTime);
+        checkin.setLateMinutes(late);
+        TeacherCheckin saved = checkinRepository.save(checkin);
+        upsertDailyAttendance(teacherId, date);
+        return saved;
+    }
+
+    @Override
+    public TeacherAttendance markAbsent(Long teacherId, String reason) {
+        LocalDate today = LocalDate.now();
         List<TeacherAttendance> existing = attendanceRepository.findByTeacherIdAndDateBetween(teacherId, today, today);
         if (!existing.isEmpty()) {
             TeacherAttendance a = existing.get(0);
-            a.setStatus(status);
-            if (status == TeacherAttendanceStatus.PRESENT) {
-                if (a.getCheckInTime() == null) a.setCheckInTime(now);
-                a.setLateMinutes(dayLate);
-            }
+            a.setStatus(TeacherAttendanceStatus.ABSENT);
+            a.setReason(reason != null ? reason : "Absence signalée");
             return attendanceRepository.save(a);
         }
         return attendanceRepository.save(TeacherAttendance.builder()
-                .tenantId(TenantContext.get()).teacherId(teacherId).date(today).status(status).reason("Scan carte")
-                .checkInTime(status == TeacherAttendanceStatus.PRESENT ? now : null)
-                .lateMinutes(status == TeacherAttendanceStatus.PRESENT ? dayLate : null).build());
+                .tenantId(TenantContext.get()).teacherId(teacherId).date(today)
+                .status(TeacherAttendanceStatus.ABSENT).reason(reason != null ? reason : "Absence signalée").build());
     }
 
-    /** La séance que l'enseignant vient assurer : le 1ᵉʳ cours du jour pas encore terminé ; sinon le dernier. */
-    private ScheduleSlotPublicInfo currentSession(Long teacherId, LocalDate date, LocalTime at) {
-        String dayName = frenchDay(date.getDayOfWeek());
-        List<ScheduleSlotPublicInfo> slots = academics.findScheduleByTeacher(teacherId).stream()
-                .filter(s -> dayName.equalsIgnoreCase(s.day()) && s.startTime() != null && s.endTime() != null)
-                .sorted(Comparator.comparing(s -> LocalTime.parse(s.startTime())))
-                .toList();
-        if (slots.isEmpty()) return null;
-        return slots.stream().filter(s -> LocalTime.parse(s.endTime()).isAfter(at)).findFirst()
-                .orElse(slots.get(slots.size() - 1));
+    /** Statut du jour toujours PRESENT depuis un scan (le retard reste représenté par lateMinutes > 0 —
+     * un scan ne peut jamais produire ABSENT, voir {@link #markAbsent}). Cumule le retard de toutes
+     * les séances déjà pointées ce jour-là. */
+    private void upsertDailyAttendance(Long teacherId, LocalDate today) {
+        LocalTime firstCheckIn = checkinRepository.findByTeacherIdAndDate(teacherId, today).stream()
+                .map(TeacherCheckin::getCheckInTime).filter(java.util.Objects::nonNull)
+                .min(Comparator.naturalOrder()).orElse(null);
+        int dayLate = checkinRepository.findByTeacherIdAndDate(teacherId, today).stream()
+                .mapToInt(c -> c.getLateMinutes() != null ? c.getLateMinutes() : 0).sum();
+        List<TeacherAttendance> existing = attendanceRepository.findByTeacherIdAndDateBetween(teacherId, today, today);
+        if (!existing.isEmpty()) {
+            TeacherAttendance a = existing.get(0);
+            a.setStatus(TeacherAttendanceStatus.PRESENT);
+            a.setCheckInTime(firstCheckIn);
+            a.setLateMinutes(dayLate);
+            attendanceRepository.save(a);
+            return;
+        }
+        attendanceRepository.save(TeacherAttendance.builder()
+                .tenantId(TenantContext.get()).teacherId(teacherId).date(today)
+                .status(TeacherAttendanceStatus.PRESENT).reason("Scan carte")
+                .checkInTime(firstCheckIn).lateMinutes(dayLate).build());
     }
 
     @Override @Transactional(readOnly = true)
@@ -145,5 +199,10 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
                         .divide(BigDecimal.valueOf(total), 2, RoundingMode.HALF_UP);
         return new TeacherAttendanceStatsResponse(teacherId, total, present, absent, rate);
     }
+    @Override @Transactional(readOnly = true)
+    public List<TeacherCheckin> findCheckins(Long teacherId, LocalDate date) {
+        return checkinRepository.findByTeacherIdAndDate(teacherId, date);
+    }
+
     @Override public void delete(Long id) { attendanceRepository.deleteById(id); }
 }

@@ -25,7 +25,8 @@ public class TeacherCompensationController {
 
     private final PayrollService service;
 
-    public record CompensationRequest(PayMode payMode, BigDecimal hourlyRateNormal, BigDecimal hourlyRateExam, BigDecimal fixedSalary) {}
+    public record CompensationRequest(PayMode payMode, BigDecimal hourlyRateNormal, BigDecimal hourlyRateExam,
+                                      BigDecimal fixedSalary, Boolean paidDuringVacation) {}
 
     @Operation(summary = "Lister les rémunérations paramétrées")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
@@ -44,7 +45,7 @@ public class TeacherCompensationController {
     @PutMapping("/compensation/{teacherId}")
     public TeacherCompensation set(@PathVariable Long teacherId, @RequestBody CompensationRequest r) {
         return service.setCompensation(TenantContext.get(), teacherId, r.payMode(),
-                r.hourlyRateNormal(), r.hourlyRateExam(), r.fixedSalary());
+                r.hourlyRateNormal(), r.hourlyRateExam(), r.fixedSalary(), r.paidDuringVacation());
     }
 
     @Operation(summary = "Calcul de la paie mensuelle (heures réalisées − retards × tarif, + fixe le cas échéant)")

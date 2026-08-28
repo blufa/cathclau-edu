@@ -196,31 +196,70 @@ public class InvoiceService implements InvoiceUseCase {
     public List<Invoice> applyEarlyPaymentDiscount(Long studentId, Long feeId) {
         var fee = schoolFeeRepository.findById(feeId)
                 .orElseThrow(() -> new ResourceNotFoundException("SchoolFee", feeId));
-        List<Invoice> outstanding = repo.findByStudentId(studentId).stream()
+        List<Invoice> allForFee = repo.findByStudentId(studentId).stream()
                 .filter(i -> feeId.equals(i.getFeeId()))
+                .toList();
+        // La remise récompense le choix de payer TOUTE l'année dès le premier règlement de scolarité —
+        // dès qu'une tranche a déjà été réglée (même partiellement) sans elle, il est trop tard : décider
+        // ensuite de solder le reste ne doit plus donner droit à la remise.
+        boolean alreadyStartedPaying = allForFee.stream()
+                .anyMatch(i -> i.getPaidAmount() != null && i.getPaidAmount().signum() > 0);
+        List<Invoice> outstanding = allForFee.stream()
                 .filter(i -> i.getStatus() != InvoiceStatus.PAID)
                 .toList();
         // Pas de « tranches » à regrouper : rien à faire (une seule facture restante, ou aucune).
-        if (outstanding.size() < 2) {
+        if (alreadyStartedPaying || outstanding.size() < 2) {
             return outstanding;
         }
         var discount = earlyPaymentDiscountUseCase.computeApplicable(fee.getTenantId(), fee.getType());
         if (discount.percentage() == null || discount.percentage().signum() <= 0) {
             return outstanding;
         }
+        // Rien n'ayant encore été payé sur ce frais (garde ci-dessus), le total annuel et le total des
+        // tranches restantes sont ici identiques — la remise porte donc sur l'année complète.
+        BigDecimal outstandingTotal = outstanding.stream().map(Invoice::getTotalAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (outstandingTotal.signum() <= 0) {
+            return outstanding;
+        }
+        BigDecimal totalDiscount = outstandingTotal.multiply(discount.percentage())
+                .divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP)
+                .min(outstandingTotal);
         // Le taux est intégré au libellé (pas seulement le nom de la règle) pour que le pourcentage de
         // remise reste visible partout où discountReason est affiché (reçu, facture, liste des élèves).
         String reason = "Remise paiement anticipé : " + discount.ruleLabel()
                 + " (" + discount.percentage().stripTrailingZeros().toPlainString() + "%)";
         List<Invoice> updated = new ArrayList<>();
-        for (Invoice inv : outstanding) {
-            BigDecimal amount = inv.getTotalAmount().multiply(discount.percentage())
-                    .divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
+        BigDecimal allocated = BigDecimal.ZERO;
+        for (int i = 0; i < outstanding.size(); i++) {
+            Invoice inv = outstanding.get(i);
+            // Réparti au prorata du montant de chaque tranche restante ; la dernière absorbe l'arrondi
+            // pour que la somme des remises corresponde exactement au total calculé.
+            BigDecimal amount = i == outstanding.size() - 1
+                    ? totalDiscount.subtract(allocated)
+                    : totalDiscount.multiply(inv.getTotalAmount())
+                            .divide(outstandingTotal, 2, java.math.RoundingMode.HALF_UP);
+            allocated = allocated.add(amount);
             updated.add(applyDiscount(inv.getId(), amount, reason));
         }
-        log.info("Remise paiement anticipé appliquée : {} facture(s), élève id={} frais id={}, taux={}%",
-                updated.size(), studentId, feeId, discount.percentage());
+        log.info("Remise paiement anticipé appliquée : {} facture(s), élève id={} frais id={}, taux={}%, base annuelle={}",
+                updated.size(), studentId, feeId, discount.percentage(), outstandingTotal);
         return updated;
+    }
+
+    @Override
+    public List<Invoice> removeEarlyPaymentDiscount(Long studentId, Long feeId) {
+        List<Invoice> outstanding = repo.findByStudentId(studentId).stream()
+                .filter(i -> feeId.equals(i.getFeeId()) && i.getStatus() != InvoiceStatus.PAID)
+                .toList();
+        List<Invoice> reverted = new ArrayList<>();
+        for (Invoice inv : outstanding) {
+            if (inv.getDiscountAmount() != null && inv.getDiscountAmount().signum() > 0) {
+                reverted.add(applyDiscount(inv.getId(), BigDecimal.ZERO, null));
+            } else {
+                reverted.add(inv);
+            }
+        }
+        return reverted;
     }
 
     /** Recalcule le reste à payer et le statut : net dû = total - remise ; reste = net - payé. */

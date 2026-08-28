@@ -25,4 +25,7 @@ public class Classe {
     /** Classe normale ou classe d'examen (§6) — détermine le tarif horaire de paie appliqué. */
     @Builder.Default
     private ClassType classType = ClassType.NORMALE;
+    /** Élève désigné (inscription validée) pour scanner les badges de sa classe le matin — géré via
+     * un endpoint dédié, jamais via la mise à jour générale de la classe. */
+    private Long classRepresentativeStudentId;
 }

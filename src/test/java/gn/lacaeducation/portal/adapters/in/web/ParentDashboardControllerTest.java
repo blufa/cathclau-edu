@@ -39,7 +39,7 @@ class ParentDashboardControllerTest {
         when(studentDataProvider.findStudent(10L)).thenReturn(Optional.of(new StudentPublicInfo(
                 10L, 1L, "Mariama", "Bah", null, null, "M-1", null, null, "F")));
         when(studentDataProvider.findCurrentClassId(10L)).thenReturn(Optional.of(5L));
-        when(academicsDataProvider.findClass(5L)).thenReturn(Optional.of(new ClassPublicInfo(5L, "6ème A", "6ème", "NORMALE")));
+        when(academicsDataProvider.findClass(5L)).thenReturn(Optional.of(new ClassPublicInfo(5L, "6ème A", "6ème", "NORMALE", null, null, null)));
         when(studentReportProvider.latestPublished(10L)).thenReturn(Optional.of(
                 new StudentReportProvider.ReportInfo(new BigDecimal("14.50"), 3, 40, "Bien", "ADMIS")));
         when(studentBillingProvider.latestInvoice(10L)).thenReturn(Optional.of(

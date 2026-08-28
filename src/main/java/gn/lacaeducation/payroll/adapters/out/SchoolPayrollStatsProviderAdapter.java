@@ -12,8 +12,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /** Masse salariale récurrente = total net du mois de paie le plus récent (§10.2). */
@@ -67,6 +69,42 @@ class SchoolPayrollStatsProviderAdapter implements SchoolPayrollStatsProvider {
                     int realized = payrollService.computeMonthlyPay(t.id(), year, month).realizedMinutes();
                     return new TeacherHoursProgress(t.id(), name, due.normalMinutes() + due.examMinutes(), realized);
                 })
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public SchoolYearProjection projectSchoolYear(Long tenantId, int startYear, int startMonth, int monthsCount) {
+        BigDecimal staffMonthly = employeePublicInfoProvider.listEmployees(tenantId).stream()
+                .filter(EmployeePublicInfoProvider.EmployeeInfo::active)
+                .map(EmployeePublicInfoProvider.EmployeeInfo::baseSalary)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        List<MonthProjection> months = new ArrayList<>();
+        BigDecimal totalTeachers = BigDecimal.ZERO;
+        YearMonth cursor = YearMonth.of(startYear, startMonth);
+        for (int i = 0; i < monthsCount; i++) {
+            BigDecimal teacherMonthly = payrollService.teacherPayrollMass(tenantId, cursor.getYear(), cursor.getMonthValue()).monthlyPayroll();
+            totalTeachers = totalTeachers.add(teacherMonthly);
+            months.add(new MonthProjection(cursor.getYear(), cursor.getMonthValue(), teacherMonthly, staffMonthly,
+                    teacherMonthly.add(staffMonthly)));
+            cursor = cursor.plusMonths(1);
+        }
+        BigDecimal totalStaff = staffMonthly.multiply(BigDecimal.valueOf(monthsCount));
+        return new SchoolYearProjection(months, totalTeachers, totalStaff, totalTeachers.add(totalStaff));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<TeacherSalary> teacherSalaries(Long tenantId, int year, int month, int monthsCount) {
+        Map<Long, String> nameById = teacherPublicInfoProvider.listTeachers(tenantId).stream()
+                .collect(Collectors.toMap(
+                        t -> t.id(),
+                        t -> ((t.firstName() != null ? t.firstName() : "") + " " + (t.lastName() != null ? t.lastName() : "")).trim()));
+        return payrollService.teacherSalaryBreakdown(tenantId, year, month, monthsCount).stream()
+                .map(b -> new TeacherSalary(b.teacherId(), nameById.getOrDefault(b.teacherId(), "#" + b.teacherId()),
+                        b.monthlyPay(), b.annualProjection()))
                 .toList();
     }
 }

@@ -2,6 +2,7 @@
     allowedDependencies = {
         "common",
         "students",
+        "staff",
         "attendance::events",
         "grading::events",
         "billing::events",

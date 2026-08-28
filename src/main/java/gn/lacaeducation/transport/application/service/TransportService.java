@@ -2,11 +2,13 @@ package gn.lacaeducation.transport.application.service;
 
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
+import gn.lacaeducation.transport.application.event.TransportSubscriptionCreatedEvent;
 import gn.lacaeducation.transport.application.port.out.TransportRouteRepository;
 import gn.lacaeducation.transport.application.port.out.TransportStopRepository;
 import gn.lacaeducation.transport.application.port.out.TransportSubscriptionRepository;
 import gn.lacaeducation.transport.domain.*;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +31,7 @@ public class TransportService {
     private final TransportRouteRepository routeRepo;
     private final TransportStopRepository stopRepo;
     private final TransportSubscriptionRepository subRepo;
+    private final ApplicationEventPublisher eventPublisher;
 
     // ── Lignes ───────────────────────────────────────────────────────────────
 
@@ -87,11 +90,16 @@ public class TransportService {
             throw new BusinessRuleException("La ligne a atteint sa capacité (" + route.getCapacity() + ")");
         }
         BigDecimal fee = c.monthlyFee() != null ? c.monthlyFee() : route.getMonthlyFee();
-        return subRepo.save(TransportSubscription.builder()
+        TransportSubscription saved = subRepo.save(TransportSubscription.builder()
                 .tenantId(c.tenantId()).routeId(c.routeId()).stopId(c.stopId()).studentId(c.studentId())
                 .direction(c.direction() != null ? c.direction() : TransportDirection.BOTH)
                 .startDate(c.startDate() != null ? c.startDate() : LocalDate.now())
                 .monthlyFee(fee).status(SubscriptionStatus.ACTIVE).createdAt(LocalDateTime.now()).build());
+        // La facturation passe par billing (frais TRANSPORT configuré avec ses échéances dans Frais
+        // scolaires, comme la scolarité) : ce fait déclenche la génération des factures correspondantes,
+        // pour qu'elles apparaissent tout de suite sous « frais annexes » à l'encaissement.
+        eventPublisher.publishEvent(new TransportSubscriptionCreatedEvent(c.tenantId(), c.studentId(), c.routeId()));
+        return saved;
     }
 
     public TransportSubscription cancel(Long id) {

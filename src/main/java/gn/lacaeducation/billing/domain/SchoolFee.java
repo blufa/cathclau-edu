@@ -6,6 +6,10 @@ public class SchoolFee {
     private Long id;
     private Long tenantId;
     private Long classId;
+    /** Ligne de transport (module transport) — utilisé à la place de {@link #classId} pour un frais de
+     * type TRANSPORT, car une ligne dessert des élèves de classes différentes et le tarif dépend de la
+     * ligne (distance), pas du niveau. Null pour les autres types de frais. */
+    private Long routeId;
     private FeeType type;
     private BigDecimal amount;
     private String academicYear;
