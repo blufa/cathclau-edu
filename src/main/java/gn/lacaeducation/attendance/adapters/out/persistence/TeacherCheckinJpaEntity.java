@@ -18,7 +18,9 @@ class TeacherCheckinJpaEntity {
     @Column(name = "checkin_date", nullable = false) private LocalDate checkinDate;
     @Column(name = "schedule_slot_id") private Long scheduleSlotId;
     @Column(name = "session_start") private LocalTime sessionStart;
+    @Column(name = "session_end") private LocalTime sessionEnd;
     @Column(name = "check_in_time", nullable = false) private LocalTime checkInTime;
+    @Column(name = "check_out_time") private LocalTime checkOutTime;
     @Column(name = "late_minutes", nullable = false) private Integer lateMinutes;
     @Column(name = "created_at") private LocalDateTime createdAt;
 }

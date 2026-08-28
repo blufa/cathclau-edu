@@ -8,8 +8,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
@@ -70,8 +73,21 @@ class RolePersistenceAdapter implements RoleRepository {
     @Override
     @Transactional
     public void assignPermissions(Long roleId, List<Long> permissionIds) {
-        rolePermissionJpaRepository.deleteByRoleId(roleId);
-        for (Long permId : permissionIds) {
+        // Diff contre l'existant plutôt que "tout supprimer puis tout réinsérer" : un delete-then-insert
+        // sur les MÊMES paires (roleId, permissionId) déjà présentes provoque une violation de contrainte
+        // unique, car Hibernate exécute les INSERT avant les DELETE au flush (ordre d'action par défaut),
+        // donc l'INSERT s'exécute alors que l'ancienne ligne existe encore en base.
+        Set<Long> requested = new LinkedHashSet<>(permissionIds);
+        List<RolePermissionJpaEntity> existing = rolePermissionJpaRepository.findByRoleId(roleId);
+
+        List<RolePermissionJpaEntity> toRemove = existing.stream()
+                .filter(rp -> !requested.contains(rp.getPermissionId()))
+                .toList();
+        Set<Long> existingPermissionIds = existing.stream().map(RolePermissionJpaEntity::getPermissionId).collect(Collectors.toSet());
+
+        rolePermissionJpaRepository.deleteAll(toRemove);
+        for (Long permId : requested) {
+            if (existingPermissionIds.contains(permId)) continue;
             RolePermissionJpaEntity rp = new RolePermissionJpaEntity();
             rp.setRoleId(roleId);
             rp.setPermissionId(permId);

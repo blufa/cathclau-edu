@@ -8,4 +8,8 @@ public interface StudentDataProvider {
     List<StudentPublicInfo> findStudentsByClass(Long classId);
     /** La classe de l'inscription validée la plus récente de l'élève (sa classe courante), si elle existe. */
     Optional<Long> findCurrentClassId(Long studentId);
+    /** Identifiant élève lié au compte utilisateur (portail élève), si {@code userId} en a un. */
+    Optional<Long> findStudentIdByUserId(Long userId);
+    /** Tous les parents du tenant (diffusion de masse « tous les parents »). */
+    List<ParentPublicInfo> findAllParents(Long tenantId);
 }

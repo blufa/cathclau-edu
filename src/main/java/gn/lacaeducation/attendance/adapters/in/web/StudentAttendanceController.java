@@ -5,7 +5,9 @@ import gn.lacaeducation.attendance.application.port.in.StudentAttendanceUseCase.
 import gn.lacaeducation.attendance.application.port.in.StudentAttendanceUseCase.AttendanceEntry;
 import gn.lacaeducation.attendance.application.port.in.StudentAttendanceUseCase.AttendanceStatsResponse;
 import gn.lacaeducation.attendance.domain.AttendanceStatus;
+import gn.lacaeducation.attendance.domain.ChildPickup;
 import gn.lacaeducation.attendance.domain.StudentAttendance;
+import gn.lacaeducation.attendance.domain.StudentCheckin;
 import gn.lacaeducation.common.PortalAccess;
 import gn.lacaeducation.students.ParentAccessProvider;
 import io.swagger.v3.oas.annotations.Operation;
@@ -20,6 +22,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
 @Tag(name = "Student Attendance", description = "Record and query student attendance per class and date")
@@ -50,6 +53,42 @@ public class StudentAttendanceController {
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER','SECRETARY')")
     @PostMapping
     public StudentAttendance record(@RequestBody RecordAttendanceCommand cmd) { return useCase.record(cmd); }
+
+    @Operation(summary = "Marquer un élève absent aujourd'hui (un scan ne peut jamais produire ce statut)")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER','SECRETARY')")
+    @PostMapping("/{studentId}/mark-absent")
+    public StudentAttendance markAbsent(@PathVariable Long studentId, @RequestParam(required = false) String reason) {
+        return useCase.markAbsent(studentId, reason);
+    }
+
+    @Operation(summary = "Correction manuelle : saisir l'heure d'entrée d'un élève pour une date donnée "
+            + "(le retard est calculé automatiquement vs l'emploi du temps, comme pour un scan)")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER','SECRETARY')")
+    @PostMapping("/{studentId}/manual-entry")
+    public StudentCheckin manualEntry(@PathVariable Long studentId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam LocalTime checkInTime) {
+        return useCase.recordManualEntry(studentId, date, checkInTime);
+    }
+
+    @Operation(summary = "Badge de retrait (maternelle/primaire) : enregistrer qui est venu récupérer "
+            + "l'enfant — un parent déjà lié (pickerParentId) ou une personne saisie librement "
+            + "(pickerName + pickerRelation)")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER','SECRETARY')")
+    @PostMapping("/{studentId}/pickup")
+    public ChildPickup recordPickup(@PathVariable Long studentId,
+            @RequestParam(required = false) Long pickerParentId,
+            @RequestParam(required = false) String pickerName,
+            @RequestParam(required = false) String pickerRelation) {
+        return useCase.recordPickup(studentId, pickerParentId, pickerName, pickerRelation);
+    }
+
+    @Operation(summary = "Retraits d'un élève à une date donnée (historique/audit)")
+    @GetMapping("/{studentId}/pickups")
+    public List<ChildPickup> findPickups(@PathVariable Long studentId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return useCase.findPickups(studentId, date);
+    }
 
     @Operation(summary = "Record attendance for an entire class at once")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER','SECRETARY')")

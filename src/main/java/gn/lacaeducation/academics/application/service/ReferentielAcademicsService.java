@@ -47,9 +47,9 @@ public class ReferentielAcademicsService implements GererReferentielUseCase {
     }
 
     @Override
-    public Niveau createLevel(Long tenantId, String label, Integer sortOrder) {
+    public Niveau createLevel(Long tenantId, String label, Integer sortOrder, SchoolCycle cycle) {
         return referentielRepository.saveLevel(
-                Niveau.builder().tenantId(tenantId).label(label).sortOrder(sortOrder).build()
+                Niveau.builder().tenantId(tenantId).label(label).sortOrder(sortOrder).cycle(cycle).build()
         );
     }
 
@@ -91,9 +91,9 @@ public class ReferentielAcademicsService implements GererReferentielUseCase {
     @Override public void deleteRoom(Long id) { referentielRepository.deleteRoomById(id); }
 
     @Override
-    public Niveau updateLevel(Long id, String label, Integer sortOrder) {
+    public Niveau updateLevel(Long id, String label, Integer sortOrder, SchoolCycle cycle) {
         Niveau n = referentielRepository.findLevelById(id).orElseThrow(() -> new IllegalArgumentException("Level not found: " + id));
-        n.setLabel(label); n.setSortOrder(sortOrder);
+        n.setLabel(label); n.setSortOrder(sortOrder); n.setCycle(cycle);
         return referentielRepository.saveLevel(n);
     }
     @Override @Transactional(readOnly=true)

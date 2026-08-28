@@ -20,6 +20,10 @@ public interface GererClasseUseCase {
     void delete(Long id);
     List<ClassStudent> findStudentsByClassId(Long classId);
     EnrollmentCountInfo getEnrollmentCount(Long classId);
+    /** Désigne (ou retire, avec studentId=null) le chef de classe — doit être un élève inscrit
+     * (inscription validée) dans cette classe. Séparé de {@link #update} pour ne jamais être écrasé
+     * par inadvertance par le formulaire général d'édition de classe. */
+    Classe setClassRepresentative(Long classId, Long studentId);
     record CreateClassCommand(Long tenantId, Long levelId, Long academicYearId,
                                Long headTeacherId, Long roomId, String label, Integer maxCapacity,
                                ClassType classType) {}

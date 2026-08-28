@@ -14,17 +14,17 @@ import java.util.List;
 @RestController @RequestMapping("/api/v1/billing/fees") @RequiredArgsConstructor
 public class SchoolFeeController {
     private final SchoolFeeUseCase useCase;
-    public record CreateRequest(Long tenantId, Long classId, FeeType type, BigDecimal amount, String academicYear, String label) {}
-    public record UpdateRequest(Long classId, FeeType type, BigDecimal amount, String academicYear, String label) {}
+    public record CreateRequest(Long tenantId, Long classId, Long routeId, FeeType type, BigDecimal amount, String academicYear, String label) {}
+    public record UpdateRequest(Long classId, Long routeId, FeeType type, BigDecimal amount, String academicYear, String label) {}
     @Operation(summary = "Create a new school fee configuration")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
     @PostMapping public ResponseEntity<SchoolFee> create(@RequestBody CreateRequest r) {
-        return ResponseEntity.ok(useCase.create(new SchoolFeeUseCase.CreateFeeCommand(r.tenantId(), r.classId(), r.type(), r.amount(), r.academicYear(), r.label())));
+        return ResponseEntity.ok(useCase.create(new SchoolFeeUseCase.CreateFeeCommand(r.tenantId(), r.classId(), r.routeId(), r.type(), r.amount(), r.academicYear(), r.label())));
     }
     @Operation(summary = "Update an existing school fee configuration")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
     @PutMapping("/{id}") public ResponseEntity<SchoolFee> update(@PathVariable Long id, @RequestBody UpdateRequest r) {
-        return ResponseEntity.ok(useCase.update(id, new SchoolFeeUseCase.UpdateFeeCommand(r.classId(), r.type(), r.amount(), r.academicYear(), r.label())));
+        return ResponseEntity.ok(useCase.update(id, new SchoolFeeUseCase.UpdateFeeCommand(r.classId(), r.routeId(), r.type(), r.amount(), r.academicYear(), r.label())));
     }
     @Operation(summary = "Get a school fee configuration by ID")
     @GetMapping("/{id}") public ResponseEntity<SchoolFee> findById(@PathVariable Long id) {
@@ -34,6 +34,8 @@ public class SchoolFeeController {
     @GetMapping("/tenant/{tenantId}") public List<SchoolFee> findByTenant(@PathVariable Long tenantId) { return useCase.findByTenantId(tenantId); }
     @Operation(summary = "List all school fee configurations for a class")
     @GetMapping("/class/{classId}") public List<SchoolFee> findByClass(@PathVariable Long classId) { return useCase.findByClassId(classId); }
+    @Operation(summary = "List all TRANSPORT fee configurations for a route")
+    @GetMapping("/route/{routeId}") public List<SchoolFee> findByRoute(@PathVariable Long routeId) { return useCase.findByRouteId(routeId); }
     @Operation(summary = "Delete a school fee configuration")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
     @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id) { useCase.delete(id); return ResponseEntity.noContent().build(); }

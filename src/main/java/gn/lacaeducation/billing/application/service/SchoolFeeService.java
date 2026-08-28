@@ -12,11 +12,11 @@ import java.util.Optional;
 public class SchoolFeeService implements SchoolFeeUseCase {
     private final SchoolFeeRepository repo;
     @Override public SchoolFee create(CreateFeeCommand c) {
-        return repo.save(SchoolFee.builder().tenantId(c.tenantId()).classId(c.classId())
+        return repo.save(SchoolFee.builder().tenantId(c.tenantId()).classId(c.classId()).routeId(c.routeId())
                 .type(c.type()).amount(c.amount()).academicYear(c.academicYear()).label(c.label()).build());
     }
     @Override public SchoolFee update(Long id, UpdateFeeCommand c) {
-        SchoolFee f = load(id); f.setClassId(c.classId()); f.setType(c.type()); f.setAmount(c.amount());
+        SchoolFee f = load(id); f.setClassId(c.classId()); f.setRouteId(c.routeId()); f.setType(c.type()); f.setAmount(c.amount());
         f.setAcademicYear(c.academicYear()); f.setLabel(c.label());
         return repo.save(f);
     }
@@ -36,6 +36,12 @@ public class SchoolFeeService implements SchoolFeeUseCase {
     @Transactional(readOnly=true)
     public List<SchoolFee> findByClassId(Long c) {
         return repo.findByClassId(c);
+    }
+
+    @Override
+    @Transactional(readOnly=true)
+    public List<SchoolFee> findByRouteId(Long r) {
+        return repo.findByRouteId(r);
     }
 
     @Override

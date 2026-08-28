@@ -18,7 +18,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.time.Year;
 import java.util.List;
 import java.util.Optional;
 
@@ -66,8 +65,8 @@ public class EleveService implements StudentUseCase {
     }
 
     /**
-     * Returns a tenant-unique matricule: validates a provided one, or auto-generates one in the
-     * {@code SIGLE-ELV-YEAR-SEQ} format (e.g. {@code GSC-ELV-2026-00042}).
+     * Returns a tenant-unique matricule: validates a provided one, or auto-generates one in the simple
+     * {@code SIGLESEQ} format (e.g. {@code AT00001}) — no dashes, year or type infix.
      */
     private String resolveStudentNumber(Long tenantId, String provided) {
         if (provided != null && !provided.isBlank()) {
@@ -77,11 +76,10 @@ public class EleveService implements StudentUseCase {
             return provided;
         }
         String prefix = SchoolCode.prefix(tenantInfoProvider, tenantId);
-        String year = String.valueOf(Year.now().getValue());
         long seq = studentRepository.countByTenantId(tenantId) + 1;
         String candidate;
         do {
-            candidate = String.format("%s-ELV-%s-%05d", prefix, year, seq++);
+            candidate = String.format("%s%05d", prefix, seq++);
         } while (studentRepository.existsByTenantIdAndStudentNumber(tenantId, candidate));
         return candidate;
     }

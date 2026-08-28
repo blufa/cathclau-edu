@@ -1,5 +1,6 @@
 package gn.lacaeducation.academics.adapters.out.persistence;
 import gn.lacaeducation.academics.AcademicsDataProvider;
+import gn.lacaeducation.academics.AcademicYearPublicInfo;
 import gn.lacaeducation.academics.ClassPublicInfo;
 import gn.lacaeducation.academics.ClassSubjectPublicInfo;
 import gn.lacaeducation.academics.PeriodPublicInfo;
@@ -21,10 +22,21 @@ public class AcademicsDataProviderAdapter implements AcademicsDataProvider {
     private final MatiereJpaRepository matiereRepo;
     private final EmploiDuTempsJpaRepository emploiDuTempsRepo;
     private final AnneeScolaireJpaRepository anneeRepo;
+    private final NiveauJpaRepository niveauRepo;
     @Override
     public Optional<ClassPublicInfo> findClass(Long classId) {
-        return classeRepo.findById(classId).map(c -> new ClassPublicInfo(c.getId(), c.getLabel(), null,
-                c.getClassType() != null ? c.getClassType().name() : null));
+        return classeRepo.findById(classId).map(this::toClassPublicInfo);
+    }
+
+    /** Résout le niveau de la classe (libellé + cycle scolaire) — cycle utilisé notamment pour
+     * déclencher le badge de retrait automatique à la sortie d'un enfant de maternelle/primaire
+     * (§attendance). */
+    private ClassPublicInfo toClassPublicInfo(ClasseJpaEntity c) {
+        NiveauJpaEntity niveau = c.getLevelId() != null ? niveauRepo.findById(c.getLevelId()).orElse(null) : null;
+        return new ClassPublicInfo(c.getId(), c.getLabel(), niveau != null ? niveau.getLabel() : null,
+                c.getClassType() != null ? c.getClassType().name() : null,
+                c.getClassRepresentativeStudentId(), c.getHeadTeacherId(),
+                niveau != null && niveau.getCycle() != null ? niveau.getCycle().name() : null);
     }
     @Override
     public Map<Long, String> subjectLabels(Collection<Long> subjectIds) {
@@ -81,8 +93,7 @@ public class AcademicsDataProviderAdapter implements AcademicsDataProvider {
     @Override
     public List<ClassPublicInfo> findClassesByHeadTeacher(Long teacherId) {
         return classeRepo.findByHeadTeacherId(teacherId).stream()
-                .map(c -> new ClassPublicInfo(c.getId(), c.getLabel(), null,
-                        c.getClassType() != null ? c.getClassType().name() : null))
+                .map(this::toClassPublicInfo)
                 .toList();
     }
 
@@ -120,8 +131,27 @@ public class AcademicsDataProviderAdapter implements AcademicsDataProvider {
     }
 
     @Override
+    public List<ClassPublicInfo> findClassesByTenant(Long tenantId) {
+        return classeRepo.findByTenantId(tenantId).stream()
+                .map(this::toClassPublicInfo)
+                .toList();
+    }
+
+    @Override
     public Optional<String> currentAcademicYearLabel(Long tenantId) {
         return anneeRepo.findByTenantIdAndCurrentTrue(tenantId).map(AnneeScolaireJpaEntity::getLabel);
+    }
+
+    @Override
+    public Optional<AcademicYearPublicInfo> currentAcademicYear(Long tenantId) {
+        return anneeRepo.findByTenantIdAndCurrentTrue(tenantId)
+                .map(y -> new AcademicYearPublicInfo(y.getId(), y.getLabel(), y.getStartDate(), y.getEndDate()));
+    }
+
+    @Override
+    public Optional<AcademicYearPublicInfo> findAcademicYear(Long academicYearId) {
+        return anneeRepo.findById(academicYearId)
+                .map(y -> new AcademicYearPublicInfo(y.getId(), y.getLabel(), y.getStartDate(), y.getEndDate()));
     }
 
     private ScheduleSlotPublicInfo toSlot(EmploiDuTempsJpaEntity e) {

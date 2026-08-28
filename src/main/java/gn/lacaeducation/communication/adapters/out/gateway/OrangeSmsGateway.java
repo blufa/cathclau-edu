@@ -6,6 +6,7 @@ import gn.lacaeducation.communication.application.port.out.NotificationGateway;
 import gn.lacaeducation.communication.application.port.out.SmsBalancePort;
 import gn.lacaeducation.communication.domain.CommunicationChannel;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -25,8 +26,14 @@ import java.util.Map;
  * {@code /smsmessaging/v1/outbound/{senderAddress}/requests}. Le numéro est normalisé en E.164
  * ({@code tel:+224…}). Tant que les clés Orange ne sont pas renseignées ({@code orange.sms.enabled=false}),
  * l'envoi se replie sur la journalisation sans échouer (comportement dev, comme l'ancien stub).</p>
+ *
+ * <p>N'est enregistré comme bean QUE si {@code orange.sms.enabled=true} : {@link NimbaSmsGateway} est
+ * le fournisseur SMS actif par défaut, et un seul bean {@link NotificationGateway}/{@link SmsBalancePort}
+ * pour le canal SMS doit exister à la fois (sinon la sélection dans {@code CommunicationService}
+ * deviendrait non déterministe).</p>
  */
 @Component
+@ConditionalOnProperty(prefix = "orange.sms", name = "enabled", havingValue = "true")
 @Slf4j
 public class OrangeSmsGateway implements NotificationGateway, SmsBalancePort {
 

@@ -59,4 +59,16 @@ public class StudentDataProviderAdapter implements StudentDataProvider {
                                 java.util.Comparator.nullsFirst(Long::compareTo)))
                 .map(gn.lacaeducation.students.domain.Enrollment::getClassId);
     }
+
+    @Override
+    public Optional<Long> findStudentIdByUserId(Long userId) {
+        return eleveRepo.findByUserId(userId).map(EleveJpaEntity::getId);
+    }
+
+    @Override
+    public List<ParentPublicInfo> findAllParents(Long tenantId) {
+        return parentRepo.findByTenantId(tenantId).stream()
+                .map(p -> new ParentPublicInfo(p.getId(), p.getFirstName(), p.getLastName(), p.getEmail(), p.getPhone()))
+                .toList();
+    }
 }

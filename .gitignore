@@ -28,6 +28,7 @@ target/
 /nbbuild/
 /dist/
 /nbdist/
+/nimbasms-java-main
 /.nb-gradle/
 build/
 !**/src/main/**/build/

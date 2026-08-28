@@ -8,19 +8,23 @@ class SchoolCodeTest {
 
     @Test
     void buildsAcronymFromSignificantWords() {
-        assertThat(SchoolCode.prefix("Groupe Scolaire La Cathédrale")).isEqualTo("GSC");
-        assertThat(SchoolCode.prefix("École Primaire Les Anges")).isEqualTo("EPA");
+        // « Groupe » et « Scolaire » sont des désignations génériques d'établissement, ignorées pour
+        // ne garder que ce qui distingue vraiment l'école (ex. « Al Taqwa » → « AT », pas « GSAT »).
+        assertThat(SchoolCode.prefix("Groupe Scolaire Al Taqwa")).isEqualTo("AT");
+        assertThat(SchoolCode.prefix("École Primaire Les Anges")).isEqualTo("PA");
     }
 
     @Test
     void singleWordKeepsFirstThreeLetters() {
         assertThat(SchoolCode.prefix("Renaissance")).isEqualTo("REN");
         assertThat(SchoolCode.prefix("La Renaissance")).isEqualTo("REN");
+        // Un seul mot distinctif survit une fois « Groupe Scolaire » ignorés.
+        assertThat(SchoolCode.prefix("Groupe Scolaire La Cathédrale")).isEqualTo("CAT");
     }
 
     @Test
     void ignoresAccentsAndCaps() {
-        assertThat(SchoolCode.prefix("collège évariste galois")).isEqualTo("CEG");
+        assertThat(SchoolCode.prefix("institut évariste galois")).isEqualTo("EG");
     }
 
     @Test

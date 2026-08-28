@@ -79,8 +79,9 @@ public class ReferentielController {
     @Operation(summary = "Create a new school level (grade level)")
     @PostMapping("/levels")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
-    public ResponseEntity<Niveau> createLevel(@RequestParam String label, @RequestParam Integer sortOrder) {
-        Niveau n = useCase.createLevel(TenantContext.get(), label, sortOrder);
+    public ResponseEntity<Niveau> createLevel(@RequestParam String label, @RequestParam Integer sortOrder,
+            @RequestParam(required = false) SchoolCycle cycle) {
+        Niveau n = useCase.createLevel(TenantContext.get(), label, sortOrder, cycle);
         return ResponseEntity.created(URI.create("/api/academics/levels/" + n.getId())).body(n);
     }
 
@@ -91,8 +92,9 @@ public class ReferentielController {
     @Operation(summary = "Update a school level")
     @PutMapping("/levels/{id}")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
-    public Niveau updateLevel(@PathVariable Long id, @RequestParam String label, @RequestParam Integer sortOrder) {
-        return useCase.updateLevel(id, label, sortOrder);
+    public Niveau updateLevel(@PathVariable Long id, @RequestParam String label, @RequestParam Integer sortOrder,
+            @RequestParam(required = false) SchoolCycle cycle) {
+        return useCase.updateLevel(id, label, sortOrder, cycle);
     }
 
     @Operation(summary = "Delete a school level")

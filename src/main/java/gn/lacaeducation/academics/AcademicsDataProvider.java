@@ -17,6 +17,14 @@ public interface AcademicsDataProvider {
     List<ClassSubjectPublicInfo> findClassSubjectsByTeacher(Long teacherId);
     List<ScheduleSlotPublicInfo> findScheduleByTeacher(Long teacherId);
     List<ScheduleSlotPublicInfo> findScheduleByClass(Long classId);
+    /** Toutes les classes d'un tenant (job planifié parcourant tout l'établissement, ex. marquage
+     * automatique des absences en fin de journée). */
+    List<ClassPublicInfo> findClassesByTenant(Long tenantId);
     /** Libellé de l'année scolaire courante du tenant (pour les documents). */
     Optional<String> currentAcademicYearLabel(Long tenantId);
+    /** Année scolaire courante complète (id + date de fin) — ex. pour borner la validité d'une carte élève. */
+    Optional<AcademicYearPublicInfo> currentAcademicYear(Long tenantId);
+    /** Année scolaire par id (pas forcément la courante) — ex. pour dériver sa durée réelle
+     * (projection de paie sur ce qu'il reste de l'année, plutôt qu'un nombre de mois fixe). */
+    Optional<AcademicYearPublicInfo> findAcademicYear(Long academicYearId);
 }

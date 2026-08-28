@@ -31,14 +31,17 @@ class TeacherCheckinPersistenceAdapter implements TeacherCheckinRepository {
     private TeacherCheckin toDomain(TeacherCheckinJpaEntity e) {
         return TeacherCheckin.builder().id(e.getId()).tenantId(e.getTenantId()).teacherId(e.getTeacherId())
                 .checkinDate(e.getCheckinDate()).scheduleSlotId(e.getScheduleSlotId()).sessionStart(e.getSessionStart())
-                .checkInTime(e.getCheckInTime()).lateMinutes(e.getLateMinutes()).createdAt(e.getCreatedAt()).build();
+                .sessionEnd(e.getSessionEnd()).checkInTime(e.getCheckInTime()).checkOutTime(e.getCheckOutTime())
+                .lateMinutes(e.getLateMinutes()).createdAt(e.getCreatedAt()).build();
     }
 
     private TeacherCheckinJpaEntity toEntity(TeacherCheckin c) {
         TeacherCheckinJpaEntity e = new TeacherCheckinJpaEntity();
         e.setId(c.getId()); e.setTenantId(c.getTenantId()); e.setTeacherId(c.getTeacherId());
         e.setCheckinDate(c.getCheckinDate()); e.setScheduleSlotId(c.getScheduleSlotId()); e.setSessionStart(c.getSessionStart());
-        e.setCheckInTime(c.getCheckInTime()); e.setLateMinutes(c.getLateMinutes() != null ? c.getLateMinutes() : 0);
+        e.setSessionEnd(c.getSessionEnd());
+        e.setCheckInTime(c.getCheckInTime()); e.setCheckOutTime(c.getCheckOutTime());
+        e.setLateMinutes(c.getLateMinutes() != null ? c.getLateMinutes() : 0);
         e.setCreatedAt(c.getCreatedAt());
         return e;
     }

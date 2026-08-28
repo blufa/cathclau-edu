@@ -20,7 +20,6 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Year;
 import java.util.List;
 import java.util.Optional;
 
@@ -48,7 +47,11 @@ public class EnseignantService implements TeacherUseCase {
         return saved;
     }
 
-    /** Returns a tenant-unique staff number: validates a provided one, or auto-generates {@code EMP-YEAR-SEQ}. */
+    /**
+     * Returns a tenant-unique staff number: validates a provided one, or auto-generates one in the
+     * simple {@code SIGLESEQ} format (e.g. {@code AT00001}) — no dashes, year or type infix, same as
+     * the student matricule.
+     */
     private String resolveStaffNumber(Long tenantId, String provided) {
         if (provided != null && !provided.isBlank()) {
             if (teacherRepository.existsByTenantIdAndStaffNumber(tenantId, provided)) {
@@ -57,11 +60,10 @@ public class EnseignantService implements TeacherUseCase {
             return provided;
         }
         String prefix = SchoolCode.prefix(tenantInfoProvider, tenantId);
-        String year = String.valueOf(Year.now().getValue());
         long seq = teacherRepository.findByTenantId(tenantId).size() + 1L;
         String candidate;
         do {
-            candidate = String.format("%s-ENS-%s-%04d", prefix, year, seq++);
+            candidate = String.format("%s%05d", prefix, seq++);
         } while (teacherRepository.existsByTenantIdAndStaffNumber(tenantId, candidate));
         return candidate;
     }

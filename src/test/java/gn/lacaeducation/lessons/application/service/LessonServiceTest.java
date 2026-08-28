@@ -108,6 +108,34 @@ class LessonServiceTest {
     }
 
     @Test
+    void create_withoutSubject_resolvesTeacherFromClassHeadTeacher() {
+        // Moniteur maternelle/primaire : un seul enseignant couvre toute la classe, salaire fixe —
+        // pas de matière à choisir, l'enseignant se résout via le professeur principal de la classe.
+        when(academics.findClass(5L)).thenReturn(java.util.Optional.of(
+                new gn.lacaeducation.academics.ClassPublicInfo(5L, "Maternelle A", "Maternelle", "NORMALE", null, 8L, null)));
+        when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        LessonEntry result = service.create(new LessonService.CreateLessonCommand(
+                1L, 5L, null, null, LocalDate.now(), "Journée du 26/08", null, null, 300, null));
+
+        assertThat(result.getTeacherId()).isEqualTo(8L);
+        assertThat(result.getSubjectId()).isNull();
+        verify(academics, never()).findClassSubjects(any());
+    }
+
+    @Test
+    void create_withoutSubject_throwsWhenNoHeadTeacherDesignated() {
+        when(academics.findClass(5L)).thenReturn(java.util.Optional.of(
+                new gn.lacaeducation.academics.ClassPublicInfo(5L, "Maternelle A", "Maternelle", "NORMALE", null, null, null)));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.create(new LessonService.CreateLessonCommand(
+                        1L, 5L, null, null, LocalDate.now(), "Journée du 26/08", null, null, 300, null)))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("professeur principal");
+        verify(repo, never()).save(any());
+    }
+
+    @Test
     void update_reResolvesTeacherFromClassSubjectAssignment() {
         LessonEntry existing = LessonEntry.builder().id(10L).tenantId(1L).classId(5L).subjectId(7L).teacherId(99L).build();
         when(repo.findById(10L)).thenReturn(java.util.Optional.of(existing));

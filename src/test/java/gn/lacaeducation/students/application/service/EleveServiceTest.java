@@ -62,8 +62,8 @@ class EleveServiceTest {
 
         Student result = service.create(cmd(null));
 
-        // Matricule auto-généré au format <sigleÉcole>-ELV-<année>-<séquence>, ex. EC-ELV-2026-00042.
-        assertThat(result.getStudentNumber()).matches("[A-Z]{2,6}-ELV-\\d{4}-\\d{5}");
+        // Matricule auto-généré au format simple <sigleÉcole><séquence>, ex. EC00042.
+        assertThat(result.getStudentNumber()).matches("[A-Z]{2,6}\\d{5}");
         verify(eventPublisher).publishEvent(any(StudentCreatedEvent.class));
     }
 
