@@ -93,4 +93,41 @@ class EnseignantServiceTest {
                 .thenReturn(List.of(Teacher.builder().id(1L).build(), Teacher.builder().id(2L).build()));
         assertThat(service.findByTenantId(10L)).hasSize(2);
     }
+
+    @Test
+    void updateOwnProfile_partial_keepsUnsetFieldsAndNeverTouchesAdministrativeData() {
+        Teacher existing = Teacher.builder().id(3L).userId(7L).staffNumber("T001")
+                .firstName("John").lastName("Doe").phone("old").email("old@x").specialization("Maths").build();
+        when(teacherRepository.findByUserId(7L)).thenReturn(Optional.of(existing));
+        when(teacherRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        Teacher updated = service.updateOwnProfile(7L,
+                new gn.lacaeducation.staff.application.port.in.TeacherUseCase.UpdateOwnProfileCommand(
+                        "623000000", "john@ecole.gn"));
+
+        assertThat(updated.getStaffNumber()).isEqualTo("T001"); // jamais modifié en self-service
+        assertThat(updated.getSpecialization()).isEqualTo("Maths");
+        assertThat(updated.getPhone()).isEqualTo("623000000");
+        assertThat(updated.getEmail()).isEqualTo("john@ecole.gn");
+    }
+
+    @Test
+    void updateOwnPhoto_setsPhoto() {
+        Teacher existing = Teacher.builder().id(3L).userId(7L).build();
+        when(teacherRepository.findByUserId(7L)).thenReturn(Optional.of(existing));
+        when(teacherRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        Teacher updated = service.updateOwnPhoto(7L, "https://cdn.test/photo.jpg");
+
+        assertThat(updated.getPhoto()).isEqualTo("https://cdn.test/photo.jpg");
+    }
+
+    @Test
+    void updateOwnProfile_unknownUser_throws() {
+        when(teacherRepository.findByUserId(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.updateOwnProfile(99L,
+                new gn.lacaeducation.staff.application.port.in.TeacherUseCase.UpdateOwnProfileCommand("623", null)))
+                .isInstanceOf(gn.lacaeducation.common.ResourceNotFoundException.class);
+    }
 }

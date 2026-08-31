@@ -138,6 +138,11 @@ public class AcademicsDataProviderAdapter implements AcademicsDataProvider {
     }
 
     @Override
+    public long countClassesByTenantAndYear(Long tenantId, Long academicYearId) {
+        return classeRepo.countByTenantIdAndAcademicYearId(tenantId, academicYearId);
+    }
+
+    @Override
     public Optional<String> currentAcademicYearLabel(Long tenantId) {
         return anneeRepo.findByTenantIdAndCurrentTrue(tenantId).map(AnneeScolaireJpaEntity::getLabel);
     }

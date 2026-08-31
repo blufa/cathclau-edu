@@ -119,6 +119,25 @@ public class StudentController {
         return studentUseCase.findByUserId(userId).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
+    @Operation(summary = "Mise à jour self-service du profil de l'élève connecté (téléphone, e-mail, adresse)")
+    @PreAuthorize("hasRole('STUDENT')")
+    @PutMapping("/me")
+    public Student updateMyProfile(@AuthenticationPrincipal Jwt jwt,
+                                   @RequestBody StudentUseCase.UpdateOwnProfileCommand cmd) {
+        return studentUseCase.updateOwnProfile(currentUserId(jwt), cmd);
+    }
+
+    @Operation(summary = "Mise à jour de la photo de profil de l'élève connecté")
+    @PreAuthorize("hasRole('STUDENT')")
+    @PatchMapping("/me/photo")
+    public Student updateMyPhoto(@AuthenticationPrincipal Jwt jwt, @RequestParam String photoUrl) {
+        return studentUseCase.updateOwnPhoto(currentUserId(jwt), photoUrl);
+    }
+
+    private Long currentUserId(Jwt jwt) {
+        try { return Long.parseLong(jwt.getSubject()); } catch (RuntimeException e) { return null; }
+    }
+
     @Operation(summary = "Get a student's full record (enrollments, parents, documents)")
     @GetMapping("/{id}")
     public ResponseEntity<StudentDetailResponse> findById(@PathVariable Long id) {

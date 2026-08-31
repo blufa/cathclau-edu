@@ -61,4 +61,8 @@ public class Tenant {
     /** When automatic onboarding completed — guards against re-running onboarding (idempotency). */
     private LocalDateTime onboardedAt;
     private LocalDateTime createdAt;
+    /** Préfecture/commune (DPE/DCE) de rattachement — null si l'école n'est pas dans le périmètre
+     * d'un partenariat DPE. Ne concerne jamais l'abonnement SaaS ni le fonctionnement normal de
+     * l'école, uniquement la supervision en lecture seule par la DPE/DCE. */
+    private Long prefectureId;
 }

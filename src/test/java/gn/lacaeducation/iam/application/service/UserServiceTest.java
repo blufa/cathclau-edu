@@ -62,7 +62,7 @@ class UserServiceTest {
         when(userRepository.findById(5L)).thenReturn(Optional.of(user));
         when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        userService.update(5L, new UserUseCase.UpdateUserCommand("A", "B", "0600", false));
+        userService.update(5L, new UserUseCase.UpdateUserCommand("A", "B", "0600", false, null));
 
         verify(refreshTokenRepository).revokeAllByUserId(5L);
     }
@@ -73,7 +73,7 @@ class UserServiceTest {
         when(userRepository.findById(5L)).thenReturn(Optional.of(user));
         when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        userService.update(5L, new UserUseCase.UpdateUserCommand("A", "B", "0600", true));
+        userService.update(5L, new UserUseCase.UpdateUserCommand("A", "B", "0600", true, null));
 
         verify(refreshTokenRepository, never()).revokeAllByUserId(any());
     }
@@ -99,11 +99,25 @@ class UserServiceTest {
         when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
         // deactivate carries only the active flag (all other fields null)
-        userService.update(5L, new UserUseCase.UpdateUserCommand(null, null, null, false));
+        userService.update(5L, new UserUseCase.UpdateUserCommand(null, null, null, false, null));
 
         org.assertj.core.api.Assertions.assertThat(user.getFirstName()).isEqualTo("Mamadou");
         org.assertj.core.api.Assertions.assertThat(user.getLastName()).isEqualTo("Diallo");
         org.assertj.core.api.Assertions.assertThat(user.getActive()).isFalse();
+    }
+
+    @Test
+    void update_photo_setsPhotoWithoutTouchingOtherFields() {
+        User user = User.builder().id(5L).tenantId(10L).firstName("Mamadou").lastName("Diallo")
+                .phone("0600").active(true).build();
+        when(userRepository.findById(5L)).thenReturn(Optional.of(user));
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        userService.update(5L, new UserUseCase.UpdateUserCommand(null, null, null, null, "https://cdn.test/photo.jpg"));
+
+        org.assertj.core.api.Assertions.assertThat(user.getPhoto()).isEqualTo("https://cdn.test/photo.jpg");
+        org.assertj.core.api.Assertions.assertThat(user.getFirstName()).isEqualTo("Mamadou");
+        org.assertj.core.api.Assertions.assertThat(user.getPhone()).isEqualTo("0600");
     }
 
     @Test
