@@ -10,9 +10,11 @@ import gn.lacaeducation.academics.domain.Classe;
 import gn.lacaeducation.academics.domain.ClasseMatiere;
 import gn.lacaeducation.academics.domain.ClassStudent;
 import gn.lacaeducation.academics.domain.Matiere;
+import gn.lacaeducation.academics.domain.Niveau;
 import gn.lacaeducation.academics.domain.valueobject.StatutAnneeScolaire;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
+import gn.lacaeducation.platform.TenantEstablishmentTypeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,10 +35,12 @@ public class ClasseService implements GererClasseUseCase {
     private final EnrollmentQueryPort enrollmentQueryPort;
     private final AnneeScolaireRepository anneeRepository;
     private final ReferentielRepository referentielRepository;
+    private final TenantEstablishmentTypeService establishmentTypeService;
 
     @Override
     public Classe create(CreateClassCommand command) {
         requireWritableYear(command.academicYearId());
+        requireLevelMatchesEstablishmentType(command.tenantId(), command.levelId());
         Classe classe = Classe.builder()
                 .tenantId(command.tenantId())
                 .levelId(command.levelId())
@@ -144,6 +148,9 @@ public class ClasseService implements GererClasseUseCase {
     public Classe update(Long id, CreateClassCommand command) {
         Classe c = classeRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Class", id));
         requireWritableYear(c.getAcademicYearId());
+        if (!Objects.equals(c.getLevelId(), command.levelId())) {
+            requireLevelMatchesEstablishmentType(command.tenantId() != null ? command.tenantId() : c.getTenantId(), command.levelId());
+        }
         c.setLevelId(command.levelId()); c.setAcademicYearId(command.academicYearId());
         c.setHeadTeacherId(command.headTeacherId()); c.setRoomId(command.roomId());
         c.setLabel(command.label()); c.setMaxCapacity(command.maxCapacity());
@@ -164,6 +171,43 @@ public class ClasseService implements GererClasseUseCase {
     @Override @Transactional(readOnly = true)
     public List<ClassStudent> findStudentsByClassId(Long classId) {
         return classeRepository.findStudentsByClassId(classId);
+    }
+
+    @Override
+    public Classe setClassRepresentative(Long classId, Long studentId) {
+        Classe c = classeRepository.findById(classId).orElseThrow(() -> new ResourceNotFoundException("Class", classId));
+        if (studentId != null) {
+            boolean enrolled = classeRepository.findStudentsByClassId(classId).stream()
+                    .anyMatch(s -> Objects.equals(s.id(), studentId));
+            if (!enrolled) {
+                throw new BusinessRuleException("Cet élève n'a pas d'inscription validée dans cette classe.");
+            }
+        }
+        c.setClassRepresentativeStudentId(studentId);
+        return classeRepository.save(c);
+    }
+
+    /**
+     * Une classe ne peut être créée que sur un niveau dont le cycle scolaire correspond à l'un des
+     * types d'établissement déclarés par l'école (ex. une école déclarée "Primaire" uniquement ne
+     * peut pas créer de classe de niveau Collège/Lycée). "MIXTE" ou aucun type renseigné = pas de
+     * restriction. Le niveau sans cycle renseigné n'est pas non plus restreint (référentiel existant
+     * pas encore mis à jour) — évite de bloquer les écoles n'ayant pas encore renseigné leurs cycles.
+     */
+    private void requireLevelMatchesEstablishmentType(Long tenantId, Long levelId) {
+        if (tenantId == null || levelId == null) return;
+        Set<String> allowedTypes = establishmentTypeService.findEstablishmentTypeNames(tenantId);
+        if (allowedTypes.isEmpty() || allowedTypes.contains("MIXTE")) return;
+
+        Niveau level = referentielRepository.findLevelById(levelId).orElse(null);
+        if (level == null || level.getCycle() == null) return;
+
+        String cycleName = level.getCycle().name();
+        if (!allowedTypes.contains(cycleName)) {
+            throw new BusinessRuleException(
+                    "Cette école est déclarée pour les types " + allowedTypes
+                            + " ; impossible de créer une classe de cycle " + cycleName + ".");
+        }
     }
 
     /** Classes cannot be created/modified on a CLOTUREE or ARCHIVEE academic year (read-only). */

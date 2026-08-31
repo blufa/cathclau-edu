@@ -83,6 +83,21 @@ public class RoleController {
         roleUseCase.removeRoleFromUser(userId, roleId);
     }
 
+    @Operation(summary = "Get a user's directly-granted permissions (beyond their role)")
+    @GetMapping("/api/v1/users/{userId}/permissions")
+    @PreAuthorize("hasAuthority('role:assign_permissions')")
+    public List<PermissionResponse> findDirectPermissionsByUser(@PathVariable Long userId) {
+        return roleUseCase.findDirectPermissionsByUser(userId).stream().map(this::toPermissionResponse).toList();
+    }
+
+    @Operation(summary = "Assign extra permissions directly to a user, on top of their role (replaces existing direct grants)")
+    @PostMapping("/api/v1/users/{userId}/permissions")
+    @PreAuthorize("hasAuthority('role:assign_permissions')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void assignUserPermissions(@PathVariable Long userId, @Valid @RequestBody AssignPermissionsRequest req) {
+        roleUseCase.assignUserPermissions(userId, req.permissionIds());
+    }
+
     // DTO records
     record CreateRoleRequest(@NotBlank String name, String description) {}
 

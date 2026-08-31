@@ -10,6 +10,7 @@ import gn.lacaeducation.platform.application.event.TenantBrandingUpdatedEvent;
 import gn.lacaeducation.platform.application.event.TenantCreatedEvent;
 import gn.lacaeducation.platform.application.port.in.CreateTenantUseCase;
 import gn.lacaeducation.platform.StudentCountPort;
+import gn.lacaeducation.platform.TenantEstablishmentTypeService;
 import gn.lacaeducation.platform.application.port.out.PlanRepository;
 import gn.lacaeducation.platform.application.port.out.SubscriptionRepository;
 import gn.lacaeducation.platform.application.port.out.TenantRepository;
@@ -25,9 +26,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service @Transactional @RequiredArgsConstructor
-public class TenantService implements CreateTenantUseCase {
+public class TenantService implements CreateTenantUseCase, TenantEstablishmentTypeService {
 
     private final TenantRepository tenantRepository;
     private final SubscriptionRepository subscriptionRepository;
@@ -151,5 +154,13 @@ public class TenantService implements CreateTenantUseCase {
     @Override
     public void delete(Long id) {
         lifecycleService.transition(id, TenantStatus.ARCHIVED, "soft delete");
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Set<String> findEstablishmentTypeNames(Long tenantId) {
+        Tenant t = tenantRepository.findById(tenantId).orElse(null);
+        if (t == null || t.getEstablishmentTypes() == null) return Set.of();
+        return t.getEstablishmentTypes().stream().map(Enum::name).collect(Collectors.toSet());
     }
 }

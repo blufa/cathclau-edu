@@ -79,6 +79,13 @@ public class ClasseController {
                 teacherId, c.getRoomId(), c.getLabel(), c.getMaxCapacity(), c.getClassType()));
     }
 
+    @Operation(summary = "Désigner (ou retirer, sans studentId) le chef de classe — un élève inscrit (validé) dans cette classe")
+    @PatchMapping("/{id}/chef-de-classe")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    public Classe setClassRepresentative(@PathVariable Long id, @RequestParam(required = false) Long studentId) {
+        return useCase.setClassRepresentative(id, studentId);
+    }
+
     @Operation(summary = "Delete a class")
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")

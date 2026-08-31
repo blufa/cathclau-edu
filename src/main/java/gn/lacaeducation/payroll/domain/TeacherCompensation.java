@@ -18,4 +18,8 @@ public class TeacherCompensation {
     private BigDecimal hourlyRateNormal;
     private BigDecimal hourlyRateExam;
     private BigDecimal fixedSalary;
+    /** Avantage accordé par la direction : payé même pendant les jours fériés/vacances, au lieu de
+     * l'exclusion par défaut de ces jours dans le calcul des heures dues (§computeTheoreticalMonthlyPay). */
+    @Builder.Default
+    private boolean paidDuringVacation = false;
 }

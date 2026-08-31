@@ -66,8 +66,6 @@ public class DjomyClient {
         if (payerNumber == null || payerNumber.isBlank()) {
             throw new IllegalArgumentException("Djomy requires a payer phone number (payerNumber)");
         }
-        // /v1/payments/gateway body (CreatePaymentCommand): payerNumber + allowedPaymentMethods,
-        // merchantPaymentReference + cancelUrl. No currency field — Djomy derives it from countryCode.
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("amount", amount);
         body.put("countryCode", props.countryOrDefault());

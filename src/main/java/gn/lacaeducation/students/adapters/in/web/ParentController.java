@@ -69,7 +69,7 @@ public class ParentController {
     @PreAuthorize("hasRole('PARENT')")
     @PutMapping("/me")
     public Parent updateMyProfile(@AuthenticationPrincipal Jwt jwt,
-                                  @RequestBody ParentUseCase.UpdateProfileCommand cmd) {
+                                  @Valid @RequestBody ParentUseCase.UpdateProfileCommand cmd) {
         return parentUseCase.updateOwnProfile(currentUserId(jwt), cmd);
     }
 

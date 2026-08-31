@@ -9,6 +9,9 @@ public interface SchoolFeeRepository {
     List<SchoolFee> findByTenantId(Long tenantId);
     List<SchoolFee> findByClassId(Long classId);
     List<SchoolFee> findByClassIdAndType(Long classId, FeeType type);
+    List<SchoolFee> findByRouteId(Long routeId);
+    /** Frais TRANSPORT configuré(s) pour une ligne — utilisé pour facturer un abonnement transport. */
+    List<SchoolFee> findByRouteIdAndType(Long routeId, FeeType type);
     List<SchoolFee> findByTenantIdAndAcademicYear(Long tenantId, String academicYear);
     void deleteById(Long id);
     boolean existsById(Long id);

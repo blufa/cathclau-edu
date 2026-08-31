@@ -3,9 +3,11 @@ package gn.lacaeducation.iam.application.service;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.iam.application.event.PermissionsModifiedEvent;
+import gn.lacaeducation.iam.application.event.UserPermissionsModifiedEvent;
 import gn.lacaeducation.iam.application.port.in.RoleUseCase;
 import gn.lacaeducation.iam.application.port.out.PermissionRepository;
 import gn.lacaeducation.iam.application.port.out.RoleRepository;
+import gn.lacaeducation.iam.application.port.out.UserRepository;
 import gn.lacaeducation.iam.domain.Permission;
 import gn.lacaeducation.iam.domain.Role;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +24,7 @@ public class RoleService implements RoleUseCase {
 
     private final RoleRepository roleRepository;
     private final PermissionRepository permissionRepository;
+    private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
 
     @Override
@@ -90,5 +93,20 @@ public class RoleService implements RoleUseCase {
     @Transactional(readOnly = true)
     public List<Permission> findPermissionsByRole(Long roleId) {
         return permissionRepository.findByRoleId(roleId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Permission> findDirectPermissionsByUser(Long userId) {
+        return permissionRepository.findDirectByUserId(userId);
+    }
+
+    @Override
+    public void assignUserPermissions(Long userId, List<Long> permissionIds) {
+        if (!userRepository.existsById(userId)) {
+            throw new ResourceNotFoundException("User", userId);
+        }
+        permissionRepository.assignDirectPermissions(userId, permissionIds);
+        eventPublisher.publishEvent(new UserPermissionsModifiedEvent(userId));
     }
 }

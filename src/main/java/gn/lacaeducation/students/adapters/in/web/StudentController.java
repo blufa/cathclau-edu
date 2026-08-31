@@ -86,6 +86,31 @@ public class StudentController {
                 TenantContext.get(), gender, search, classId, enrollmentStatus, notEnrolled, pageable));
     }
 
+    @Operation(summary = "List students with their current class and principal parent (guichet d'accueil)")
+    @GetMapping("/summary")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','ACCOUNTANT','TEACHER')")
+    public PageResponse<StudentSummaryResponse> summary(@RequestParam(required = false) String search,
+                                                         @PageableDefault(size = 20) Pageable pageable) {
+        return PageResponse.of(studentUseCase.search(TenantContext.get(), null, search, null, null, false, pageable)
+                .map(s -> {
+                    Long classId = enrollmentUseCase.findByStudent(s.getId()).stream()
+                            .filter(e -> e.getStatus() == EnrollmentStatus.VALIDATED)
+                            .reduce((first, last) -> last)
+                            .map(Enrollment::getClassId)
+                            .orElse(null);
+                    List<Parent> parents = parentUseCase.findByStudent(s.getId());
+                    Parent principal = parents.stream().filter(Parent::isPrimaryGuardian).findFirst()
+                            .or(() -> parents.stream().findFirst())
+                            .orElse(null);
+                    return new StudentSummaryResponse(s, classId,
+                            principal == null ? null : (principal.getFirstName() + " " + principal.getLastName()).trim(),
+                            principal == null ? null : principal.getPhone());
+                }));
+    }
+
+    /** Row shown at the guichet d'accueil: student + current class + principal (or first) linked parent. */
+    public record StudentSummaryResponse(Student student, Long classId, String principalParentName, String principalParentPhone) {}
+
     @Operation(summary = "Get the student record of the currently authenticated user (student portal)")
     @GetMapping("/me")
     public ResponseEntity<Student> me(@AuthenticationPrincipal Jwt jwt) {

@@ -1,0 +1,10 @@
+package gn.lacaeducation.iam.adapters.out.persistence;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.List;
+
+interface UserPermissionJpaRepository extends JpaRepository<UserPermissionJpaEntity, Long> {
+    List<UserPermissionJpaEntity> findByUserId(Long userId);
+    void deleteByUserId(Long userId);
+}

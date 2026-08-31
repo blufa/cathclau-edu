@@ -6,19 +6,23 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Construit le sigle de l'école utilisé en préfixe de toutes les nomenclatures (matricules, factures,
- * reçus, cartes, documents…). Le sigle est l'acronyme des mots significatifs du nom (articles et
- * prépositions ignorés) : « Groupe Scolaire La Cathédrale » → « GSC », « École Primaire Les Anges » → « EPA ».
- * Pour un nom d'un seul mot, on retient ses 3 premières lettres (« Renaissance » → « REN »).
+ * Construit le sigle de l'école utilisé en préfixe de toutes les nomenclatures (matricules, cartes…).
+ * Le sigle est l'acronyme des mots significatifs et distinctifs du nom : articles, prépositions et
+ * désignations génériques d'établissement (« Groupe », « Scolaire », « École »…) sont ignorés, pour ne
+ * garder que ce qui distingue vraiment l'école — « Groupe Scolaire Al Taqwa » → « AT », « École
+ * Primaire Les Anges » → « PA ». Pour un nom d'un seul mot significatif, on retient ses 3 premières
+ * lettres (« Renaissance » → « REN »).
  */
 public final class SchoolCode {
 
     private SchoolCode() {}
 
-    /** Mots vides ignorés dans la construction du sigle (FR + articles élidés + EN). */
+    /** Mots vides ignorés dans la construction du sigle : articles/prépositions (FR + EN) et les
+     * désignations génériques d'établissement, qui ne distinguent pas une école d'une autre. */
     private static final Set<String> STOP_WORDS = Set.of(
             "de", "du", "des", "la", "le", "les", "l", "et", "d", "a", "au", "aux", "en",
-            "the", "of", "and");
+            "the", "of", "and",
+            "groupe", "scolaire", "ecole", "ecoles", "college", "lycee", "institut", "complexe");
 
     /** Sigle (2 à 6 lettres majuscules) dérivé du nom de l'école ; « EC » par défaut si indisponible. */
     public static String prefix(String schoolName) {

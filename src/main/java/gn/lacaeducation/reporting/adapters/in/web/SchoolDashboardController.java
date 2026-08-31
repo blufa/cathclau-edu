@@ -13,7 +13,9 @@ import gn.lacaeducation.payments.SchoolCollectionStatsProvider;
 import gn.lacaeducation.payments.SchoolCollectionStatsProvider.MonthlyCollection;
 import gn.lacaeducation.payroll.SchoolPayrollStatsProvider;
 import gn.lacaeducation.payroll.SchoolPayrollStatsProvider.PayrollMassSummary;
+import gn.lacaeducation.payroll.SchoolPayrollStatsProvider.SchoolYearProjection;
 import gn.lacaeducation.payroll.SchoolPayrollStatsProvider.TeacherHoursProgress;
+import gn.lacaeducation.payroll.SchoolPayrollStatsProvider.TeacherSalary;
 import gn.lacaeducation.staff.TeacherPublicInfoProvider;
 import gn.lacaeducation.students.StudentDataProvider;
 import io.swagger.v3.oas.annotations.Operation;
@@ -173,7 +175,8 @@ public class SchoolDashboardController {
     public record RecoveryView(BillingStats overall, List<ClassRecoveryRow> byClass,
                               List<SchoolBillingStatsProvider.PeriodRecovery> byPeriod, List<TopDebtorRow> topDebtors) {}
     public record FounderDashboard(Long academicYearId, RecoveryView recovery, PayrollMassSummary payroll,
-                                   List<TeacherHoursProgress> teacherHours, SubsidyStats subsidy,
+                                   List<TeacherHoursProgress> teacherHours, SchoolYearProjection payrollProjection,
+                                   List<TeacherSalary> teacherSalaries, SubsidyStats subsidy,
                                    List<FounderAlert> alerts, FounderYearComparison comparison) {}
 
     @Operation(summary = "Vision Fondateur : recouvrement détaillé, masse salariale, élèves pris en charge, "
@@ -184,7 +187,8 @@ public class SchoolDashboardController {
                                     @RequestParam(required = false) Integer year,
                                     @RequestParam(required = false) Integer month,
                                     @RequestParam(required = false) Long compareAcademicYearId,
-                                    @RequestParam(defaultValue = "10") int topDebtors) {
+                                    @RequestParam(defaultValue = "10") int topDebtors,
+                                    @RequestParam(required = false) Integer monthsCount) {
         Long tenantId = TenantContext.get();
         java.time.YearMonth now = java.time.YearMonth.now();
         int y = year != null ? year : now.getYear();
@@ -206,6 +210,22 @@ public class SchoolDashboardController {
         // leurs heures dues du mois.
         List<TeacherHoursProgress> teacherHours = payrollStatsProvider.teacherHoursProgress(tenantId, y, m).stream()
                 .sorted(Comparator.comparing(t -> t.dueMinutes() <= 0 ? 0.0 : (double) t.realizedMinutes() / t.dueMinutes()))
+                .toList();
+        // Estimation du mois affiché jusqu'à la fin de l'année scolaire choisie (pas un nombre de mois
+        // fixe : la durée réelle dépend du calendrier de l'école) — sauf si l'appelant impose sa propre
+        // longueur via monthsCount. Repli sur 9 mois si l'année scolaire n'a pas de dates renseignées.
+        int projectionMonths = monthsCount != null && monthsCount > 0
+                ? monthsCount
+                : academicsDataProvider.findAcademicYear(academicYearId)
+                        .filter(ay -> ay.startDate() != null && ay.endDate() != null)
+                        .map(ay -> (int) Math.max(1, java.time.temporal.ChronoUnit.MONTHS.between(
+                                java.time.YearMonth.of(y, m), java.time.YearMonth.from(ay.endDate())) + 1))
+                        .orElse(9);
+        SchoolYearProjection payrollProjection = payrollStatsProvider.projectSchoolYear(tenantId, y, m, projectionMonths);
+        // Salaire individuel de chaque enseignant (mois affiché + estimation cumulée jusqu'à la fin de
+        // l'année scolaire) — le fondateur veut voir chaque professeur, pas seulement le total agrégé.
+        List<TeacherSalary> teacherSalaries = payrollStatsProvider.teacherSalaries(tenantId, y, m, projectionMonths).stream()
+                .sorted(Comparator.comparing(TeacherSalary::teacherName))
                 .toList();
         SubsidyStats subsidy = billingStatsProvider.subsidyStats(tenantId, academicYearId);
 
@@ -243,7 +263,7 @@ public class SchoolDashboardController {
                     recovery.overall().recoveryRate().subtract(compareStats.recoveryRate()));
         }
 
-        return new FounderDashboard(academicYearId, recovery, payroll, teacherHours, subsidy, alerts, comparison);
+        return new FounderDashboard(academicYearId, recovery, payroll, teacherHours, payrollProjection, teacherSalaries, subsidy, alerts, comparison);
     }
 
     // ── 10.3 RH ─────────────────────────────────────────────────────────────

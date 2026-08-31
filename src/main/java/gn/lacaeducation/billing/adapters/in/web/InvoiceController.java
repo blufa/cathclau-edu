@@ -95,6 +95,13 @@ public class InvoiceController {
     public List<Invoice> applyEarlyPaymentDiscount(@RequestParam Long studentId, @RequestParam Long feeId) {
         return useCase.applyEarlyPaymentDiscount(studentId, feeId);
     }
+    @Operation(summary = "Annuler la remise pour paiement annuel complet précédemment appliquée (§billing) — "
+            + "à appeler dès que la sélection ne couvre plus toutes les tranches restantes")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT','SECRETARY')")
+    @DeleteMapping("/early-payment-discount")
+    public List<Invoice> removeEarlyPaymentDiscount(@RequestParam Long studentId, @RequestParam Long feeId) {
+        return useCase.removeEarlyPaymentDiscount(studentId, feeId);
+    }
     @Operation(summary = "Avancer le recouvrement d'une étape (relance 1 → relance 2 → exclusion)")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
     @PatchMapping("/{id}/recovery/advance") public ResponseEntity<Invoice> advanceRecovery(@PathVariable Long id) { return ResponseEntity.ok(useCase.advanceRecovery(id)); }

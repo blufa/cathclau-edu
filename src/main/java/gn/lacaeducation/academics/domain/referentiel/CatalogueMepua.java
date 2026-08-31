@@ -22,6 +22,7 @@ public final class CatalogueMepua {
     /** Résout la liste de matières/coefficients pour un cycle donné (et une série pour le lycée). */
     public static List<MatiereModele> pour(SchoolCycle cycle, String serie) {
         return switch (cycle) {
+            case MATERNELLE -> List.of(); // pas de catalogue MEPUA officiel pour la maternelle
             case PRIMAIRE -> PRIMAIRE;
             case COLLEGE -> COLLEGE;
             case LYCEE -> lycee(serie);

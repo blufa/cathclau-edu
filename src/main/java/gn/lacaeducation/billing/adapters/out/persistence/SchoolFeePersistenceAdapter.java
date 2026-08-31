@@ -15,6 +15,8 @@ class SchoolFeePersistenceAdapter implements SchoolFeeRepository {
     @Override public List<SchoolFee> findByTenantId(Long t) { return jpa.findByTenantId(t).stream().map(mapper::toDomain).toList(); }
     @Override public List<SchoolFee> findByClassId(Long c) { return jpa.findByClassId(c).stream().map(mapper::toDomain).toList(); }
     @Override public List<SchoolFee> findByClassIdAndType(Long c, FeeType type) { return jpa.findByClassIdAndType(c, type).stream().map(mapper::toDomain).toList(); }
+    @Override public List<SchoolFee> findByRouteId(Long r) { return jpa.findByRouteId(r).stream().map(mapper::toDomain).toList(); }
+    @Override public List<SchoolFee> findByRouteIdAndType(Long r, FeeType type) { return jpa.findByRouteIdAndType(r, type).stream().map(mapper::toDomain).toList(); }
     @Override public List<SchoolFee> findByTenantIdAndAcademicYear(Long t, String y) { return jpa.findByTenantIdAndAcademicYear(t, y).stream().map(mapper::toDomain).toList(); }
     @Override public void deleteById(Long id) { jpa.deleteById(id); }
     @Override public boolean existsById(Long id) { return jpa.existsById(id); }

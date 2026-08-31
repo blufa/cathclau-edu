@@ -26,4 +26,27 @@ public interface SchoolPayrollStatsProvider {
     record TeacherHoursProgress(Long teacherId, String teacherName, int dueMinutes, int realizedMinutes) {}
 
     List<TeacherHoursProgress> teacherHoursProgress(Long tenantId, int year, int month);
+
+    /**
+     * Estimation précise du salaire dû mois par mois sur l'année scolaire (par défaut 9 mois), pour
+     * tout le personnel : enseignants (théorique — heures dues projetées depuis l'emploi du temps,
+     * jours fériés/vacances exclus — ou salaire fixe) et personnel non-enseignant (salaire de base
+     * constant). Sert à vérifier, une fois tous les emplois du temps saisis, ce que l'école devra
+     * verser chaque mois de l'année.
+     */
+    record MonthProjection(int year, int month, BigDecimal teacherPayroll, BigDecimal staffPayroll, BigDecimal total) {}
+
+    record SchoolYearProjection(List<MonthProjection> months, BigDecimal totalTeachers,
+                                BigDecimal totalStaff, BigDecimal grandTotal) {}
+
+    SchoolYearProjection projectSchoolYear(Long tenantId, int startYear, int startMonth, int monthsCount);
+
+    /**
+     * Salaire de CHAQUE enseignant, individuellement (pas seulement le total agrégé de
+     * {@link #payrollMassSummary}) : son salaire du mois affiché et son estimation cumulée sur
+     * monthsCount mois (même fenêtre que {@link #projectSchoolYear}) — Vision Fondateur.
+     */
+    record TeacherSalary(Long teacherId, String teacherName, BigDecimal monthlyPay, BigDecimal annualProjection) {}
+
+    List<TeacherSalary> teacherSalaries(Long tenantId, int year, int month, int monthsCount);
 }

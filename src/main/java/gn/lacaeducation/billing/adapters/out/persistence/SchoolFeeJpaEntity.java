@@ -14,6 +14,9 @@ public class SchoolFeeJpaEntity {
     @Column(name = "class_id")
     private Long classId;
 
+    @Column(name = "route_id")
+    private Long routeId;
+
     @Enumerated(EnumType.STRING) @Column(nullable = false)
     private FeeType type;
 

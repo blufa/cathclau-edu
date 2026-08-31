@@ -37,9 +37,14 @@ public class LessonService {
                                       Integer durationMinutes, LessonStatus status) {}
 
     public LessonEntry create(CreateLessonCommand c) {
-        if (c.classId() == null || c.subjectId() == null) throw new BusinessRuleException("Classe et matière requises");
+        if (c.classId() == null) throw new BusinessRuleException("Classe requise");
         if (c.title() == null || c.title().isBlank()) throw new BusinessRuleException("Le thème de la séance est requis");
-        Long teacherId = resolveTeacherId(c.classId(), c.subjectId());
+        // Matière optionnelle : un enseignant unique couvrant toute la classe (moniteur maternelle/
+        // primaire, salaire fixe) consigne sa journée sans choisir de matière précise — l'enseignant se
+        // résout alors via le professeur principal de la classe plutôt que via l'affectation matière.
+        Long teacherId = c.subjectId() != null
+                ? resolveTeacherId(c.classId(), c.subjectId())
+                : resolveHeadTeacherId(c.classId());
         return repo.save(LessonEntry.builder()
                 .tenantId(c.tenantId()).classId(c.classId()).subjectId(c.subjectId()).teacherId(teacherId)
                 .lessonDate(c.lessonDate() != null ? c.lessonDate() : LocalDate.now())
@@ -62,6 +67,17 @@ public class LessonService {
                 .orElseThrow(() -> new BusinessRuleException(
                         "Aucun enseignant n'est affecté à cette matière pour cette classe. "
                                 + "Affectez un enseignant (Référentiels → Classes → Matières) avant de programmer une séance."));
+    }
+
+    /** Résout l'enseignant d'une séance sans matière précise via le professeur principal de la classe
+     * (cas du moniteur maternelle/primaire, seul enseignant, salaire fixe). */
+    private Long resolveHeadTeacherId(Long classId) {
+        return academics.findClass(classId)
+                .map(gn.lacaeducation.academics.ClassPublicInfo::headTeacherId)
+                .filter(Objects::nonNull)
+                .orElseThrow(() -> new BusinessRuleException(
+                        "Aucun professeur principal désigné pour cette classe. Renseignez-le (fiche classe) "
+                                + "ou choisissez une matière pour que le système résolve l'enseignant."));
     }
 
     /** Durée de repli d'une séance d'évaluation, si le type (donc sa durée) n'est pas renseigné (1h). */
@@ -95,7 +111,9 @@ public class LessonService {
 
     public LessonEntry update(Long id, CreateLessonCommand c) {
         LessonEntry l = load(id);
-        Long teacherId = resolveTeacherId(c.classId(), c.subjectId());
+        Long teacherId = c.subjectId() != null
+                ? resolveTeacherId(c.classId(), c.subjectId())
+                : resolveHeadTeacherId(c.classId());
         l.setClassId(c.classId()); l.setSubjectId(c.subjectId()); l.setTeacherId(teacherId);
         l.setLessonDate(c.lessonDate()); l.setTitle(c.title()); l.setContent(c.content());
         l.setHomework(c.homework()); l.setDurationMinutes(c.durationMinutes());

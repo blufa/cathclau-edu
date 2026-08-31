@@ -29,4 +29,5 @@ public class ClasseJpaEntity {
     @Column(name = "max_capacity") private Integer maxCapacity;
     @Enumerated(EnumType.STRING) @Column(name = "class_type", nullable = false)
     private ClassType classType;
+    @Column(name = "class_representative_student_id") private Long classRepresentativeStudentId;
 }
