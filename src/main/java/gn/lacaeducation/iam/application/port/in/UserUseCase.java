@@ -41,6 +41,8 @@ public interface UserUseCase {
         String firstName,
         String lastName,
         String phone,
-        Boolean active
+        Boolean active,
+        /** Self-service uniquement (comptes sans fiche métier dédiée) : URL Cloudinary. */
+        String photo
     ) {}
 }

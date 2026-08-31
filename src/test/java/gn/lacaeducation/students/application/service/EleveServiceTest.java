@@ -88,4 +88,42 @@ class EleveServiceTest {
         assertThat(s.getDeletedAt()).isNotNull();
         verify(studentRepository).save(s);
     }
+
+    @Test
+    void updateOwnProfile_partial_keepsUnsetFieldsAndNeverTouchesAdministrativeData() {
+        Student existing = Student.builder().id(3L).userId(7L).studentNumber("MAT-1")
+                .firstName("Mariama").lastName("Bah").phone("old").email("old@x").address("old").build();
+        when(studentRepository.findByUserId(7L)).thenReturn(Optional.of(existing));
+        when(studentRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        Student updated = service.updateOwnProfile(7L,
+                new gn.lacaeducation.students.application.port.in.StudentUseCase.UpdateOwnProfileCommand(
+                        "623000000", "mariama@ecole.gn", null));
+
+        assertThat(updated.getStudentNumber()).isEqualTo("MAT-1"); // jamais modifié en self-service
+        assertThat(updated.getFirstName()).isEqualTo("Mariama");
+        assertThat(updated.getPhone()).isEqualTo("623000000");
+        assertThat(updated.getEmail()).isEqualTo("mariama@ecole.gn");
+        assertThat(updated.getAddress()).isEqualTo("old"); // champ null => inchangé
+    }
+
+    @Test
+    void updateOwnPhoto_setsPhoto() {
+        Student existing = Student.builder().id(3L).userId(7L).build();
+        when(studentRepository.findByUserId(7L)).thenReturn(Optional.of(existing));
+        when(studentRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        Student updated = service.updateOwnPhoto(7L, "https://cdn.test/photo.jpg");
+
+        assertThat(updated.getPhoto()).isEqualTo("https://cdn.test/photo.jpg");
+    }
+
+    @Test
+    void updateOwnProfile_unknownUser_throws() {
+        when(studentRepository.findByUserId(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.updateOwnProfile(99L,
+                new gn.lacaeducation.students.application.port.in.StudentUseCase.UpdateOwnProfileCommand("623", null, null)))
+                .isInstanceOf(gn.lacaeducation.common.ResourceNotFoundException.class);
+    }
 }

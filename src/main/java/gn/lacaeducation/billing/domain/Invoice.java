@@ -30,4 +30,8 @@ public class Invoice {
     private RecoveryStage recoveryStage;
     /** Date de la dernière relance. */
     private LocalDate lastReminderAt;
+    /** Part de {@link #totalAmount} due à l'éditeur de la plateforme (frais d'usage, figé au moment de
+     * la génération de la facture — un changement de tarif ne modifie jamais les factures déjà émises).
+     * Null/zéro si aucun frais plateforme n'était configuré au moment de la génération. */
+    private BigDecimal platformFeeAmount;
 }

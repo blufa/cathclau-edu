@@ -39,9 +39,11 @@ class InvoiceServiceTest {
     @Mock TenantInfoProvider tenantInfoProvider;
     @Mock gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase familyDiscountUseCase;
     @Mock gn.lacaeducation.billing.application.port.in.EarlyPaymentDiscountUseCase earlyPaymentDiscountUseCase;
+    @Mock gn.lacaeducation.platform.PlatformFeeQuoteApi platformFeeQuoteApi;
+    @Mock gn.lacaeducation.platform.PlatformFeeLedgerApi platformFeeLedgerApi;
 
     InvoiceService service() {
-        return new InvoiceService(repo, schoolFeeRepository, installmentRepository, enrollmentQueryPort, eventPublisher, invoicePdfGenerator, mediaUploadService, tenantInfoProvider, familyDiscountUseCase, earlyPaymentDiscountUseCase);
+        return new InvoiceService(repo, schoolFeeRepository, installmentRepository, enrollmentQueryPort, eventPublisher, invoicePdfGenerator, mediaUploadService, tenantInfoProvider, familyDiscountUseCase, earlyPaymentDiscountUseCase, platformFeeQuoteApi, platformFeeLedgerApi);
 
     }
 
@@ -125,6 +127,84 @@ class InvoiceServiceTest {
         verify(eventPublisher).publishEvent(captor.capture());
         assertThat(captor.getValue().invoiceId()).isEqualTo(1L);
         assertThat(captor.getValue().reference()).isEqualTo("FAC-1");
+    }
+
+    @Test
+    void generateMonthly_addsPlatformFee_whenFeeTypeIsMonthly() {
+        when(enrollmentQueryPort.hasActiveEnrollment(7L)).thenReturn(true);
+        when(installmentRepository.findByFeeId(3L)).thenReturn(java.util.List.of(
+                gn.lacaeducation.billing.domain.Installment.builder()
+                        .id(1L).feeId(3L).label("Septembre").amount(new BigDecimal("100")).build()));
+        when(repo.existsByStudentIdAndInstallmentId(7L, 1L)).thenReturn(false);
+        when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(
+                gn.lacaeducation.billing.domain.SchoolFee.builder().id(3L)
+                        .type(gn.lacaeducation.billing.domain.FeeType.MONTHLY).build()));
+        when(familyDiscountUseCase.computeApplicable(1L, 7L, gn.lacaeducation.billing.domain.FeeType.MONTHLY))
+                .thenReturn(new gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase.ApplicableDiscount(
+                        null, null));
+        when(platformFeeQuoteApi.currentAmount()).thenReturn(new BigDecimal("500"));
+        when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
+
+        var invoices = service().generateMonthly(
+                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 3L, 99L));
+
+        Invoice inv = invoices.get(0);
+        assertThat(inv.getTotalAmount()).isEqualByComparingTo("600");
+        assertThat(inv.getPlatformFeeAmount()).isEqualByComparingTo("500");
+        assertThat(inv.getRemainingBalance()).isEqualByComparingTo("600");
+    }
+
+    @Test
+    void generateMonthly_neverAddsPlatformFee_whenFeeTypeIsNotMonthly() {
+        // Transport (et cantine, etc.) réutilisent generateMonthly() : le frais plateforme ne doit
+        // jamais s'y ajouter — schoolFeeRepository répond TRANSPORT, platformFeeQuoteApi n'est même
+        // pas interrogé (court-circuit), volontairement non stubbé pour le prouver.
+        when(enrollmentQueryPort.hasActiveEnrollment(7L)).thenReturn(true);
+        when(installmentRepository.findByFeeId(3L)).thenReturn(java.util.List.of(
+                gn.lacaeducation.billing.domain.Installment.builder()
+                        .id(1L).feeId(3L).label("Septembre").amount(new BigDecimal("100")).build()));
+        when(repo.existsByStudentIdAndInstallmentId(7L, 1L)).thenReturn(false);
+        when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(
+                gn.lacaeducation.billing.domain.SchoolFee.builder().id(3L)
+                        .type(gn.lacaeducation.billing.domain.FeeType.TRANSPORT).build()));
+        when(familyDiscountUseCase.computeApplicable(1L, 7L, gn.lacaeducation.billing.domain.FeeType.MONTHLY))
+                .thenReturn(new gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase.ApplicableDiscount(
+                        null, null));
+        when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
+
+        var invoices = service().generateMonthly(
+                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 3L, 99L));
+
+        Invoice inv = invoices.get(0);
+        assertThat(inv.getTotalAmount()).isEqualByComparingTo("100");
+        assertThat(inv.getPlatformFeeAmount()).isNull();
+    }
+
+    @Test
+    void applyPayment_recordsPlatformFeeLedger_proportionalToAmountPaid() {
+        Invoice existing = Invoice.builder().id(1L).tenantId(10L).studentId(7L)
+                .totalAmount(new BigDecimal("600.00")).paidAmount(BigDecimal.ZERO)
+                .remainingBalance(new BigDecimal("600.00")).status(InvoiceStatus.UNPAID)
+                .platformFeeAmount(new BigDecimal("500.00")).build();
+        when(repo.findById(1L)).thenReturn(Optional.of(existing));
+        when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service().applyPayment(1L, new BigDecimal("60.00"));
+
+        verify(platformFeeLedgerApi).record(10L, 1L, new BigDecimal("50.00"));
+    }
+
+    @Test
+    void applyPayment_doesNotRecordPlatformFeeLedger_whenInvoiceHasNoPlatformFee() {
+        Invoice existing = Invoice.builder().id(1L).tenantId(10L).studentId(7L)
+                .totalAmount(new BigDecimal("100.00")).paidAmount(BigDecimal.ZERO)
+                .remainingBalance(new BigDecimal("100.00")).status(InvoiceStatus.UNPAID).build();
+        when(repo.findById(1L)).thenReturn(Optional.of(existing));
+        when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service().applyPayment(1L, new BigDecimal("30.00"));
+
+        verify(platformFeeLedgerApi, never()).record(any(), any(), any());
     }
 
     @Test

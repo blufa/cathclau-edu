@@ -851,3 +851,311 @@ et enverra désormais un vrai SMS dès que NimbaSMS est configuré avec de vraie
 vide silencieuse), le téléphone parent est désormais une donnée fiable pour toute notification SMS, et
 les notifications automatiques de retard/absence utilisent le même fournisseur SMS réel une fois
 NimbaSMS configuré.
+
+---
+
+## 28. Self-service profil (infos, mot de passe, photo) pour tous les rôles
+
+**Ce qui change** : chaque compte (parent, élève, enseignant, comptable, secrétaire, directeur, admin
+d'école, super admin, rédacteur) peut désormais, une fois connecté, mettre à jour ses propres
+coordonnées, changer son mot de passe (déjà possible avant) et ajouter/remplacer sa photo de profil —
+le tout depuis une seule page. Avant ce correctif, seul le parent avait un backend prêt pour ça, et même
+lui n'avait aucun bouton dans l'interface pour s'en servir.
+
+**Où** : menu utilisateur (avatar en haut à droite) → **Mon compte** (`/account`), accessible à tous les
+rôles connectés.
+
+**Test** :
+1. Se connecter avec un compte **parent** → `/account` → carte « Modifier mes informations » : le
+   téléphone, l'adresse et la profession doivent apparaître pré-remplis avec les vraies valeurs (pas
+   vides) → modifier le téléphone → **Enregistrer** → recharger la page → la modification est conservée.
+2. Sur la même page, téléverser une photo (bouton **Téléverser** ou **Prendre une photo**) → l'avatar de
+   la carte « Profil » ET l'avatar dans le header (haut à droite) doivent afficher la nouvelle photo
+   immédiatement, sans rechargement.
+3. Se connecter avec un compte **élève** → `/account` → seuls téléphone et adresse sont proposés (pas
+   de profession) → modifier + photo → même vérification qu'à l'étape 2.
+4. Se connecter avec un compte **enseignant** → `/account` → seul le téléphone est proposé (ni adresse
+   ni profession) → modifier + photo → même vérification.
+5. Se connecter avec un compte **comptable**, **secrétaire**, **directeur**, **admin d'école** ou
+   **super admin** → `/account` → seul le téléphone est proposé → modifier + photo → même vérification
+   (ces rôles n'ont pas de fiche métier dédiée, la photo/téléphone sont stockés directement sur le
+   compte).
+6. Sur n'importe quel rôle : changer le mot de passe (section déjà existante) → vérifier que ça
+   fonctionne toujours normalement (non-régression).
+7. Vérifier qu'aucun rôle ne peut modifier son propre nom ni son e-mail depuis cette page (champs
+   affichés en lecture seule) — ce sont des données que seul un administrateur peut changer.
+
+*Résultat attendu* : chaque rôle peut se mettre à jour lui-même sans dépendre d'un administrateur, la
+photo se reflète partout dans l'app immédiatement après l'upload, et rien n'écrase les données
+administratives (matricule, spécialité, état civil…) qui restent réservées à l'administration.
+
+---
+
+## 29. Déplacement ponctuel d'un créneau d'emploi du temps (par semaine) + niveaux du primaire détaillés
+
+**Ce qui change** : un créneau récurrent de l'emploi du temps (ex. « Éveil sensoriel » le lundi 8h–8h30)
+peut désormais être déplacé vers un autre jour/horaire **pour une seule semaine précise**, sans toucher
+au reste de l'année scolaire — utile pour la garderie, le préscolaire (Petite/Moyenne/Grande Section) et
+le primaire, où les emplois du temps très détaillés sont souvent réorganisés ponctuellement (sortie,
+absence, imprévu). Il est aussi possible d'annuler un créneau pour une semaine précise (le cours n'a pas
+lieu cette semaine-là) sans le supprimer du modèle récurrent. Par ailleurs, le catalogue de niveaux
+propose maintenant les 6 classes réelles du primaire (CI, CP, CE1, CE2, CM1, CM2) à la place d'un niveau
+générique unique « Primaire », ainsi qu'un niveau « Garderie » avant la Petite Section.
+
+**Où** : `/timetable`, vue **Liste** (le sélecteur de semaine, déjà présent, prend maintenant effet) ;
+catalogue de niveaux depuis `/referentials` (ou l'écran d'ajout de niveaux) → bouton d'ajout depuis le
+catalogue prédéfini.
+
+**Test — déplacement/annulation ponctuels** (compte `SCHOOL_ADMIN` ou `DIRECTOR`) :
+1. Aller sur `/timetable`, mode **Par classe**, vue **Liste** → créer (ou repérer) un créneau récurrent,
+   ex. lundi 8h–8h30. Il doit apparaître identiquement quelle que soit la semaine sélectionnée dans le
+   sélecteur de semaine.
+2. Sur ce créneau, cliquer l'icône de déplacement (horloge) → choisir un autre jour/horaire (ex. mardi
+   9h) → **Déplacer**. Vérifier que le créneau disparaît du lundi et apparaît au mardi 9h avec le badge
+   « Déplacé depuis Lundi 08:00 » **uniquement pour la semaine sélectionnée**.
+3. Changer la semaine (sélecteur) vers la semaine suivante → le créneau doit être revenu à sa position
+   habituelle (lundi 8h, sans badge) — la modification ne concerne que la semaine choisie à l'étape 2.
+4. Revenir à la semaine modifiée → rouvrir le déplacement → bouton **Annuler ce déplacement** → le
+   créneau revient à sa position d'origine pour cette semaine.
+5. Créer un autre créneau qui occuperait déjà mardi 9h pour la même classe/salle/enseignant → tenter de
+   déplacer le créneau du test vers ce même horaire → une erreur de conflit doit apparaître (pas de
+   déplacement silencieux vers un horaire déjà occupé).
+6. Passer en vue **Grille** → vérifier que les créneaux y sont toujours affichés à leur position
+   récurrente d'origine (la Grille édite uniquement le modèle récurrent, jamais une exception
+   ponctuelle) et que **Modifier/Supprimer** dans cette vue continuent de fonctionner normalement
+   (non-régression).
+7. Imprimer/télécharger depuis la vue Liste d'une semaine avec déplacement → le PDF/impression reflète
+   bien la disposition de cette semaine-là (créneau à sa position déplacée).
+
+**Test — niveaux du primaire** (compte `SCHOOL_ADMIN` ou `DIRECTOR`) :
+1. Sur l'écran d'ajout de niveaux depuis le catalogue prédéfini, vérifier la présence de **Garderie**,
+   **Petite Section**, **Moyenne Section**, **Grande Section**, puis des 6 niveaux **CI, CP, CE1, CE2,
+   CM1, CM2** (et non plus un seul niveau générique « Primaire »).
+2. Cocher CI à CM2 → **Ajouter la sélection** → les 6 niveaux doivent être créés et utilisables ensuite
+   pour créer des classes (ex. « CM2 A »).
+
+*Résultat attendu* : le modèle récurrent de l'emploi du temps n'est jamais modifié par un déplacement
+ponctuel (seule la semaine choisie change), les conflits restent détectés même pour un déplacement
+ponctuel, et les écoles avec primaire/garderie disposent des vrais intitulés de classes dès la création
+des niveaux.
+
+---
+
+## 31. Frais d'usage de la plateforme (montant SUPER_ADMIN ajouté aux mensualités + règlement Djomy)
+
+**Ce qui change** : le SUPER_ADMIN peut désormais définir un montant de frais d'usage de la
+plateforme. Ce montant est automatiquement ajouté à chaque facture de mensualité (frais type
+« Mensualité » uniquement — jamais transport/cantine/inscription/examen) générée par une école, visible
+sur la facture PDF comme une ligne « dont frais de service plateforme ». À chaque paiement encaissé sur
+une telle facture, la part correspondante est mise de côté dans un registre propre à l'école. Chaque
+école voit dans son tableau de bord finance le solde qu'elle doit à la plateforme, avec un bouton
+**Verser** qui redirige vers le portail Djomy pour régler ce solde.
+
+**Où** : `/platform/frais` (SUPER_ADMIN, définir le montant) ; `/reports` section « Financier »
+(SCHOOL_ADMIN/DIRECTOR/ACCOUNTANT, carte « Frais plateforme » avec le bouton Verser).
+
+**Test — configuration SUPER_ADMIN** :
+1. Se connecter en SUPER_ADMIN → `/platform/frais` → définir un montant (ex. 2000) → **Enregistrer** →
+   recharger la page → le montant affiché est bien 2000.
+2. Depuis une école, générer une nouvelle facture de mensualité (`POST /billing/generate-monthly` ou
+   via l'écran de facturation existant) → la facture doit inclure le montant total = mensualité de
+   base + 2000, et le PDF de la facture doit afficher une ligne « dont frais de service plateforme :
+   2000 GNF ».
+3. Générer une facture de **transport** ou de **cantine** pour le même élève → vérifier qu'aucun frais
+   plateforme n'est ajouté (montant = frais de base uniquement).
+4. Changer le montant SUPER_ADMIN à 3000 → vérifier que les factures de mensualité **déjà émises**
+   avant ce changement gardent leur ancien montant (pas de recalcul rétroactif) ; seules les nouvelles
+   factures générées après reflètent 3000.
+
+**Test — encaissement et solde école** :
+1. Sur la facture de mensualité générée à l'étape 2 ci-dessus, enregistrer un paiement partiel (ex.
+   60% du total) → aller sur `/reports` (compte SCHOOL_ADMIN/DIRECTOR/ACCOUNTANT) → la carte « Frais
+   plateforme » doit afficher un solde dû égal à 60% du montant de frais plateforme de cette facture
+   (proportionnel au paiement reçu, pas la totalité de suite).
+2. Compléter le paiement de la facture (payer le solde restant) → recharger `/reports` → le solde dû
+   à la plateforme doit maintenant refléter 100% du frais plateforme de cette facture.
+3. Cliquer **Verser** → saisir un numéro de test → confirmer → vérifier la redirection vers le portail
+   Djomy (ou la page de test Djomy en environnement de développement).
+4. Après un règlement réussi (confirmé côté Djomy), recharger `/reports` → le solde dû doit être
+   revenu à zéro (ou réduit du montant réglé) — l'historique du règlement doit apparaître si l'écran
+   d'historique est consulté (`GET /platform-fee/settlements`).
+5. Tenter de cliquer **Verser** quand le solde est à zéro → le bouton doit être désactivé (rien à
+   verser).
+
+*Résultat attendu* : le frais plateforme n'affecte jamais les frais autres que la mensualité, un
+changement de montant ne modifie jamais les factures déjà émises, le solde dû par une école suit
+fidèlement les encaissements réels (jamais la totalité facturée avant paiement), et le règlement se
+fait exclusivement via le parcours Djomy existant, sans jamais transiter par un autre canal.
+
+---
+
+## 32. Fondation DPE — préfectures/communes, périmètre cross-tenant et journal d'audit
+
+**Ce qui change** : SUPER_ADMIN peut désormais créer des préfectures/communes (DPE/DCE), y rattacher
+des écoles et y affecter des comptes `DPE_ADMIN` — la brique de sécurité qui permettra, dans un second
+temps, de construire le tableau de bord de supervision DPE. Toute écriture sensible déjà identifiée
+(connexion, changement de rôle/permission, création/suspension/réactivation/archivage d'une école,
+paiement réussi/remboursé) est désormais journalisée dans un registre d'audit consultable, jamais
+modifiable. **Ce lot est backend uniquement — aucune UI n'existe encore pour ces endpoints.**
+
+**Test — gestion des préfectures (SUPER_ADMIN, via un client HTTP type Postman/curl)** :
+1. `POST /api/v1/platform/prefectures` avec `{"nom":"Coyah","type":"DPE","region":"Kindia","pays":"Guinée"}`
+   → 201, la préfecture est créée avec `statut: ACTIVE`.
+2. `PUT /api/v1/platform/prefectures/{id}/ecoles/{tenantId}` sur une école existante → 200, l'école
+   apparaît ensuite dans `GET /api/v1/platform/prefectures/{id}/ecoles`.
+3. Se connecter avec le compte SCHOOL_ADMIN de cette école → vérifier que **rien ne change** dans son
+   expérience normale (isolation tenant classique inchangée, aucune donnée d'une autre école visible).
+4. `DELETE /api/v1/platform/prefectures/ecoles/{tenantId}` → l'école disparaît de la liste de la
+   préfecture.
+5. `PATCH /api/v1/platform/prefectures/{id}/archiver` puis `/reactiver` → le statut bascule
+   correctement dans les deux sens.
+6. Créer un utilisateur avec le rôle `DPE_ADMIN` (via les endpoints rôles/utilisateurs existants) puis
+   `POST /api/v1/platform/prefectures/{id}/utilisateurs` avec son `userId` → l'affectation est créée
+   (aucun endpoint de lecture directe dans ce lot ; à vérifier via une requête SQL ou un futur écran).
+
+**Test — journal d'audit** :
+1. Se connecter avec n'importe quel compte → `GET /api/v1/audit-logs` (SCHOOL_ADMIN/DIRECTOR) doit
+   afficher une ligne `action: LOGIN` récente pour cette connexion.
+2. Affecter un rôle à un utilisateur (`POST` sur l'endpoint de gestion des rôles existant) → une
+   nouvelle ligne `action: ROLE_ASSIGNED` doit apparaître dans le même journal.
+3. Enregistrer un paiement réussi → une ligne `action: PAYMENT_SUCCEEDED` doit apparaître, avec le
+   détail de la facture et du montant, mais **jamais** de données bancaires/personnelles sensibles.
+4. En SUPER_ADMIN, créer un nouveau tenant puis le suspendre → `GET /api/v1/platform/audit-logs`
+   (jamais `/api/v1/audit-logs`, qui reste vide pour ces deux actions) doit afficher `TENANT_CREATED`
+   puis `TENANT_SUSPENDED`, **sans jamais exposer le mot de passe temporaire généré** dans le détail.
+5. Vérifier qu'aucun endpoint ne permet de modifier ou supprimer une ligne du journal (aucune route
+   `PUT`/`PATCH`/`DELETE` n'existe sur `/audit-logs`).
+
+*Résultat attendu* : le périmètre DPE est une pure fondation additive qui ne modifie en rien
+l'isolation tenant existante ni l'expérience des écoles ; le journal d'audit capture les actions
+sensibles déjà identifiées sans jamais exposer de secret, et reste strictement en lecture seule via
+l'API.
+
+---
+
+## 33. Tableau de bord DPE/DCE (première tranche : effectifs)
+
+**Ce qui change** : un compte `DPE_ADMIN` affecté à une préfecture/commune dispose maintenant d'un
+vrai tableau de bord de supervision : vue générale (nombre d'écoles, d'élèves, d'enseignants, de
+classes de l'année en cours, ratio élèves/enseignant), liste des écoles du périmètre avec leurs
+effectifs, et une fiche détaillée par école. **Cette tranche couvre uniquement les effectifs** — taux
+de présence, moyennes et score de risque de décrochage ne sont pas encore disponibles (page de détail
+école : message explicite « à venir »).
+
+**Où** : menu « DPE / DCE » → `/dpe/dashboard` et `/dpe/schools` (visible uniquement pour le rôle
+`DPE_ADMIN`).
+
+**Test** :
+1. Prérequis (SUPER_ADMIN, via un client HTTP) : créer une préfecture, y rattacher 2-3 écoles
+   existantes (`PUT /api/v1/platform/prefectures/{id}/ecoles/{tenantId}`), créer un utilisateur avec
+   le rôle `DPE_ADMIN` et l'affecter à cette préfecture (`POST
+   /api/v1/platform/prefectures/{id}/utilisateurs`).
+2. Se connecter avec ce compte `DPE_ADMIN` → le menu doit afficher une section « DPE / DCE » (et
+   aucune des sections réservées aux écoles/SUPER_ADMIN).
+3. `/dpe/dashboard` → les 4 cartes (écoles, élèves, enseignants, classes) doivent correspondre à la
+   somme réelle des écoles rattachées ; le tableau « Écoles du périmètre » doit lister exactement ces
+   écoles, jamais une école hors périmètre.
+4. Cliquer sur une école → `/dpe/schools/{id}` → la fiche affiche les mêmes effectifs, avec le détail
+   enseignants actifs/total.
+5. Modifier l'URL pour pointer vers l'id d'une école **hors périmètre** (une école non rattachée à
+   cette préfecture) → la page doit afficher un message d'erreur (403 backend), jamais les données de
+   cette école.
+6. Se connecter avec un compte d'une autre préfecture (ou sans aucune préfecture affectée) → le
+   tableau de bord doit être vide (0 partout, tableau vide), jamais les écoles de la première
+   préfecture.
+7. Vérifier que rien ne change pour les comptes SCHOOL_ADMIN/DIRECTOR/ENSEIGNANT/PARENT des écoles
+   concernées : ils ne voient jamais de mention DPE, leur isolation tenant reste identique à avant.
+
+*Résultat attendu* : chaque compte DPE/DCE ne voit strictement que les écoles de son propre
+périmètre, jamais plus ; les écoles elles-mêmes ne perçoivent aucun changement dans leur usage
+quotidien de la plateforme.
+
+---
+
+## 34. Alertes DPE/DCE (première tranche : incohérences d'effectifs)
+
+**Ce qui change** : un compte `DPE_ADMIN` dispose maintenant d'une page « Alertes » listant les
+incohérences détectées automatiquement chez les écoles de son périmètre — école sans élève, sans
+enseignant actif, sans classe pour l'année en cours, école suspendue/archivée, ou ratio
+élèves/enseignant anormalement élevé (indicatif). Chaque alerte a un statut (Nouvelle → En cours →
+Résolue) modifiable manuellement ; une alerte se résout aussi automatiquement dès que la condition
+qui l'a déclenchée disparaît (réévaluée chaque nuit à 5h, ou à la demande via le bouton « Réévaluer
+maintenant »).
+
+**Où** : menu « DPE / DCE » → `/dpe/alerts`.
+
+**Test** :
+1. Sur une école de test rattachée au périmètre, vider volontairement ses classes de l'année (ou
+   utiliser une école nouvellement créée sans élève/enseignant/classe) → se connecter en `DPE_ADMIN`
+   → `/dpe/alerts` → cliquer **Réévaluer maintenant** → les alertes correspondantes
+   (« Aucun élève », « Aucun enseignant actif », « Aucune classe ») doivent apparaître avec le statut
+   « Nouvelle ».
+2. Cliquer **Prendre en charge** sur une alerte → son statut passe à « En cours ».
+3. Cliquer **Résoudre** → statut « Résolue » ; changer le filtre de statut vers « Résolues » → elle y
+   apparaît toujours (rien n'est supprimé).
+4. Régler le problème sur l'école (ajouter un élève, une classe…) → **Réévaluer maintenant** → les
+   alertes correspondantes passent automatiquement à « Résolue » (sans action manuelle), même si
+   elles étaient encore « Nouvelle »/« En cours ».
+5. Recréer la même condition (ex. supprimer à nouveau l'élève ajouté) → **Réévaluer maintenant** →
+   l'alerte déjà résolue repasse à « Nouvelle » (réouverture automatique), sans dupliquer la ligne.
+6. Se connecter avec un compte d'une autre préfecture → `/dpe/alerts` ne doit jamais montrer les
+   alertes de la première préfecture.
+7. Vérifier qu'aucune transition de statut illégale n'est possible (ex. tenter de passer directement
+   d'« En cours » à « Nouvelle » via l'API doit être rejeté).
+
+*Résultat attendu* : les alertes reflètent toujours l'état réel des écoles (jamais périmées après
+correction, jamais dupliquées en cas de récidive), restent strictement cantonnées au périmètre de
+chaque compte DPE/DCE, et aucune alerte n'utilise de donnée non encore fiable (présence, résultats) —
+uniquement des effectifs déjà vérifiés ailleurs dans l'application.
+
+---
+
+## 35. Référencement (SEO) du site public — cathclau-edu.com
+
+**Ce qui change** : validation du domaine pour Google Search Console (fichier
+`googleb53507edf28cf3e0.html`, déplacé dans `public/` pour être servi à la racine), et mise en place
+complète du référencement du site public (frontend `lacaeducation-ui`) : `robots.txt` et
+`sitemap.xml` générés dynamiquement, métadonnées (titre/description/Open Graph/Twitter Card) sur
+toutes les pages publiques y compris Contact et Blog (converties en Server Components pour être
+indexables — avant ce correctif elles étaient en `"use client"`, donc invisibles à un moteur de
+recherche), données structurées JSON-LD (organisation sur tout le site public, FAQPage sur `/faqs`,
+BlogPosting sur chaque article), manifeste PWA, et `noindex` explicite sur tout l'espace applicatif
+authentifié.
+
+**⚠️ Actions requises avant mise en production (pas automatiques)** :
+1. Définir la variable d'environnement `NEXT_PUBLIC_SITE_URL=https://cathclau-edu.com` dans la
+   configuration de déploiement du frontend (Vercel ou autre) — sans elle, le sitemap/robots/URLs
+   canoniques utilisent `http://localhost:3000` par défaut.
+2. S'assurer que le backend est joignable **au moment du build** du frontend (le sitemap récupère la
+   liste des articles de blog publiés à la génération) — sinon le sitemap se limite aux pages
+   statiques (dégradation silencieuse, pas d'échec de build).
+3. Ne jamais supprimer `public/googleb53507edf28cf3e0.html` après validation dans Search Console
+   (Google le redemande périodiquement pour confirmer la propriété).
+4. Une fois déployé et validé, soumettre `https://cathclau-edu.com/sitemap.xml` dans Google Search
+   Console (section Sitemaps).
+
+**Test** :
+1. `https://cathclau-edu.com/googleb53507edf28cf3e0.html` doit répondre 200 avec le contenu attendu
+   → valider la propriété dans Search Console.
+2. `https://cathclau-edu.com/robots.txt` → doit lister `Allow: /`, quelques `Disallow` sur les pages
+   de connexion/transactionnelles, et un lien vers le sitemap.
+3. `https://cathclau-edu.com/sitemap.xml` → doit lister toutes les pages publiques (accueil, tarifs,
+   fonctionnalités, FAQ, aide, contact, inscription, blog + chaque article publié) — jamais une page
+   de l'espace applicatif (dashboard, élèves, factures…).
+4. Ouvrir le code source (Ctrl+U) de `/`, `/tarifs`, `/blog`, `/blog/{un-article}`, `/contact` → un
+   `<title>` et une `<meta name="description">` uniques doivent être présents dans le HTML **avant
+   toute exécution JavaScript** (view-source, pas les DevTools qui montrent le DOM après hydratation).
+5. Se connecter à l'application (n'importe quel rôle) → ouvrir le code source d'une page du
+   dashboard → une balise `<meta name="robots" content="noindex...">` doit être présente.
+6. Coller l'URL d'un article de blog dans l'outil [Rich Results Test de
+   Google](https://search.google.com/test/rich-results) → les données structurées `BlogPosting`
+   doivent être détectées sans erreur ; faire de même sur `/faqs` pour `FAQPage`.
+7. Sur `/blog/{un-article}`, tester le partage Facebook/X/WhatsApp et le formulaire de commentaire →
+   doivent fonctionner normalement malgré le passage en Server Component (formulaire isolé dans un
+   composant client dédié).
+
+*Résultat attendu* : chaque page publique est indexable avec un contenu unique et réellement présent
+dans le HTML initial (pas seulement après chargement JavaScript), l'espace applicatif authentifié
+n'apparaît jamais dans les résultats de recherche, et aucune fonctionnalité interactive existante
+(commentaires, partage, formulaire de contact) n'a régressé pendant la conversion en Server
+Components.

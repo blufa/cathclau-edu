@@ -6,6 +6,7 @@ import gn.lacaeducation.platform.domain.Tenant;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -59,5 +60,13 @@ class TenantPersistenceAdapter implements TenantRepository {
     @Override
     public boolean existsById(Long id) {
         return jpaRepository.existsById(id);
+    }
+
+    @Override
+    public List<Tenant> findByPrefectureIdIn(Collection<Long> prefectureIds) {
+        if (prefectureIds == null || prefectureIds.isEmpty()) {
+            return List.of();
+        }
+        return jpaRepository.findByPrefectureIdIn(prefectureIds).stream().map(mapper::toDomain).toList();
     }
 }

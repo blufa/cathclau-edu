@@ -19,6 +19,7 @@ class EnseignantJpaEntity {
     @Column(name = "last_name") private String lastName;
     private String phone;
     private String email;
+    private String photo;
     private String specialization;
     @Column(name = "hire_date") private LocalDate hireDate;
     @Column(nullable = false) private Boolean active = true;

@@ -10,6 +10,7 @@ public record UserResponse(
         String username,
         String email,
         String phone,
+        String photo,
         Boolean active,
         boolean mustChangePassword,
         /** Présent uniquement dans la réponse de création quand un mot de passe temporaire a été généré. */

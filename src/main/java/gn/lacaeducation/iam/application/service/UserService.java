@@ -102,6 +102,7 @@ public class UserService implements UserUseCase {
         if (command.firstName() != null) user.setFirstName(command.firstName());
         if (command.lastName() != null) user.setLastName(command.lastName());
         if (command.phone() != null) user.setPhone(command.phone());
+        if (command.photo() != null) user.setPhoto(command.photo());
         if (command.active() != null) {
             user.setActive(command.active());
             if (Boolean.FALSE.equals(command.active())) {

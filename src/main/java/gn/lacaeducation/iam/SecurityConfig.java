@@ -96,8 +96,8 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, UserActivityFilter userActivityFilter) throws Exception {
-        TenantContextFilter tenantContextFilter = new TenantContextFilter();
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, UserActivityFilter userActivityFilter,
+                                                     TenantContextFilter tenantContextFilter) throws Exception {
         http
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(AbstractHttpConfigurer::disable)

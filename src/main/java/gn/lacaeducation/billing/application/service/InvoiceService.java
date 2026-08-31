@@ -12,6 +12,8 @@ import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.MediaUploadService;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.common.TenantInfoProvider;
+import gn.lacaeducation.platform.PlatformFeeLedgerApi;
+import gn.lacaeducation.platform.PlatformFeeQuoteApi;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -36,6 +38,8 @@ public class InvoiceService implements InvoiceUseCase {
     private final TenantInfoProvider tenantInfoProvider;
     private final gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase familyDiscountUseCase;
     private final gn.lacaeducation.billing.application.port.in.EarlyPaymentDiscountUseCase earlyPaymentDiscountUseCase;
+    private final PlatformFeeQuoteApi platformFeeQuoteApi;
+    private final PlatformFeeLedgerApi platformFeeLedgerApi;
 
     @Override @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public byte[] pdfBytes(Long invoiceId) {
@@ -98,13 +102,23 @@ public class InvoiceService implements InvoiceUseCase {
         BigDecimal discountPercent = familyDiscount.percentage() != null
                 ? familyDiscount.percentage() : BigDecimal.ZERO;
 
+        // Frais d'usage plateforme (SUPER_ADMIN) : ajouté uniquement aux vraies mensualités (frais
+        // type MONTHLY), jamais au transport/cantine/etc. qui réutilisent aussi generateMonthly().
+        // Chaque facture fige le montant courant : un changement de tarif plateforme n'affecte que
+        // les factures générées ensuite, jamais celles déjà émises.
+        boolean isMonthlyTuition = schoolFeeRepository.findById(c.feeId())
+                .map(fee -> fee.getType() == gn.lacaeducation.billing.domain.FeeType.MONTHLY)
+                .orElse(false);
+        BigDecimal platformFee = isMonthlyTuition ? platformFeeQuoteApi.currentAmount() : BigDecimal.ZERO;
+
         List<Invoice> created = new ArrayList<>();
         for (gn.lacaeducation.billing.domain.Installment month : months) {
             // Idempotence : on ne recrée pas la facture d'un mois déjà facturé pour cet élève.
             if (repo.existsByStudentIdAndInstallmentId(c.studentId(), month.getId())) {
                 continue;
             }
-            BigDecimal amount = month.getAmount();
+            BigDecimal baseAmount = month.getAmount();
+            BigDecimal amount = platformFee.signum() > 0 ? baseAmount.add(platformFee) : baseAmount;
             BigDecimal discount = amount.multiply(discountPercent)
                     .divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
             BigDecimal net = amount.subtract(discount);
@@ -116,7 +130,8 @@ public class InvoiceService implements InvoiceUseCase {
                     .discountReason(discount.signum() > 0 ? "Réduction familiale : " + familyDiscount.ruleLabel() : null)
                     .remainingBalance(net).status(InvoiceStatus.UNPAID).issueDate(LocalDate.now())
                     .recoveryStage(RecoveryStage.NONE)
-                    .installmentId(month.getId()).periodLabel(month.getLabel()).build());
+                    .installmentId(month.getId()).periodLabel(month.getLabel())
+                    .platformFeeAmount(platformFee.signum() > 0 ? platformFee : null).build());
             eventPublisher.publishEvent(new InvoiceGeneratedEvent(c.tenantId(), c.studentId(), inv.getId(), inv.getReference()));
             eventPublisher.publishEvent(new InvoiceIssuedEvent(inv.getId(), c.studentId(), c.tenantId()));
             created.add(inv);
@@ -175,6 +190,14 @@ public class InvoiceService implements InvoiceUseCase {
         if (fullySettled) {
             eventPublisher.publishEvent(
                     new InvoicePaidEvent(inv.getTenantId(), inv.getStudentId(), inv.getId(), inv.getReference()));
+        }
+        // Part de frais plateforme effectivement encaissée par ce paiement, au prorata du montant
+        // total de la facture — voir Invoice.platformFeeAmount (figé à la génération).
+        if (inv.getPlatformFeeAmount() != null && inv.getPlatformFeeAmount().signum() > 0
+                && inv.getTotalAmount() != null && inv.getTotalAmount().signum() > 0) {
+            BigDecimal platformShare = amount.multiply(inv.getPlatformFeeAmount())
+                    .divide(inv.getTotalAmount(), 2, java.math.RoundingMode.HALF_UP);
+            platformFeeLedgerApi.record(inv.getTenantId(), inv.getId(), platformShare);
         }
         return saved;
     }

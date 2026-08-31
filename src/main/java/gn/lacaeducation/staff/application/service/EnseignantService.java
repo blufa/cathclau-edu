@@ -86,6 +86,27 @@ public class EnseignantService implements TeacherUseCase {
         return teacherRepository.save(t);
     }
 
+    @Override
+    public Teacher updateOwnProfile(Long userId, UpdateOwnProfileCommand cmd) {
+        Teacher t = requireByUserId(userId);
+        // Mise à jour partielle : seuls les champs fournis sont modifiés (rien d'administratif).
+        if (cmd.phone() != null) t.setPhone(cmd.phone());
+        if (cmd.email() != null) t.setEmail(cmd.email());
+        return teacherRepository.save(t);
+    }
+
+    @Override
+    public Teacher updateOwnPhoto(Long userId, String photoUrl) {
+        Teacher t = requireByUserId(userId);
+        t.setPhoto(photoUrl);
+        return teacherRepository.save(t);
+    }
+
+    private Teacher requireByUserId(Long userId) {
+        return teacherRepository.findByUserId(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Teacher (compte)", userId));
+    }
+
     @Override @Transactional(readOnly = true)
     public Optional<Teacher> findById(Long id) { return teacherRepository.findById(id); }
 

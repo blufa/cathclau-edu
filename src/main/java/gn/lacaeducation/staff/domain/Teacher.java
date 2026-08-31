@@ -14,6 +14,7 @@ public class Teacher {
     private String lastName;
     private String phone;
     private String email;
+    private String photo;
     private String specialization;
     private LocalDate hireDate;
     private Boolean active;

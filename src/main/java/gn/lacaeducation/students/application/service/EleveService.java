@@ -131,6 +131,28 @@ public class EleveService implements StudentUseCase {
     }
 
     @Override
+    public Student updateOwnProfile(Long userId, UpdateOwnProfileCommand cmd) {
+        Student s = requireByUserId(userId);
+        // Mise à jour partielle : seuls les champs fournis sont modifiés (rien d'administratif).
+        if (cmd.phone() != null) s.setPhone(cmd.phone());
+        if (cmd.email() != null) s.setEmail(cmd.email());
+        if (cmd.address() != null) s.setAddress(cmd.address());
+        return studentRepository.save(s);
+    }
+
+    @Override
+    public Student updateOwnPhoto(Long userId, String photoUrl) {
+        Student s = requireByUserId(userId);
+        s.setPhoto(photoUrl);
+        return studentRepository.save(s);
+    }
+
+    private Student requireByUserId(Long userId) {
+        return studentRepository.findByUserId(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Student (compte)", userId));
+    }
+
+    @Override
     public void delete(Long id) {
         // Soft delete (archive): never physically remove a student that may carry grades/payments.
         Student s = studentRepository.findById(id)

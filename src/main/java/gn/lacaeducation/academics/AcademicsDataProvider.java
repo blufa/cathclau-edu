@@ -20,6 +20,9 @@ public interface AcademicsDataProvider {
     /** Toutes les classes d'un tenant (job planifié parcourant tout l'établissement, ex. marquage
      * automatique des absences en fin de journée). */
     List<ClassPublicInfo> findClassesByTenant(Long tenantId);
+    /** Nombre de classes d'un tenant pour une année scolaire donnée (ex. l'année courante) — évite de
+     * compter les classes d'années révolues dans un effectif affiché. */
+    long countClassesByTenantAndYear(Long tenantId, Long academicYearId);
     /** Libellé de l'année scolaire courante du tenant (pour les documents). */
     Optional<String> currentAcademicYearLabel(Long tenantId);
     /** Année scolaire courante complète (id + date de fin) — ex. pour borner la validité d'une carte élève. */
