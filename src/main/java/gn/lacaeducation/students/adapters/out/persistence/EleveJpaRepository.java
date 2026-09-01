@@ -13,6 +13,7 @@ import java.util.Optional;
 interface EleveJpaRepository extends JpaRepository<EleveJpaEntity, Long> {
     List<EleveJpaEntity> findByTenantId(Long tenantId);
     Optional<EleveJpaEntity> findByUserId(Long userId);
+    Optional<EleveJpaEntity> findByIdempotencyKey(String idempotencyKey);
     long countByTenantId(Long tenantId);
     boolean existsByTenantIdAndStudentNumber(Long tenantId, String studentNumber);
 

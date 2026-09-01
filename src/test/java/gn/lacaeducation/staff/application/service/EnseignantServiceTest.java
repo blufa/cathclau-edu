@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -40,7 +41,7 @@ class EnseignantServiceTest {
         when(teacherRepository.save(any())).thenReturn(expected);
 
         Teacher result = service.create(new CreateTeacherCommand(10L, null, "T001", "John", "Doe",
-                "0600000000", "john@school.gn", "Mathematics", LocalDate.of(2024, 1, 15), null, null, null, null, null, null));
+                "0600000000", "john@school.gn", "Mathematics", LocalDate.of(2024, 1, 15), null, null, null, null, null, null, null));
 
         assertThat(result.getId()).isEqualTo(1L);
         verify(teacherRepository).save(any(Teacher.class));
@@ -52,9 +53,36 @@ class EnseignantServiceTest {
         when(teacherRepository.existsByTenantIdAndStaffNumber(10L, "T001")).thenReturn(true);
 
         assertThatThrownBy(() -> service.create(new CreateTeacherCommand(10L, null, "T001", "John", "Doe",
-                null, null, null, null, null, null, null, null, null, null)))
+                null, null, null, null, null, null, null, null, null, null, null)))
                 .isInstanceOf(ConflictException.class);
         verify(teacherRepository, never()).save(any());
+    }
+
+    @Test
+    void create_calledTwiceWithSameIdempotencyKey_returnsSameTeacher_doesNotDuplicate() {
+        // Rejoué après une coupure réseau (mode hors-ligne, §staff) avec la même clé : le second appel
+        // doit renvoyer l'enseignant déjà créé, sans revérifier le matricule ni en créer un second.
+        Teacher alreadyCreated = Teacher.builder().id(1L).tenantId(10L).firstName("John").lastName("Doe")
+                .staffNumber("T001").idempotencyKey("key-1").build();
+        when(teacherRepository.findByIdempotencyKey("key-1"))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(alreadyCreated));
+        when(teacherRepository.existsByTenantIdAndStaffNumber(any(), any())).thenReturn(false);
+        when(teacherRepository.save(any())).thenAnswer(i -> {
+            Teacher t = i.getArgument(0);
+            if (t.getId() == null) t.setId(1L);
+            return t;
+        });
+
+        CreateTeacherCommand cmd = new CreateTeacherCommand(10L, null, "T001", "John", "Doe",
+                null, null, null, null, null, null, null, null, null, null, "key-1");
+
+        Teacher first = service.create(cmd);
+        Teacher second = service.create(cmd);
+
+        assertThat(first.getId()).isEqualTo(second.getId());
+        verify(teacherRepository, times(1)).save(any(Teacher.class));
+        verify(eventPublisher, times(1)).publishEvent(any(gn.lacaeducation.staff.application.event.StaffCreatedEvent.class));
     }
 
     @Test

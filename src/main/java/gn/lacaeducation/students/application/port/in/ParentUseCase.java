@@ -9,7 +9,10 @@ public interface ParentUseCase {
     /** Le numéro de téléphone est obligatoire : c'est le seul canal fiable de notification SMS des parents. */
     record CreateParentCommand(Long tenantId, Long userId, String firstName, String lastName,
                                @NotBlank(message = "Le numéro de téléphone est obligatoire") String phone,
-                               String email, String occupation, String address) {}
+                               String email, String occupation, String address,
+                               /** Clé d'idempotence fournie par le client (mode hors-ligne) : rejouer avec la même
+                                *  clé après une coupure réseau renvoie le parent déjà créé au lieu d'en créer un second. */
+                               String idempotencyKey) {}
     record UpdateParentCommand(String firstName, String lastName,
                                @NotBlank(message = "Le numéro de téléphone est obligatoire") String phone,
                                String email, String occupation, String address) {}

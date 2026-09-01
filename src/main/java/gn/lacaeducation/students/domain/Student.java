@@ -35,4 +35,7 @@ public class Student {
     private String medicalNotes;
     private LocalDateTime createdAt;
     private LocalDateTime deletedAt;
+    /** Clé d'idempotence fournie par le client (mode hors-ligne) : rejouer avec la même clé après une
+     *  coupure réseau renvoie cet élève au lieu d'en créer un second. Null pour une création en ligne. */
+    private String idempotencyKey;
 }

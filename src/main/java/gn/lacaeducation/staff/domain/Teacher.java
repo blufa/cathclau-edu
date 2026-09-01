@@ -25,4 +25,7 @@ public class Teacher {
     private BigDecimal remunerationRate;
     private String teachingAuthorizationNumber; // n° autorisation SNEPUP
     private String cnssNumber;
+    /** Clé d'idempotence fournie par le client (mode hors-ligne) : rejouer avec la même clé après une
+     *  coupure réseau renvoie cet enseignant au lieu d'en créer un second. Null pour une création en ligne. */
+    private String idempotencyKey;
 }

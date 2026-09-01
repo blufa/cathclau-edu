@@ -12,6 +12,7 @@ public interface StudentRepository {
     Student save(Student student);
     Optional<Student> findById(Long id);
     Optional<Student> findByUserId(Long userId);
+    Optional<Student> findByIdempotencyKey(String idempotencyKey);
     List<Student> findByTenantId(Long tenantId);
     Page<Student> search(Long tenantId, Gender gender, String q, Long classId, EnrollmentStatus status, boolean notEnrolled, Pageable pageable);
     void deleteById(Long id);

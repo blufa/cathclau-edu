@@ -5,7 +5,9 @@ import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.payments.application.event.PaymentFailedEvent;
 import gn.lacaeducation.payments.application.event.PaymentRefundedEvent;
 import gn.lacaeducation.payments.application.event.PaymentSucceededEvent;
+import gn.lacaeducation.payments.application.port.in.PaymentUseCase.GroupPaymentCommand;
 import gn.lacaeducation.payments.application.port.in.PaymentUseCase.InitiatePaymentCommand;
+import gn.lacaeducation.payments.application.port.in.PaymentUseCase.InvoiceShare;
 import gn.lacaeducation.payments.application.port.in.ReceiptUseCase;
 import gn.lacaeducation.payments.application.port.out.PaymentProviderGateway;
 import gn.lacaeducation.payments.application.port.out.PaymentRepository;
@@ -128,5 +130,57 @@ class PaymentServiceTest {
     void confirmSuccess_unknownPayment_throwsNotFound() {
         when(repo.findById(99L)).thenReturn(Optional.empty());
         assertThatThrownBy(() -> service().confirmSuccess(99L)).isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    private GroupPaymentCommand groupCmd(String idempotencyKey) {
+        return new GroupPaymentCommand(10L, 7L, PaymentChannel.CASH, null, "Tranche 1",
+                1, BigDecimal.ZERO, List.of(new InvoiceShare(3L, null, new BigDecimal("100.00"))),
+                99L, 2026L, idempotencyKey);
+    }
+
+    @Test
+    void initiateGroup_deskManual_confirmsImmediately_generatesReceipt() {
+        // CASH est encaissé au guichet (isDeskManual) : confirmation immédiate (SUCCEEDED), reçu groupé
+        // émis et événements publiés, sans passerelle en ligne (§payments — flux d'encaissement réel).
+        when(repo.findByIdempotencyKey(any())).thenReturn(Optional.empty());
+        when(repo.save(any(Payment.class))).thenAnswer(i -> {
+            Payment p = i.getArgument(0);
+            if (p.getId() == null) p.setId(1L);
+            return p;
+        });
+
+        Payment p = service().initiateGroup(groupCmd("key-1"));
+
+        assertThat(p.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED);
+        assertThat(p.getIdempotencyKey()).isEqualTo("key-1");
+        verify(receiptUseCase).generateGrouped(eq(1L), any(), any(), any());
+        verify(eventPublisher).publishEvent(any(PaymentSucceededEvent.class));
+    }
+
+    @Test
+    void initiateGroup_calledTwiceWithSameIdempotencyKey_returnsSamePayment_doesNotDuplicate() {
+        // Rejoué après une coupure réseau (mode hors-ligne, §payments) avec la même clé : le second
+        // appel doit renvoyer le paiement déjà créé, sans en créer un second ni régénérer le reçu.
+        Payment alreadyCreated = Payment.builder().id(1L).tenantId(10L).studentId(7L)
+                .amount(new BigDecimal("100.00")).status(PaymentStatus.SUCCEEDED)
+                .idempotencyKey("key-1").build();
+        when(repo.findByIdempotencyKey("key-1"))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(alreadyCreated));
+        when(repo.save(any(Payment.class))).thenAnswer(i -> {
+            Payment p = i.getArgument(0);
+            if (p.getId() == null) p.setId(1L);
+            return p;
+        });
+
+        Payment first = service().initiateGroup(groupCmd("key-1"));
+        Payment second = service().initiateGroup(groupCmd("key-1"));
+
+        assertThat(first.getId()).isEqualTo(second.getId());
+        // Le 1er appel enregistre le paiement deux fois (création INITIATED puis confirmation SUCCEEDED,
+        // comportement normal d'un encaissement guichet) ; le 2nd appel, court-circuité par la clé
+        // d'idempotence, ne doit déclencher AUCUNE écriture supplémentaire ni régénérer le reçu.
+        verify(repo, times(2)).save(any(Payment.class));
+        verify(receiptUseCase, times(1)).generateGrouped(any(), any(), any(), any());
     }
 }

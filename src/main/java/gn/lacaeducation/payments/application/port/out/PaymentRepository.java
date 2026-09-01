@@ -7,6 +7,7 @@ public interface PaymentRepository {
     Payment save(Payment payment);
     Optional<Payment> findById(Long id);
     Optional<Payment> findByReference(String reference);
+    Optional<Payment> findByIdempotencyKey(String idempotencyKey);
     List<Payment> findByInvoiceId(Long invoiceId);
     List<Payment> findByStudentId(Long studentId);
     List<Payment> findByTenantId(Long tenantId);

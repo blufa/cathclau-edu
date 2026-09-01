@@ -33,7 +33,10 @@ public class PaymentController {
 
     public record GroupRequest(Long tenantId, Long studentId, PaymentChannel channel, String payerNumber,
                                String coverageLabel, Integer monthsCount, java.math.BigDecimal remainingAfter,
-                               java.util.List<PaymentUseCase.InvoiceShare> shares, Long academicYearId) {}
+                               java.util.List<PaymentUseCase.InvoiceShare> shares, Long academicYearId,
+                               /** Clé d'idempotence fournie par le client (mode hors-ligne, encaissement rejoué
+                                *  après une coupure réseau) — voir {@link PaymentUseCase.GroupPaymentCommand}. */
+                               String idempotencyKey) {}
 
     @Operation(summary = "Group payment of several months / the whole year — one payment, one receipt. "
             + "Desk channels are immediate; Djomy returns a redirectUrl for a single online transaction.")
@@ -41,7 +44,8 @@ public class PaymentController {
     @PostMapping("/group") public ResponseEntity<InitiateResponse> group(@RequestBody GroupRequest r, @AuthenticationPrincipal Jwt jwt) {
         Payment payment = useCase.initiateGroup(new PaymentUseCase.GroupPaymentCommand(
                 r.tenantId(), r.studentId(), r.channel(), r.payerNumber(),
-                r.coverageLabel(), r.monthsCount(), r.remainingAfter(), r.shares(), currentUserId(jwt), r.academicYearId()));
+                r.coverageLabel(), r.monthsCount(), r.remainingAfter(), r.shares(), currentUserId(jwt), r.academicYearId(),
+                r.idempotencyKey()));
         String redirectUrl = transactionUseCase.findByPaymentId(payment.getId()).stream()
                 .map(PaymentTransaction::getRedirectUrl)
                 .filter(u -> u != null && !u.isBlank())
