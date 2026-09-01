@@ -5,6 +5,7 @@ target/
 ### Secrets — jamais commités (Djomy, etc.) ###
 .env
 .env.local
+.env.example
 !**/src/main/**/target/
 !**/src/test/**/target/
 
