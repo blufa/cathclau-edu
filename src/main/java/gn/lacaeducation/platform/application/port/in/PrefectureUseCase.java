@@ -28,6 +28,9 @@ public interface PrefectureUseCase {
     void assignUser(Long prefectureId, Long userId);
     void unassignUser(Long prefectureId, Long userId);
     List<Long> prefectureIdsOfUser(Long userId);
+    /** Comptes actuellement affectés à cette préfecture/commune (identifiants ; l'identité complète
+     * se résout côté appelant via la liste des utilisateurs plateforme déjà chargée). */
+    List<Long> userIdsOfPrefecture(Long prefectureId);
 
     record PrefectureCommand(String nom, PrefectureType type, String region, String pays,
                               BigDecimal latitude, BigDecimal longitude) {}

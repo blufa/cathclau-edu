@@ -122,6 +122,13 @@ public class PrefectureService implements PrefectureUseCase {
         return repository.findPrefectureIdsByUserId(userId);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<Long> userIdsOfPrefecture(Long prefectureId) {
+        requireById(prefectureId);
+        return repository.findUserIdsByPrefectureId(prefectureId);
+    }
+
     private Prefecture requireById(Long id) {
         return repository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Prefecture", id));
     }

@@ -14,4 +14,5 @@ public interface PrefectureRepository {
     void assignUser(Long userId, Long prefectureId);
     void unassignUser(Long userId, Long prefectureId);
     List<Long> findPrefectureIdsByUserId(Long userId);
+    List<Long> findUserIdsByPrefectureId(Long prefectureId);
 }
