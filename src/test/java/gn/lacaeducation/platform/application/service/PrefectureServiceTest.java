@@ -118,4 +118,22 @@ class PrefectureServiceTest {
 
         verify(repository).assignUser(42L, 1L);
     }
+
+    @Test
+    void userIdsOfPrefecture_returnsAssignedUsers() {
+        when(repository.findById(1L)).thenReturn(Optional.of(
+                Prefecture.builder().id(1L).nom("Coyah").statut(PrefectureStatus.ACTIVE).build()));
+        when(repository.findUserIdsByPrefectureId(1L)).thenReturn(List.of(42L, 43L));
+
+        List<Long> users = service().userIdsOfPrefecture(1L);
+
+        assertThat(users).containsExactly(42L, 43L);
+    }
+
+    @Test
+    void userIdsOfPrefecture_unknownPrefecture_throwsNotFound() {
+        when(repository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service().userIdsOfPrefecture(99L)).isInstanceOf(ResourceNotFoundException.class);
+    }
 }

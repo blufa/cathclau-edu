@@ -6,6 +6,7 @@ import java.util.List;
 
 interface DpeUserPrefectureJpaRepository extends JpaRepository<DpeUserPrefectureJpaEntity, Long> {
     List<DpeUserPrefectureJpaEntity> findByUserId(Long userId);
+    List<DpeUserPrefectureJpaEntity> findByPrefectureId(Long prefectureId);
     void deleteByUserIdAndPrefectureId(Long userId, Long prefectureId);
     boolean existsByUserIdAndPrefectureId(Long userId, Long prefectureId);
 }

@@ -1159,3 +1159,115 @@ dans le HTML initial (pas seulement après chargement JavaScript), l'espace appl
 n'apparaît jamais dans les résultats de recherche, et aucune fonctionnalité interactive existante
 (commentaires, partage, formulaire de contact) n'a régressé pendant la conversion en Server
 Components.
+
+---
+
+## 36. Gestion des préfectures DPE/DCE côté SUPER_ADMIN (correctif : dashboard DPE inutilisable)
+
+**Ce qui change** : le tableau de bord DPE (`/dpe/dashboard`) renvoyait une erreur générique pour un
+SUPER_ADMIN car il n'existait tout simplement aucune interface pour créer une préfecture/commune, y
+rattacher une école, ou prévisualiser son tableau de bord — seul le backend existait. Ajout de
+`/platform/prefectures` (liste, création, archivage), d'une fiche préfecture (rattachement/détachement
+d'écoles et de comptes DPE_ADMIN), et d'un sélecteur de préfecture affiché uniquement pour SUPER_ADMIN
+sur les 4 pages `/dpe/*` (inutile et invisible pour un compte DPE_ADMIN, dont le périmètre reste
+toujours automatique).
+
+**Où** : menu « Plateforme » → « Préfectures DPE/DCE » (SUPER_ADMIN uniquement).
+
+**Test** :
+1. SUPER_ADMIN → `/platform/prefectures` → **Ajouter** → créer une préfecture de test (type DPE, nom
+   « Coyah ») → elle apparaît dans la liste avec le statut Active.
+2. Cliquer sur son nom → sur la fiche, **Rattacher une école** → choisir une école existante dans le
+   sélecteur → elle apparaît dans « Écoles rattachées ».
+3. **Affecter un compte** → choisir un utilisateur (idéalement déjà `DPE_ADMIN`, un avertissement
+   s'affiche sinon) → il apparaît dans « Comptes DPE_ADMIN affectés ».
+4. Cliquer **Aperçu tableau de bord** (ou retourner sur `/dpe/dashboard` en SUPER_ADMIN) → un bandeau
+   « Aperçu SUPER_ADMIN » doit apparaître avec un sélecteur → choisir « Coyah » → les effectifs de
+   l'école rattachée doivent s'afficher (ce qui échouait avant ce correctif).
+5. Se connecter avec le compte affecté à l'étape 3 (s'il a bien le rôle `DPE_ADMIN`) → `/dpe/dashboard`
+   → aucun bandeau de sélection ne doit apparaître (périmètre automatique), et les mêmes données
+   doivent s'afficher directement.
+6. Détacher l'école depuis la fiche préfecture → réévaluer/recharger le tableau de bord → l'école ne
+   doit plus apparaître.
+
+*Résultat attendu* : un SUPER_ADMIN peut désormais entièrement configurer et prévisualiser un
+périmètre DPE/DCE sans jamais avoir besoin d'un accès direct à la base de données ; un compte
+DPE_ADMIN réel continue de ne voir que son propre périmètre, sans aucun sélecteur superflu.
+
+---
+
+## 37. Correctif RBAC général : un rôle nouvellement affecté restait sans aucun menu visible
+
+**Ce qui change** : après avoir affecté un rôle à un utilisateur (constaté sur `DPE_ADMIN`, mais le bug
+touchait en réalité **n'importe quel rôle** en dehors de `SUPER_ADMIN`, `REDACTEUR`, `TEACHER`, `PARENT`,
+`STUDENT`, `SCHOOL_ADMIN`, `DIRECTOR`, `ACCOUNTANT`, `SECRETARY`), l'utilisateur se connectait et restait
+bloqué sur un écran de chargement, sans jamais voir la barre latérale ni aucun menu. La cause n'était ni
+une permission manquante, ni un cache obsolète, ni un problème d'affectation en base : la fonction
+`roleHome()` (qui calcule la page d'accueil après connexion, et la page de repli quand l'utilisateur
+atterrit sur une page qui ne lui est pas destinée) renvoyait un chemin fixe (`/dashboard`) pour tout rôle
+non explicitement prévu — or `/dashboard` est lui-même réservé aux rôles
+`SCHOOL_ADMIN/DIRECTOR/ACCOUNTANT/SECRETARY`. L'utilisateur était donc redirigé en boucle vers une page
+qui lui était aussitôt refusée, sans jamais atteindre un état stable. `roleHome()` calcule maintenant
+dynamiquement la première page de navigation réellement accessible au rôle de l'utilisateur, à partir de
+la même source de vérité que le reste du contrôle d'accès (`NAVIGATION`), ce qui rend le correctif valable
+pour tout rôle actuel ou futur, pas seulement `DPE_ADMIN`.
+
+**Où** : concerne la connexion de tout utilisateur, quel que soit son rôle (`src/lib/auth/role-access.ts`,
+fonction `roleHome`).
+
+**Test** :
+1. Créer ou choisir un utilisateur avec un rôle qui n'a **pas** accès à `/dashboard` (ex. `DPE_ADMIN`,
+   ou `RESPONSABLE_PEDAGOGIQUE`) → affecter le rôle depuis `/users` si besoin.
+2. Se connecter avec ce compte → la page d'accueil doit s'afficher normalement (menu latéral visible,
+   pas d'écran de chargement bloqué indéfiniment).
+3. Répéter avec un compte `DPE_ADMIN` déjà affecté à une préfecture (voir §36) → doit atterrir sur
+   `/dpe/dashboard` avec ses données, sans bandeau de sélection.
+4. Vérifier la non-régression des rôles déjà gérés explicitement : `SUPER_ADMIN` → `/platform/dashboard`,
+   `REDACTEUR` → `/platform/blog/posts`, `TEACHER` → `/dashboard/enseignant`, `PARENT` → `/children`,
+   `STUDENT` → `/my-results`, et `SCHOOL_ADMIN`/`DIRECTOR`/`ACCOUNTANT`/`SECRETARY` → `/dashboard`.
+5. Depuis un compte à rôle restreint, naviguer manuellement (barre d'adresse) vers une page hors de son
+   périmètre → doit rediriger vers sa propre page d'accueil (pas de boucle, pas d'écran blanc).
+
+*Résultat attendu* : tout rôle, actuel ou ajouté ultérieurement, atterrit systématiquement sur une page
+qu'il a le droit de voir après connexion — plus aucun rôle ne peut se retrouver sans menu visible du
+simple fait qu'il n'était pas explicitement listé dans `roleHome()`.
+
+---
+
+## 38. Correctif sitemap/robots.txt en production (Google Search Console ne pouvait pas les lire)
+
+**Ce qui change** : le sitemap (`/sitemap.xml`) et `robots.txt` déployés en production pointaient tous
+les deux vers `http://localhost:3000/...` au lieu de `https://cathclau-edu.com/...` — inutilisable par
+Google Search Console (Google ne peut évidemment pas atteindre le `localhost` du serveur de build).
+Constaté en interrogeant directement `https://cathclau-edu.com/sitemap.xml` en production. Cause : ces
+fichiers sont générés une fois **au moment du build** Next.js à partir de la variable d'environnement
+`NEXT_PUBLIC_SITE_URL` (voir `src/lib/site.ts` — `${SITE_URL}` avec un repli sur `localhost:3000` si la
+variable est absente) ; le `Dockerfile` ne déclarait/transmettait que `NEXT_PUBLIC_API_BASE_URL` comme
+build-arg, jamais `NEXT_PUBLIC_SITE_URL`, et `.github/workflows/deploy.yml` ne le passait pas non plus au
+`docker build` — c'était l'action « avant mise en production » documentée (mais jamais faite) au §35.
+
+**Correctif** : `.github/workflows/deploy.yml` calcule maintenant un output `site` (`https://cathclau-edu.com`
+sur `main`, `https://dev.cathclau-edu.com` sur `develop`, même logique que l'output `api` existant) et le
+transmet en build-arg `NEXT_PUBLIC_SITE_URL` ; le `Dockerfile` déclare cet `ARG`/`ENV` au même endroit que
+`NEXT_PUBLIC_API_BASE_URL`. Vérifié localement : un `next build` + `next start` avec
+`NEXT_PUBLIC_SITE_URL=https://cathclau-edu.com` produit bien un sitemap et un `robots.txt` avec les bonnes
+URLs (plus aucune trace de `localhost`).
+
+**Où** : aucune page UI — fichiers de déploiement uniquement (`Dockerfile`, `.github/workflows/deploy.yml`
+du dépôt `lacaeducation-ui`). Effet visible sur `https://cathclau-edu.com/sitemap.xml` et
+`https://cathclau-edu.com/robots.txt` après le prochain déploiement.
+
+**Test** (après déploiement, pas testable avant puisque c'est le pipeline CI/CD qui est corrigé) :
+1. Pousser sur `main` (ou déclencher manuellement le workflow `Deploy frontend`) → attendre la fin du job
+   `build-push` puis `deploy`.
+2. `https://cathclau-edu.com/sitemap.xml` → toutes les `<loc>` doivent commencer par
+   `https://cathclau-edu.com`, plus aucune occurrence de `localhost`.
+3. `https://cathclau-edu.com/robots.txt` → la ligne `Sitemap:` doit pointer vers
+   `https://cathclau-edu.com/sitemap.xml`.
+4. Dans Google Search Console → Sitemaps → soumettre (ou re-soumettre) `sitemap.xml` → le statut doit
+   passer à « Réussite » (et non plus une erreur de récupération).
+5. Vérifier le même comportement sur l'environnement `dev` (`https://dev.cathclau-edu.com/sitemap.xml`)
+   après un déploiement sur la branche `develop`.
+
+*Résultat attendu* : Google Search Console peut enfin récupérer un sitemap avec des URLs réellement
+atteignables, condition préalable à toute indexation du site public.

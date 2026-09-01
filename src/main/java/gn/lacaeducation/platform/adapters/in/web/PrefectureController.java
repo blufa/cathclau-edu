@@ -95,6 +95,12 @@ public class PrefectureController {
         useCase.unassignSchool(tenantId);
     }
 
+    @Operation(summary = "Comptes (userId) actuellement affectés à cette préfecture/commune")
+    @GetMapping("/{id}/utilisateurs")
+    public List<Long> users(@PathVariable Long id) {
+        return useCase.userIdsOfPrefecture(id);
+    }
+
     @Operation(summary = "Affecte un compte DPE_ADMIN à cette préfecture/commune")
     @PostMapping("/{id}/utilisateurs")
     @ResponseStatus(HttpStatus.NO_CONTENT)

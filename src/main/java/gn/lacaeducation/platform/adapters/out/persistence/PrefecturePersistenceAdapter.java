@@ -52,4 +52,9 @@ class PrefecturePersistenceAdapter implements PrefectureRepository {
     public List<Long> findPrefectureIdsByUserId(Long userId) {
         return dpeUserJpa.findByUserId(userId).stream().map(DpeUserPrefectureJpaEntity::getPrefectureId).toList();
     }
+
+    @Override
+    public List<Long> findUserIdsByPrefectureId(Long prefectureId) {
+        return dpeUserJpa.findByPrefectureId(prefectureId).stream().map(DpeUserPrefectureJpaEntity::getUserId).toList();
+    }
 }
