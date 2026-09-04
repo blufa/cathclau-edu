@@ -1271,3 +1271,233 @@ du dépôt `lacaeducation-ui`). Effet visible sur `https://cathclau-edu.com/site
 
 *Résultat attendu* : Google Search Console peut enfin récupérer un sitemap avec des URLs réellement
 atteignables, condition préalable à toute indexation du site public.
+
+---
+
+## 39. Mode hors-ligne — Phase 1 : encaissement des frais au guichet (espèces, Orange Money, virement)
+
+**Ce qui change** : jusqu'ici, une coupure réseau pendant l'encaissement d'un élève bloquait totalement
+le secrétariat — impossible d'enregistrer le paiement, le parent repartait sans preuve. Les encaissements
+« guichet » (espèces, Orange Money manuel, virement bancaire — pas les paiements en ligne Djomy/carte)
+fonctionnent maintenant même sans connexion : l'agent voit son encaissement pris en compte immédiatement,
+un reçu **provisoire** imprimable est délivré séance tenante, et le vrai paiement se synchronise
+automatiquement dès le retour du réseau, sans jamais créer de doublon (clé d'idempotence côté serveur).
+
+**Où** : `/students/{id}` → bouton d'encaissement → modale « Facture & encaissement » (`CollectFeeModal`)
+et l'encaissement groupé multi-enfants (fratrie). Un bandeau d'état apparaît en haut de chaque page dès
+qu'il y a une coupure réseau ou des paiements en attente/en échec de synchronisation.
+
+**Limite assumée** : seuls les canaux « guichet » (espèces, Orange Money, virement) fonctionnent
+hors-ligne — un paiement en ligne (Djomy) nécessite par nature une connexion et affichera une erreur
+immédiate s'il est tenté hors-ligne, jamais mis en file. Cette phase suppose aussi que la fiche de
+l'élève a déjà été ouverte **avant** la coupure (pas de préchargement pour ouvrir une fiche à froid
+hors-ligne — limitation documentée, à traiter dans une phase ultérieure).
+
+**Test** :
+1. Ouvrir la fiche d'un élève ayant des factures impayées, en étant connecté — laisser la modale
+   d'encaissement ouverte ou revenir dessus juste après.
+2. Couper le réseau (DevTools → onglet Network → « Offline », ou désactiver le Wi-Fi) → le bandeau ambre
+   « Hors-ligne » doit apparaître en haut de la page dans les secondes qui suivent.
+3. Cocher une facture, choisir le mode « Espèces », cliquer **Encaisser** → notification « Encaissement
+   enregistré hors-ligne » ; une section « Reçus provisoires (hors-ligne) » apparaît dans la modale avec
+   une référence locale `OFFLINE-XXXXXXXX` → cliquer **Reçu provisoire** → une fenêtre s'ouvre avec un
+   reçu marqué « PROVISOIRE » et lance l'impression.
+4. Rétablir le réseau → dans les secondes qui suivent, le bandeau doit passer à « Synchronisation… » puis
+   disparaître ; rouvrir la fiche de l'élève → la facture est passée à PAYÉE, un vrai reçu (référence
+   officielle, PDF téléchargeable) est visible dans « Reçus de paiement ».
+5. Vérifier dans l'historique des paiements de l'élève qu'**un seul** paiement a été créé (pas de doublon)
+   malgré l'éventuel aller-retour hors-ligne/en-ligne.
+6. Couper le réseau puis choisir le mode « En ligne (Djomy) » et tenter d'encaisser → une erreur doit
+   s'afficher immédiatement (pas de mise en file, pas de faux « en attente »).
+7. Répéter les étapes 2-5 sur l'encaissement groupé multi-enfants (fratrie).
+
+*Résultat attendu* : un agent de secrétariat peut continuer à encaisser des espèces malgré une coupure
+réseau, sans double encaissement possible au retour de la connexion, et avec une trace claire (bandeau +
+reçu provisoire) de ce qui reste à synchroniser.
+
+---
+
+## 40. Mode hors-ligne — Phase 2 : inscription élève + consultation de l'emploi du temps
+
+**Ce qui change** : deux extensions du mode hors-ligne (§39), en réutilisant les mêmes fondations
+(détection réseau, file d'attente IndexedDB, bandeau global) :
+- **Inscription élève** : créer un élève (et, si la classe est déjà connue, l'inscrire) fonctionne
+  maintenant même sans connexion — l'élève apparaît en « attente de synchronisation » avec un matricule
+  provisoire, et devient un élève normal (matricule officiel, inscription validée) une fois synchronisé,
+  sans jamais créer de doublon (clé d'idempotence côté serveur, même mécanisme que les paiements).
+- **Emploi du temps (consultation seule)** : le tableau de bord enseignant, la fiche d'un enseignant et
+  la fiche d'un enfant côté parent affichent désormais le dernier emploi du temps connu même hors-ligne
+  (mis en cache localement), avec un badge « Données en cache — hors-ligne » quand c'est le cas — plutôt
+  que l'écran vide/en erreur d'avant.
+
+**Limites assumées** : le lien élève-parent reste une étape à faire une fois reconnecté (déjà le cas
+aujourd'hui même en ligne) ; le formulaire d'inscription hors-ligne ne propose que année + classe (pas
+d'historique de réinscription ni d'abonnements transport/cantine, qui nécessitent un élève déjà réel) ;
+l'emploi du temps affiché hors-ligne est celui de la dernière visite en ligne de cette page précise (pas
+de préchargement pour une toute première consultation à froid hors-ligne).
+
+**Où** : `/students` (encart « Élèves en attente de synchronisation »), `/dashboard/enseignant`,
+`/teachers/{id}`, `/children` (portail parent). Le même bandeau global qu'en §39 agrège maintenant
+paiements ET inscriptions en attente/en échec.
+
+**Test** :
+1. **Emploi du temps** : ouvrir `/dashboard/enseignant` en étant connecté (le cache se remplit
+   silencieusement) → couper le réseau (DevTools → Network → Offline) → recharger la page → l'emploi du
+   temps reste affiché avec le badge « Données en cache — hors-ligne » au lieu d'un écran vide. Répéter
+   sur `/teachers/{id}` et sur `/children` (compte parent, avec un enfant déjà consulté au moins une
+   fois en ligne).
+2. **Inscription hors-ligne** : couper le réseau sur `/students` → **Nouvel élève** → remplir le
+   formulaire → un encart « Élèves en attente de synchronisation » apparaît avec le nom saisi et
+   « Matricule : en attente » ; le bandeau global compte 1 en attente.
+3. Cliquer **Choisir la classe** sur cette entrée → le formulaire simplifié (année + classe) doit
+   proposer les années/classes déjà connues (chargées en cache lors d'une visite précédente en ligne) →
+   valider → l'entrée passe à « Classe choisie — en attente de connexion ».
+4. Rétablir le réseau → synchronisation automatique (bandeau se vide) → recharger `/students` → l'élève
+   apparaît normalement dans la liste avec son vrai matricule ; ouvrir sa fiche → son inscription est
+   bien validée dans la classe choisie.
+5. Vérifier qu'aucun élève ni inscription en double n'apparaît malgré un éventuel aller-retour réseau
+   pendant la synchronisation.
+6. Tester le cas quota élèves dépassé pendant que l'élève est en file (hors-ligne) : à la synchronisation,
+   l'entrée doit passer en « échec » avec un message clair (pas de perte silencieuse de la saisie), avec
+   les boutons Réessayer/Ignorer dans la modale de détail du bandeau.
+
+*Résultat attendu* : une secrétaire peut inscrire des élèves pendant une coupure réseau (cas fréquent en
+période de rentrée) et consulter les emplois du temps déjà visités sans être bloquée par une panne
+réseau, avec la même garantie qu'en §39 de ne jamais créer de doublon au retour de la connexion.
+
+---
+
+## 41. Mode hors-ligne — Phase 3 : création d'enseignant + création/liaison de parent
+
+**Ce qui change** : deux nouvelles extensions du mode hors-ligne (§39-40), même principe (réseau
+d'abord, repli local, clé d'idempotence côté serveur) :
+- **Enseignant** : créer un enseignant fonctionne maintenant même sans connexion via un formulaire
+  simplifié (identité + informations professionnelles) — l'accès portail et l'étape « Affectations »
+  (niveaux/classes/matières) restent à compléter depuis sa fiche une fois synchronisé.
+- **Parent** : créer un nouveau parent (sans accès portail) ou lier un parent déjà existant à un élève
+  fonctionne aussi hors-ligne — la déduplication du lien élève-parent (aucune contrainte unique côté
+  serveur sur cette table) est vérifiée côté client avant de le recréer à la synchronisation.
+
+**Limite assumée** : la création d'un compte de connexion (« créer un accès portail ») est bloquée
+hors-ligne pour les deux (enseignant et parent), avec un message explicite — elle nécessite un second
+appel réseau séparé (`createUserWithRole`) sans idempotence propre ; à faire une fois reconnecté.
+
+**Où** : `/teachers` (encart « Enseignants en attente »), fiche d'un élève → section Parents (encart
+« Parents en attente »). Le bandeau global (§39-40) agrège désormais 4 files : paiements, inscriptions
+élèves, enseignants, parents.
+
+**Test** :
+1. Couper le réseau sur `/teachers` → **Nouvel enseignant** → le formulaire simplifié apparaît (pas
+   d'étape Compte ni Affectations) → créer → entrée « en attente de synchronisation » ; rétablir le
+   réseau → l'enseignant apparaît normalement avec son vrai matricule, aucun doublon.
+2. Couper le réseau sur la fiche d'un élève → **Ajouter un parent** → mode « Nouveau parent », sans
+   cocher « créer un accès » → créer → entrée « en attente » dans la section Parents ; rétablir le
+   réseau → le parent apparaît lié normalement, aucun doublon de lien.
+3. Répéter en mode « Parent existant » (rechercher un parent déjà en base pendant que le réseau était
+   disponible, puis couper le réseau et le rattacher).
+4. Cocher « créer un accès » puis couper le réseau (ou l'inverse) et tenter de créer un nouveau parent
+   → message de blocage explicite avant tout appel réseau, aucune tentative silencieuse.
+5. Vérifier que le bandeau global compte bien les 4 types (paiements, inscriptions, enseignants,
+   parents) et que la modale de détail des échecs les distingue clairement.
+
+*Résultat attendu* : un secrétariat peut continuer à enregistrer enseignants et parents pendant une
+coupure réseau, sans jamais créer de doublon (élève, enseignant, parent, ou lien) au retour de la
+connexion, avec la même transparence (bandeau + sections « en attente ») que les phases précédentes.
+
+---
+
+## 42. Responsivité mobile/tablette — formulaires de l'espace applicatif
+
+**Ce qui change** : audit de la responsivité mobile/tablette (page d'accueil, cards, boutons, menus,
+onglets). Vérification concrète (CSS vendor du template public, calculs de largeur réels) : la page
+d'accueil publique, la navigation, le tableau de données, les modales et le tableau de bord étaient
+**déjà** correctement responsive — aucune modification nécessaire là-dessus. Le vrai problème
+identifié : presque tous les formulaires de création/édition de l'espace applicatif (élève, enseignant,
+parent, classe, salle, matière, créneau, transport, comptabilité, paramètres…) utilisaient des grilles
+à 2 ou 3 colonnes **fixes**, sans repli à 1 colonne sur petit écran — dans une modale sur téléphone,
+chaque champ ne disposait plus que de ~100 à 165 px, illisible. Corrigé sur 111 grilles dans 41
+fichiers (repli automatique en 1 colonne en dessous de 640px, disposition normale au-delà) ; une seule
+grille volontairement laissée telle quelle (`parents-manager.tsx`, bascule « Parent existant / Nouveau
+parent », qui est un contrôle à deux boutons côte à côte, pas une paire de champs).
+
+**⚠️ Non vérifié visuellement** : aucun outil de capture d'écran/navigateur n'est disponible dans cet
+environnement — la vérification s'est limitée au code (build, typage, lint, relecture des classes
+générées). Une vérification visuelle réelle sur téléphone/tablette reste à faire par l'utilisateur.
+
+**Où** : concerne quasiment tous les formulaires en modale de l'espace applicatif — élèves, enseignants,
+parents, classes, salles, matières, emploi du temps, transport, comptabilité/budget/paie, paramètres,
+utilisateurs, communications, cartes d'élève, biométrie.
+
+**Test** : sur un téléphone (ou DevTools en mode responsive, ~375px de large), ouvrir successivement
+quelques formulaires représentatifs — **Nouvel élève** (`/students`), **Nouvel enseignant**
+(`/teachers`), **Ajouter un parent** (fiche élève), **Nouvelle classe** (`/academic-years` ou
+équivalent), un formulaire de `/accounting` ou `/payroll` — chaque paire/triplet de champs (ex.
+Prénom/Nom, Date début/Date fin) doit s'afficher **empilée verticalement** sur téléphone (pas de champs
+écrasés côte à côte), et repasser en colonnes normalement dès qu'on élargit au-delà d'une tablette
+(~640px). Vérifier aussi que la bascule « Parent existant / Nouveau parent » dans **Ajouter un parent**
+reste bien affichée sur deux boutons côte à côte à toutes les tailles (elle n'a pas été modifiée).
+
+*Résultat attendu* : tous les formulaires de saisie de l'application restent utilisables sur téléphone,
+sans champs illisiblement étroits, sans régression sur desktop/tablette.
+
+---
+
+## 43. SMS Nimba — alerte au fondateur à chaque paiement reçu
+
+**Ce qui change** : en plus du SMS déjà envoyé au parent à chaque paiement reçu, le(s) compte(s)
+`SCHOOL_ADMIN` de l'école reçoivent désormais un SMS séparé les informant du paiement (élève, montant),
+sur le numéro de téléphone enregistré sur leur compte. Décision actée : pas de numéro de fondateur dédié
+pour l'instant — c'est le compte administrateur de l'école qui reçoit l'alerte.
+
+**Où** : aucune interface — déclenché automatiquement en arrière-plan à chaque paiement réussi (guichet
+ou en ligne), qu'il soit lié à une facture scolaire ou non.
+
+**Prérequis pour un envoi RÉEL** (sinon le SMS est simplement journalisé, pas envoyé) : dans `.env`,
+`NIMBA_SMS_ENABLED=true` + `NIMBA_SMS_SERVICE_ID` + `NIMBA_SMS_SECRET_TOKEN` + `NIMBA_SMS_SENDER_NAME`
+tous renseignés (les 4 sont obligatoires — un seul vide et l'envoi reste simulé).
+
+**Test** :
+1. Vérifier qu'un compte `SCHOOL_ADMIN` de l'école a bien un numéro de téléphone renseigné dans sa
+   fiche (`/users`).
+2. Encaisser un paiement (guichet ou en ligne) pour un élève quelconque.
+3. Vérifier que **deux** SMS partent : un au parent de l'élève (déjà existant), un au compte
+   `SCHOOL_ADMIN` avec le nom de l'élève et le montant.
+4. Si aucun compte `SCHOOL_ADMIN` n'a de téléphone renseigné pour ce tenant, l'alerte fondateur est
+   silencieusement ignorée (pas d'erreur, juste un message de niveau debug dans les logs) — le paiement
+   et le SMS parent continuent de fonctionner normalement.
+
+*Résultat attendu* : le fondateur/administrateur de l'école est informé par SMS de chaque encaissement,
+sans jamais bloquer le paiement lui-même si son numéro n'est pas disponible.
+
+## 44. Créer et payer l'abonnement d'une école directement depuis sa fiche (SUPER_ADMIN)
+
+**Contexte** : le modèle réel d'exploitation n'est pas la souscription en libre-service par l'école —
+c'est le SUPER_ADMIN qui crée directement chaque école. Or aucun écran n'exposait la fonction d'API
+existante `initiateSubscription` (création d'abonnement côté admin) : impossible de faire apparaître
+une facture à payer pour une école tout juste créée. Corrigé en rendant les deux actions visibles
+directement sur la fiche de l'école.
+
+**Où** : `/platform/tenants/{id}` (fiche détail d'une école, SUPER_ADMIN).
+
+**Ce qui change** :
+1. Un bouton **« Basculer sur cette école (abonnement) »** en tête de fiche (avant « Modifier ») —
+   bascule l'affichage sur cette école (mécanisme d'impersonation déjà existant mais jusque-là sans
+   déclencheur visible) et redirige vers `/subscription/invoices`.
+2. Dans la carte « Abonnement & quota », si l'école n'a **aucun abonnement**, un mini-formulaire
+   apparaît directement (« Aucun abonnement — en créer un ») : choix du plan + périodicité (mensuel/
+   annuel) + bouton « Créer l'abonnement ». À la création, la facture (`ISSUED`, payable
+   immédiatement) est générée automatiquement et on est redirigé vers `/subscription/invoices` en
+   mode « bascule sur cette école » pour payer directement.
+
+**Test** :
+1. Créer une nouvelle école (`/platform/tenants` → créer).
+2. Ouvrir sa fiche : vérifier que la carte « Abonnement & quota » affiche le mini-formulaire de
+   création (aucun abonnement existant).
+3. Choisir un plan + une périodicité, cliquer « Créer l'abonnement » : vérifier la redirection vers
+   `/subscription/invoices` avec une facture visible et payable (bouton « Payer »).
+4. Depuis la fiche d'une école ayant déjà un abonnement, cliquer « Basculer sur cette école
+   (abonnement) » : vérifier l'arrivée sur `/subscription/invoices` avec les factures de cette école
+   (et non celles d'une autre école précédemment consultée).
+
+*Résultat attendu* : le SUPER_ADMIN peut, sans quitter la fiche de l'école, créer son abonnement et
+enchaîner immédiatement sur le paiement (Djomy) — plus besoin que l'école se souscrive elle-même.

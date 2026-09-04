@@ -31,7 +31,10 @@ public interface PaymentUseCase {
                                /** Utilisateur connecté ayant saisi l'encaissement — imprimé sur le reçu (« Opérateur »). */
                                Long collectedByUserId,
                                /** Année scolaire des factures réglées (toutes les parts sont supposées de la même année). */
-                               Long academicYearId) {}
+                               Long academicYearId,
+                               /** Clé d'idempotence fournie par le client (mode hors-ligne) : rejouer avec la même clé
+                                *  après une coupure réseau renvoie le paiement déjà créé au lieu d'en créer un second. */
+                               String idempotencyKey) {}
     Payment initiateGroup(GroupPaymentCommand command);
 
     /**

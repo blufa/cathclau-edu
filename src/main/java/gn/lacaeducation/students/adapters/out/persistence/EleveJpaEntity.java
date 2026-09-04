@@ -39,4 +39,5 @@ class EleveJpaEntity {
     @Column(name = "medical_notes", length = 2000) private String medicalNotes;
     @CreationTimestamp @Column(name = "created_at", updatable = false) private LocalDateTime createdAt;
     @Column(name = "deleted_at") private LocalDateTime deletedAt;
+    @Column(name = "idempotency_key") private String idempotencyKey;
 }

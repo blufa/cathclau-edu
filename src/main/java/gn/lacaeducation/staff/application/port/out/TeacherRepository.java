@@ -8,6 +8,7 @@ public interface TeacherRepository {
     Teacher save(Teacher teacher);
     Optional<Teacher> findById(Long id);
     Optional<Teacher> findByUserId(Long userId);
+    Optional<Teacher> findByIdempotencyKey(String idempotencyKey);
     List<Teacher> findByTenantId(Long tenantId);
     void deleteById(Long id);
     boolean existsById(Long id);

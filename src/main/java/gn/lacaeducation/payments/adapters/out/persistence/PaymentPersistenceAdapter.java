@@ -13,6 +13,7 @@ class PaymentPersistenceAdapter implements PaymentRepository {
     @Override public Payment save(Payment p) { return mapper.toDomain(jpa.save(mapper.toEntity(p))); }
     @Override public Optional<Payment> findById(Long id) { return jpa.findById(id).map(mapper::toDomain); }
     @Override public Optional<Payment> findByReference(String ref) { return jpa.findByReference(ref).map(mapper::toDomain); }
+    @Override public Optional<Payment> findByIdempotencyKey(String key) { return jpa.findByIdempotencyKey(key).map(mapper::toDomain); }
     @Override public List<Payment> findByInvoiceId(Long id) { return jpa.findByInvoiceId(id).stream().map(mapper::toDomain).toList(); }
     /**
      * Élève principal (colonne indexée) OU élève additionnel d'un paiement groupé multi-enfants (§payments —

@@ -16,7 +16,10 @@ public interface TeacherUseCase {
                                 String firstName, String lastName, String phone,
                                 String email, String specialization, LocalDate hireDate,
                                 String employmentStatus, String diploma, String remunerationType,
-                                BigDecimal remunerationRate, String teachingAuthorizationNumber, String cnssNumber) {}
+                                BigDecimal remunerationRate, String teachingAuthorizationNumber, String cnssNumber,
+                                /** Clé d'idempotence fournie par le client (mode hors-ligne) : rejouer avec la même
+                                 *  clé après une coupure réseau renvoie l'enseignant déjà créé au lieu d'en créer un second. */
+                                String idempotencyKey) {}
     record UpdateTeacherCommand(String staffNumber, String firstName, String lastName,
                                 String phone, String email, String specialization, LocalDate hireDate,
                                 String employmentStatus, String diploma, String remunerationType,

@@ -35,6 +35,14 @@ public class EleveService implements StudentUseCase {
 
     @Override
     public Student create(CreateStudentCommand cmd) {
+        // Rejoué après une coupure réseau (mode hors-ligne) avec la même clé : renvoie l'élève déjà créé
+        // au lieu d'en créer un second — même pattern que l'idempotence des paiements (§payments).
+        if (cmd.idempotencyKey() != null && !cmd.idempotencyKey().isBlank()) {
+            Optional<Student> existing = studentRepository.findByIdempotencyKey(cmd.idempotencyKey());
+            if (existing.isPresent()) {
+                return existing.get();
+            }
+        }
         long count = studentRepository.countByTenantId(cmd.tenantId());
         if (!tenantQuotaService.isQuotaAvailable(cmd.tenantId(), (int) count)) {
             throw new QuotaExceededException("Student quota exceeded for tenant " + cmd.tenantId());
@@ -59,6 +67,7 @@ public class EleveService implements StudentUseCase {
                 .neighborhood(cmd.neighborhood()).landmark(cmd.landmark())
                 .previousClass(cmd.previousClass()).repeating(cmd.repeating()).transferReason(cmd.transferReason())
                 .medicalNotes(cmd.medicalNotes())
+                .idempotencyKey(cmd.idempotencyKey())
                 .createdAt(LocalDateTime.now()).build());
         eventPublisher.publishEvent(new StudentCreatedEvent(saved.getTenantId(), saved.getId(), saved.getStudentNumber()));
         return saved;

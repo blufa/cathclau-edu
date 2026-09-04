@@ -37,7 +37,7 @@ public class ParentController {
     public ResponseEntity<Parent> create(@Valid @RequestBody ParentUseCase.CreateParentCommand cmd) {
         Parent p = parentUseCase.create(new ParentUseCase.CreateParentCommand(
                 TenantContext.get(), cmd.userId(), cmd.firstName(), cmd.lastName(),
-                cmd.phone(), cmd.email(), cmd.occupation(), cmd.address()));
+                cmd.phone(), cmd.email(), cmd.occupation(), cmd.address(), cmd.idempotencyKey()));
         return ResponseEntity.created(URI.create("/api/v1/parents/" + p.getId())).body(p);
     }
 

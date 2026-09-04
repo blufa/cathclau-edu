@@ -16,4 +16,7 @@ public class Parent {
     private String photo;
     /** Rempli uniquement dans le contexte d'un élève : responsable principal (« responsable 1 ») ? */
     private boolean primaryGuardian;
+    /** Clé d'idempotence fournie par le client (mode hors-ligne) : rejouer avec la même clé après une
+     *  coupure réseau renvoie ce parent au lieu d'en créer un second. Null pour une création en ligne. */
+    private String idempotencyKey;
 }

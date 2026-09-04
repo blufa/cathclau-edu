@@ -34,6 +34,14 @@ public class EnseignantService implements TeacherUseCase {
 
     @Override
     public Teacher create(CreateTeacherCommand cmd) {
+        // Rejoué après une coupure réseau (mode hors-ligne) avec la même clé : renvoie l'enseignant déjà
+        // créé au lieu d'en créer un second — même pattern que l'idempotence des élèves/paiements.
+        if (cmd.idempotencyKey() != null && !cmd.idempotencyKey().isBlank()) {
+            Optional<Teacher> existing = teacherRepository.findByIdempotencyKey(cmd.idempotencyKey());
+            if (existing.isPresent()) {
+                return existing.get();
+            }
+        }
         String matricule = resolveStaffNumber(cmd.tenantId(), cmd.staffNumber());
         Teacher saved = teacherRepository.save(Teacher.builder()
                 .tenantId(cmd.tenantId()).userId(cmd.userId()).staffNumber(matricule)
@@ -42,6 +50,7 @@ public class EnseignantService implements TeacherUseCase {
                 .employmentStatus(cmd.employmentStatus()).diploma(cmd.diploma())
                 .remunerationType(cmd.remunerationType()).remunerationRate(cmd.remunerationRate())
                 .teachingAuthorizationNumber(cmd.teachingAuthorizationNumber()).cnssNumber(cmd.cnssNumber())
+                .idempotencyKey(cmd.idempotencyKey())
                 .active(true).build());
         eventPublisher.publishEvent(new StaffCreatedEvent(saved.getTenantId(), saved.getId(), saved.getStaffNumber()));
         return saved;

@@ -132,6 +132,7 @@ public class CommunicationEventListener {
                         "reference", payment.reference() == null ? "" : payment.reference());
                 String defaultBody = "Paiement de " + amount + " reçu pour " + fullName(student) + ". Merci.";
                 dispatch(event.tenantId(), CommunicationReason.GENERAL, "Paiement reçu", defaultBody, vars, event.studentId());
+                notifyFounder(event.tenantId(), fullName(student), amount);
             }));
     }
 
@@ -151,6 +152,7 @@ public class CommunicationEventListener {
                     ? "Paiement de " + amount + " reçu pour " + fullName(student) + ". Facture soldée. Merci."
                     : "Paiement de " + amount + " reçu pour " + fullName(student) + ". Reste à payer : " + remainingStr + ".";
             dispatch(event.tenantId(), CommunicationReason.GENERAL, "Paiement reçu", defaultBody, vars, event.studentId());
+            notifyFounder(event.tenantId(), fullName(student), amount);
         });
     }
 
@@ -224,6 +226,27 @@ public class CommunicationEventListener {
         }
         communicationUseCase.send(new SendCommunicationCommand(tenantId, null, r.channel(),
                 RecipientType.PARENT, r.subject(), r.content(), reason, targets));
+    }
+
+    /**
+     * Alerte par SMS le(s) compte(s) SCHOOL_ADMIN de l'école (« fondateur ») dès qu'un paiement est
+     * reçu, en plus de la notification au parent — décision produit : pas encore de numéro de
+     * fondateur dédié dans les paramètres du tenant, on utilise le compte administrateur (§communication).
+     */
+    private void notifyFounder(Long tenantId, String studentName, String amount) {
+        List<RecipientTarget> targets = schoolStaffDirectory.findSchoolAdminContacts(tenantId).stream()
+                .map(gn.lacaeducation.iam.SchoolStaffDirectory.SchoolAdminContact::phone)
+                .filter(phone -> phone != null && !phone.isBlank())
+                .map(phone -> new RecipientTarget(null, phone))
+                .toList();
+        if (targets.isEmpty()) {
+            log.debug("Aucun compte SCHOOL_ADMIN joignable par SMS pour le tenant {}; alerte fondateur ignorée", tenantId);
+            return;
+        }
+        String school = schoolName(tenantId);
+        String content = "[" + school + "] Paiement de " + amount + " reçu pour " + studentName + ".";
+        communicationUseCase.send(new SendCommunicationCommand(tenantId, null, CommunicationChannel.SMS,
+                RecipientType.GROUP, "Paiement reçu", content, CommunicationReason.GENERAL, targets));
     }
 
     private String destinationFor(ParentPublicInfo parent, CommunicationChannel channel) {

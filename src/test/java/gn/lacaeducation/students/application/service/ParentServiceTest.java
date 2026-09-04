@@ -1,6 +1,7 @@
 package gn.lacaeducation.students.application.service;
 
 import gn.lacaeducation.common.ResourceNotFoundException;
+import gn.lacaeducation.students.application.port.in.ParentUseCase.CreateParentCommand;
 import gn.lacaeducation.students.application.port.in.ParentUseCase.UpdateProfileCommand;
 import gn.lacaeducation.students.application.port.out.ParentRepository;
 import gn.lacaeducation.students.application.port.out.StudentParentRepository;
@@ -17,6 +18,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -60,5 +63,30 @@ class ParentServiceTest {
 
         assertThatThrownBy(() -> service.updateOwnProfile(7L, new UpdateProfileCommand("x", null, null, null)))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void create_calledTwiceWithSameIdempotencyKey_returnsSameParent_doesNotDuplicate() {
+        // Rejoué après une coupure réseau (mode hors-ligne, §students) avec la même clé : le second
+        // appel doit renvoyer le parent déjà créé, sans en créer un second.
+        Parent alreadyCreated = Parent.builder().id(9L).tenantId(10L).firstName("Awa").lastName("Diallo")
+                .idempotencyKey("key-1").build();
+        when(parentRepository.findByIdempotencyKey("key-1"))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(alreadyCreated));
+        when(parentRepository.save(any())).thenAnswer(i -> {
+            Parent p = i.getArgument(0);
+            if (p.getId() == null) p.setId(9L);
+            return p;
+        });
+
+        CreateParentCommand cmd = new CreateParentCommand(10L, null, "Awa", "Diallo", "620000000",
+                null, null, null, "key-1");
+
+        Parent first = service.create(cmd);
+        Parent second = service.create(cmd);
+
+        assertThat(first.getId()).isEqualTo(second.getId());
+        verify(parentRepository, times(1)).save(any(Parent.class));
     }
 }

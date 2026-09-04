@@ -13,7 +13,10 @@ public interface StudentUseCase {
                                 String birthCertificateNumber, String bloodGroup, String neighborhood, String landmark,
                                 String previousClass, Boolean repeating, String transferReason, String medicalNotes,
                                 /** Créer un accès au portail (connexion par matricule) + son mot de passe. */
-                                Boolean createLogin, String loginPassword) {}
+                                Boolean createLogin, String loginPassword,
+                                /** Clé d'idempotence fournie par le client (mode hors-ligne) : rejouer avec la même
+                                 *  clé après une coupure réseau renvoie l'élève déjà créé au lieu d'en créer un second. */
+                                String idempotencyKey) {}
     record UpdateStudentCommand(String studentNumber, String firstName, String lastName,
                                 Gender gender, LocalDate birthDate, String birthPlace,
                                 String address, String phone, String email, String nationality, String originSchool, String photo,

@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -36,11 +37,15 @@ class EleveServiceTest {
     @InjectMocks EleveService service;
 
     private CreateStudentCommand cmd(String number) {
+        return cmd(number, null);
+    }
+
+    private CreateStudentCommand cmd(String number, String idempotencyKey) {
         return new CreateStudentCommand(10L, null, number, "Mariama", "Bah",
                 null, null, null, null, null, null, null,
                 null, null, null, null, null, null,
                 null, null, null, null,
-                null, null);
+                null, null, idempotencyKey);
     }
 
     @Test
@@ -75,6 +80,29 @@ class EleveServiceTest {
 
         assertThatThrownBy(() -> service.create(cmd("DUP")))
                 .isInstanceOf(ConflictException.class);
+    }
+
+    @Test
+    void create_calledTwiceWithSameIdempotencyKey_returnsSameStudent_doesNotDuplicate() {
+        // Rejoué après une coupure réseau (mode hors-ligne, §students) avec la même clé : le second
+        // appel doit renvoyer l'élève déjà créé, sans revérifier le quota ni régénérer de matricule.
+        Student alreadyCreated = Student.builder().id(7L).tenantId(10L).firstName("Mariama").lastName("Bah")
+                .studentNumber("EC00042").idempotencyKey("key-1").build();
+        when(studentRepository.findByIdempotencyKey("key-1"))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(alreadyCreated));
+        when(studentRepository.countByTenantId(10L)).thenReturn(41L);
+        when(tenantQuotaService.isQuotaAvailable(10L, 41)).thenReturn(true);
+        when(studentRepository.existsByTenantIdAndStudentNumber(any(), any())).thenReturn(false);
+        when(studentRepository.save(any())).thenAnswer(i -> { Student s = i.getArgument(0); s.setId(7L); return s; });
+
+        Student first = service.create(cmd(null, "key-1"));
+        Student second = service.create(cmd(null, "key-1"));
+
+        assertThat(first.getId()).isEqualTo(second.getId());
+        verify(studentRepository, times(1)).save(any());
+        verify(tenantQuotaService, times(1)).isQuotaAvailable(any(), any(int.class));
+        verify(eventPublisher, times(1)).publishEvent(any(StudentCreatedEvent.class));
     }
 
     @Test
