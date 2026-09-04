@@ -11,10 +11,13 @@ public interface TeacherAttendanceUseCase {
     record TeacherAttendanceStatsResponse(Long teacherId, long totalDays, long presentDays, long absentDays, BigDecimal attendanceRate) {}
     /**
      * Récapitulatif mensuel. dueMinutes = heures dues du mois (emploi du temps × occurrences) ;
-     * absentMinutes = heures perdues pour absence ; effectiveMinutes = dues − absences − retard cumulé.
+     * absentMinutes = heures perdues pour absence ; effectiveMinutes = dues − absences − retard
+     * cumulé − départ anticipé cumulé (marge de transition et récréation déjà déduites du retard,
+     * voir TeacherAttendanceService#graceDeadline).
      */
     record MonthlySummary(Long teacherId, int year, int month, long presentDays, long absentDays,
-                          int totalLateMinutes, int dueMinutes, int absentMinutes, int effectiveMinutes) {}
+                          int totalLateMinutes, int totalEarlyMinutes, int dueMinutes, int absentMinutes,
+                          int effectiveMinutes) {}
     MonthlySummary monthlySummary(Long teacherId, int year, int month);
     TeacherAttendance record(RecordTeacherAttendanceCommand command);
     /** Pointage d'entrée sur la séance en cours : calcule automatiquement le retard vs l'heure de

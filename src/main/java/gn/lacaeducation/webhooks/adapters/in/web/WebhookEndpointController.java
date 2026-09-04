@@ -15,12 +15,12 @@ public class WebhookEndpointController {
     public record CreateRequest(Long tenantId, String url, String secret, String events) {}
     public record UpdateRequest(String url, String secret, String events, Boolean active) {}
     @Operation(summary = "Register a new webhook endpoint")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('webhook:manage')")
     @PostMapping public ResponseEntity<WebhookEndpoint> create(@RequestBody CreateRequest r) {
         return ResponseEntity.ok(useCase.create(new WebhookEndpointUseCase.CreateEndpointCommand(r.tenantId(), r.url(), r.secret(), r.events())));
     }
     @Operation(summary = "Update a webhook endpoint configuration")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('webhook:manage')")
     @PutMapping("/{id}") public ResponseEntity<WebhookEndpoint> update(@PathVariable Long id, @RequestBody UpdateRequest r) {
         return ResponseEntity.ok(useCase.update(id, new WebhookEndpointUseCase.UpdateEndpointCommand(r.url(), r.secret(), r.events(), r.active())));
     }
@@ -31,12 +31,12 @@ public class WebhookEndpointController {
     @Operation(summary = "List all webhook endpoints for a tenant")
     @GetMapping("/tenant/{tenantId}") public List<WebhookEndpoint> findByTenant(@PathVariable Long tenantId) { return useCase.findByTenantId(tenantId); }
     @Operation(summary = "Activate a webhook endpoint")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('webhook:manage')")
     @PutMapping("/{id}/activate") public ResponseEntity<Void> activate(@PathVariable Long id) { useCase.activate(id); return ResponseEntity.ok().build(); }
     @Operation(summary = "Deactivate a webhook endpoint")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('webhook:manage')")
     @PutMapping("/{id}/deactivate") public ResponseEntity<Void> deactivate(@PathVariable Long id) { useCase.deactivate(id); return ResponseEntity.ok().build(); }
     @Operation(summary = "Delete a webhook endpoint")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('webhook:manage')")
     @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id) { useCase.delete(id); return ResponseEntity.noContent().build(); }
 }

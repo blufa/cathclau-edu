@@ -42,31 +42,31 @@ public class AssignmentController {
     public Assignment findById(@PathVariable Long id) { return service.findById(id); }
 
     @Operation(summary = "Créer un devoir")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
+    @PreAuthorize("hasAuthority('devoir:manage')")
     @PostMapping
     public Assignment create(@RequestBody AssignmentRequest r) {
         return service.create(toCommand(r));
     }
 
     @Operation(summary = "Modifier un devoir")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
+    @PreAuthorize("hasAuthority('devoir:manage')")
     @PutMapping("/{id}")
     public Assignment update(@PathVariable Long id, @RequestBody AssignmentRequest r) {
         return service.update(id, toCommand(r));
     }
 
     @Operation(summary = "Clôturer un devoir (plus de rendu accepté)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
+    @PreAuthorize("hasAuthority('devoir:manage')")
     @PatchMapping("/{id}/close")
     public Assignment close(@PathVariable Long id) { return service.close(id); }
 
     @Operation(summary = "Rouvrir un devoir")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
+    @PreAuthorize("hasAuthority('devoir:manage')")
     @PatchMapping("/{id}/reopen")
     public Assignment reopen(@PathVariable Long id) { return service.reopen(id); }
 
     @Operation(summary = "Supprimer un devoir")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
+    @PreAuthorize("hasAuthority('devoir:manage')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) { service.delete(id); return ResponseEntity.noContent().build(); }
 
@@ -83,7 +83,7 @@ public class AssignmentController {
     }
 
     @Operation(summary = "Noter le rendu d'un élève")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
+    @PreAuthorize("hasAuthority('devoir:manage')")
     @PatchMapping("/submissions/{submissionId}/grade")
     public AssignmentSubmission grade(@PathVariable Long submissionId, @RequestBody GradeRequest r) {
         return service.grade(submissionId, r.grade(), r.feedback());

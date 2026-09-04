@@ -30,7 +30,7 @@ public class FamilyDiscountController {
     private final FamilyDiscountUseCase useCase;
 
     @Operation(summary = "Créer une règle de réduction familiale")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('frais:manage')")
     @PostMapping
     public ResponseEntity<FamilyDiscountRule> create(@RequestBody RuleCommand cmd) {
         FamilyDiscountRule r = useCase.create(TenantContext.get(), cmd);
@@ -45,7 +45,7 @@ public class FamilyDiscountController {
     }
 
     @Operation(summary = "Modifier une règle")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('frais:manage')")
     @PutMapping("/{id}")
     public FamilyDiscountRule update(@PathVariable Long id, @RequestBody RuleCommand cmd) {
         return useCase.update(id, cmd);

@@ -50,7 +50,7 @@ public class SubscriptionController {
     @Operation(summary = "Self-service: the current school subscribes to a paid plan "
             + "(creates an EN_ATTENTE subscription + its first invoice; pay via Djomy to activate)")
     @PostMapping("/subscribe")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('abonnement:manage')")
     public ResponseEntity<SubscriptionResponse> subscribe(@Valid @RequestBody SelfSubscribeRequest req) {
         var sub = subscriptionUseCase.initiate(new SubscriptionUseCase.InitiateSubscriptionCommand(
                 TenantContext.get(), req.planId(), req.billingPeriod(), req.autoRenewal()));
@@ -79,9 +79,13 @@ public class SubscriptionController {
         return SubscriptionResponse.from(subscriptionUseCase.findById(id));
     }
 
+    // Pas de @PreAuthorize dédié : appelé par SubscriptionProvider (frontend) pour TOUS les
+    // utilisateurs connectés à chaque chargement de page (statut d'abonnement affiché dans le
+    // shell de l'appli), quel que soit leur rôle — authentification seule suffit, comme pour un
+    // endpoint /me. Restreindre à hasAuthority('abonnement:read') casse ce statut pour tout rôle
+    // personnalisé n'ayant pas explicitement cette permission (déjà vécu avec un rôle Comptable).
     @Operation(summary = "Get the active subscription of the current tenant")
     @GetMapping("/active")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
     public ResponseEntity<SubscriptionResponse> findActive() {
         return subscriptionUseCase.findActiveForCurrentTenant()
                 .map(SubscriptionResponse::from).map(ResponseEntity::ok)
@@ -90,7 +94,6 @@ public class SubscriptionController {
 
     @Operation(summary = "Get the current tenant's latest subscription (incl. PENDING awaiting payment)")
     @GetMapping("/current")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
     public ResponseEntity<SubscriptionResponse> findCurrent() {
         return subscriptionUseCase.findLatestForCurrentTenant()
                 .map(SubscriptionResponse::from).map(ResponseEntity::ok)
@@ -187,7 +190,7 @@ public class SubscriptionController {
 
     @Operation(summary = "Invoices of the current tenant")
     @GetMapping("/active/invoices")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('abonnement:read')")
     public List<SubscriptionInvoiceResponse> myInvoices() {
         Long tenantId = gn.lacaeducation.common.TenantContext.get();
         if (tenantId == null) return List.of();

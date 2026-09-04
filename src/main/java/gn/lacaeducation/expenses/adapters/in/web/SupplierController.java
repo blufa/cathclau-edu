@@ -27,7 +27,7 @@ public class SupplierController {
     public List<Supplier> list() { return service.suppliers(TenantContext.get()); }
 
     @Operation(summary = "Create a supplier")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('budget:manage')")
     @PostMapping
     public Supplier create(@RequestBody SupplierRequest r) {
         return service.saveSupplier(Supplier.builder().tenantId(TenantContext.get())
@@ -36,7 +36,7 @@ public class SupplierController {
     }
 
     @Operation(summary = "Update a supplier")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('budget:manage')")
     @PutMapping("/{id}")
     public Supplier update(@PathVariable Long id, @RequestBody SupplierRequest r) {
         return service.updateSupplier(id, Supplier.builder()
@@ -45,7 +45,7 @@ public class SupplierController {
     }
 
     @Operation(summary = "Delete a supplier")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('budget:manage')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) { service.deleteSupplier(id); return ResponseEntity.noContent().build(); }
 }

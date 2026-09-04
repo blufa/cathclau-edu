@@ -29,19 +29,19 @@ public class TeacherCompensationController {
                                       BigDecimal fixedSalary, Boolean paidDuringVacation) {}
 
     @Operation(summary = "Lister les rémunérations paramétrées")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('paie:manage')")
     @GetMapping("/compensation")
     public List<TeacherCompensation> list() { return service.compensations(TenantContext.get()); }
 
     @Operation(summary = "Rémunération d'un enseignant")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('paie:manage')")
     @GetMapping("/compensation/{teacherId}")
     public ResponseEntity<TeacherCompensation> get(@PathVariable Long teacherId) {
         return service.compensation(teacherId).map(ResponseEntity::ok).orElse(ResponseEntity.noContent().build());
     }
 
     @Operation(summary = "Définir la rémunération d'un enseignant (mode + tarif horaire / salaire fixe)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('paie:manage')")
     @PutMapping("/compensation/{teacherId}")
     public TeacherCompensation set(@PathVariable Long teacherId, @RequestBody CompensationRequest r) {
         return service.setCompensation(TenantContext.get(), teacherId, r.payMode(),
@@ -49,14 +49,14 @@ public class TeacherCompensationController {
     }
 
     @Operation(summary = "Calcul de la paie mensuelle (heures réalisées − retards × tarif, + fixe le cas échéant)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('paie:manage')")
     @GetMapping("/teachers/{teacherId}/monthly-pay")
     public MonthlyPay monthlyPay(@PathVariable Long teacherId, @RequestParam int year, @RequestParam int month) {
         return service.computeMonthlyPay(teacherId, year, month);
     }
 
     @Operation(summary = "Calcul automatique de la paie mensuelle depuis l'emploi du temps validé, par typologie de classe (§6), sans saisie manuelle")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('paie:manage')")
     @GetMapping("/teachers/{teacherId}/theoretical-pay")
     public TheoreticalMonthlyPay theoreticalPay(@PathVariable Long teacherId, @RequestParam int year, @RequestParam int month) {
         return service.computeTheoreticalMonthlyPay(teacherId, year, month);
@@ -65,7 +65,7 @@ public class TeacherCompensationController {
     public record GenPayslipRequest(String teacherName, Long structureId) {}
 
     @Operation(summary = "Générer automatiquement la fiche de paie du mois (brut basé sur les heures réalisées)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('paie:manage')")
     @PostMapping("/teachers/{teacherId}/payslip")
     public Payslip generatePayslip(@PathVariable Long teacherId, @RequestParam int year, @RequestParam int month,
                                    @RequestBody(required = false) GenPayslipRequest r) {
@@ -74,7 +74,7 @@ public class TeacherCompensationController {
     }
 
     @Operation(summary = "Générer automatiquement la fiche de paie du mois depuis l'emploi du temps validé (§6), sans saisie manuelle")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('paie:manage')")
     @PostMapping("/teachers/{teacherId}/payslip-timetable")
     public Payslip generatePayslipFromTimetable(@PathVariable Long teacherId, @RequestParam int year, @RequestParam int month,
                                                 @RequestBody(required = false) GenPayslipRequest r) {

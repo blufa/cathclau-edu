@@ -39,7 +39,7 @@ public class ClasseController {
 
     @Operation(summary = "Create a new class for an academic year")
     @PostMapping
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('classe:manage')")
     public ResponseEntity<Classe> create(@Valid @RequestBody CreateClassCommand cmd) {
         Classe classe = useCase.create(new CreateClassCommand(
                 TenantContext.get(), cmd.levelId(), cmd.academicYearId(),
@@ -62,7 +62,7 @@ public class ClasseController {
 
     @Operation(summary = "Update a class")
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('classe:manage')")
     public Classe update(@PathVariable Long id, @Valid @RequestBody CreateClassCommand cmd) {
         return useCase.update(id, new CreateClassCommand(
                 TenantContext.get(), cmd.levelId(), cmd.academicYearId(),
@@ -71,7 +71,7 @@ public class ClasseController {
 
     @Operation(summary = "Désigner (ou retirer) le professeur principal de la classe, depuis le tableau matières/enseignants")
     @PatchMapping("/{id}/head-teacher")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('classe:manage')")
     public Classe setHeadTeacher(@PathVariable Long id, @RequestParam(required = false) Long teacherId) {
         Classe c = useCase.findById(id)
                 .orElseThrow(() -> new gn.lacaeducation.common.ResourceNotFoundException("Classe", id));
@@ -81,20 +81,20 @@ public class ClasseController {
 
     @Operation(summary = "Désigner (ou retirer, sans studentId) le chef de classe — un élève inscrit (validé) dans cette classe")
     @PatchMapping("/{id}/chef-de-classe")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('classe:manage')")
     public Classe setClassRepresentative(@PathVariable Long id, @RequestParam(required = false) Long studentId) {
         return useCase.setClassRepresentative(id, studentId);
     }
 
     @Operation(summary = "Delete a class")
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('classe:manage')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) { useCase.delete(id); }
 
     @Operation(summary = "List all students enrolled in a class (validated enrollments)")
     @GetMapping("/{id}/students")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER','SECRETARY')")
+    @PreAuthorize("hasAuthority('classe:read')")
     public List<ClassStudent> findStudents(@PathVariable Long id) {
         return useCase.findStudentsByClassId(id);
     }
@@ -108,7 +108,7 @@ public class ClasseController {
 
     @Operation(summary = "Assign a subject (and optionally a teacher) to a class")
     @PostMapping("/{classId}/subjects")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('classe:manage')")
     public ResponseEntity<ClasseMatiere> assignSubject(
             @PathVariable Long classId,
             @RequestParam Long subjectId,
@@ -126,7 +126,7 @@ public class ClasseController {
 
     @Operation(summary = "Remove a subject assignment from a class")
     @DeleteMapping("/{classId}/subjects/{id}")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('classe:manage')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void removeSubject(@PathVariable Long classId, @PathVariable Long id) {
         useCase.removeSubject(id);

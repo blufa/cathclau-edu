@@ -54,7 +54,7 @@ public class StudentController {
 
     @Operation(summary = "Bulk import students from a CSV file (returns a per-row report)")
     @PostMapping(value = "/import", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','SECRETARY','DIRECTOR')")
+    @PreAuthorize("hasAuthority('eleve:create')")
     public gn.lacaeducation.students.application.service.StudentImportService.ImportReport importCsv(
             @org.springframework.web.bind.annotation.RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
         return importService.importCsv(file);
@@ -62,7 +62,7 @@ public class StudentController {
 
     @Operation(summary = "Register a new student (checks enrollment quota)")
     @PostMapping
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','SECRETARY','DIRECTOR')")
+    @PreAuthorize("hasAuthority('eleve:create')")
     public ResponseEntity<Student> create(@Valid @RequestBody StudentUseCase.CreateStudentCommand cmd) {
         Student s = studentUseCase.create(new StudentUseCase.CreateStudentCommand(
                 TenantContext.get(), cmd.userId(), cmd.studentNumber(), cmd.firstName(), cmd.lastName(),
@@ -75,7 +75,7 @@ public class StudentController {
 
     @Operation(summary = "List students in current tenant (filters: class, enrollment status, gender, name/matricule search)")
     @GetMapping
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','TEACHER')")
+    @PreAuthorize("hasAuthority('eleve:read') and !hasRole('PARENT')")
     public PageResponse<Student> findAll(@RequestParam(required = false) Long classId,
                                          @RequestParam(required = false) EnrollmentStatus enrollmentStatus,
                                          @RequestParam(required = false) Gender gender,
@@ -88,7 +88,7 @@ public class StudentController {
 
     @Operation(summary = "List students with their current class and principal parent (guichet d'accueil)")
     @GetMapping("/summary")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','ACCOUNTANT','TEACHER')")
+    @PreAuthorize("hasAuthority('eleve:read') and !hasRole('PARENT')")
     public PageResponse<StudentSummaryResponse> summary(@RequestParam(required = false) String search,
                                                          @PageableDefault(size = 20) Pageable pageable) {
         return PageResponse.of(studentUseCase.search(TenantContext.get(), null, search, null, null, false, pageable)
@@ -140,6 +140,7 @@ public class StudentController {
 
     @Operation(summary = "Get a student's full record (enrollments, parents, documents)")
     @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('eleve:read') and !hasRole('PARENT') and !hasRole('STUDENT')")
     public ResponseEntity<StudentDetailResponse> findById(@PathVariable Long id) {
         return studentUseCase.findById(id)
                 .map(s -> ResponseEntity.ok(new StudentDetailResponse(
@@ -156,21 +157,21 @@ public class StudentController {
 
     @Operation(summary = "Update student information")
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','SECRETARY','DIRECTOR')")
+    @PreAuthorize("hasAuthority('eleve:update')")
     public Student update(@PathVariable Long id, @Valid @RequestBody StudentUseCase.UpdateStudentCommand cmd) {
         return studentUseCase.update(id, cmd);
     }
 
     @Operation(summary = "Update a student's photo URL")
     @PatchMapping("/{id}/photo")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','SECRETARY','DIRECTOR')")
+    @PreAuthorize("hasAuthority('eleve:update')")
     public Student updatePhoto(@PathVariable Long id, @RequestParam String photoUrl) {
         return studentUseCase.updatePhoto(id, photoUrl);
     }
 
     @Operation(summary = "Delete (archive) a student")
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('eleve:delete')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) { studentUseCase.delete(id); }
 
@@ -201,7 +202,7 @@ public class StudentController {
 
     @Operation(summary = "Link a parent to this student (PERE/MERE/TUTEUR)")
     @PostMapping("/{studentId}/parents")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','SECRETARY','DIRECTOR')")
+    @PreAuthorize("hasAuthority('parent:manage')")
     @ResponseStatus(HttpStatus.CREATED)
     public StudentParent linkParent(@PathVariable Long studentId,
                                      @RequestParam Long parentId,
@@ -217,7 +218,7 @@ public class StudentController {
 
     @Operation(summary = "Unlink a parent from this student")
     @DeleteMapping("/{studentId}/parents/{parentId}")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('parent:manage')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void unlinkParent(@PathVariable Long studentId, @PathVariable Long parentId) {
         parentUseCase.unlinkStudentFromParent(studentId, parentId);
@@ -227,11 +228,11 @@ public class StudentController {
 
     @Operation(summary = "Enroll a student in a class for an academic year")
     @PostMapping("/{studentId}/enrollments")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','SECRETARY','DIRECTOR')")
+    @PreAuthorize("hasAuthority('inscription:create')")
     @ResponseStatus(HttpStatus.CREATED)
     public Enrollment enroll(@PathVariable Long studentId, @Valid @RequestBody EnrollmentUseCase.EnrollCommand cmd) {
         return enrollmentUseCase.enroll(new EnrollmentUseCase.EnrollCommand(
-                studentId, cmd.classId(), cmd.academicYearId(), cmd.type()));
+                studentId, cmd.classId(), cmd.academicYearId(), cmd.type(), cmd.platformAccessOptIn()));
     }
 
     @Operation(summary = "Get all enrollments for a student")
@@ -242,7 +243,7 @@ public class StudentController {
 
     @Operation(summary = "Validate a pending enrollment")
     @PatchMapping("/enrollments/{enrollmentId}/validate")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('inscription:validate')")
     public Enrollment validateEnrollment(@PathVariable Long enrollmentId) {
         return enrollmentUseCase.validate(enrollmentId);
     }

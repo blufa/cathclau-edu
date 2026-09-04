@@ -30,7 +30,7 @@ public class AnnouncementController {
     public record UpdateRequest(String title, String content) {}
 
     @Operation(summary = "Publier une annonce (générale, de classe ou d'élève)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','RESPONSABLE_PEDAGOGIQUE','TEACHER','SECRETARY')")
+    @PreAuthorize("hasAuthority('annonce:manage')")
     @PostMapping
     public ResponseEntity<Announcement> create(@RequestBody CreateRequest r, @AuthenticationPrincipal Jwt jwt) {
         Announcement a = useCase.create(new AnnouncementUseCase.CreateAnnouncementCommand(
@@ -40,7 +40,7 @@ public class AnnouncementController {
     }
 
     @Operation(summary = "Lister les annonces du tenant courant")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','RESPONSABLE_PEDAGOGIQUE','TEACHER','SECRETARY')")
+    @PreAuthorize("hasAuthority('annonce:manage')")
     @GetMapping
     public List<Announcement> list() {
         return useCase.findByTenantId(TenantContext.get());
@@ -53,7 +53,7 @@ public class AnnouncementController {
     }
 
     @Operation(summary = "Modifier une annonce")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','RESPONSABLE_PEDAGOGIQUE','TEACHER','SECRETARY')")
+    @PreAuthorize("hasAuthority('annonce:manage')")
     @PutMapping("/{id}")
     public Announcement update(@PathVariable Long id, @RequestBody UpdateRequest r) {
         return useCase.update(id, new AnnouncementUseCase.UpdateAnnouncementCommand(r.title(), r.content()));

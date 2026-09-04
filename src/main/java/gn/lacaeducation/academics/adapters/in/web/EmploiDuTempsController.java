@@ -36,7 +36,7 @@ public class EmploiDuTempsController {
 
     @Operation(summary = "Create a timetable slot (rejects room/teacher/class conflicts with 409)")
     @PostMapping
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('emploi:manage')")
     public ResponseEntity<EmploiDuTemps> create(@Valid @RequestBody CreateScheduleCommand cmd) {
         EmploiDuTemps e = useCase.create(new CreateScheduleCommand(
                 TenantContext.get(), cmd.schoolClassId(), cmd.subjectId(), cmd.teacherId(),
@@ -61,7 +61,7 @@ public class EmploiDuTempsController {
 
     @Operation(summary = "Update a timetable slot (re-checks conflicts)")
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('emploi:manage')")
     public EmploiDuTemps update(@PathVariable Long id, @Valid @RequestBody CreateScheduleCommand cmd) {
         return useCase.update(id, new CreateScheduleCommand(
                 TenantContext.get(), cmd.schoolClassId(), cmd.subjectId(), cmd.teacherId(),
@@ -70,7 +70,7 @@ public class EmploiDuTempsController {
 
     @Operation(summary = "Delete a timetable slot")
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('emploi:manage')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) { useCase.delete(id); }
 

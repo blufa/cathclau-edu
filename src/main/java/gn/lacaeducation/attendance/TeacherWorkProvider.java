@@ -5,8 +5,9 @@ package gn.lacaeducation.attendance;
  * nettes des absences et des retards (calculés par séance au pointage).
  */
 public interface TeacherWorkProvider {
-    /** Minutes du mois : dues (emploi du temps), de retard cumulé, d'absence, et effectives (= dues − absences − retards). */
-    record MonthlyWork(int dueMinutes, int lateMinutes, int absentMinutes, int effectiveMinutes,
+    /** Minutes du mois : dues (emploi du temps), de retard cumulé, de départ anticipé cumulé,
+     * d'absence, et effectives (= dues − absences − retards − départs anticipés). */
+    record MonthlyWork(int dueMinutes, int lateMinutes, int earlyMinutes, int absentMinutes, int effectiveMinutes,
                        long presentDays, long absentDays) {}
 
     MonthlyWork monthlyWork(Long teacherId, int year, int month);

@@ -10,9 +10,11 @@ public interface PayslipPdfGenerator {
     /**
      * Heures du mois pour un enseignant : dues (projection de l'emploi du temps), réalisées (cahier
      * de textes, séances marquées « Réalisée ») et non réalisées (dues − réalisées, jamais négatif).
+     * lateMinutes/earlyMinutes = retard cumulé à l'entrée / départ anticipé cumulé à la sortie des
+     * séances pointées (déjà déduits des heures réalisées effectives, affichés ici à titre indicatif).
      * {@code null} pour le personnel non-enseignant ou si la période n'est pas connue.
      */
-    record TeacherHours(int dueMinutes, int realizedMinutes, int missingMinutes) {}
+    record TeacherHours(int dueMinutes, int realizedMinutes, int missingMinutes, int lateMinutes, int earlyMinutes) {}
 
     byte[] generate(Payslip payslip, List<PayslipLine> lines, TeacherHours hours);
 }

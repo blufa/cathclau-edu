@@ -29,7 +29,7 @@ public class EarlyPaymentDiscountController {
     private final EarlyPaymentDiscountUseCase useCase;
 
     @Operation(summary = "Créer une règle de remise pour paiement annuel complet")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('frais:manage')")
     @PostMapping
     public ResponseEntity<EarlyPaymentDiscountRule> create(@RequestBody RuleCommand cmd) {
         EarlyPaymentDiscountRule r = useCase.create(TenantContext.get(), cmd);
@@ -44,7 +44,7 @@ public class EarlyPaymentDiscountController {
     }
 
     @Operation(summary = "Modifier une règle")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('frais:manage')")
     @PutMapping("/{id}")
     public EarlyPaymentDiscountRule update(@PathVariable Long id, @RequestBody RuleCommand cmd) {
         return useCase.update(id, cmd);

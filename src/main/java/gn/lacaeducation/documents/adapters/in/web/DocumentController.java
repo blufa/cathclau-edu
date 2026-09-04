@@ -46,43 +46,43 @@ public class DocumentController {
     public DocumentTemplate template(@PathVariable Long id) { return service.template(id); }
 
     @Operation(summary = "Créer un modèle")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('document:manage')")
     @PostMapping("/templates")
     public DocumentTemplate create(@RequestBody TemplateRequest r) {
         return service.create(toCommand(r));
     }
 
     @Operation(summary = "Installer la bibliothèque de modèles prédéfinis (professionnels, prêts à l'emploi)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('document:manage')")
     @PostMapping("/templates/seed-defaults")
     public List<DocumentTemplate> seedDefaults() { return service.seedDefaults(TenantContext.get()); }
 
     @Operation(summary = "Modifier un modèle (nouvelle version)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('document:manage')")
     @PutMapping("/templates/{id}")
     public DocumentTemplate update(@PathVariable Long id, @RequestBody TemplateRequest r) {
         return service.update(id, toCommand(r));
     }
 
     @Operation(summary = "Définir le modèle par défaut de son type")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('document:manage')")
     @PatchMapping("/templates/{id}/default")
     public DocumentTemplate setDefault(@PathVariable Long id) { return service.setDefault(id); }
 
     @Operation(summary = "Supprimer un modèle")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('document:manage')")
     @DeleteMapping("/templates/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) { service.delete(id); return ResponseEntity.noContent().build(); }
 
     @Operation(summary = "Prévisualiser un modèle avec un contexte (sans numéroter)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','ACCOUNTANT','TEACHER')")
+    @PreAuthorize("hasAuthority('document:generate')")
     @PostMapping("/templates/{id}/preview")
     public Map<String, String> preview(@PathVariable Long id, @RequestBody PreviewRequest r) {
         return Map.of("html", service.preview(id, r.context()));
     }
 
     @Operation(summary = "Générer un document (numéroté + historisé) à partir d'un modèle")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','ACCOUNTANT','TEACHER')")
+    @PreAuthorize("hasAuthority('document:generate')")
     @PostMapping("/templates/{id}/generate")
     public RenderResult generate(@PathVariable Long id, @RequestBody GenerateRequest r, @AuthenticationPrincipal Jwt jwt) {
         return service.generate(TenantContext.get(), id, r.context(), r.subjectType(), r.subjectId(), r.title(), currentUserId(jwt));

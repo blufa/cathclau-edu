@@ -32,7 +32,7 @@ public class TeacherSubjectController {
     }
 
     @Operation(summary = "Replace the set of subjects a teacher is assigned to")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('matiere:manage')")
     @PutMapping("/{teacherId}/assigned-subjects")
     public List<Long> set(@PathVariable Long teacherId, @RequestBody AssignSubjectsRequest r) {
         service.setSubjects(teacherId, r.subjectIds());

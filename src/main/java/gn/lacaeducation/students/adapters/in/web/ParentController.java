@@ -33,7 +33,7 @@ public class ParentController {
 
     @Operation(summary = "Register a new parent")
     @PostMapping
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','SECRETARY','DIRECTOR')")
+    @PreAuthorize("hasAuthority('parent:manage')")
     public ResponseEntity<Parent> create(@Valid @RequestBody ParentUseCase.CreateParentCommand cmd) {
         Parent p = parentUseCase.create(new ParentUseCase.CreateParentCommand(
                 TenantContext.get(), cmd.userId(), cmd.firstName(), cmd.lastName(),
@@ -43,7 +43,7 @@ public class ParentController {
 
     @Operation(summary = "List all parents in current tenant (paginated)")
     @GetMapping
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @PreAuthorize("hasAuthority('parent:manage')")
     public PageResponse<Parent> findAll(@PageableDefault(size = 20) Pageable pageable) {
         List<Parent> list = parentUseCase.findByTenantId(TenantContext.get());
         int start = (int) pageable.getOffset();
@@ -82,6 +82,7 @@ public class ParentController {
 
     @Operation(summary = "Get parent by ID")
     @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('parent:manage')")
     public ResponseEntity<Parent> findById(@PathVariable Long id) {
         return parentUseCase.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
@@ -92,20 +93,20 @@ public class ParentController {
 
     @Operation(summary = "Update parent information")
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','SECRETARY','DIRECTOR')")
+    @PreAuthorize("hasAuthority('parent:manage')")
     public Parent update(@PathVariable Long id, @Valid @RequestBody ParentUseCase.UpdateParentCommand cmd) {
         return parentUseCase.update(id, cmd);
     }
 
     @Operation(summary = "Delete a parent")
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('parent:manage')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) { parentUseCase.delete(id); }
 
     @Operation(summary = "Link a parent to a student with relationship type")
     @PostMapping("/{parentId}/students/{studentId}")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','SECRETARY','DIRECTOR')")
+    @PreAuthorize("hasAuthority('parent:manage')")
     @ResponseStatus(HttpStatus.CREATED)
     public StudentParent linkStudent(@PathVariable Long parentId, @PathVariable Long studentId,
                                       @RequestParam Relationship relationship) {
@@ -114,7 +115,7 @@ public class ParentController {
 
     @Operation(summary = "Désigner le responsable principal (« responsable 1 ») de l'élève")
     @PatchMapping("/{parentId}/students/{studentId}/primary")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','SECRETARY','DIRECTOR')")
+    @PreAuthorize("hasAuthority('parent:manage')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void setPrimary(@PathVariable Long parentId, @PathVariable Long studentId) {
         parentUseCase.setPrimaryGuardian(studentId, parentId);
@@ -122,7 +123,7 @@ public class ParentController {
 
     @Operation(summary = "Remove a student-parent link")
     @DeleteMapping("/links/{linkId}")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('parent:manage')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void unlinkStudent(@PathVariable Long linkId) { parentUseCase.unlinkStudent(linkId); }
 

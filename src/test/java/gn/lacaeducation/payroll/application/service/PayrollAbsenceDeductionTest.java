@@ -73,7 +73,7 @@ class PayrollAbsenceDeductionTest {
     @Test
     void generate_autoDerivesAbsenceDeductionFromAttendance() {
         // 2 jours d'absence sur 20 jours planifiés (18 présents + 2 absents).
-        when(workProvider.monthlyWork(7L, 2026, 3)).thenReturn(new MonthlyWork(0, 0, 0, 0, 18, 2));
+        when(workProvider.monthlyWork(7L, 2026, 3)).thenReturn(new MonthlyWork(0, 0, 0, 0, 0, 18, 2));
 
         // Aucune valeur d'absence fournie → auto-dérivation attendue.
         service.generate(new PayrollService.GenerateCommand(
@@ -125,7 +125,7 @@ class PayrollAbsenceDeductionTest {
 
     @Test
     void generate_noAbsence_noDeductionLine() {
-        when(workProvider.monthlyWork(7L, 2026, 3)).thenReturn(new MonthlyWork(0, 0, 0, 0, 20, 0));
+        when(workProvider.monthlyWork(7L, 2026, 3)).thenReturn(new MonthlyWork(0, 0, 0, 0, 0, 20, 0));
 
         service.generate(new PayrollService.GenerateCommand(
                 9L, null, 7L, "M. Diallo", "Mars 2026",

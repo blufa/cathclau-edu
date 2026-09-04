@@ -19,5 +19,8 @@ public class TeacherCheckin {
     private LocalTime checkInTime;
     private LocalTime checkOutTime;
     private Integer lateMinutes;
+    /** sessionEnd − checkOutTime quand la sortie est pointée avant la fin prévue (0 si sortie non
+     * pointée : bénéfice du doute, pas de pénalité de départ anticipé). */
+    private Integer earlyMinutes;
     private LocalDateTime createdAt;
 }

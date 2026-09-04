@@ -31,7 +31,7 @@ public class GradeController {
     // ── Single grade entry ────────────────────────────────────────────────────
 
     @Operation(summary = "Enter a grade for a student on an assessment")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
+    @PreAuthorize("hasAuthority('note:create')")
     @PostMapping("/grades")
     public ResponseEntity<Grade> enter(@RequestBody EnterRequest r, @AuthenticationPrincipal Jwt jwt) {
         return ResponseEntity.ok(useCase.enter(
@@ -40,7 +40,7 @@ public class GradeController {
 
     @Operation(summary = "Update a student's grade value (only while period is open and grade not validated). "
             + "An optional reason explains the correction and is kept in the grade's history.")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
+    @PreAuthorize("hasAuthority('note:update')")
     @PutMapping("/grades/{id}")
     public ResponseEntity<Grade> update(@PathVariable Long id, @RequestBody UpdateRequest r,
                                         @AuthenticationPrincipal Jwt jwt) {
@@ -48,7 +48,7 @@ public class GradeController {
     }
 
     @Operation(summary = "Validate (lock) a single grade so it can no longer be modified")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
+    @PreAuthorize("hasAuthority('note:validate')")
     @PutMapping("/grades/{id}/validate")
     public ResponseEntity<Grade> validate(@PathVariable Long id, @AuthenticationPrincipal Jwt jwt) {
         return ResponseEntity.ok(useCase.validate(id, currentUserId(jwt)));
@@ -68,7 +68,7 @@ public class GradeController {
     }
 
     @Operation(summary = "Get the full modification history of a grade (who changed what, when and why)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
+    @PreAuthorize("hasAuthority('note:read')")
     @GetMapping("/grades/{id}/history")
     public List<GradeHistory> history(@PathVariable Long id) {
         return useCase.findHistory(id);
@@ -81,7 +81,7 @@ public class GradeController {
     }
 
     @Operation(summary = "Feuille de notes d'une évaluation : liste des élèves de la classe avec leur note saisie")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
+    @PreAuthorize("hasAuthority('note:read')")
     @GetMapping("/assessments/{assessmentId}/grade-sheet")
     public List<GradeUseCase.GradeSheetRow> gradeSheet(@PathVariable Long assessmentId) {
         return useCase.gradeSheet(assessmentId);
@@ -139,7 +139,7 @@ public class GradeController {
 
     @Operation(summary = "Bulk enter grades for a whole class on an assessment. "
             + "Expects a list of {studentId, value} pairs.")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
+    @PreAuthorize("hasAuthority('note:create')")
     @PostMapping("/assessments/{assessmentId}/grades/bulk")
     public ResponseEntity<List<Grade>> enterBulk(@PathVariable Long assessmentId,
                                                   @RequestBody BulkGradeRequest request,
@@ -157,7 +157,7 @@ public class GradeController {
 
     @Operation(summary = "Validate (lock) all grades for an assessment in one operation. "
             + "Recomputes the class averages, ranks and report cards for the assessment's period.")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
+    @PreAuthorize("hasAuthority('note:validate')")
     @PatchMapping("/assessments/{assessmentId}/grades/validate")
     public ResponseEntity<List<Grade>> validateAll(@PathVariable Long assessmentId,
                                                     @AuthenticationPrincipal Jwt jwt) {

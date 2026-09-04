@@ -19,7 +19,7 @@ import java.util.List;
 @Tag(name = "Payroll — Salary Structures", description = "Structures salariales et règles de paie (configuration)")
 @RestController
 @RequestMapping("/api/v1/payroll/structures")
-@PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+@PreAuthorize("hasAuthority('paie:manage')")
 @RequiredArgsConstructor
 public class SalaryStructureController {
 

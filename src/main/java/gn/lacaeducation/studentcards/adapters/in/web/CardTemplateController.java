@@ -30,7 +30,7 @@ public class CardTemplateController {
     public List<CardTemplate> list() { return service.findByTenant(TenantContext.get()); }
 
     @Operation(summary = "Create a card template")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @PreAuthorize("hasAuthority('carte:manage')")
     @PostMapping
     public CardTemplate create(@RequestBody TemplateRequest r) {
         return service.save(CardTemplate.builder().tenantId(TenantContext.get())
@@ -40,7 +40,7 @@ public class CardTemplateController {
     }
 
     @Operation(summary = "Update a card template")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @PreAuthorize("hasAuthority('carte:manage')")
     @PutMapping("/{id}")
     public CardTemplate update(@PathVariable Long id, @RequestBody TemplateRequest r) {
         return service.update(id, CardTemplate.builder()

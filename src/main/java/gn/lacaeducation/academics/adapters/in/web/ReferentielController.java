@@ -43,7 +43,7 @@ public class ReferentielController {
 
     @Operation(summary = "Create a new room")
     @PostMapping("/rooms")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('salle:manage')")
     public ResponseEntity<Salle> createRoom(@RequestBody CreateRoomCommand cmd) {
         Salle s = useCase.createRoom(new CreateRoomCommand(
                 TenantContext.get(), cmd.label(), cmd.building(), cmd.capacity(), cmd.type()
@@ -57,7 +57,7 @@ public class ReferentielController {
 
     @Operation(summary = "Update a room")
     @PutMapping("/rooms/{id}")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('salle:manage')")
     public Salle updateRoom(@PathVariable Long id, @RequestBody CreateRoomCommand cmd) {
         return useCase.updateRoom(id, new CreateRoomCommand(
                 TenantContext.get(), cmd.label(), cmd.building(), cmd.capacity(), cmd.type()));
@@ -65,20 +65,20 @@ public class ReferentielController {
 
     @Operation(summary = "Set a room's availability")
     @PatchMapping("/rooms/{id}/availability")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('salle:manage')")
     public Salle setRoomAvailability(@PathVariable Long id, @RequestParam boolean available) {
         return useCase.setRoomAvailability(id, available);
     }
 
     @Operation(summary = "Delete a room")
     @DeleteMapping("/rooms/{id}")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('salle:manage')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteRoom(@PathVariable Long id) { useCase.deleteRoom(id); }
 
     @Operation(summary = "Create a new school level (grade level)")
     @PostMapping("/levels")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('niveau:manage')")
     public ResponseEntity<Niveau> createLevel(@RequestParam String label, @RequestParam Integer sortOrder,
             @RequestParam(required = false) SchoolCycle cycle) {
         Niveau n = useCase.createLevel(TenantContext.get(), label, sortOrder, cycle);
@@ -91,7 +91,7 @@ public class ReferentielController {
 
     @Operation(summary = "Update a school level")
     @PutMapping("/levels/{id}")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('niveau:manage')")
     public Niveau updateLevel(@PathVariable Long id, @RequestParam String label, @RequestParam Integer sortOrder,
             @RequestParam(required = false) SchoolCycle cycle) {
         return useCase.updateLevel(id, label, sortOrder, cycle);
@@ -99,13 +99,13 @@ public class ReferentielController {
 
     @Operation(summary = "Delete a school level")
     @DeleteMapping("/levels/{id}")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('niveau:manage')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteLevel(@PathVariable Long id) { useCase.deleteLevel(id); }
 
     @Operation(summary = "Create a new subject")
     @PostMapping("/subjects")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('matiere:manage')")
     public ResponseEntity<Matiere> createSubject(
             @RequestParam String label,
             @RequestParam BigDecimal coefficient,
@@ -120,7 +120,7 @@ public class ReferentielController {
 
     @Operation(summary = "Update a subject")
     @PutMapping("/subjects/{id}")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('matiere:manage')")
     public Matiere updateSubject(@PathVariable Long id,
                                  @RequestParam String label,
                                  @RequestParam BigDecimal coefficient,
@@ -130,7 +130,7 @@ public class ReferentielController {
 
     @Operation(summary = "Delete a subject")
     @DeleteMapping("/subjects/{id}")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('matiere:manage')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteSubject(@PathVariable Long id) { useCase.deleteSubject(id); }
 
@@ -142,7 +142,7 @@ public class ReferentielController {
 
     @Operation(summary = "Import the MEPUA subjects/coefficients for a cycle (and série) as subjects of the current tenant, skipping subjects that already exist")
     @PostMapping("/subjects/importer-mepua")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('matiere:manage')")
     public List<Matiere> importerMepua(@RequestParam SchoolCycle cycle, @RequestParam(required = false) String serie) {
         return useCase.importerMatieresMepua(TenantContext.get(), cycle, serie);
     }

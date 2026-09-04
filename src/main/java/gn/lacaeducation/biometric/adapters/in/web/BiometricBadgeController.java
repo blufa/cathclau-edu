@@ -21,7 +21,7 @@ public class BiometricBadgeController {
     public record BadgeRequest(BiometricSubjectType subjectType, Long subjectId) {}
 
     @Operation(summary = "Générer un badge QR pour une personne (auto-enrôlement)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @PreAuthorize("hasAuthority('biometrique:manage')")
     @PostMapping
     public BadgeResult generate(@RequestBody BadgeRequest r) {
         return service.generateBadge(TenantContext.get(), r.subjectType(), r.subjectId());

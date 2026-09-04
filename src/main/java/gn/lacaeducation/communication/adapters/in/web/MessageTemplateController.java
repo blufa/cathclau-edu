@@ -22,7 +22,7 @@ public class MessageTemplateController {
                                   String subject, String body) {}
 
     @Operation(summary = "Create a message template for a given reason")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('modele:manage')")
     @PostMapping public ResponseEntity<MessageTemplate> create(@RequestBody TemplateRequest r) {
         MessageTemplate t = useCase.create(new SaveTemplateCommand(r.tenantId(), r.reason(), r.channel(), r.subject(), r.body()));
         return ResponseEntity.created(URI.create("/api/v1/templates-message/" + t.getId())).body(t);
@@ -39,12 +39,12 @@ public class MessageTemplateController {
     }
 
     @Operation(summary = "Update a message template")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('modele:manage')")
     @PutMapping("/{id}") public ResponseEntity<MessageTemplate> update(@PathVariable Long id, @RequestBody TemplateRequest r) {
         return ResponseEntity.ok(useCase.update(id, new SaveTemplateCommand(r.tenantId(), r.reason(), r.channel(), r.subject(), r.body())));
     }
 
     @Operation(summary = "Delete a message template")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('modele:manage')")
     @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id) { useCase.delete(id); return ResponseEntity.noContent().build(); }
 }
