@@ -61,7 +61,7 @@ public class SchoolDashboardController {
                                     List<TopStudentRow> topStudents) {}
 
     @Operation(summary = "Reporting académique d'une période : taux de réussite, moyennes par classe, classement global")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('dashboard:direction')")
     @GetMapping("/academic")
     public AcademicDashboard academic(@RequestParam Long periodId,
                                       @RequestParam(defaultValue = "10") int top) {
@@ -86,7 +86,7 @@ public class SchoolDashboardController {
                                    BigDecimal recoveryRate, long unpaidInvoices) {}
 
     @Operation(summary = "Reporting financier de l'école : facturé, encaissé (recettes), impayés, taux de recouvrement")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('dashboard:admin')")
     @GetMapping("/finance")
     public FinanceDashboard finance() {
         BillingStats s = billingStatsProvider.billingStats(TenantContext.get());
@@ -100,7 +100,7 @@ public class SchoolDashboardController {
                                      BigDecimal recurringPayroll, String collectionTrend, List<ProjectionMonth> months) {}
 
     @Operation(summary = "Prévisionnel de trésorerie : encaissements attendus (tendance) − masse salariale récurrente sur N mois")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('dashboard:admin')")
     @GetMapping("/finance/projection")
     public CashflowProjection projection(@RequestParam(defaultValue = "6") int months) {
         Long tenantId = TenantContext.get();
@@ -181,7 +181,7 @@ public class SchoolDashboardController {
 
     @Operation(summary = "Vision Fondateur : recouvrement détaillé, masse salariale, élèves pris en charge, "
             + "alertes automatiques et comparatif inter-années (features/14)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('dashboard:direction')")
     @GetMapping("/founder")
     public FounderDashboard founder(@RequestParam Long academicYearId,
                                     @RequestParam(required = false) Integer year,
@@ -273,7 +273,7 @@ public class SchoolDashboardController {
                               long totalAbsentDays, int totalEffectiveHours, List<TeacherHrRow> teachers) {}
 
     @Operation(summary = "Reporting RH d'un mois : présence et heures effectives par enseignant (§10.3)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('dashboard:direction')")
     @GetMapping("/hr")
     public HrDashboard hr(@RequestParam int year, @RequestParam int month) {
         List<TeacherPublicInfoProvider.TeacherInfo> teachers = teacherPublicInfoProvider.listTeachers(TenantContext.get());
@@ -304,7 +304,7 @@ public class SchoolDashboardController {
     public record PerformanceDashboard(int year, int month, int teacherCount, List<TeacherPerformanceRow> teachers) {}
 
     @Operation(summary = "Performance enseignant (§10.3) : indice composite achèvement de charge / assiduité / ponctualité")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('dashboard:direction')")
     @GetMapping("/hr/performance")
     public PerformanceDashboard performance(@RequestParam int year, @RequestParam int month) {
         List<TeacherPerformanceRow> rows = teacherPublicInfoProvider.listTeachers(TenantContext.get()).stream()
