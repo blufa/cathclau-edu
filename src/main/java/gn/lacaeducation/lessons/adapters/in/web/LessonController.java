@@ -59,29 +59,29 @@ public class LessonController {
     public LessonEntry findById(@PathVariable Long id) { return service.findById(id); }
 
     @Operation(summary = "Créer une séance (planifiée ou réalisée)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
+    @PreAuthorize("hasAuthority('cahier:manage')")
     @PostMapping
     public LessonEntry create(@RequestBody LessonRequest r) { return service.create(toCommand(r)); }
 
     @Operation(summary = "Modifier une séance")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
+    @PreAuthorize("hasAuthority('cahier:manage')")
     @PutMapping("/{id}")
     public LessonEntry update(@PathVariable Long id, @RequestBody LessonRequest r) { return service.update(id, toCommand(r)); }
 
     @Operation(summary = "Marquer la séance comme réalisée (durée réalisée optionnelle, sinon la durée planifiée est conservée)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
+    @PreAuthorize("hasAuthority('cahier:manage')")
     @PatchMapping("/{id}/done")
     public LessonEntry markDone(@PathVariable Long id, @RequestBody(required = false) MarkDoneRequest r) {
         return service.markDone(id, r != null ? r.durationMinutes() : null);
     }
 
     @Operation(summary = "Remettre la séance en planifié")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
+    @PreAuthorize("hasAuthority('cahier:manage')")
     @PatchMapping("/{id}/plan")
     public LessonEntry markPlanned(@PathVariable Long id) { return service.markPlanned(id); }
 
     @Operation(summary = "Supprimer une séance")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
+    @PreAuthorize("hasAuthority('cahier:manage')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) { service.delete(id); return ResponseEntity.noContent().build(); }
 

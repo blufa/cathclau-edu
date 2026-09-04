@@ -50,7 +50,7 @@ public class AnnualBudgetController {
     public AnnualBudgetService.BudgetSummary summary(@PathVariable Long id) { return service.summary(id); }
 
     @Operation(summary = "Créer un budget annuel")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('budget:manage')")
     @PostMapping
     public AnnualBudget create(@RequestBody BudgetRequest r) {
         return service.create(new BudgetCommand(TenantContext.get(), r.academicYear(), r.label(), r.notes(),
@@ -58,7 +58,7 @@ public class AnnualBudgetController {
     }
 
     @Operation(summary = "Modifier un budget annuel")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('budget:manage')")
     @PutMapping("/{id}")
     public AnnualBudget update(@PathVariable Long id, @RequestBody BudgetRequest r) {
         return service.update(id, new BudgetCommand(TenantContext.get(), r.academicYear(), r.label(), r.notes(),
@@ -81,12 +81,12 @@ public class AnnualBudgetController {
     }
 
     @Operation(summary = "Soumettre le budget à la validation de la direction (comptable)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('budget:manage')")
     @PatchMapping("/{id}/submit")
     public AnnualBudget submit(@PathVariable Long id) { return service.submit(id); }
 
     @Operation(summary = "Approuver un budget soumis (direction)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('budget:approve')")
     @PatchMapping("/{id}/approve")
     public AnnualBudget approve(@PathVariable Long id, @AuthenticationPrincipal Jwt jwt) {
         return service.approve(id, currentUserId(jwt));
@@ -95,26 +95,26 @@ public class AnnualBudgetController {
     public record RejectRequest(String reason) {}
 
     @Operation(summary = "Rejeter un budget soumis, avec motif (direction)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('budget:approve')")
     @PatchMapping("/{id}/reject")
     public AnnualBudget reject(@PathVariable Long id, @AuthenticationPrincipal Jwt jwt, @RequestBody(required = false) RejectRequest r) {
         return service.reject(id, currentUserId(jwt), r != null ? r.reason() : null);
     }
 
     @Operation(summary = "Clôturer un budget")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('budget:approve')")
     @PatchMapping("/{id}/close")
     public AnnualBudget close(@PathVariable Long id) { return service.close(id); }
 
     @Operation(summary = "Supprimer un budget")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('budget:approve')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) { service.delete(id); return ResponseEntity.noContent().build(); }
 
     // ── Lignes ──────────────────────────────────────────────────────────────────
 
     @Operation(summary = "Ajouter une ligne au budget")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('budget:manage')")
     @PostMapping("/{id}/lines")
     public BudgetLine addLine(@PathVariable Long id, @RequestBody LineRequest r) {
         return service.addLine(id, new LineCommand(r.lineType(), r.category(), r.quantity(), r.unitPrice(),
@@ -122,7 +122,7 @@ public class AnnualBudgetController {
     }
 
     @Operation(summary = "Modifier une ligne de budget")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('budget:manage')")
     @PutMapping("/lines/{lineId}")
     public BudgetLine updateLine(@PathVariable Long lineId, @RequestBody LineRequest r) {
         return service.updateLine(lineId, new LineCommand(r.lineType(), r.category(), r.quantity(), r.unitPrice(),
@@ -130,7 +130,7 @@ public class AnnualBudgetController {
     }
 
     @Operation(summary = "Supprimer une ligne de budget")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('budget:manage')")
     @DeleteMapping("/lines/{lineId}")
     public ResponseEntity<Void> deleteLine(@PathVariable Long lineId) { service.deleteLine(lineId); return ResponseEntity.noContent().build(); }
 

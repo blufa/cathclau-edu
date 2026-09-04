@@ -24,7 +24,7 @@ import java.util.List;
 @Tag(name = "Payroll — Payslips", description = "Fiches de paie : génération, calcul, validation, paiement")
 @RestController
 @RequestMapping("/api/v1/payroll/payslips")
-@PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+@PreAuthorize("hasAuthority('paie:manage')")
 @RequiredArgsConstructor
 public class PayslipController {
 

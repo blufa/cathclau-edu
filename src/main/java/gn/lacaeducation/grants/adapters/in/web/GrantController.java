@@ -43,7 +43,7 @@ public class GrantController {
     public List<GrantPayment> payments(@PathVariable Long id) { return service.payments(id); }
 
     @Operation(summary = "Créer une subvention")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('budget:manage')")
     @PostMapping
     public Grant create(@RequestBody GrantRequest r) {
         return service.create(new GrantCommand(TenantContext.get(), r.source(), r.reference(), r.purpose(),
@@ -51,7 +51,7 @@ public class GrantController {
     }
 
     @Operation(summary = "Modifier une subvention")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('budget:manage')")
     @PutMapping("/{id}")
     public Grant update(@PathVariable Long id, @RequestBody GrantRequest r) {
         return service.update(id, new GrantCommand(TenantContext.get(), r.source(), r.reference(), r.purpose(),
@@ -59,17 +59,17 @@ public class GrantController {
     }
 
     @Operation(summary = "Annuler une subvention")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('budget:manage')")
     @PatchMapping("/{id}/cancel")
     public Grant cancel(@PathVariable Long id) { return service.cancel(id); }
 
     @Operation(summary = "Supprimer une subvention")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('budget:approve')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) { service.delete(id); return ResponseEntity.noContent().build(); }
 
     @Operation(summary = "Enregistrer un versement reçu")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('budget:manage')")
     @PostMapping("/{id}/payments")
     public GrantPayment addPayment(@PathVariable Long id, @RequestBody PaymentRequest r) {
         return service.addPayment(id, new PaymentCommand(r.paymentDate(), r.amount(), r.method(), r.reference(),
@@ -77,7 +77,7 @@ public class GrantController {
     }
 
     @Operation(summary = "Supprimer un versement")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('budget:manage')")
     @DeleteMapping("/payments/{paymentId}")
     public ResponseEntity<Void> deletePayment(@PathVariable Long paymentId) { service.deletePayment(paymentId); return ResponseEntity.noContent().build(); }
 }

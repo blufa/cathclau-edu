@@ -38,14 +38,14 @@ public class HealthController {
                                       String insurance, String notes) {}
 
     @Operation(summary = "Récupérer la fiche santé d'un élève")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','NURSE','TEACHER')")
+    @PreAuthorize("hasAuthority('sante:read')")
     @GetMapping("/records/student/{studentId}")
     public ResponseEntity<HealthRecord> getRecord(@PathVariable Long studentId) {
         return service.recordByStudent(studentId).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
     @Operation(summary = "Créer / mettre à jour la fiche santé d'un élève")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','NURSE')")
+    @PreAuthorize("hasAuthority('sante:manage')")
     @PutMapping("/records/student/{studentId}")
     public HealthRecord upsertRecord(@PathVariable Long studentId, @RequestBody HealthRecordRequest r) {
         return service.upsertRecord(new HealthRecordCommand(TenantContext.get(), studentId, r.bloodGroup(),
@@ -60,7 +60,7 @@ public class HealthController {
                                String careGiven, BigDecimal temperature, VisitOutcome outcome) {}
 
     @Operation(summary = "Lister les passages à l'infirmerie (filtre élève)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','NURSE','TEACHER')")
+    @PreAuthorize("hasAuthority('sante:read')")
     @GetMapping("/visits")
     public List<InfirmaryVisit> listVisits(@RequestParam(required = false) Long studentId) {
         return service.visits(TenantContext.get(), studentId);
@@ -71,7 +71,7 @@ public class HealthController {
     public InfirmaryVisit findVisit(@PathVariable Long id) { return service.visit(id); }
 
     @Operation(summary = "Enregistrer un passage à l'infirmerie")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','NURSE')")
+    @PreAuthorize("hasAuthority('sante:manage')")
     @PostMapping("/visits")
     public InfirmaryVisit recordVisit(@RequestBody VisitRequest r, @AuthenticationPrincipal Jwt jwt) {
         return service.recordVisit(new VisitCommand(TenantContext.get(), r.studentId(), r.visitDate(), r.visitTime(),
@@ -79,7 +79,7 @@ public class HealthController {
     }
 
     @Operation(summary = "Modifier un passage")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','NURSE')")
+    @PreAuthorize("hasAuthority('sante:manage')")
     @PutMapping("/visits/{id}")
     public InfirmaryVisit updateVisit(@PathVariable Long id, @RequestBody VisitRequest r) {
         return service.updateVisit(id, new VisitCommand(TenantContext.get(), r.studentId(), r.visitDate(),
@@ -87,7 +87,7 @@ public class HealthController {
     }
 
     @Operation(summary = "Marquer le parent comme prévenu")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','NURSE')")
+    @PreAuthorize("hasAuthority('sante:manage')")
     @PatchMapping("/visits/{id}/notify-parent")
     public InfirmaryVisit notifyParent(@PathVariable Long id) { return service.markParentNotified(id); }
 

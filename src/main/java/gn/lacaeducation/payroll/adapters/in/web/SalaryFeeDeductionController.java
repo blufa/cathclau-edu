@@ -29,7 +29,7 @@ public class SalaryFeeDeductionController {
     private final SalaryFeeDeductionUseCase useCase;
 
     @Operation(summary = "Créer une règle de retenue sur salaire des frais scolaires")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('paie:manage')")
     @PostMapping
     public ResponseEntity<SalaryFeeDeductionRule> create(@RequestBody RuleCommand cmd) {
         SalaryFeeDeductionRule r = useCase.create(TenantContext.get(), cmd);
@@ -37,14 +37,14 @@ public class SalaryFeeDeductionController {
     }
 
     @Operation(summary = "Lister les règles du tenant")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('paie:manage')")
     @GetMapping
     public List<SalaryFeeDeductionRule> list() {
         return useCase.findByTenant(TenantContext.get());
     }
 
     @Operation(summary = "Modifier une règle")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('paie:manage')")
     @PutMapping("/{id}")
     public SalaryFeeDeductionRule update(@PathVariable Long id, @RequestBody RuleCommand cmd) {
         return useCase.update(id, cmd);
@@ -59,7 +59,7 @@ public class SalaryFeeDeductionController {
     }
 
     @Operation(summary = "Retenue de frais scolaires calculée pour un employé (aperçu avant paie)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('paie:manage')")
     @GetMapping("/preview")
     public FeeDeduction preview(@RequestParam Long teacherId) {
         return useCase.computeFeeDeduction(TenantContext.get(), teacherId);

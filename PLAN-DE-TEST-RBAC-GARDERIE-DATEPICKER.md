@@ -156,10 +156,50 @@ dur de l'endpoint. La plupart des endpoints ont été migrés pour vérifier ré
   workflow de validation) n'ont pas été touchés par cette migration pour ne pas lui couper l'accès —
   ils continuent de fonctionner via l'ancienne vérification de rôle codée en dur, en attendant que ses
   permissions soient définies.
-- Plusieurs modules récents (comptabilité générale, paie, biométrie, transport, dépenses, cantine,
-  discipline, devoirs, cours, calendrier, annonces, subventions, cartes élèves, blog, DPE) n'ont pas
-  encore d'entrée dans le catalogue de permissions : ils continuent de fonctionner avec les rôles codés
-  en dur existants, inchangés par cette migration.
+- Plusieurs modules récents (comptabilité générale, cantine, calendrier, blog, DPE, paramètres
+  d'établissement) n'ont toujours pas d'entrée dans le catalogue de permissions : ils continuent de
+  fonctionner avec les rôles codés en dur existants. Paie, biométrie, transport, dépenses/budget/
+  subventions, discipline, devoirs, cahier de textes, cartes élèves, annonces et modèles de message
+  ont depuis été ajoutés au catalogue (voir §8).
 
 *Résultat attendu* : les permissions cochées sur un rôle personnalisé pilotent réellement l'accès aux
-fonctionnalités couvertes par le catalogue actuel (voir liste des modules migrés ci-dessus).
+fonctionnalités couvertes par le catalogue actuel (voir liste des modules migrés ci-dessus et §8).
+
+---
+
+## 8. Créer un rôle personnalisé (ex. « Surveillant », « Économe ») et voir les bons menus
+
+**Contexte** : le backend permettait déjà de créer un rôle avec seulement un nom (`POST /roles`, pas
+de code fixe imposé) et de lui affecter des permissions, mais **les menus de la barre latérale et
+les onglets de page restaient filtrés par une liste de rôles codée en dur** (`SCHOOL_ADMIN`,
+`DIRECTOR`, etc.) — un rôle personnalisé n'y correspondait donc jamais, même avec les bonnes
+permissions cochées. La navigation vérifie désormais **le rôle OU la permission**. Une vingtaine de
+modules qui n'avaient encore aucune entrée dans le catalogue de permissions (cartes scolaires,
+transport, devoirs, cahier de textes, discipline, santé/infirmerie, documents & modèles, budget,
+dépenses, subventions, paie, biométrie, annonces, modèles de message) ont été ajoutés à cette
+occasion, sinon la permission cochée n'aurait servi à rien côté serveur.
+
+**Où** : `/users/roles`.
+
+1. Cliquer **Nouveau rôle**, saisir un nom (ex. « Surveillant ») + description, créer.
+2. Ouvrir **Permissions** sur ce nouveau rôle, cocher par exemple `presence:read`, `presence:create`,
+   `presence:update`, `discipline:manage`, `carte:manage` — enregistrer.
+3. Créer un utilisateur, lui affecter ce rôle (`/users`).
+4. Se connecter avec ce compte : la sidebar doit afficher **Présences**, **Vie scolaire → Discipline**
+   et **Cartes scolaires (badges)**, sans qu'aucun de ces libellés n'apparaisse dans le code sous ce
+   nom de rôle — uniquement via les permissions cochées.
+5. Vérifier qu'un menu correspondant à une permission **non cochée** (ex. « Paie ») reste invisible,
+   et que naviguer directement vers son URL (`/payroll`) redirige/bloque plutôt que d'afficher une
+   page cassée.
+6. Retirer une permission (ex. `carte:manage`) depuis `/users/roles`, se reconnecter : le menu
+   correspondant doit disparaître immédiatement.
+
+**Limites connues (documentées en commentaire dans `navigation.ts`)** : Tableau de bord, Vision
+Fondateur, Rapports, Classes, Personnel, Messages, Paramètres, Annuaire inter-écoles et quelques
+écrans de configuration (paramètres de notation, comptabilité générale, cantine, calendrier, DPE,
+blog) restent accessibles uniquement aux rôles système — soit parce qu'aucune permission ne
+correspond avec assez de précision à l'accès actuel sans élargir ou restreindre involontairement
+l'accès d'un rôle existant, soit par sensibilité (recherche cross-établissements).
+
+*Résultat attendu* : un rôle entièrement nouveau, créé depuis l'interface, donne accès aux bons
+menus et aux bonnes pages dès que les permissions correspondantes sont cochées — sans toucher au code.

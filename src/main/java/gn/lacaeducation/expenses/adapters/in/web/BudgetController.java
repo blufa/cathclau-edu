@@ -30,21 +30,21 @@ public class BudgetController {
     public List<Budget> list() { return service.findByTenant(TenantContext.get()); }
 
     @Operation(summary = "Create a budget allocation")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('budget:approve')")
     @PostMapping
     public Budget create(@RequestBody BudgetRequest r) {
         return service.save(new BudgetCommand(TenantContext.get(), r.categoryId(), r.academicYear(), r.allocatedAmount()));
     }
 
     @Operation(summary = "Update a budget allocation amount")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('budget:approve')")
     @PutMapping("/{id}")
     public Budget update(@PathVariable Long id, @RequestBody UpdateBudgetRequest r) {
         return service.update(id, r.allocatedAmount());
     }
 
     @Operation(summary = "Delete a budget allocation")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('budget:approve')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) { service.delete(id); return ResponseEntity.noContent().build(); }
 }

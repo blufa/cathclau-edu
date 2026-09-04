@@ -37,7 +37,7 @@ public class DisciplineController {
                                   gn.lacaeducation.discipline.domain.DecisionBody decisionBody) {}
 
     @Operation(summary = "Lister les incidents (filtres élève / statut)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','TEACHER')")
+    @PreAuthorize("hasAuthority('discipline:manage')")
     @GetMapping
     public List<DisciplineIncident> list(@RequestParam(required = false) Long studentId,
                                          @RequestParam(required = false) DisciplineStatus status) {
@@ -49,7 +49,7 @@ public class DisciplineController {
     public DisciplineIncident findById(@PathVariable Long id) { return service.findById(id); }
 
     @Operation(summary = "Signaler un incident")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','TEACHER')")
+    @PreAuthorize("hasAuthority('discipline:manage')")
     @PostMapping
     public DisciplineIncident create(@RequestBody IncidentRequest r, @AuthenticationPrincipal Jwt jwt) {
         return service.create(new CreateIncidentCommand(TenantContext.get(), r.studentId(), r.classId(),
@@ -58,7 +58,7 @@ public class DisciplineController {
     }
 
     @Operation(summary = "Modifier un incident")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','TEACHER')")
+    @PreAuthorize("hasAuthority('discipline:manage')")
     @PutMapping("/{id}")
     public DisciplineIncident update(@PathVariable Long id, @RequestBody IncidentRequest r) {
         return service.update(id, new CreateIncidentCommand(TenantContext.get(), r.studentId(), r.classId(),
@@ -77,7 +77,7 @@ public class DisciplineController {
     public DisciplineIncident dismiss(@PathVariable Long id) { return service.dismiss(id); }
 
     @Operation(summary = "Marquer les parents comme notifiés")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','TEACHER')")
+    @PreAuthorize("hasAuthority('discipline:manage')")
     @PatchMapping("/{id}/notified")
     public DisciplineIncident markNotified(@PathVariable Long id) { return service.markParentNotified(id); }
 
