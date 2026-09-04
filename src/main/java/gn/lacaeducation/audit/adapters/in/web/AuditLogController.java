@@ -27,7 +27,7 @@ public class AuditLogController {
 
     @Operation(summary = "Journal d'audit de l'école courante")
     @GetMapping("/api/v1/audit-logs")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('audit:read')")
     public PageResponse<AuditLogResponse> forCurrentTenant(@PageableDefault(size = 20) Pageable pageable) {
         return PageResponse.of(useCase.findForCurrentTenant(pageable).map(AuditLogResponse::from));
     }

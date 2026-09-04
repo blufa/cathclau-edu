@@ -32,7 +32,7 @@ class TeacherCheckinPersistenceAdapter implements TeacherCheckinRepository {
         return TeacherCheckin.builder().id(e.getId()).tenantId(e.getTenantId()).teacherId(e.getTeacherId())
                 .checkinDate(e.getCheckinDate()).scheduleSlotId(e.getScheduleSlotId()).sessionStart(e.getSessionStart())
                 .sessionEnd(e.getSessionEnd()).checkInTime(e.getCheckInTime()).checkOutTime(e.getCheckOutTime())
-                .lateMinutes(e.getLateMinutes()).createdAt(e.getCreatedAt()).build();
+                .lateMinutes(e.getLateMinutes()).earlyMinutes(e.getEarlyMinutes()).createdAt(e.getCreatedAt()).build();
     }
 
     private TeacherCheckinJpaEntity toEntity(TeacherCheckin c) {
@@ -42,6 +42,7 @@ class TeacherCheckinPersistenceAdapter implements TeacherCheckinRepository {
         e.setSessionEnd(c.getSessionEnd());
         e.setCheckInTime(c.getCheckInTime()); e.setCheckOutTime(c.getCheckOutTime());
         e.setLateMinutes(c.getLateMinutes() != null ? c.getLateMinutes() : 0);
+        e.setEarlyMinutes(c.getEarlyMinutes() != null ? c.getEarlyMinutes() : 0);
         e.setCreatedAt(c.getCreatedAt());
         return e;
     }

@@ -170,7 +170,7 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
     public boolean requiresPickup(Long classId) {
         return academicsProvider.findClass(classId)
                 .map(gn.lacaeducation.academics.ClassPublicInfo::schoolCycle)
-                .map(c -> "MATERNELLE".equals(c) || "PRIMAIRE".equals(c))
+                .map(c -> "GARDERIE".equals(c) || "MATERNELLE".equals(c) || "PRIMAIRE".equals(c))
                 .orElse(false);
     }
 

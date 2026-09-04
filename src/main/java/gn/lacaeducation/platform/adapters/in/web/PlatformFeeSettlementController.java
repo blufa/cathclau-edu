@@ -41,7 +41,7 @@ public class PlatformFeeSettlementController {
 
     @Operation(summary = "Solde actuellement dû à la plateforme par l'école courante")
     @GetMapping("/balance")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('abonnement:read')")
     public BalanceResponse balance() {
         return new BalanceResponse(useCase.currentBalance());
     }
@@ -63,7 +63,7 @@ public class PlatformFeeSettlementController {
 
     @Operation(summary = "Historique des règlements de l'école courante")
     @GetMapping("/settlements")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('abonnement:read')")
     public List<PlatformFeeSettlementResponse> history() {
         return useCase.findByTenantId(TenantContext.get()).stream()
                 .map(PlatformFeeSettlementResponse::from).toList();

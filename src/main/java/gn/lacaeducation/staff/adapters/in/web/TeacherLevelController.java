@@ -32,7 +32,7 @@ public class TeacherLevelController {
     }
 
     @Operation(summary = "Replace the set of levels a teacher is assigned to")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('niveau:manage')")
     @PutMapping("/{teacherId}/assigned-levels")
     public List<Long> set(@PathVariable Long teacherId, @RequestBody AssignLevelsRequest r) {
         service.setLevels(teacherId, r.levelIds());

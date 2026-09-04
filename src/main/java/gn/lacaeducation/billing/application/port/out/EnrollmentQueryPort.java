@@ -15,4 +15,8 @@ public interface EnrollmentQueryPort {
 
     /** Whether the student has at least one non-cancelled enrollment (PENDING or VALIDATED). */
     boolean hasActiveEnrollment(Long studentId);
+
+    /** Le parent a-t-il accepté l'accès à la plateforme pour l'inscription de cet élève sur cette
+     * année scolaire ? Conditionne l'ajout du frais d'usage plateforme aux mensualités (§billing). */
+    boolean hasPlatformAccessOptIn(Long studentId, Long academicYearId);
 }

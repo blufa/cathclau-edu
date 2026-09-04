@@ -17,14 +17,20 @@ class SessionResolver {
     /** La séance que la personne vient assurer/suivre : le 1ᵉʳ cours du jour pas encore terminé à
      * l'heure {@code at} ; sinon le dernier du jour. Null si aucune séance ce jour-là. */
     ScheduleSlotPublicInfo currentSession(List<ScheduleSlotPublicInfo> allSlots, LocalDate date, LocalTime at) {
-        String dayName = frenchDay(date.getDayOfWeek());
-        List<ScheduleSlotPublicInfo> slots = allSlots.stream()
-                .filter(s -> dayName.equalsIgnoreCase(s.day()) && s.startTime() != null && s.endTime() != null)
-                .sorted(Comparator.comparing(s -> LocalTime.parse(s.startTime())))
-                .toList();
+        List<ScheduleSlotPublicInfo> slots = slotsForDay(allSlots, date);
         if (slots.isEmpty()) return null;
         return slots.stream().filter(s -> LocalTime.parse(s.endTime()).isAfter(at)).findFirst()
                 .orElse(slots.get(slots.size() - 1));
+    }
+
+    /** Séances du jour (emploi du temps hebdomadaire récurrent), triées par heure de début — sert à
+     * détecter deux séances consécutives (marge de transition entre salles, §heures). */
+    List<ScheduleSlotPublicInfo> slotsForDay(List<ScheduleSlotPublicInfo> allSlots, LocalDate date) {
+        String dayName = frenchDay(date.getDayOfWeek());
+        return allSlots.stream()
+                .filter(s -> dayName.equalsIgnoreCase(s.day()) && s.startTime() != null && s.endTime() != null)
+                .sorted(Comparator.comparing(s -> LocalTime.parse(s.startTime())))
+                .toList();
     }
 
     /** True si l'emploi du temps a au moins une séance ce jour-là (pour le marquage auto d'absence). */

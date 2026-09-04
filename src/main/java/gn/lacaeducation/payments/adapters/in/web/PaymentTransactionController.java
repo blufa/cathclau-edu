@@ -15,7 +15,7 @@ public class PaymentTransactionController {
     private final PaymentTransactionUseCase useCase;
 
     @Operation(summary = "List provider transactions, optionally filtered by provider or payment")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('transaction:read')")
     @GetMapping public List<PaymentTransaction> list(@RequestParam(required = false) PaymentProvider provider,
                                                      @RequestParam(required = false) Long paymentId) {
         if (paymentId != null) return useCase.findByPaymentId(paymentId);
@@ -24,7 +24,7 @@ public class PaymentTransactionController {
     }
 
     @Operation(summary = "Get a provider transaction by ID (includes raw response payload)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('transaction:read')")
     @GetMapping("/{id}") public ResponseEntity<PaymentTransaction> findById(@PathVariable Long id) {
         return useCase.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }

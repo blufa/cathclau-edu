@@ -76,7 +76,7 @@ public class ReportCardController {
     // ── Publish ───────────────────────────────────────────────────────────────
 
     @Operation(summary = "Publish a report card to make it visible to parents and students")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('bulletin:publish')")
     @PatchMapping("/{id}/publish")
     public ResponseEntity<ReportCard> publish(@PathVariable Long id) {
         return ResponseEntity.ok(useCase.publish(id));

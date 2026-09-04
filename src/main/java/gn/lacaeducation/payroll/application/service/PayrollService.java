@@ -59,7 +59,7 @@ public class PayrollService {
     // ── Rémunération (mode horaire / fixe) & calcul mensuel ───────────────────
 
     public record MonthlyPay(Long teacherId, int year, int month, String payMode,
-                             int realizedMinutes, int lateMinutes, int effectiveMinutes,
+                             int realizedMinutes, int lateMinutes, int earlyMinutes, int effectiveMinutes,
                              BigDecimal hourlyRate, BigDecimal fixedSalary, BigDecimal teachingPay, BigDecimal grossPay) {}
 
     public TeacherCompensation setCompensation(Long tenantId, Long teacherId, PayMode mode,
@@ -91,8 +91,10 @@ public class PayrollService {
         LocalDate from = LocalDate.of(year, month, 1);
         LocalDate to = from.withDayOfMonth(from.lengthOfMonth());
         int realized = teachingProvider.realizedMinutes(teacherId, from, to);
-        int late = workProvider.monthlyWork(teacherId, year, month).lateMinutes();
-        int effective = Math.max(0, realized - late);
+        TeacherWorkProvider.MonthlyWork mw = workProvider.monthlyWork(teacherId, year, month);
+        int late = mw.lateMinutes();
+        int early = mw.earlyMinutes();
+        int effective = Math.max(0, realized - late - early);
 
         TeacherCompensation comp = compRepo.findByTeacherId(teacherId).orElse(null);
         PayMode mode = comp != null && comp.getPayMode() != null ? comp.getPayMode() : PayMode.HOURLY;
@@ -105,7 +107,7 @@ public class PayrollService {
         BigDecimal effHours = BigDecimal.valueOf(effective).divide(BigDecimal.valueOf(60), 2, RoundingMode.HALF_UP);
         BigDecimal teachingPay = effHours.multiply(rate).setScale(2, RoundingMode.HALF_UP);
         BigDecimal gross = mode == PayMode.FIXED ? fixed.add(teachingPay) : teachingPay;
-        return new MonthlyPay(teacherId, year, month, mode.name(), realized, late, effective, rate, fixed, teachingPay, gross);
+        return new MonthlyPay(teacherId, year, month, mode.name(), realized, late, early, effective, rate, fixed, teachingPay, gross);
     }
 
     private static final String[] FR_MONTHS = {"Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
@@ -117,8 +119,8 @@ public class PayrollService {
         LocalDate from = LocalDate.of(year, month, 1);
         LocalDate to = from.withDayOfMonth(from.lengthOfMonth());
         String periodLabel = FR_MONTHS[month - 1] + " " + year;
-        String notes = String.format("%dh%02d réalisées − %d min de retard = %dh%02d effectives%s",
-                mp.realizedMinutes() / 60, mp.realizedMinutes() % 60, mp.lateMinutes(),
+        String notes = String.format("%dh%02d réalisées − %d min de retard − %d min de départ anticipé = %dh%02d effectives%s",
+                mp.realizedMinutes() / 60, mp.realizedMinutes() % 60, mp.lateMinutes(), mp.earlyMinutes(),
                 mp.effectiveMinutes() / 60, mp.effectiveMinutes() % 60,
                 "FIXED".equals(mp.payMode()) ? " + salaire fixe" : "");
         return generate(new GenerateCommand(tenantId, gn.lacaeducation.payroll.domain.EmployeeType.TEACHER,
@@ -496,9 +498,9 @@ public class PayrollService {
             int month = p.getPeriodStart().getMonthValue();
             TheoreticalMonthlyPay theoretical = computeTheoreticalMonthlyPay(p.getTeacherId(), year, month);
             int due = theoretical.normalMinutes() + theoretical.examMinutes();
-            int realized = computeMonthlyPay(p.getTeacherId(), year, month).realizedMinutes();
+            MonthlyPay mp = computeMonthlyPay(p.getTeacherId(), year, month);
             hours = new gn.lacaeducation.payroll.application.port.out.PayslipPdfGenerator.TeacherHours(
-                    due, realized, Math.max(0, due - realized));
+                    due, mp.realizedMinutes(), Math.max(0, due - mp.realizedMinutes()), mp.lateMinutes(), mp.earlyMinutes());
         }
         return pdfGenerator.generate(p, lineRepo.findByPayslipId(id), hours);
     }

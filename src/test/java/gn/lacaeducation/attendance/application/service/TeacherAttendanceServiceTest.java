@@ -4,6 +4,8 @@ import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.academics.ScheduleSlotPublicInfo;
 import gn.lacaeducation.attendance.application.port.in.TeacherAttendanceUseCase.RecordTeacherAttendanceCommand;
 import gn.lacaeducation.attendance.application.port.in.TeacherAttendanceUseCase.TeacherAttendanceStatsResponse;
+import gn.lacaeducation.attendance.application.port.out.AttendanceSettingsRepository;
+import gn.lacaeducation.attendance.application.port.out.RecessWindowRepository;
 import gn.lacaeducation.attendance.application.port.out.TeacherAttendanceRepository;
 import gn.lacaeducation.attendance.application.port.out.TeacherCheckinRepository;
 import gn.lacaeducation.attendance.domain.TeacherAttendance;
@@ -38,6 +40,8 @@ class TeacherAttendanceServiceTest {
     @Mock TeacherCheckinRepository checkinRepository;
     @Mock AcademicsDataProvider academics;
     @Mock SessionResolver sessionResolver;
+    @Mock AttendanceSettingsRepository settingsRepository;
+    @Mock RecessWindowRepository recessWindowRepository;
     @InjectMocks TeacherAttendanceService service;
 
     private static ScheduleSlotPublicInfo slot(String start, String end) {

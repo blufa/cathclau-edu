@@ -132,6 +132,7 @@ class InvoiceServiceTest {
     @Test
     void generateMonthly_addsPlatformFee_whenFeeTypeIsMonthly() {
         when(enrollmentQueryPort.hasActiveEnrollment(7L)).thenReturn(true);
+        when(enrollmentQueryPort.hasPlatformAccessOptIn(7L, 99L)).thenReturn(true);
         when(installmentRepository.findByFeeId(3L)).thenReturn(java.util.List.of(
                 gn.lacaeducation.billing.domain.Installment.builder()
                         .id(1L).feeId(3L).label("Septembre").amount(new BigDecimal("100")).build()));
@@ -152,6 +153,32 @@ class InvoiceServiceTest {
         assertThat(inv.getTotalAmount()).isEqualByComparingTo("600");
         assertThat(inv.getPlatformFeeAmount()).isEqualByComparingTo("500");
         assertThat(inv.getRemainingBalance()).isEqualByComparingTo("600");
+    }
+
+    @Test
+    void generateMonthly_neverAddsPlatformFee_whenStudentNotOptedIn() {
+        // Frais annexe optionnel (§billing) : sans opt-in du parent à l'inscription, le frais
+        // plateforme n'est jamais ajouté, même sur une vraie mensualité (MONTHLY).
+        when(enrollmentQueryPort.hasActiveEnrollment(7L)).thenReturn(true);
+        when(enrollmentQueryPort.hasPlatformAccessOptIn(7L, 99L)).thenReturn(false);
+        when(installmentRepository.findByFeeId(3L)).thenReturn(java.util.List.of(
+                gn.lacaeducation.billing.domain.Installment.builder()
+                        .id(1L).feeId(3L).label("Septembre").amount(new BigDecimal("100")).build()));
+        when(repo.existsByStudentIdAndInstallmentId(7L, 1L)).thenReturn(false);
+        when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(
+                gn.lacaeducation.billing.domain.SchoolFee.builder().id(3L)
+                        .type(gn.lacaeducation.billing.domain.FeeType.MONTHLY).build()));
+        when(familyDiscountUseCase.computeApplicable(1L, 7L, gn.lacaeducation.billing.domain.FeeType.MONTHLY))
+                .thenReturn(new gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase.ApplicableDiscount(
+                        null, null));
+        when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
+
+        var invoices = service().generateMonthly(
+                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 3L, 99L));
+
+        Invoice inv = invoices.get(0);
+        assertThat(inv.getTotalAmount()).isEqualByComparingTo("100");
+        assertThat(inv.getPlatformFeeAmount()).isNull();
     }
 
     @Test

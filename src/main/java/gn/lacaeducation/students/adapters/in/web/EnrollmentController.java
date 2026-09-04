@@ -63,6 +63,15 @@ public class EnrollmentController {
         return useCase.findById(id);
     }
 
+    @Operation(summary = "Modifier le choix d'accès à la plateforme pour cet élève (opt-in du parent, modifiable en cours d'année)")
+    @PatchMapping("/{id}/platform-access")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','SECRETARY','DIRECTOR')")
+    public Enrollment updatePlatformAccess(@PathVariable Long id, @RequestBody PlatformAccessRequest r) {
+        return useCase.updatePlatformAccessOptIn(id, Boolean.TRUE.equals(r.optIn()));
+    }
+
+    public record PlatformAccessRequest(Boolean optIn) {}
+
     @Operation(summary = "Validate a pending enrollment (checks capacity and one-validated-per-year)")
     @PatchMapping("/{id}/validate")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")

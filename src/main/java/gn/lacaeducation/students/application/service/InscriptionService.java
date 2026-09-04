@@ -43,9 +43,17 @@ public class InscriptionService implements EnrollmentUseCase, EnrollmentValidati
                 .studentId(cmd.studentId()).classId(cmd.classId())
                 .academicYearId(cmd.academicYearId())
                 .type(type)
-                .status(EnrollmentStatus.PENDING).enrolledAt(LocalDate.now()).build());
+                .status(EnrollmentStatus.PENDING).enrolledAt(LocalDate.now())
+                .platformAccessOptIn(Boolean.TRUE.equals(cmd.platformAccessOptIn())).build());
         publishCreated(saved);
         return saved;
+    }
+
+    @Override
+    public Enrollment updatePlatformAccessOptIn(Long id, boolean optIn) {
+        Enrollment e = load(id);
+        e.setPlatformAccessOptIn(optIn);
+        return enrollmentRepository.save(e);
     }
 
     @Override

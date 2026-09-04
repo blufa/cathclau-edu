@@ -24,7 +24,7 @@ public class TimetableProposalController {
     public record ProposeRequest(List<Long> classIds) {}
 
     @Operation(summary = "Proposer un emploi du temps (sans persister) à partir des disponibilités enseignants")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('emploi:manage')")
     @PostMapping("/propose")
     public TimetableProposal propose(@RequestBody ProposeRequest r) {
         return service.propose(r.classIds() != null ? r.classIds() : List.of());

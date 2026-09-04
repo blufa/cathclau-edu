@@ -15,7 +15,7 @@ public class WebhookEventController {
     private final WebhookEventUseCase useCase;
 
     @Operation(summary = "List webhook events, optionally filtered by status and/or endpoint")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('webhook:manage')")
     @GetMapping
     public List<WebhookEvent> list(
             @RequestParam(required = false) WebhookDeliveryStatus status,
@@ -30,14 +30,14 @@ public class WebhookEventController {
     }
 
     @Operation(summary = "Get a webhook event by ID")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('webhook:manage')")
     @GetMapping("/{id}")
     public ResponseEntity<WebhookEvent> findById(@PathVariable Long id) {
         return useCase.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
     @Operation(summary = "Replay a webhook event (reset to PENDING and reschedule immediately)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('webhook:manage')")
     @PostMapping("/{id}/replay")
     public ResponseEntity<WebhookEvent> replay(@PathVariable Long id) {
         return ResponseEntity.ok(useCase.replay(id));

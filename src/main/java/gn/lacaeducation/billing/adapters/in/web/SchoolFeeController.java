@@ -17,12 +17,12 @@ public class SchoolFeeController {
     public record CreateRequest(Long tenantId, Long classId, Long routeId, FeeType type, BigDecimal amount, String academicYear, String label) {}
     public record UpdateRequest(Long classId, Long routeId, FeeType type, BigDecimal amount, String academicYear, String label) {}
     @Operation(summary = "Create a new school fee configuration")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('frais:manage')")
     @PostMapping public ResponseEntity<SchoolFee> create(@RequestBody CreateRequest r) {
         return ResponseEntity.ok(useCase.create(new SchoolFeeUseCase.CreateFeeCommand(r.tenantId(), r.classId(), r.routeId(), r.type(), r.amount(), r.academicYear(), r.label())));
     }
     @Operation(summary = "Update an existing school fee configuration")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('frais:manage')")
     @PutMapping("/{id}") public ResponseEntity<SchoolFee> update(@PathVariable Long id, @RequestBody UpdateRequest r) {
         return ResponseEntity.ok(useCase.update(id, new SchoolFeeUseCase.UpdateFeeCommand(r.classId(), r.routeId(), r.type(), r.amount(), r.academicYear(), r.label())));
     }
@@ -37,6 +37,6 @@ public class SchoolFeeController {
     @Operation(summary = "List all TRANSPORT fee configurations for a route")
     @GetMapping("/route/{routeId}") public List<SchoolFee> findByRoute(@PathVariable Long routeId) { return useCase.findByRouteId(routeId); }
     @Operation(summary = "Delete a school fee configuration")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('frais:manage')")
     @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id) { useCase.delete(id); return ResponseEntity.noContent().build(); }
 }

@@ -25,4 +25,9 @@ class EnrollmentQueryAdapter implements EnrollmentQueryPort {
     public boolean hasActiveEnrollment(Long studentId) {
         return enrollmentJpaRepository.existsActiveByStudentId(studentId);
     }
+
+    @Override
+    public boolean hasPlatformAccessOptIn(Long studentId, Long academicYearId) {
+        return enrollmentJpaRepository.existsPlatformAccessOptInByStudentIdAndAcademicYearId(studentId, academicYearId);
+    }
 }
