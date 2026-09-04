@@ -79,9 +79,13 @@ public class SubscriptionController {
         return SubscriptionResponse.from(subscriptionUseCase.findById(id));
     }
 
+    // Pas de @PreAuthorize dédié : appelé par SubscriptionProvider (frontend) pour TOUS les
+    // utilisateurs connectés à chaque chargement de page (statut d'abonnement affiché dans le
+    // shell de l'appli), quel que soit leur rôle — authentification seule suffit, comme pour un
+    // endpoint /me. Restreindre à hasAuthority('abonnement:read') casse ce statut pour tout rôle
+    // personnalisé n'ayant pas explicitement cette permission (déjà vécu avec un rôle Comptable).
     @Operation(summary = "Get the active subscription of the current tenant")
     @GetMapping("/active")
-    @PreAuthorize("hasAuthority('abonnement:read')")
     public ResponseEntity<SubscriptionResponse> findActive() {
         return subscriptionUseCase.findActiveForCurrentTenant()
                 .map(SubscriptionResponse::from).map(ResponseEntity::ok)
@@ -90,7 +94,6 @@ public class SubscriptionController {
 
     @Operation(summary = "Get the current tenant's latest subscription (incl. PENDING awaiting payment)")
     @GetMapping("/current")
-    @PreAuthorize("hasAuthority('abonnement:read')")
     public ResponseEntity<SubscriptionResponse> findCurrent() {
         return subscriptionUseCase.findLatestForCurrentTenant()
                 .map(SubscriptionResponse::from).map(ResponseEntity::ok)
