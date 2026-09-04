@@ -8,5 +8,8 @@ interface EnseignantJpaRepository extends JpaRepository<EnseignantJpaEntity, Lon
     List<EnseignantJpaEntity> findByTenantId(Long tenantId);
     Optional<EnseignantJpaEntity> findByEmail(String email);
     Optional<EnseignantJpaEntity> findByUserId(Long userId);
+    Optional<EnseignantJpaEntity> findByIdempotencyKey(String idempotencyKey);
     boolean existsByTenantIdAndStaffNumber(Long tenantId, String staffNumber);
+    long countByTenantId(Long tenantId);
+    long countByTenantIdAndActiveTrue(Long tenantId);
 }

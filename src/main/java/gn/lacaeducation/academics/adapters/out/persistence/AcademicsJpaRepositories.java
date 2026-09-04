@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
@@ -34,6 +35,7 @@ interface ClasseJpaRepository extends JpaRepository<ClasseJpaEntity, Long> {
     List<ClasseJpaEntity> findByAcademicYearId(Long academicYearId);
     List<ClasseJpaEntity> findByTenantId(Long tenantId);
     List<ClasseJpaEntity> findByHeadTeacherId(Long headTeacherId);
+    long countByTenantIdAndAcademicYearId(Long tenantId, Long academicYearId);
 }
 
 interface MatiereJpaRepository extends JpaRepository<MatiereJpaEntity, Long> {
@@ -92,4 +94,10 @@ interface EmploiDuTempsJpaRepository extends JpaRepository<EmploiDuTempsJpaEntit
     boolean existsClassConflictExcluding(@Param("classId") Long classId, @Param("day") JourSemaine day,
                                           @Param("startTime") LocalTime startTime, @Param("endTime") LocalTime endTime,
                                           @Param("excludeId") Long excludeId);
+}
+
+interface ScheduleExceptionJpaRepository extends JpaRepository<ScheduleExceptionJpaEntity, Long> {
+    List<ScheduleExceptionJpaEntity> findByWeekStartDate(LocalDate weekStartDate);
+    Optional<ScheduleExceptionJpaEntity> findByOriginalScheduleIdAndWeekStartDate(Long originalScheduleId, LocalDate weekStartDate);
+    void deleteByOriginalScheduleIdAndWeekStartDate(Long originalScheduleId, LocalDate weekStartDate);
 }

@@ -78,12 +78,29 @@ public class UserController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    @Operation(summary = "Mise à jour self-service du profil de l'utilisateur connecté (prénom, nom, "
+            + "téléphone) — pour les rôles sans fiche métier dédiée (parent/élève/enseignant ont leur "
+            + "propre self-service). Jamais l'e-mail ni l'état actif/inactif.")
+    @PutMapping("/me")
+    public UserResponse updateMe(@AuthenticationPrincipal Jwt jwt, @RequestBody UpdateOwnProfileRequest req) {
+        Long userId = Long.parseLong(jwt.getSubject());
+        return toResponse(userUseCase.update(userId, new UserUseCase.UpdateUserCommand(
+                req.firstName(), req.lastName(), req.phone(), null, null)));
+    }
+
+    @Operation(summary = "Mise à jour de la photo de profil de l'utilisateur connecté")
+    @PatchMapping("/me/photo")
+    public UserResponse updateMyPhoto(@AuthenticationPrincipal Jwt jwt, @RequestParam String photoUrl) {
+        Long userId = Long.parseLong(jwt.getSubject());
+        return toResponse(userUseCase.update(userId, new UserUseCase.UpdateUserCommand(null, null, null, null, photoUrl)));
+    }
+
     @Operation(summary = "Update a user")
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('user:update')")
     public UserResponse update(@PathVariable Long id, @Valid @RequestBody UpdateUserRequest req) {
         return toResponse(userUseCase.update(id, new UserUseCase.UpdateUserCommand(
-                req.firstName(), req.lastName(), req.phone(), req.active())));
+                req.firstName(), req.lastName(), req.phone(), req.active(), null)));
     }
 
     @Operation(summary = "Deactivate a user account")
@@ -91,7 +108,7 @@ public class UserController {
     @PreAuthorize("hasAuthority('user:update')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deactivate(@PathVariable Long id) {
-        userUseCase.update(id, new UserUseCase.UpdateUserCommand(null, null, null, false));
+        userUseCase.update(id, new UserUseCase.UpdateUserCommand(null, null, null, false, null));
     }
 
     @Operation(summary = "Reactivate a user account")
@@ -99,7 +116,7 @@ public class UserController {
     @PreAuthorize("hasAuthority('user:update')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void activate(@PathVariable Long id) {
-        userUseCase.update(id, new UserUseCase.UpdateUserCommand(null, null, null, true));
+        userUseCase.update(id, new UserUseCase.UpdateUserCommand(null, null, null, true, null));
     }
 
     @Operation(summary = "Delete (soft-delete) a user")
@@ -135,9 +152,11 @@ public class UserController {
 
     private UserResponse toResponse(gn.lacaeducation.iam.domain.User u) {
         return new UserResponse(u.getId(), u.getTenantId(), u.getFirstName(), u.getLastName(),
-                u.getUsername(), u.getEmail(), u.getPhone(), u.getActive(), u.isMustChangePassword(),
+                u.getUsername(), u.getEmail(), u.getPhone(), u.getPhoto(), u.getActive(), u.isMustChangePassword(),
                 u.getPlainTemporaryPassword(), u.getLastLoginAt(), u.getCreatedAt());
     }
 
     record UpdateUserRequest(String firstName, String lastName, String phone, Boolean active) {}
+
+    record UpdateOwnProfileRequest(String firstName, String lastName, String phone) {}
 }

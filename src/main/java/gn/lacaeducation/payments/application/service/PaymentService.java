@@ -74,6 +74,14 @@ public class PaymentService implements PaymentUseCase {
     }
 
     @Override public Payment initiateGroup(GroupPaymentCommand c) {
+        // Rejoué après une coupure réseau (mode hors-ligne) avec la même clé : renvoie le paiement déjà
+        // créé au lieu d'en créer un second — même pattern que l'idempotence des webhooks Djomy.
+        if (c.idempotencyKey() != null && !c.idempotencyKey().isBlank()) {
+            Optional<Payment> existing = repo.findByIdempotencyKey(c.idempotencyKey());
+            if (existing.isPresent()) {
+                return existing.get();
+            }
+        }
         if (c.shares() == null || c.shares().isEmpty()) {
             throw new BusinessRuleException("Aucune facture sélectionnée pour le paiement groupé");
         }
@@ -99,6 +107,7 @@ public class PaymentService implements PaymentUseCase {
                 .status(PaymentStatus.INITIATED).paidAt(LocalDateTime.now())
                 .coveredMonths(c.coverageLabel()).monthsCount(c.monthsCount()).remainingAfter(c.remainingAfter())
                 .groupLines(serializeShares(c.shares(), c.studentId())).collectedByUserId(c.collectedByUserId())
+                .idempotencyKey(c.idempotencyKey())
                 .build());
 
         if (c.channel().isDeskManual()) {

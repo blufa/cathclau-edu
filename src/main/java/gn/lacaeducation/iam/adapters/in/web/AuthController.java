@@ -78,7 +78,7 @@ public class AuthController {
         Long userId = Long.parseLong(jwt.getSubject());
         var r = authUseCase.me(userId);
         return new MeResponse(r.userId(), r.tenantId(), r.firstName(), r.lastName(),
-                r.email(), r.phone(), r.roles(), r.permissions());
+                r.email(), r.phone(), r.photo(), r.roles(), r.permissions());
     }
 
     // DTO records

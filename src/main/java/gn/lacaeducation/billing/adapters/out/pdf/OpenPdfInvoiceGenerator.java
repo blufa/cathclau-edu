@@ -67,6 +67,10 @@ class OpenPdfInvoiceGenerator implements InvoicePdfGenerator {
             headerCell(amounts, "Montant");
             cell(amounts, "Montant total", Element.ALIGN_LEFT);
             cell(amounts, money(inv.getTotalAmount()) + " GNF", Element.ALIGN_RIGHT);
+            if (inv.getPlatformFeeAmount() != null && inv.getPlatformFeeAmount().signum() > 0) {
+                cell(amounts, "  dont frais de service plateforme", Element.ALIGN_LEFT);
+                cell(amounts, money(inv.getPlatformFeeAmount()) + " GNF", Element.ALIGN_RIGHT);
+            }
             if (inv.getDiscountAmount() != null && inv.getDiscountAmount().signum() > 0) {
                 String label = "Remise" + (inv.getDiscountReason() != null && !inv.getDiscountReason().isBlank()
                         ? " (" + inv.getDiscountReason() + ")" : "");

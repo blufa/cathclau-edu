@@ -201,7 +201,7 @@ public class AuthService implements AuthUseCase {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", userId));
         return new MeResult(user.getId(), user.getTenantId(), user.getFirstName(), user.getLastName(),
-                user.getEmail(), user.getPhone(), rolesOf(userId), permissionsOf(userId));
+                user.getEmail(), user.getPhone(), user.getPhoto(), rolesOf(userId), permissionsOf(userId));
     }
 
     /** Rejects login/refresh when the user's tenant is suspended, archived or terminated (403). */

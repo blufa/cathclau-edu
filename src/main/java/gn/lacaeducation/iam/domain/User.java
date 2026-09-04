@@ -25,6 +25,9 @@ public class User {
     /** Impose le changement du mot de passe (temporaire) à la première connexion. */
     private boolean mustChangePassword;
     private String phone;
+    /** URL Cloudinary — pertinent uniquement pour les rôles sans fiche métier dédiée (Parent/Student/
+     * Teacher ont leur propre champ photo, lu par les autres modules). */
+    private String photo;
     private Boolean active;
     private LocalDateTime lastLoginAt;
     /** Dernière requête authentifiée reçue (throttlé côté filtre) — sert à dériver un statut « en ligne ». */

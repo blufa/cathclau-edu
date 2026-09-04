@@ -33,6 +33,9 @@ public class Payment {
     private String groupLines;
     /** Utilisateur ayant physiquement encaissé (canal CASH uniquement) — imprimé sur le reçu. */
     private Long collectedByUserId;
+    /** Clé d'idempotence fournie par le client (mode hors-ligne) : rejouer avec la même clé après une
+     *  coupure réseau renvoie ce paiement au lieu d'en créer un second. Null pour un paiement en ligne. */
+    private String idempotencyKey;
 
     /**
      * Strict payment state machine (features/09-payments.md §9.1):

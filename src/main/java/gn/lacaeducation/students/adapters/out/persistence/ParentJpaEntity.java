@@ -19,4 +19,5 @@ class ParentJpaEntity {
     private String occupation;
     private String address;
     private String photo;
+    @Column(name = "idempotency_key") private String idempotencyKey;
 }

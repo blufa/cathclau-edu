@@ -21,6 +21,7 @@ public interface AuthUseCase {
         String lastName,
         String email,
         String phone,
+        String photo,
         List<String> roles,
         List<String> permissions
     ) {}

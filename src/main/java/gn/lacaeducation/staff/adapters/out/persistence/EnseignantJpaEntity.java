@@ -19,6 +19,7 @@ class EnseignantJpaEntity {
     @Column(name = "last_name") private String lastName;
     private String phone;
     private String email;
+    private String photo;
     private String specialization;
     @Column(name = "hire_date") private LocalDate hireDate;
     @Column(nullable = false) private Boolean active = true;
@@ -28,4 +29,5 @@ class EnseignantJpaEntity {
     @Column(name = "remuneration_rate", precision = 12, scale = 2) private BigDecimal remunerationRate;
     @Column(name = "teaching_authorization_number") private String teachingAuthorizationNumber;
     @Column(name = "cnss_number") private String cnssNumber;
+    @Column(name = "idempotency_key") private String idempotencyKey;
 }

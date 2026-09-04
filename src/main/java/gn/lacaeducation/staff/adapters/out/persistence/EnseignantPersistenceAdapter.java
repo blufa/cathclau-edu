@@ -16,6 +16,7 @@ class EnseignantPersistenceAdapter implements TeacherRepository {
     @Override public Teacher save(Teacher t) { return mapper.toDomain(repo.save(mapper.toEntity(t))); }
     @Override public Optional<Teacher> findById(Long id) { return repo.findById(id).map(mapper::toDomain); }
     @Override public Optional<Teacher> findByUserId(Long userId) { return repo.findByUserId(userId).map(mapper::toDomain); }
+    @Override public Optional<Teacher> findByIdempotencyKey(String key) { return repo.findByIdempotencyKey(key).map(mapper::toDomain); }
     @Override public List<Teacher> findByTenantId(Long t) { return repo.findByTenantId(t).stream().map(mapper::toDomain).toList(); }
     @Override public void deleteById(Long id) { repo.deleteById(id); }
     @Override public boolean existsById(Long id) { return repo.existsById(id); }

@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Optional;
 interface PaymentJpaRepository extends JpaRepository<PaymentJpaEntity, Long> {
     Optional<PaymentJpaEntity> findByReference(String reference);
+    Optional<PaymentJpaEntity> findByIdempotencyKey(String idempotencyKey);
     List<PaymentJpaEntity> findByInvoiceId(Long invoiceId);
     List<PaymentJpaEntity> findByStudentId(Long studentId);
     /** Paiements groupés (fratrie) du tenant — bornés aux lignes ayant des élèves additionnels, filtrés

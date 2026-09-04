@@ -16,4 +16,14 @@ public interface SchoolStaffDirectory {
      * (ADMIN_ECOLE / SCHOOL_ADMIN) et le responsable pédagogique, avec un email renseigné.
      */
     List<SchoolStaffContact> findGradeChangeRecipients(Long tenantId);
+
+    /** Un compte SCHOOL_ADMIN de l'école, avec son numéro de téléphone (pour alerte SMS). */
+    record SchoolAdminContact(String phone, String fullName) {}
+
+    /**
+     * Compte(s) SCHOOL_ADMIN de l'école — utilisé pour alerter par SMS le fondateur/administrateur
+     * de chaque paiement reçu (§communication), en l'absence pour l'instant d'un numéro de fondateur
+     * dédié dans les paramètres du tenant.
+     */
+    List<SchoolAdminContact> findSchoolAdminContacts(Long tenantId);
 }

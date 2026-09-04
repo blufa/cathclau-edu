@@ -23,10 +23,18 @@ public class ParentService implements ParentUseCase {
 
     @Override
     public Parent create(CreateParentCommand cmd) {
+        // Rejoué après une coupure réseau (mode hors-ligne) avec la même clé : renvoie le parent déjà
+        // créé au lieu d'en créer un second — même pattern que l'idempotence des élèves/enseignants.
+        if (cmd.idempotencyKey() != null && !cmd.idempotencyKey().isBlank()) {
+            Optional<Parent> existing = parentRepository.findByIdempotencyKey(cmd.idempotencyKey());
+            if (existing.isPresent()) {
+                return existing.get();
+            }
+        }
         return parentRepository.save(Parent.builder()
                 .tenantId(cmd.tenantId()).userId(cmd.userId()).firstName(cmd.firstName())
                 .lastName(cmd.lastName()).phone(cmd.phone()).email(cmd.email())
-                .occupation(cmd.occupation()).address(cmd.address()).build());
+                .occupation(cmd.occupation()).address(cmd.address()).idempotencyKey(cmd.idempotencyKey()).build());
     }
 
     @Override

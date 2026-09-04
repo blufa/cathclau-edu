@@ -34,7 +34,7 @@ public class EnseignantController {
                 TenantContext.get(), cmd.userId(), cmd.staffNumber(), cmd.firstName(), cmd.lastName(),
                 cmd.phone(), cmd.email(), cmd.specialization(), cmd.hireDate(),
                 cmd.employmentStatus(), cmd.diploma(), cmd.remunerationType(),
-                cmd.remunerationRate(), cmd.teachingAuthorizationNumber(), cmd.cnssNumber()));
+                cmd.remunerationRate(), cmd.teachingAuthorizationNumber(), cmd.cnssNumber(), cmd.idempotencyKey()));
         return ResponseEntity.created(URI.create("/api/staff/teachers/" + t.getId())).body(t);
     }
 
@@ -44,6 +44,25 @@ public class EnseignantController {
         Long userId;
         try { userId = Long.parseLong(jwt.getSubject()); } catch (RuntimeException e) { userId = null; }
         return teacherUseCase.findByUserId(userId).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
+    }
+
+    @Operation(summary = "Mise à jour self-service du profil de l'enseignant connecté (téléphone, e-mail)")
+    @PreAuthorize("hasRole('TEACHER')")
+    @PutMapping("/me")
+    public Teacher updateMyProfile(@AuthenticationPrincipal Jwt jwt,
+                                   @RequestBody TeacherUseCase.UpdateOwnProfileCommand cmd) {
+        return teacherUseCase.updateOwnProfile(currentUserId(jwt), cmd);
+    }
+
+    @Operation(summary = "Mise à jour de la photo de profil de l'enseignant connecté")
+    @PreAuthorize("hasRole('TEACHER')")
+    @PatchMapping("/me/photo")
+    public Teacher updateMyPhoto(@AuthenticationPrincipal Jwt jwt, @RequestParam String photoUrl) {
+        return teacherUseCase.updateOwnPhoto(currentUserId(jwt), photoUrl);
+    }
+
+    private Long currentUserId(Jwt jwt) {
+        try { return Long.parseLong(jwt.getSubject()); } catch (RuntimeException e) { return null; }
     }
 
     @Operation(summary = "Get a teacher by ID")

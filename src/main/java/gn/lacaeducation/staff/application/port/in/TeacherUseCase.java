@@ -16,15 +16,24 @@ public interface TeacherUseCase {
                                 String firstName, String lastName, String phone,
                                 String email, String specialization, LocalDate hireDate,
                                 String employmentStatus, String diploma, String remunerationType,
-                                BigDecimal remunerationRate, String teachingAuthorizationNumber, String cnssNumber) {}
+                                BigDecimal remunerationRate, String teachingAuthorizationNumber, String cnssNumber,
+                                /** Clé d'idempotence fournie par le client (mode hors-ligne) : rejouer avec la même
+                                 *  clé après une coupure réseau renvoie l'enseignant déjà créé au lieu d'en créer un second. */
+                                String idempotencyKey) {}
     record UpdateTeacherCommand(String staffNumber, String firstName, String lastName,
                                 String phone, String email, String specialization, LocalDate hireDate,
                                 String employmentStatus, String diploma, String remunerationType,
                                 BigDecimal remunerationRate, String teachingAuthorizationNumber, String cnssNumber) {}
+    /** Champs modifiables par l'enseignant lui-même — jamais matricule/spécialité/dossier professionnel. */
+    record UpdateOwnProfileCommand(String phone, String email) {}
 
     Teacher create(CreateTeacherCommand command);
     Teacher update(Long id, UpdateTeacherCommand command);
     Teacher setActive(Long id, boolean active);
+    /** Mise à jour self-service du profil de l'enseignant identifié par son compte {@code userId}. */
+    Teacher updateOwnProfile(Long userId, UpdateOwnProfileCommand command);
+    /** Mise à jour self-service de la photo de l'enseignant identifié par son compte {@code userId}. */
+    Teacher updateOwnPhoto(Long userId, String photoUrl);
     Optional<Teacher> findById(Long id);
     Optional<Teacher> findByUserId(Long userId);
     List<Teacher> findByTenantId(Long tenantId);

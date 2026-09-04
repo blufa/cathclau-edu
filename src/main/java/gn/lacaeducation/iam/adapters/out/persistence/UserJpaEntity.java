@@ -50,6 +50,8 @@ public class UserJpaEntity {
 
     private String phone;
 
+    private String photo;
+
     @Column(nullable = false)
     private Boolean active;
 
