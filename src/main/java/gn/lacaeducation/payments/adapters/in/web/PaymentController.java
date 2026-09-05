@@ -100,7 +100,7 @@ public class PaymentController {
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
     @PutMapping("/{id}/fail") public ResponseEntity<Payment> markFailed(@PathVariable Long id) { return ResponseEntity.ok(useCase.markFailed(id)); }
     @Operation(summary = "Mark a payment as refunded")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('paiement:refund')")
     @PutMapping("/{id}/refund") public ResponseEntity<Payment> markRefunded(@PathVariable Long id) { return ResponseEntity.ok(useCase.markRefunded(id)); }
     @Operation(summary = "Get a payment by ID")
     @GetMapping("/{id}") public ResponseEntity<Payment> findById(@PathVariable Long id) {
@@ -111,7 +111,7 @@ public class PaymentController {
         return useCase.findByReference(reference).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
     @Operation(summary = "Get the provider transactions associated with a payment (§9.1)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('transaction:read')")
     @GetMapping("/{id}/transactions") public List<PaymentTransaction> transactions(@PathVariable Long id) {
         return transactionUseCase.findByPaymentId(id);
     }

@@ -37,12 +37,12 @@ public class TransportRouteController {
     public TransportRoute get(@PathVariable Long id) { return service.route(id); }
 
     @Operation(summary = "Créer une ligne")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @PreAuthorize("hasAuthority('transport:manage')")
     @PostMapping
     public TransportRoute create(@RequestBody RouteRequest r) { return service.createRoute(toCommand(r)); }
 
     @Operation(summary = "Modifier une ligne")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @PreAuthorize("hasAuthority('transport:manage')")
     @PutMapping("/{id}")
     public TransportRoute update(@PathVariable Long id, @RequestBody RouteRequest r) { return service.updateRoute(id, toCommand(r)); }
 
@@ -56,14 +56,14 @@ public class TransportRouteController {
     public List<TransportStop> stops(@PathVariable Long id) { return service.stops(id); }
 
     @Operation(summary = "Ajouter un arrêt à une ligne")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @PreAuthorize("hasAuthority('transport:manage')")
     @PostMapping("/{id}/stops")
     public TransportStop addStop(@PathVariable Long id, @RequestBody StopRequest r) {
         return service.addStop(TenantContext.get(), id, r.name(), r.pickupTime(), r.dropTime(), r.sequence());
     }
 
     @Operation(summary = "Supprimer un arrêt")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @PreAuthorize("hasAuthority('transport:manage')")
     @DeleteMapping("/stops/{stopId}")
     public ResponseEntity<Void> deleteStop(@PathVariable Long stopId) { service.deleteStop(stopId); return ResponseEntity.noContent().build(); }
 

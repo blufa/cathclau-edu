@@ -50,12 +50,12 @@ public class StudentAttendanceController {
             String reason) {}
 
     @Operation(summary = "Record a student attendance entry")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER','SECRETARY')")
+    @PreAuthorize("hasAuthority('presence:create')")
     @PostMapping
     public StudentAttendance record(@RequestBody RecordAttendanceCommand cmd) { return useCase.record(cmd); }
 
     @Operation(summary = "Marquer un élève absent aujourd'hui (un scan ne peut jamais produire ce statut)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER','SECRETARY')")
+    @PreAuthorize("hasAuthority('presence:create')")
     @PostMapping("/{studentId}/mark-absent")
     public StudentAttendance markAbsent(@PathVariable Long studentId, @RequestParam(required = false) String reason) {
         return useCase.markAbsent(studentId, reason);
@@ -63,7 +63,7 @@ public class StudentAttendanceController {
 
     @Operation(summary = "Correction manuelle : saisir l'heure d'entrée d'un élève pour une date donnée "
             + "(le retard est calculé automatiquement vs l'emploi du temps, comme pour un scan)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER','SECRETARY')")
+    @PreAuthorize("hasAuthority('presence:create')")
     @PostMapping("/{studentId}/manual-entry")
     public StudentCheckin manualEntry(@PathVariable Long studentId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
@@ -74,7 +74,7 @@ public class StudentAttendanceController {
     @Operation(summary = "Badge de retrait (maternelle/primaire) : enregistrer qui est venu récupérer "
             + "l'enfant — un parent déjà lié (pickerParentId) ou une personne saisie librement "
             + "(pickerName + pickerRelation)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER','SECRETARY')")
+    @PreAuthorize("hasAuthority('presence:create')")
     @PostMapping("/{studentId}/pickup")
     public ChildPickup recordPickup(@PathVariable Long studentId,
             @RequestParam(required = false) Long pickerParentId,
@@ -91,7 +91,7 @@ public class StudentAttendanceController {
     }
 
     @Operation(summary = "Record attendance for an entire class at once")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER','SECRETARY')")
+    @PreAuthorize("hasAuthority('presence:create')")
     @PostMapping("/bulk")
     public ResponseEntity<List<StudentAttendance>> recordBulk(@Valid @RequestBody BulkAttendanceRequest req) {
         List<AttendanceEntry> entries = req.attendances().stream()
@@ -124,7 +124,7 @@ public class StudentAttendanceController {
             @AuthenticationPrincipal Jwt jwt) { assertParentScope(jwt, studentId); return useCase.findByStudent(studentId, from, to); }
 
     @Operation(summary = "Liste des absents d'une classe pour une date (PDF)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER','SECRETARY')")
+    @PreAuthorize("hasAuthority('presence:read') and !hasRole('PARENT') and !hasRole('STUDENT')")
     @GetMapping("/class/{classId}/absentees/download")
     public ResponseEntity<byte[]> absenteesDownload(@PathVariable Long classId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
@@ -136,7 +136,7 @@ public class StudentAttendanceController {
     }
 
     @Operation(summary = "Rapport des retards d'une classe sur une période (PDF)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER','SECRETARY')")
+    @PreAuthorize("hasAuthority('presence:read') and !hasRole('PARENT') and !hasRole('STUDENT')")
     @GetMapping("/class/{classId}/lateness/download")
     public ResponseEntity<byte[]> latenessDownload(@PathVariable Long classId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
@@ -149,21 +149,21 @@ public class StudentAttendanceController {
     }
 
     @Operation(summary = "Update the status of an attendance record")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER','SECRETARY')")
+    @PreAuthorize("hasAuthority('presence:update')")
     @PutMapping("/{id}")
     public StudentAttendance update(@PathVariable Long id, @RequestParam AttendanceStatus status, @RequestParam(required=false) String reason) { return useCase.update(id, status, reason); }
 
     public record JustifyRequest(Boolean justified, String reason, String justificationDoc) {}
 
     @Operation(summary = "Justifier (ou non) une absence : justifié + motif + pièce")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER','SECRETARY')")
+    @PreAuthorize("hasAuthority('presence:update')")
     @PatchMapping("/{id}/justify")
     public StudentAttendance justify(@PathVariable Long id, @RequestBody JustifyRequest r) {
         return useCase.justify(id, r.justified(), r.reason(), r.justificationDoc());
     }
 
     @Operation(summary = "Alertes : élèves d'une classe avec ≥ seuil absences non justifiées sur la période")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER','SECRETARY')")
+    @PreAuthorize("hasAuthority('presence:read') and !hasRole('PARENT') and !hasRole('STUDENT')")
     @GetMapping("/class/{classId}/unjustified-alerts")
     public List<StudentAttendanceUseCase.UnjustifiedAlert> unjustifiedAlerts(
             @PathVariable Long classId,

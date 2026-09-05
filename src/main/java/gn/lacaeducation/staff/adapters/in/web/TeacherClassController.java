@@ -26,7 +26,7 @@ public class TeacherClassController {
     }
 
     @Operation(summary = "Replace the set of classes a teacher is assigned to")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('classe:manage')")
     @PutMapping("/{teacherId}/assigned-classes")
     public List<Long> set(@PathVariable Long teacherId, @RequestBody AssignClassesRequest r) {
         service.setClasses(teacherId, r.classIds());

@@ -35,7 +35,7 @@ public class TransportSubscriptionController {
     }
 
     @Operation(summary = "Abonner un élève à une ligne")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @PreAuthorize("hasAuthority('transport:manage')")
     @PostMapping
     public TransportSubscription subscribe(@RequestBody SubscribeRequest r) {
         return service.subscribe(new SubscribeCommand(TenantContext.get(), r.routeId(), r.stopId(), r.studentId(),
@@ -43,7 +43,7 @@ public class TransportSubscriptionController {
     }
 
     @Operation(summary = "Résilier un abonnement")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @PreAuthorize("hasAuthority('transport:manage')")
     @PatchMapping("/{id}/cancel")
     public TransportSubscription cancel(@PathVariable Long id) { return service.cancel(id); }
 

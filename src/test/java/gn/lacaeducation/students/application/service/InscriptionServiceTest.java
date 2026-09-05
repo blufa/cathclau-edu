@@ -31,21 +31,21 @@ class InscriptionServiceTest {
     @Test
     void enroll_createsWithPendingStatus() {
         when(enrollmentRepository.save(any())).thenAnswer(i -> { Enrollment e = i.getArgument(0); e.setId(1L); return e; });
-        Enrollment result = service.enroll(new EnrollCommand(10L, 20L, 30L, EnrollmentType.NEW));
+        Enrollment result = service.enroll(new EnrollCommand(10L, 20L, 30L, EnrollmentType.NEW, null));
         assertThat(result.getStatus()).isEqualTo(EnrollmentStatus.PENDING);
     }
 
     @Test
     void enroll_publishesEnrollmentCreatedEvent() {
         when(enrollmentRepository.save(any())).thenAnswer(i -> { Enrollment e = i.getArgument(0); e.setId(1L); return e; });
-        service.enroll(new EnrollCommand(10L, 20L, 30L, EnrollmentType.NEW));
+        service.enroll(new EnrollCommand(10L, 20L, 30L, EnrollmentType.NEW, null));
         verify(eventPublisher).publishEvent(any(gn.lacaeducation.students.application.event.EnrollmentCreatedEvent.class));
     }
 
     @Test
     void enroll_duplicateActiveEnrollmentForYear_throwsConflict() {
         when(enrollmentRepository.existsActiveForStudentYear(10L, 30L)).thenReturn(true);
-        assertThatThrownBy(() -> service.enroll(new EnrollCommand(10L, 20L, 30L, EnrollmentType.NEW)))
+        assertThatThrownBy(() -> service.enroll(new EnrollCommand(10L, 20L, 30L, EnrollmentType.NEW, null)))
                 .isInstanceOf(ConflictException.class);
         verify(enrollmentRepository, never()).save(any());
     }
@@ -55,7 +55,7 @@ class InscriptionServiceTest {
         Enrollment validated = Enrollment.builder().id(1L).studentId(10L).classId(20L)
                 .academicYearId(30L).status(EnrollmentStatus.VALIDATED).build();
         when(enrollmentRepository.findById(1L)).thenReturn(Optional.of(validated));
-        assertThatThrownBy(() -> service.update(1L, new EnrollCommand(10L, 21L, 30L, EnrollmentType.NEW)))
+        assertThatThrownBy(() -> service.update(1L, new EnrollCommand(10L, 21L, 30L, EnrollmentType.NEW, null)))
                 .isInstanceOf(gn.lacaeducation.common.BusinessRuleException.class);
     }
 
@@ -84,7 +84,7 @@ class InscriptionServiceTest {
     @Test
     void enroll_repositoryError_propagatesException() {
         when(enrollmentRepository.save(any())).thenThrow(new RuntimeException("DB error"));
-        assertThatThrownBy(() -> service.enroll(new EnrollCommand(10L, 20L, 30L, EnrollmentType.NEW)))
+        assertThatThrownBy(() -> service.enroll(new EnrollCommand(10L, 20L, 30L, EnrollmentType.NEW, null)))
                 .isInstanceOf(RuntimeException.class);
     }
 

@@ -17,7 +17,7 @@ import java.util.List;
 @Tag(name = "Biometric Enrollment", description = "Enrôlement des personnes sur les appareils biométriques")
 @RestController
 @RequestMapping("/api/v1/biometric/enrollments")
-@PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+@PreAuthorize("hasAuthority('biometrique:manage')")
 @RequiredArgsConstructor
 public class BiometricEnrollmentController {
 

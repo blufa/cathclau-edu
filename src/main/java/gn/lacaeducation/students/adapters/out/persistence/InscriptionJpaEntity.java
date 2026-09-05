@@ -18,4 +18,5 @@ class InscriptionJpaEntity {
     @Enumerated(EnumType.STRING) private EnrollmentType type;
     @Enumerated(EnumType.STRING) private EnrollmentStatus status;
     @Column(name = "enrolled_at") private LocalDate enrolledAt;
+    @Column(name = "platform_access_opt_in", nullable = false) private Boolean platformAccessOptIn;
 }

@@ -44,45 +44,45 @@ public class ExpenseController {
     public Expense findById(@PathVariable Long id) { return service.findById(id); }
 
     @Operation(summary = "Create a draft expense")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('depense:create')")
     @PostMapping
     public Expense create(@RequestBody ExpenseRequest r) {
         return service.create(toCommand(r));
     }
 
     @Operation(summary = "Update a draft expense")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('depense:create')")
     @PutMapping("/{id}")
     public Expense update(@PathVariable Long id, @RequestBody ExpenseRequest r) {
         return service.update(id, toCommand(r));
     }
 
     @Operation(summary = "Submit a draft expense for approval")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('depense:create')")
     @PatchMapping("/{id}/submit")
     public Expense submit(@PathVariable Long id) { return service.submit(id); }
 
     @Operation(summary = "Approve a submitted expense (director)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('depense:approve')")
     @PatchMapping("/{id}/approve")
     public Expense approve(@PathVariable Long id, @AuthenticationPrincipal Jwt jwt) {
         return service.approve(id, currentUserId(jwt));
     }
 
     @Operation(summary = "Reject a submitted expense with a reason (director)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('depense:approve')")
     @PatchMapping("/{id}/reject")
     public Expense reject(@PathVariable Long id, @RequestBody RejectRequest r, @AuthenticationPrincipal Jwt jwt) {
         return service.reject(id, currentUserId(jwt), r.reason());
     }
 
     @Operation(summary = "Mark an approved expense as paid (accountant)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('depense:create')")
     @PatchMapping("/{id}/pay")
     public Expense pay(@PathVariable Long id) { return service.pay(id); }
 
     @Operation(summary = "Delete a draft expense")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('depense:create')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) { service.delete(id); return ResponseEntity.noContent().build(); }
 

@@ -27,7 +27,7 @@ public class StudentCardController {
                                String photoUrl, LocalDate expirationDate) {}
 
     @Operation(summary = "Issue a card for a student")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @PreAuthorize("hasAuthority('carte:manage')")
     @PostMapping("/eleves/{studentId}/carte")
     public StudentCard issue(@PathVariable Long studentId, @RequestBody IssueRequest r) {
         return service.issue(new IssueCardCommand(TenantContext.get(), studentId, r.cardTemplateId(),
@@ -45,12 +45,12 @@ public class StudentCardController {
     public List<StudentCard> list() { return service.findByTenant(TenantContext.get()); }
 
     @Operation(summary = "Re-issue (replace) a card")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @PreAuthorize("hasAuthority('carte:manage')")
     @PatchMapping("/cartes/{id}/remplacer")
     public StudentCard replace(@PathVariable Long id) { return service.replace(id); }
 
     @Operation(summary = "Declare a card lost")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @PreAuthorize("hasAuthority('carte:manage')")
     @PatchMapping("/cartes/{id}/declarer-perdue")
     public StudentCard declareLost(@PathVariable Long id) { return service.declareLost(id); }
 

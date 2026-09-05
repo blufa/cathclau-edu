@@ -2,8 +2,12 @@ package gn.lacaeducation.attendance.application.service;
 import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.academics.ScheduleSlotPublicInfo;
 import gn.lacaeducation.attendance.application.port.in.TeacherAttendanceUseCase;
+import gn.lacaeducation.attendance.application.port.out.AttendanceSettingsRepository;
+import gn.lacaeducation.attendance.application.port.out.RecessWindowRepository;
 import gn.lacaeducation.attendance.application.port.out.TeacherAttendanceRepository;
 import gn.lacaeducation.attendance.application.port.out.TeacherCheckinRepository;
+import gn.lacaeducation.attendance.domain.AttendanceSettings;
+import gn.lacaeducation.attendance.domain.RecessWindow;
 import gn.lacaeducation.attendance.domain.TeacherAttendance;
 import gn.lacaeducation.attendance.domain.TeacherAttendanceStatus;
 import gn.lacaeducation.attendance.domain.TeacherCheckin;
@@ -23,12 +27,42 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 @Service @Transactional @RequiredArgsConstructor
 public class TeacherAttendanceService implements TeacherAttendanceUseCase {
     private final TeacherAttendanceRepository attendanceRepository;
     private final TeacherCheckinRepository checkinRepository;
     private final AcademicsDataProvider academics;
     private final SessionResolver sessionResolver;
+    private final AttendanceSettingsRepository settingsRepository;
+    private final RecessWindowRepository recessWindowRepository;
+
+    /**
+     * Heure à partir de laquelle un retard commence à être compté pour cette séance : l'heure de
+     * début prévue, repoussée si (a) elle tombe dans une fenêtre de récréation définie par l'école
+     * (temps non imputable à l'enseignant) et/ou (b) la séance précédente du même jour se termine
+     * pile à cette heure dans une salle différente (marge de transition, temps de trajet).
+     */
+    private LocalTime graceDeadline(Long teacherId, LocalDate date, ScheduleSlotPublicInfo session) {
+        LocalTime start = LocalTime.parse(session.startTime());
+        LocalTime deadline = start;
+        for (RecessWindow w : recessWindowRepository.findByTenantId(TenantContext.get())) {
+            if (w.contains(start) && w.getEndTime().isAfter(deadline)) deadline = w.getEndTime();
+        }
+        List<ScheduleSlotPublicInfo> daySlots = sessionResolver.slotsForDay(academics.findScheduleByTeacher(teacherId), date);
+        ScheduleSlotPublicInfo previous = daySlots.stream()
+                .filter(s -> !Objects.equals(s.id(), session.id()))
+                .filter(s -> LocalTime.parse(s.endTime()).equals(start))
+                .findFirst().orElse(null);
+        if (previous != null && !Objects.equals(previous.roomId(), session.roomId())) {
+            int margin = settingsRepository.findByTenantId(TenantContext.get())
+                    .map(AttendanceSettings::transitionMarginMinutesOrDefault)
+                    .orElseGet(() -> AttendanceSettings.defaults().transitionMarginMinutesOrDefault());
+            LocalTime withMargin = start.plusMinutes(margin);
+            if (withMargin.isAfter(deadline)) deadline = withMargin;
+        }
+        return deadline;
+    }
     @Override
     public TeacherAttendance record(RecordTeacherAttendanceCommand cmd) {
         return attendanceRepository.save(TeacherAttendance.builder()
@@ -48,11 +82,12 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
                 .orElseGet(() -> {
                     LocalTime start = LocalTime.parse(session.startTime());
                     LocalTime end = LocalTime.parse(session.endTime());
-                    int late = (int) Math.max(0, Duration.between(start, now).toMinutes());
+                    LocalTime deadline = graceDeadline(teacherId, today, session);
+                    int late = (int) Math.max(0, Duration.between(deadline, now).toMinutes());
                     return checkinRepository.save(TeacherCheckin.builder()
                             .tenantId(TenantContext.get()).teacherId(teacherId).checkinDate(today)
                             .scheduleSlotId(session.id()).sessionStart(start).sessionEnd(end)
-                            .checkInTime(now).lateMinutes(late).createdAt(LocalDateTime.now()).build());
+                            .checkInTime(now).lateMinutes(late).earlyMinutes(0).createdAt(LocalDateTime.now()).build());
                 });
         upsertDailyAttendance(teacherId, today);
         return checkin;
@@ -71,6 +106,10 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
                         "Aucun pointage d'entrée trouvé pour cette séance : scannez d'abord l'entrée."));
         checkin.setCheckOutTime(now);
         if (checkin.getSessionEnd() == null) checkin.setSessionEnd(LocalTime.parse(session.endTime()));
+        // Départ anticipé : sortie pointée avant la fin prévue de la séance (symétrique du retard
+        // à l'entrée). Un pointage de sortie existe forcément ici (on vient de le fixer ci-dessus).
+        int early = (int) Math.max(0, Duration.between(now, checkin.getSessionEnd()).toMinutes());
+        checkin.setEarlyMinutes(early);
         return checkinRepository.save(checkin);
     }
 
@@ -85,7 +124,8 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
         }
         LocalTime start = LocalTime.parse(session.startTime());
         LocalTime end = LocalTime.parse(session.endTime());
-        int late = (int) Math.max(0, Duration.between(start, checkInTime).toMinutes());
+        LocalTime deadline = graceDeadline(teacherId, date, session);
+        int late = (int) Math.max(0, Duration.between(deadline, checkInTime).toMinutes());
         TeacherCheckin checkin = checkinRepository.findByTeacherIdAndDateAndSlot(teacherId, date, session.id())
                 .orElseGet(() -> TeacherCheckin.builder()
                         .tenantId(TenantContext.get()).teacherId(teacherId).checkinDate(date)
@@ -146,8 +186,10 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
         long present = recs.stream().filter(r -> r.getStatus() == TeacherAttendanceStatus.PRESENT).count();
         long absent = recs.stream().filter(r -> r.getStatus() == TeacherAttendanceStatus.ABSENT).count();
         // Retard cumulé = somme des retards de chaque séance pointée (pas seulement le 1ᵉʳ cours).
-        int totalLate = checkinRepository.findByTeacherIdAndDateBetween(teacherId, from, to).stream()
-                .mapToInt(c -> c.getLateMinutes() != null ? c.getLateMinutes() : 0).sum();
+        List<TeacherCheckin> checkins = checkinRepository.findByTeacherIdAndDateBetween(teacherId, from, to);
+        int totalLate = checkins.stream().mapToInt(c -> c.getLateMinutes() != null ? c.getLateMinutes() : 0).sum();
+        // Départ anticipé cumulé (symétrique) : 0 si la sortie n'a jamais été pointée (bénéfice du doute).
+        int totalEarly = checkins.stream().mapToInt(c -> c.getEarlyMinutes() != null ? c.getEarlyMinutes() : 0).sum();
         // Minutes prévues par jour de semaine (emploi du temps hebdomadaire de l'enseignant).
         Map<String, Integer> minutesByDay = new HashMap<>();
         for (var s : academics.findScheduleByTeacher(teacherId)) {
@@ -165,8 +207,8 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
                 .filter(r -> r.getStatus() == TeacherAttendanceStatus.ABSENT)
                 .mapToInt(r -> minutesByDay.getOrDefault(frenchDay(r.getDate().getDayOfWeek()), 0))
                 .sum();
-        int effective = Math.max(0, dueMinutes - absentMinutes - totalLate);
-        return new MonthlySummary(teacherId, year, month, present, absent, totalLate, dueMinutes, absentMinutes, effective);
+        int effective = Math.max(0, dueMinutes - absentMinutes - totalLate - totalEarly);
+        return new MonthlySummary(teacherId, year, month, present, absent, totalLate, totalEarly, dueMinutes, absentMinutes, effective);
     }
 
     private static String frenchDay(DayOfWeek dow) {

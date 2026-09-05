@@ -37,7 +37,7 @@ public class ExemptionController {
     }
 
     @Operation(summary = "Lister les exonérations du tenant (archive complète)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('frais:manage')")
     @GetMapping
     public List<Exemption> list() {
         return useCase.findByTenant(TenantContext.get());

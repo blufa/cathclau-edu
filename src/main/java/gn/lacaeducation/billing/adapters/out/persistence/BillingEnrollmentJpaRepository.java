@@ -21,4 +21,9 @@ interface BillingEnrollmentJpaRepository extends JpaRepository<BillingEnrollment
 
     @Query("SELECT COUNT(e) > 0 FROM BillingEnrollmentJpaEntity e WHERE e.studentId = :studentId AND e.status <> 'CANCELLED'")
     boolean existsActiveByStudentId(@Param("studentId") Long studentId);
+
+    @Query("SELECT COUNT(e) > 0 FROM BillingEnrollmentJpaEntity e WHERE e.studentId = :studentId "
+            + "AND e.academicYearId = :academicYearId AND e.status <> 'CANCELLED' AND e.platformAccessOptIn = true")
+    boolean existsPlatformAccessOptInByStudentIdAndAcademicYearId(
+            @Param("studentId") Long studentId, @Param("academicYearId") Long academicYearId);
 }

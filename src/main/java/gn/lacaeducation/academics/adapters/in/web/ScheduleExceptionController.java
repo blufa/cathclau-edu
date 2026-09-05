@@ -43,7 +43,7 @@ public class ScheduleExceptionController {
     public record CancelForWeekRequest(LocalDate weekStartDate, String reason) {}
 
     @Operation(summary = "Déplace un créneau récurrent pour une semaine précise uniquement (409 si conflit)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('emploi:manage')")
     @PostMapping("/{scheduleId}/move-for-week")
     public ScheduleException moveForWeek(@PathVariable Long scheduleId, @RequestBody MoveForWeekRequest req) {
         return useCase.moveForWeek(new MoveScheduleForWeekCommand(
@@ -52,14 +52,14 @@ public class ScheduleExceptionController {
     }
 
     @Operation(summary = "Annule un créneau récurrent pour une semaine précise (le cours n'a pas lieu, sans déplacement)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('emploi:manage')")
     @PostMapping("/{scheduleId}/cancel-for-week")
     public ScheduleException cancelForWeek(@PathVariable Long scheduleId, @RequestBody CancelForWeekRequest req) {
         return useCase.cancelForWeek(scheduleId, req.weekStartDate(), req.reason());
     }
 
     @Operation(summary = "Supprime l'exception d'une semaine : le créneau redevient récurrent (position d'origine)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('emploi:manage')")
     @DeleteMapping("/{scheduleId}/week-exception")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void cancelException(@PathVariable Long scheduleId, @RequestParam LocalDate weekStartDate) {

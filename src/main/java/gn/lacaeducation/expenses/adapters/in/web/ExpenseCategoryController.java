@@ -27,21 +27,21 @@ public class ExpenseCategoryController {
     public List<ExpenseCategory> list() { return service.categories(TenantContext.get()); }
 
     @Operation(summary = "Create an expense category")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('budget:manage')")
     @PostMapping
     public ExpenseCategory create(@RequestBody CategoryRequest r) {
         return service.saveCategory(ExpenseCategory.builder().tenantId(TenantContext.get()).name(r.name()).parentId(r.parentId()).build());
     }
 
     @Operation(summary = "Update an expense category")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('budget:manage')")
     @PutMapping("/{id}")
     public ExpenseCategory update(@PathVariable Long id, @RequestBody CategoryRequest r) {
         return service.updateCategory(id, ExpenseCategory.builder().name(r.name()).parentId(r.parentId()).build());
     }
 
     @Operation(summary = "Delete an expense category")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('budget:manage')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) { service.deleteCategory(id); return ResponseEntity.noContent().build(); }
 }

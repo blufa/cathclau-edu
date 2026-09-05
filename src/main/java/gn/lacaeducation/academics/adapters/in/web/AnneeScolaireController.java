@@ -37,7 +37,7 @@ public class AnneeScolaireController {
 
     @Operation(summary = "Create a new academic year")
     @PostMapping
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('annee:manage')")
     public ResponseEntity<AnneeScolaire> create(@Valid @RequestBody CreateAcademicYearCommand command) {
         AnneeScolaire annee = useCase.create(new CreateAcademicYearCommand(
                 TenantContext.get(), command.label(), command.startDate(), command.endDate()
@@ -66,7 +66,7 @@ public class AnneeScolaireController {
 
     @Operation(summary = "Update an academic year (label, dates)")
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('annee:manage')")
     public ResponseEntity<AnneeScolaire> update(@PathVariable Long id,
                                                 @Valid @RequestBody CreateAcademicYearCommand cmd) {
         return ResponseEntity.ok(useCase.update(id, new CreateAcademicYearCommand(
@@ -75,7 +75,7 @@ public class AnneeScolaireController {
 
     @Operation(summary = "Change the status: EN_COURS (start), CLOTUREE (close) or ARCHIVEE (archive)")
     @PatchMapping("/{id}/status")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('annee:manage')")
     public ResponseEntity<AnneeScolaire> changeStatus(@PathVariable Long id, @RequestParam StatutAnneeScolaire status) {
         AnneeScolaire result = switch (status) {
             case EN_COURS -> useCase.start(id);
@@ -88,28 +88,28 @@ public class AnneeScolaireController {
 
     @Operation(summary = "Set this academic year as the current one (only one current per tenant)")
     @PatchMapping("/{id}/set-current")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('annee:manage')")
     public ResponseEntity<AnneeScolaire> setCurrent(@PathVariable Long id) {
         return ResponseEntity.ok(useCase.setCurrent(id));
     }
 
     @Operation(summary = "Start (activate) an academic year")
     @PutMapping("/{id}/start")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('annee:manage')")
     public ResponseEntity<AnneeScolaire> start(@PathVariable Long id) {
         return ResponseEntity.ok(useCase.start(id));
     }
 
     @Operation(summary = "Close an academic year")
     @PutMapping("/{id}/close")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('annee:manage')")
     public ResponseEntity<AnneeScolaire> close(@PathVariable Long id) {
         return ResponseEntity.ok(useCase.close(id));
     }
 
     @Operation(summary = "Create a period (term/semester) within an academic year")
     @PostMapping("/{academicYearId}/periods")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('periode:manage')")
     public ResponseEntity<Periode> createPeriod(@PathVariable Long academicYearId,
                                                 @RequestBody CreatePeriodCommand cmd) {
         Periode p = useCase.createPeriod(new CreatePeriodCommand(
@@ -126,7 +126,7 @@ public class AnneeScolaireController {
 
     @Operation(summary = "Update a period (label, type, order, dates) — only while open")
     @PutMapping("/periods/{periodId}")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('periode:manage')")
     public ResponseEntity<Periode> updatePeriod(@PathVariable Long periodId,
                                                 @RequestBody CreatePeriodCommand cmd) {
         return ResponseEntity.ok(useCase.updatePeriod(periodId, new CreatePeriodCommand(
@@ -135,7 +135,7 @@ public class AnneeScolaireController {
 
     @Operation(summary = "Close a period, freezing grades and triggering report card generation")
     @PutMapping("/periods/{periodId}/close")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('periode:manage')")
     public ResponseEntity<Periode> closePeriod(@PathVariable Long periodId) {
         return ResponseEntity.ok(useCase.closePeriod(periodId));
     }

@@ -19,7 +19,7 @@ import java.util.List;
 @Tag(name = "Biometric Punches", description = "Ingestion (Push API) et journal des pointages biométriques")
 @RestController
 @RequestMapping("/api/v1/biometric")
-@PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+@PreAuthorize("hasAuthority('biometrique:manage')")
 @RequiredArgsConstructor
 public class BiometricPunchController {
 

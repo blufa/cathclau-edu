@@ -27,7 +27,7 @@ public class EnseignantController {
     private final TeacherUseCase teacherUseCase;
 
     @Operation(summary = "Create a new teacher")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('enseignant:create')")
     @PostMapping
     public ResponseEntity<Teacher> create(@RequestBody CreateTeacherCommand cmd) {
         Teacher t = teacherUseCase.create(new CreateTeacherCommand(
@@ -67,23 +67,25 @@ public class EnseignantController {
 
     @Operation(summary = "Get a teacher by ID")
     @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('enseignant:read')")
     public ResponseEntity<Teacher> findById(@PathVariable Long id) {
         return teacherUseCase.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
     @Operation(summary = "List all teachers for the current tenant")
     @GetMapping
+    @PreAuthorize("hasAuthority('enseignant:read')")
     public List<Teacher> findAll() { return teacherUseCase.findByTenantId(TenantContext.get()); }
 
     @Operation(summary = "Update an existing teacher")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('enseignant:update')")
     @PutMapping("/{id}")
     public Teacher update(@PathVariable Long id, @RequestBody TeacherUseCase.UpdateTeacherCommand cmd) {
         return teacherUseCase.update(id, cmd);
     }
 
     @Operation(summary = "Delete a teacher (forbidden if linked to evaluations — deactivate instead)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('enseignant:delete')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         teacherUseCase.delete(id);
@@ -91,12 +93,12 @@ public class EnseignantController {
     }
 
     @Operation(summary = "Deactivate a teacher")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('enseignant:update')")
     @PatchMapping("/{id}/deactivate")
     public Teacher deactivate(@PathVariable Long id) { return teacherUseCase.setActive(id, false); }
 
     @Operation(summary = "Reactivate a teacher")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('enseignant:update')")
     @PatchMapping("/{id}/activate")
     public Teacher activate(@PathVariable Long id) { return teacherUseCase.setActive(id, true); }
 

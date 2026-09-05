@@ -103,13 +103,17 @@ public class InvoiceService implements InvoiceUseCase {
                 ? familyDiscount.percentage() : BigDecimal.ZERO;
 
         // Frais d'usage plateforme (SUPER_ADMIN) : ajouté uniquement aux vraies mensualités (frais
-        // type MONTHLY), jamais au transport/cantine/etc. qui réutilisent aussi generateMonthly().
+        // type MONTHLY), jamais au transport/cantine/etc. qui réutilisent aussi generateMonthly(), et
+        // seulement si le parent a accepté l'accès à la plateforme pour cet élève à l'inscription
+        // (frais annexe optionnel, §billing) — jamais imposé automatiquement à toutes les familles.
         // Chaque facture fige le montant courant : un changement de tarif plateforme n'affecte que
         // les factures générées ensuite, jamais celles déjà émises.
         boolean isMonthlyTuition = schoolFeeRepository.findById(c.feeId())
                 .map(fee -> fee.getType() == gn.lacaeducation.billing.domain.FeeType.MONTHLY)
                 .orElse(false);
-        BigDecimal platformFee = isMonthlyTuition ? platformFeeQuoteApi.currentAmount() : BigDecimal.ZERO;
+        boolean platformAccessOptIn = isMonthlyTuition
+                && enrollmentQueryPort.hasPlatformAccessOptIn(c.studentId(), c.academicYearId());
+        BigDecimal platformFee = platformAccessOptIn ? platformFeeQuoteApi.currentAmount() : BigDecimal.ZERO;
 
         List<Invoice> created = new ArrayList<>();
         for (gn.lacaeducation.billing.domain.Installment month : months) {

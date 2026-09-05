@@ -26,4 +26,8 @@ class BillingEnrollmentJpaEntity {
     private Long classId;
     @Column(name = "status", nullable = false)
     private String status;
+    @Column(name = "academic_year_id", nullable = false)
+    private Long academicYearId;
+    @Column(name = "platform_access_opt_in", nullable = false)
+    private Boolean platformAccessOptIn;
 }

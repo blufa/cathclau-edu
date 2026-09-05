@@ -5,11 +5,16 @@ import gn.lacaeducation.students.domain.*;
 import java.util.List;
 
 public interface EnrollmentUseCase {
-    record EnrollCommand(Long studentId, Long classId, Long academicYearId, EnrollmentType type) {}
+    /** platformAccessOptIn : le parent accepte-t-il que l'élève soit connecté à la plateforme (frais
+     * annexe ajouté aux mensualités si oui) ? Null/absent traité comme false. */
+    record EnrollCommand(Long studentId, Long classId, Long academicYearId, EnrollmentType type,
+                         Boolean platformAccessOptIn) {}
 
     Enrollment enroll(EnrollCommand command);
     Enrollment reenroll(EnrollCommand command);
     Enrollment update(Long id, EnrollCommand command);
+    /** Modifie après coup le choix d'accès à la plateforme (le parent peut changer d'avis en cours d'année). */
+    Enrollment updatePlatformAccessOptIn(Long id, boolean optIn);
     Enrollment validate(Long id);
     Enrollment cancel(Long id);
     Enrollment findById(Long id);
