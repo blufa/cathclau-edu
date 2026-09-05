@@ -21,6 +21,8 @@ public class EmploiDuTemps {
     private Long subjectId;
     private Long teacherId;
     private Long roomId;
+    /** Intitulé libre affiché quand il n'y a pas de matière formelle (heure creuse : étude, permanence, TD...). */
+    private String label;
     private JourSemaine day;
     private LocalTime startTime;
     private LocalTime endTime;

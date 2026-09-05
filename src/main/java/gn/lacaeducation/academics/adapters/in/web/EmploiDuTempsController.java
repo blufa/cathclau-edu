@@ -40,7 +40,7 @@ public class EmploiDuTempsController {
     public ResponseEntity<EmploiDuTemps> create(@Valid @RequestBody CreateScheduleCommand cmd) {
         EmploiDuTemps e = useCase.create(new CreateScheduleCommand(
                 TenantContext.get(), cmd.schoolClassId(), cmd.subjectId(), cmd.teacherId(),
-                cmd.roomId(), cmd.day(), cmd.startTime(), cmd.endTime()));
+                cmd.roomId(), cmd.day(), cmd.startTime(), cmd.endTime(), cmd.label()));
         return ResponseEntity.created(URI.create("/api/v1/academics/schedules/" + e.getId())).body(e);
     }
 
@@ -65,7 +65,7 @@ public class EmploiDuTempsController {
     public EmploiDuTemps update(@PathVariable Long id, @Valid @RequestBody CreateScheduleCommand cmd) {
         return useCase.update(id, new CreateScheduleCommand(
                 TenantContext.get(), cmd.schoolClassId(), cmd.subjectId(), cmd.teacherId(),
-                cmd.roomId(), cmd.day(), cmd.startTime(), cmd.endTime()));
+                cmd.roomId(), cmd.day(), cmd.startTime(), cmd.endTime(), cmd.label()));
     }
 
     @Operation(summary = "Delete a timetable slot")

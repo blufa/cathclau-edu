@@ -9,4 +9,5 @@ public interface PeriodeRepository {
     Periode save(Periode period);
     Optional<Periode> findById(Long id);
     List<Periode> findByAcademicYearId(Long academicYearId);
+    void deleteById(Long id);
 }

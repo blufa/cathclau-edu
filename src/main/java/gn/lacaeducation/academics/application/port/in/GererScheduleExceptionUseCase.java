@@ -39,5 +39,6 @@ public interface GererScheduleExceptionUseCase {
             Long scheduleId, Long schoolClassId, Long subjectId, Long teacherId, Long roomId,
             JourSemaine day, LocalTime startTime, LocalTime endTime,
             boolean moved, boolean cancelled,
-            JourSemaine originalDay, LocalTime originalStartTime, LocalTime originalEndTime) {}
+            JourSemaine originalDay, LocalTime originalStartTime, LocalTime originalEndTime,
+            String label) {}
 }
