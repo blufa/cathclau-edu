@@ -136,9 +136,16 @@ Se référer au détail complet dans `PLAN-DE-TEST-RBAC-GARDERIE-DATEPICKER.md` 
 3. Retirer une permission : le menu et les actions correspondantes disparaissent immédiatement à la
    reconnexion.
 4. Rôles système (`SUPER_ADMIN`, etc.) : vérifier qu'ils restent non supprimables.
+5. **SMS d'identifiants** : créer un utilisateur (n'importe quel rôle : comptable, secrétaire,
+   parent...) en renseignant un numéro de téléphone — un SMS doit arriver automatiquement avec
+   l'identifiant et le mot de passe (temporaire ou choisi). Créer un utilisateur **sans** téléphone :
+   aucun SMS ne doit être tenté (pas d'erreur non plus). Personnaliser le message depuis
+   `/communications/templates` (motif « Compte créé ») et vérifier que le SMS suivant reprend le
+   modèle personnalisé.
 
 *Résultat attendu* : aucun rôle n'est câblé en dur dans le code — la sidebar et les actions suivent
-uniquement les permissions affectées.
+uniquement les permissions affectées ; tout nouveau compte avec un téléphone reçoit ses accès sans
+action manuelle du personnel.
 
 ---
 
@@ -184,9 +191,17 @@ uniquement les permissions affectées.
    `VALIDEE` par élève et par année doit être imposée.
 7. `/children` (connecté en `PARENT`) : le parent voit exactement les enfants qui lui sont rattachés,
    jamais ceux d'une autre famille.
+8. `/student-cards` → **Émettre une carte** pour un élève déjà inscrit dans une classe : ouvrir
+   l'aperçu du badge — la **classe de l'élève** doit apparaître (sous le nom), pas seulement le
+   matricule/n° de carte. Cliquer **Imprimer / Télécharger en PDF** : dans l'aperçu avant impression,
+   le QR code doit rester à la même position/taille relative que sur les autres éléments de la carte
+   (recto + verso), sans décalage visuel par rapport à l'aperçu écran.
+9. `/enrollments` (en ligne) : ouvrir la page une première fois normalement — cela prépare la liste
+   des classes pour l'inscription hors-ligne (voir Phase 14).
 
-*Résultat attendu* : le quota d'élèves du plan est réellement bloquant, et le frais annexe de
-plateforme reste un choix explicite par élève, jamais imposé.
+*Résultat attendu* : le quota d'élèves du plan est réellement bloquant, le frais annexe de plateforme
+reste un choix explicite par élève, jamais imposé, et le badge élève imprimé reflète fidèlement sa
+classe et son QR tels qu'affichés à l'écran.
 
 ---
 
@@ -344,6 +359,36 @@ l'utilisateur, et l'import respecte les mêmes règles de quota que la création
 
 *Résultat attendu* : le portail parent/élève est strictement en lecture (sauf achat de cours et
 paiement self-service), scopé aux seuls enfants rattachés au compte connecté.
+
+---
+
+## Phase 14 — Mode hors-ligne
+
+**Rôle** : `SCHOOL_ADMIN` / `SECRETARY` (saisie terrain sans connexion).
+
+**Prérequis** : se connecter au moins une fois **avec réseau** — aucun compte ne peut se connecter
+pour la toute première fois sans connexion (mot de passe jamais stocké en clair sur l'appareil,
+choix de sécurité assumé). Une fois connecté, l'app reste utilisable hors-ligne.
+
+1. **Rester connecté hors-ligne** : se connecter avec réseau, couper le réseau (mode avion), puis
+   recharger complètement la page/l'app. La session doit rester active (pas de retour à l'écran de
+   connexion) — vérifier que la bannière hors-ligne s'affiche, mais que le profil (nom, rôle,
+   permissions) reste correct. Reconnecter le réseau : un vrai jeton expiré/révoqué doit, lui,
+   toujours déconnecter normalement.
+2. **Classes disponibles hors-ligne à l'inscription** : en ligne, ouvrir `/enrollments` au moins une
+   fois pour l'année scolaire courante (pré-charge le cache). Couper le réseau, créer un élève
+   hors-ligne (`/students` → le formulaire simplifié) : à l'étape « classe », la liste doit
+   apparaître normalement (année + classes), pas le message « liste indisponible hors-ligne ».
+   Sans être jamais passé par `/enrollments` en ligne au préalable pour cette année : le message de
+   repli doit s'afficher clairement, avec possibilité d'« Inscrire plus tard ».
+3. **Files d'attente existantes** (à survoler, déjà en place) : créer un élève, un enseignant, lier
+   un parent, et encaisser un paiement groupé, tous hors-ligne — chacun doit se mettre en file
+   (badge de synchronisation en attente visible) puis se synchroniser automatiquement au retour du
+   réseau, sans doublon (clé d'idempotence).
+
+*Résultat attendu* : une fois connecté en ligne au moins une fois, le personnel de terrain peut
+continuer à travailler sans réseau (consultation des référentiels déjà visités + saisie en file
+d'attente), sans jamais être déconnecté de force par une simple coupure réseau.
 
 ---
 
