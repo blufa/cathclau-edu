@@ -6,4 +6,5 @@ interface MessageRecipientJpaRepository extends JpaRepository<MessageRecipientJp
     List<MessageRecipientJpaEntity> findByUserId(Long userId);
     List<MessageRecipientJpaEntity> findByUserIdAndRead(Long userId, boolean read);
     long countByUserIdAndRead(Long userId, boolean read);
+    java.util.Optional<MessageRecipientJpaEntity> findByProviderMessageId(String providerMessageId);
 }

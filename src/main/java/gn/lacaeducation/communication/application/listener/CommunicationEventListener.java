@@ -214,6 +214,13 @@ public class CommunicationEventListener {
 
     private void dispatch(Long tenantId, CommunicationReason reason, String defaultSubject,
                           String defaultBody, Map<String, String> vars, Long studentId) {
+        // Frais annexe optionnel (§billing) : seuls les élèves dont le parent a accepté l'accès à la
+        // plateforme reçoivent les notifications automatiques (paiement, absence, retard, bulletin...)
+        // — pas de facturation du frais plateforme, pas de notification, quel que soit le canal.
+        if (!studentDataProvider.hasPlatformAccessOptIn(studentId)) {
+            log.debug("Élève {} sans accès plateforme accepté ; notification {} ignorée", studentId, reason);
+            return;
+        }
         Resolved r = resolve(tenantId, reason, defaultSubject, defaultBody, vars);
         List<RecipientTarget> targets = studentDataProvider.findParentsByStudent(studentId).stream()
                 .map(parent -> destinationFor(parent, r.channel()))
