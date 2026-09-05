@@ -2,6 +2,7 @@ package gn.lacaeducation.academics.adapters.out.persistence;
 
 import gn.lacaeducation.academics.domain.valueobject.JourSemaine;
 import jakarta.persistence.Column;
+
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -26,6 +27,7 @@ public class EmploiDuTempsJpaEntity {
     @Column(name = "subject_id") private Long subjectId;
     @Column(name = "teacher_id") private Long teacherId;
     @Column(name = "room_id") private Long roomId;
+    @Column(name = "label") private String label;
     @Enumerated(EnumType.STRING) @Column(nullable = false) private JourSemaine day;
     @Column(name = "start_time") private LocalTime startTime;
     @Column(name = "end_time") private LocalTime endTime;

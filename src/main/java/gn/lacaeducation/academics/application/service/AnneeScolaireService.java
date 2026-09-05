@@ -186,6 +186,17 @@ public class AnneeScolaireService implements GererAnneeScolaireUseCase {
         return periodeRepository.findByAcademicYearId(academicYearId);
     }
 
+    @Override
+    public void deletePeriod(Long periodId) {
+        Periode periode = periodeRepository.findById(periodId)
+                .orElseThrow(() -> new ResourceNotFoundException("Period", periodId));
+        if (Boolean.TRUE.equals(periode.getClosed())) {
+            throw new BusinessRuleException(
+                    "A closed period cannot be deleted (report cards already generated): id=" + periodId);
+        }
+        periodeRepository.deleteById(periodId);
+    }
+
     /**
      * Validates that the current status matches the expected source status for a transition.
      * Throws BusinessRuleException (HTTP 422) on illegal transitions.

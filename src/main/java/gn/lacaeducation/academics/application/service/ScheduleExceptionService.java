@@ -195,18 +195,18 @@ public class ScheduleExceptionService implements GererScheduleExceptionUseCase {
         if (exception == null) {
             return new EffectiveScheduleSlot(recurring.getId(), recurring.getSchoolClassId(), recurring.getSubjectId(),
                     recurring.getTeacherId(), recurring.getRoomId(), recurring.getDay(), recurring.getStartTime(), recurring.getEndTime(),
-                    false, false, null, null, null);
+                    false, false, null, null, null, recurring.getLabel());
         }
         if (exception.getType() == ScheduleExceptionType.CANCELLED) {
             return new EffectiveScheduleSlot(recurring.getId(), recurring.getSchoolClassId(), recurring.getSubjectId(),
                     recurring.getTeacherId(), recurring.getRoomId(), recurring.getDay(), recurring.getStartTime(), recurring.getEndTime(),
-                    false, true, recurring.getDay(), recurring.getStartTime(), recurring.getEndTime());
+                    false, true, recurring.getDay(), recurring.getStartTime(), recurring.getEndTime(), recurring.getLabel());
         }
         Long effRoom = exception.getNewRoomId() != null ? exception.getNewRoomId() : recurring.getRoomId();
         Long effTeacher = exception.getNewTeacherId() != null ? exception.getNewTeacherId() : recurring.getTeacherId();
         return new EffectiveScheduleSlot(recurring.getId(), recurring.getSchoolClassId(), recurring.getSubjectId(),
                 effTeacher, effRoom, exception.getNewDay(), exception.getNewStartTime(), exception.getNewEndTime(),
-                true, false, recurring.getDay(), recurring.getStartTime(), recurring.getEndTime());
+                true, false, recurring.getDay(), recurring.getStartTime(), recurring.getEndTime(), recurring.getLabel());
     }
 
     private EmploiDuTemps loadOriginal(Long id) {

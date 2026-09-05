@@ -50,14 +50,25 @@ public class StudentDataProviderAdapter implements StudentDataProvider {
 
     @Override
     public Optional<Long> findCurrentClassId(Long studentId) {
+        return currentEnrollment(studentId).map(gn.lacaeducation.students.domain.Enrollment::getClassId);
+    }
+
+    @Override
+    public boolean hasPlatformAccessOptIn(Long studentId) {
+        return currentEnrollment(studentId)
+                .map(e -> Boolean.TRUE.equals(e.getPlatformAccessOptIn()))
+                .orElse(false);
+    }
+
+    /** L'inscription validée la plus récente de l'élève (par année scolaire puis par id). */
+    private Optional<gn.lacaeducation.students.domain.Enrollment> currentEnrollment(Long studentId) {
         return enrollmentRepository.findByStudentId(studentId).stream()
                 .filter(e -> e.getStatus() == EnrollmentStatus.VALIDATED)
                 .max(java.util.Comparator
                         .comparing(gn.lacaeducation.students.domain.Enrollment::getAcademicYearId,
                                 java.util.Comparator.nullsFirst(Long::compareTo))
                         .thenComparing(gn.lacaeducation.students.domain.Enrollment::getId,
-                                java.util.Comparator.nullsFirst(Long::compareTo)))
-                .map(gn.lacaeducation.students.domain.Enrollment::getClassId);
+                                java.util.Comparator.nullsFirst(Long::compareTo)));
     }
 
     @Override
@@ -68,6 +79,15 @@ public class StudentDataProviderAdapter implements StudentDataProvider {
     @Override
     public List<ParentPublicInfo> findAllParents(Long tenantId) {
         return parentRepo.findByTenantId(tenantId).stream()
+                .map(p -> new ParentPublicInfo(p.getId(), p.getFirstName(), p.getLastName(), p.getEmail(), p.getPhone()))
+                .toList();
+    }
+
+    @Override
+    public List<ParentPublicInfo> findAllParentsWithPlatformAccess(Long tenantId) {
+        return parentRepo.findByTenantId(tenantId).stream()
+                .filter(p -> eleveParentRepo.findByParentId(p.getId()).stream()
+                        .anyMatch(link -> hasPlatformAccessOptIn(link.getStudentId())))
                 .map(p -> new ParentPublicInfo(p.getId(), p.getFirstName(), p.getLastName(), p.getEmail(), p.getPhone()))
                 .toList();
     }

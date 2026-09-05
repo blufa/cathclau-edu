@@ -12,6 +12,11 @@ public interface GererEmploiDuTempsUseCase {
     List<EmploiDuTemps> findByTeacher(Long teacherId);
     List<EmploiDuTemps> search(Long classId, Long teacherId, Long roomId, JourSemaine day);
     void delete(Long id);
+    /**
+     * {@code subjectId} peut être nul pour une « heure creuse » sans matière formelle (étude,
+     * permanence, TD...) — {@code label} sert alors d'intitulé d'affichage.
+     */
     record CreateScheduleCommand(Long tenantId, Long schoolClassId, Long subjectId, Long teacherId,
-                                  Long roomId, JourSemaine day, LocalTime startTime, LocalTime endTime) {}
+                                  Long roomId, JourSemaine day, LocalTime startTime, LocalTime endTime,
+                                  String label) {}
 }

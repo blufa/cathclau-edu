@@ -26,16 +26,19 @@ public class CommunicationService implements CommunicationUseCase {
             for (RecipientTarget rt : c.recipients()) {
                 DeliveryStatus status = DeliveryStatus.PENDING;
                 LocalDateTime deliveredAt = null;
+                String providerMessageId = null;
                 // A destination-less recipient (manual send to a user account) stays PENDING until a
                 // contact is resolved; otherwise dispatch through the channel's gateway and record the outcome.
                 if (gateway != null && rt.destination() != null && !rt.destination().isBlank()) {
                     NotificationGateway.DeliveryResult res = gateway.send(rt.destination(), c.subject(), c.content());
                     status = res.delivered() ? DeliveryStatus.DELIVERED : DeliveryStatus.FAILED;
                     deliveredAt = res.delivered() ? now : null;
+                    providerMessageId = res.providerMessageId();
                 }
                 recipientRepo.save(MessageRecipient.builder().communicationId(comm.getId())
                         .userId(rt.userId()).destination(rt.destination())
-                        .deliveryStatus(status).read(false).deliveredAt(deliveredAt).build());
+                        .deliveryStatus(status).read(false).deliveredAt(deliveredAt)
+                        .providerMessageId(providerMessageId).build());
             }
         }
         return comm;

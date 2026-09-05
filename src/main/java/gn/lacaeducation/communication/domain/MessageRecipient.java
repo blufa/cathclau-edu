@@ -10,4 +10,7 @@ public class MessageRecipient {
     private DeliveryStatus deliveryStatus;
     private Boolean read;
     private LocalDateTime deliveredAt;
+    /** Identifiant du message chez le fournisseur (ex. "messageid" NimbaSMS) — permet de recaler le
+     * statut quand le fournisseur rappelle via webhook après l'envoi initial. */
+    private String providerMessageId;
 }

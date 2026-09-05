@@ -203,3 +203,91 @@ l'accès d'un rôle existant, soit par sensibilité (recherche cross-établissem
 
 *Résultat attendu* : un rôle entièrement nouveau, créé depuis l'interface, donne accès aux bons
 menus et aux bonnes pages dès que les permissions correspondantes sont cochées — sans toucher au code.
+
+---
+
+## 9. SMS réservés aux élèves ayant accepté l'accès plateforme
+
+**Contexte** : avant ce correctif, les SMS (encaissements, retards, absences, annonces) partaient
+vers **tous** les parents, qu'ils aient accepté ou non le frais annexe d'accès à la plateforme
+(§6). Désormais, seuls les parents d'un élève ayant accepté ce frais reçoivent ces notifications.
+
+**Où** : `/enrollments` (case « Accès plateforme » à l'inscription), `/attendance`, `/invoices`,
+`/communications/announcements`.
+
+1. Inscrire un élève **sans** cocher l'accès plateforme. Le déclarer absent (`/attendance`) : le
+   parent ne reçoit **aucun** SMS d'absence.
+2. Inscrire un second élève **avec** l'accès plateforme accepté. Le déclarer absent : son parent
+   reçoit bien le SMS.
+3. Encaisser un paiement de frais pour l'élève sans accès plateforme : aucun SMS de confirmation
+   n'est envoyé à son parent. Encaisser pour l'élève avec accès : le parent reçoit la confirmation.
+4. Envoyer une diffusion « À tous les parents » (`/communications/announcements` → diffusion) :
+   seul le parent de l'élève ayant accepté l'accès plateforme figure parmi les destinataires SMS.
+5. Envoyer une diffusion ciblée sur la classe des deux élèves : même filtrage, seul le parent de
+   l'élève avec accès reçoit le SMS.
+
+*Résultat attendu* : le frais annexe d'accès plateforme conditionne désormais réellement l'envoi des
+SMS (encaissements, retards/absences, annonces), plus seulement la facturation.
+
+---
+
+## 10. Rappel (webhook) de statut de livraison NimbaSMS
+
+**Contexte** : le rappel Nimba n'était pas implémenté. Il est maintenant reçu sur
+`POST /api/v1/webhooks/sms/nimba` (public, hors authentification JWT comme tout webhook entrant),
+au format confirmé par la documentation Nimba : `{ messageid, status: "received"|"failed", contact,
+metadata }`.
+
+**Où** : tableau de bord Nimba (API KEYS → Webhooks) à configurer avec l'URL de production, ex.
+`https://api.cathclau-edu.com/api/v1/webhooks/sms/nimba` (à adapter au domaine réellement déployé).
+
+1. Envoyer un SMS depuis l'application (ex. une absence). Noter l'identifiant du message envoyé
+   (visible dans les logs serveur `[SMS webhook]` ou via `/communications` → détail de l'envoi).
+2. Une fois Nimba configuré avec l'URL ci-dessus, vérifier dans les logs serveur qu'un rappel arrive
+   (`[SMS webhook] Nimba rawPayload=...`) et que le statut de livraison du destinataire correspondant
+   passe de « En attente » à « Livré » (ou « Échoué ») dans `/communications` → détail de l'envoi.
+3. Rejouer volontairement un rappel avec un `messageid` inconnu : aucune erreur ne doit remonter à
+   Nimba (toujours `200 OK`), seul un log « Aucun message correspondant trouvé » apparaît côté
+   serveur.
+
+*Résultat attendu* : le statut réel de livraison (livré/échoué) remonté par Nimba met à jour le
+suivi des envois, au lieu de rester figé sur « accepté par le fournisseur ».
+
+---
+
+## 11. Cours en ligne payants (vidéo/PDF par classe)
+
+**Contexte** : nouveau module permettant à l'école de vendre des cours (vidéo/PDF) par classe et
+matière. Le paiement réutilise entièrement le circuit existant des frais scolaires (facture +
+paiement Djomy) : aucun circuit de paiement séparé n'a été créé. La protection du contenu est un
+lecteur web qui bloque le clic-droit et le téléchargement direct (pas un DRM).
+
+**Où** : menu **Pédagogie → Cours en ligne** (personnel) ou **Mon espace → Cours en ligne**
+(parent/élève), route `/courses`.
+
+1. **Création (personnel avec la permission `cours:manage` — SCHOOL_ADMIN/DIRECTOR/
+   RESPONSABLE_PEDAGOGIQUE/TEACHER)** : onglet **Gestion** → *Nouveau cours* → choisir une classe,
+   saisir matière (« Mathématiques »), titre, description, prix, image de couverture → créer.
+2. Onglet **Contenu** du cours créé : ajouter une ressource **Vidéo** (fichier vidéo) puis une
+   ressource **PDF** (fichier PDF) via le bouton de téléversement.
+3. Tenter de **publier** le cours *avant* d'avoir ajouté une ressource : le bouton doit refuser
+   (« Ajoutez au moins une ressource… ») — ajouter une ressource lève le blocage, puis publier.
+4. Se connecter en **parent** (ou **élève**) : le cours publié apparaît dans le **Catalogue**, avec
+   son prix ; un cours non publié n'apparaît jamais côté parent/élève.
+5. Ouvrir le cours depuis le catalogue : la liste des ressources s'affiche avec un badge
+   **Verrouillé** (aucune lecture possible), puis cliquer **Acheter**.
+6. Suivre le paiement Djomy (mobile money / carte) jusqu'à confirmation : une fois le paiement
+   réussi, le cours passe en **Acheté** et les ressources se déverrouillent (lecture vidéo et PDF
+   disponibles depuis `/courses` → onglet **Mes achats** ou directement depuis le catalogue).
+7. Vérifier qu'un clic droit sur la vidéo ou le PDF affiché ne propose pas d'option de
+   téléchargement/enregistrement (protection « lecteur web », pas un DRM).
+8. Élève/parent n'ayant **pas** acheté le cours : les ressources restent verrouillées (aperçu titre
+   seul, sans lien de lecture), même en accédant directement à la fiche du cours.
+9. Tenter de **supprimer** un cours déjà acheté par au moins un élève (`/courses` → Gestion) : le
+   système doit refuser (« déjà acheté… ») ; dépublier reste possible.
+10. Un parent avec plusieurs enfants : vérifier le sélecteur d'enfant en haut de `/courses` et que
+    l'achat/l'accès sont bien rattachés à l'enfant choisi, pas à un autre.
+
+*Résultat attendu* : un cours n'est vendable qu'une fois publié avec au moins une ressource ; son
+achat suit exactement le même circuit de paiement (Djomy) que les frais scolaires ; le contenu ne se
+déverrouille qu'après règlement complet de la facture générée.

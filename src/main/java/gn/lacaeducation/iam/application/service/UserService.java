@@ -3,6 +3,7 @@ package gn.lacaeducation.iam.application.service;
 import gn.lacaeducation.common.ConflictException;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.iam.application.event.RoleAssignedEvent;
+import gn.lacaeducation.iam.application.event.UserAccountCreatedEvent;
 import gn.lacaeducation.iam.application.port.in.UserUseCase;
 import gn.lacaeducation.iam.application.port.out.PasswordHasher;
 import gn.lacaeducation.iam.application.port.out.RefreshTokenRepository;
@@ -57,6 +58,12 @@ public class UserService implements UserUseCase {
         User saved = userRepository.save(user);
         // On restitue le mot de passe uniquement quand il a été généré (jamais persisté en clair).
         if (generated) saved.setPlainTemporaryPassword(rawPassword);
+        // Envoi des identifiants par SMS (§2.2) : rawPassword n'existe qu'en mémoire à cet instant,
+        // jamais persisté en clair — d'où la publication immédiate, avant qu'il ne soit plus disponible.
+        if (command.phone() != null && !command.phone().isBlank()) {
+            eventPublisher.publishEvent(new UserAccountCreatedEvent(saved.getTenantId(), saved.getId(),
+                    command.phone(), saved.getFirstName(), saved.getLastName(), username, rawPassword));
+        }
         return saved;
     }
 

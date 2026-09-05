@@ -30,4 +30,9 @@ class PeriodePersistenceAdapter implements PeriodeRepository {
     public List<Periode> findByAcademicYearId(Long academicYearId) {
         return periodeRepo.findByAcademicYearIdOrderBySortOrder(academicYearId).stream().map(mapper::toDomain).toList();
     }
+
+    @Override
+    public void deleteById(Long id) {
+        periodeRepo.deleteById(id);
+    }
 }
