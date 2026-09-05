@@ -164,6 +164,7 @@ public class AcademicsDataProviderAdapter implements AcademicsDataProvider {
                 e.getId(), e.getSchoolClassId(), e.getSubjectId(), e.getTeacherId(), e.getRoomId(),
                 e.getDay() != null ? e.getDay().name() : null,
                 e.getStartTime() != null ? e.getStartTime().toString() : null,
-                e.getEndTime() != null ? e.getEndTime().toString() : null);
+                e.getEndTime() != null ? e.getEndTime().toString() : null,
+                e.getLabel());
     }
 }

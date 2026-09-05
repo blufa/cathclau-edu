@@ -8,7 +8,7 @@
         "billing::events",
         "payments", "payments::events",
         "academics",
-        "iam",
+        "iam", "iam::events",
         "platform", "platform::events"
     }
 )

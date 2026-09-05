@@ -14,6 +14,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -138,5 +139,13 @@ public class AnneeScolaireController {
     @PreAuthorize("hasAuthority('periode:manage')")
     public ResponseEntity<Periode> closePeriod(@PathVariable Long periodId) {
         return ResponseEntity.ok(useCase.closePeriod(periodId));
+    }
+
+    @Operation(summary = "Delete a period created by mistake (refused once closed)")
+    @DeleteMapping("/periods/{periodId}")
+    @PreAuthorize("hasAuthority('periode:manage')")
+    @org.springframework.web.bind.annotation.ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
+    public void deletePeriod(@PathVariable Long periodId) {
+        useCase.deletePeriod(periodId);
     }
 }

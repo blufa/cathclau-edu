@@ -36,12 +36,15 @@ class RecipientResolverService {
                     .toList();
         }
 
+        // Frais annexe optionnel (§billing) : la diffusion de masse (annonces, etc.) ne touche que les
+        // familles ayant accepté l'accès à la plateforme — jamais les autres, quel que soit le public visé.
         List<ParentPublicInfo> parents = switch (audience) {
-            case ALL_PARENTS -> studentDataProvider.findAllParents(tenantId);
+            case ALL_PARENTS -> studentDataProvider.findAllParentsWithPlatformAccess(tenantId);
             case CLASS_PARENTS -> parentsOfClass(classId, null);
             case CLASS_PARENTS_BOYS -> parentsOfClass(classId, "MALE");
             case CLASS_PARENTS_GIRLS -> parentsOfClass(classId, "FEMALE");
-            case STUDENT_PARENTS -> studentDataProvider.findParentsByStudent(studentId);
+            case STUDENT_PARENTS -> studentDataProvider.hasPlatformAccessOptIn(studentId)
+                    ? studentDataProvider.findParentsByStudent(studentId) : List.of();
             case ALL_TEACHERS -> throw new IllegalStateException("traité plus haut");
         };
 
@@ -59,6 +62,7 @@ class RecipientResolverService {
         Map<Long, ParentPublicInfo> byParentId = new LinkedHashMap<>();
         for (StudentPublicInfo s : students) {
             if (genderFilter != null && !genderFilter.equalsIgnoreCase(s.gender())) continue;
+            if (!studentDataProvider.hasPlatformAccessOptIn(s.id())) continue;
             for (ParentPublicInfo p : studentDataProvider.findParentsByStudent(s.id())) {
                 byParentId.putIfAbsent(p.id(), p);
             }

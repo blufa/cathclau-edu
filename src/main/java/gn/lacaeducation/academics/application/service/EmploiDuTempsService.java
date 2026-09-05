@@ -37,6 +37,7 @@ public class EmploiDuTempsService implements GererEmploiDuTempsUseCase {
                 .day(command.day())
                 .startTime(command.startTime())
                 .endTime(command.endTime())
+                .label(command.label())
                 .build();
         return edtRepository.save(edt);
     }
@@ -50,6 +51,7 @@ public class EmploiDuTempsService implements GererEmploiDuTempsUseCase {
                 command.day(), command.startTime(), command.endTime(), id);
         e.setSubjectId(command.subjectId()); e.setTeacherId(command.teacherId()); e.setRoomId(command.roomId());
         e.setDay(command.day()); e.setStartTime(command.startTime()); e.setEndTime(command.endTime());
+        e.setLabel(command.label());
         return edtRepository.save(e);
     }
 

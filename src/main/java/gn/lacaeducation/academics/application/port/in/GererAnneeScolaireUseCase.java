@@ -35,6 +35,9 @@ public interface GererAnneeScolaireUseCase {
 
     Periode closePeriod(Long periodId);
 
+    /** Supprime une période créée par erreur — impossible si elle est déjà clôturée (bulletins générés). */
+    void deletePeriod(Long periodId);
+
     List<Periode> findPeriods(Long academicYearId);
 
     record CreateAcademicYearCommand(Long tenantId, String label, LocalDate startDate, LocalDate endDate) {}

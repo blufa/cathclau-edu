@@ -9,4 +9,6 @@ public interface MessageRecipientRepository {
     List<MessageRecipient> findByUserId(Long userId);
     List<MessageRecipient> findByUserIdAndRead(Long userId, boolean read);
     long countByUserIdAndRead(Long userId, boolean read);
+    /** Pour recaler le statut de livraison depuis le webhook du fournisseur SMS. */
+    Optional<MessageRecipient> findByProviderMessageId(String providerMessageId);
 }

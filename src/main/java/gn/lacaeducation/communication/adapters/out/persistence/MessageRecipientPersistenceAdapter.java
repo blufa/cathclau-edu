@@ -15,4 +15,5 @@ class MessageRecipientPersistenceAdapter implements MessageRecipientRepository {
     @Override public List<MessageRecipient> findByUserId(Long id) { return jpa.findByUserId(id).stream().map(mapper::toDomain).toList(); }
     @Override public List<MessageRecipient> findByUserIdAndRead(Long id, boolean r) { return jpa.findByUserIdAndRead(id, r).stream().map(mapper::toDomain).toList(); }
     @Override public long countByUserIdAndRead(Long id, boolean r) { return jpa.countByUserIdAndRead(id, r); }
+    @Override public Optional<MessageRecipient> findByProviderMessageId(String id) { return jpa.findByProviderMessageId(id).map(mapper::toDomain); }
 }

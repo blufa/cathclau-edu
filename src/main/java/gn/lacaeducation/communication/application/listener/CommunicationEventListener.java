@@ -11,6 +11,7 @@ import gn.lacaeducation.communication.domain.*;
 import gn.lacaeducation.grading.application.event.AssessmentScheduledEvent;
 import gn.lacaeducation.grading.application.event.GradeModifiedEvent;
 import gn.lacaeducation.grading.application.event.ReportCardPublishedEvent;
+import gn.lacaeducation.iam.application.event.UserAccountCreatedEvent;
 import gn.lacaeducation.payments.PaymentDataProvider;
 import gn.lacaeducation.payments.application.event.PaymentSucceededEvent;
 import gn.lacaeducation.common.TenantInfoProvider;
@@ -187,6 +188,29 @@ public class CommunicationEventListener {
                 RecipientType.STUDENT, r.subject(), r.content(), CommunicationReason.EXAM, targets));
     }
 
+    /**
+     * Envoie ses identifiants de connexion par SMS à tout compte créé (personnel ou parent) muni d'un
+     * numéro de téléphone (§2.2) — pas de filtrage par accès plateforme : ce n'est pas une notification
+     * au sujet d'un élève, mais l'accès du compte lui-même.
+     */
+    @TransactionalEventListener
+    public void onUserAccountCreated(UserAccountCreatedEvent event) {
+        String fullName = ((event.firstName() != null ? event.firstName() : "") + " "
+                + (event.lastName() != null ? event.lastName() : "")).trim();
+        Map<String, String> vars = Map.of(
+                "nom", fullName, "ecole", schoolName(event.tenantId()),
+                "identifiant", event.username() == null ? "" : event.username(),
+                "mot_de_passe", event.plainPassword() == null ? "" : event.plainPassword());
+        String defaultBody = "Bienvenue " + fullName + ". Identifiant : " + event.username()
+                + " — Mot de passe : " + event.plainPassword() + ". Connectez-vous pour le modifier.";
+        Resolved r = resolve(event.tenantId(), CommunicationReason.ACCOUNT_CREATED, "Votre compte a été créé", defaultBody, vars);
+        // SMS uniquement : les identifiants ne partent jamais par email même si un modèle EMAIL est
+        // configuré pour ce motif ailleurs — canal volontairement figé ici.
+        communicationUseCase.send(new SendCommunicationCommand(event.tenantId(), null, CommunicationChannel.SMS,
+                RecipientType.GROUP, r.subject(), r.content(), CommunicationReason.ACCOUNT_CREATED,
+                List.of(new RecipientTarget(event.userId(), event.phone()))));
+    }
+
     // ── dispatch ───────────────────────────────────────────────────────────────
     /** Resolved channel/subject/content after applying the tenant template (or French defaults). */
     private record Resolved(CommunicationChannel channel, String subject, String content) {}
@@ -214,6 +238,13 @@ public class CommunicationEventListener {
 
     private void dispatch(Long tenantId, CommunicationReason reason, String defaultSubject,
                           String defaultBody, Map<String, String> vars, Long studentId) {
+        // Frais annexe optionnel (§billing) : seuls les élèves dont le parent a accepté l'accès à la
+        // plateforme reçoivent les notifications automatiques (paiement, absence, retard, bulletin...)
+        // — pas de facturation du frais plateforme, pas de notification, quel que soit le canal.
+        if (!studentDataProvider.hasPlatformAccessOptIn(studentId)) {
+            log.debug("Élève {} sans accès plateforme accepté ; notification {} ignorée", studentId, reason);
+            return;
+        }
         Resolved r = resolve(tenantId, reason, defaultSubject, defaultBody, vars);
         List<RecipientTarget> targets = studentDataProvider.findParentsByStudent(studentId).stream()
                 .map(parent -> destinationFor(parent, r.channel()))

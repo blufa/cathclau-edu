@@ -45,7 +45,7 @@ class TeacherAttendanceServiceTest {
     @InjectMocks TeacherAttendanceService service;
 
     private static ScheduleSlotPublicInfo slot(String start, String end) {
-        return new ScheduleSlotPublicInfo(1L, 5L, 7L, 3L, 2L, "LUNDI", start, end);
+        return new ScheduleSlotPublicInfo(1L, 5L, 7L, 3L, 2L, "LUNDI", start, end, null);
     }
 
     @Test

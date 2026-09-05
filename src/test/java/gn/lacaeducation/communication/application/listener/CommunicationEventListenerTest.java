@@ -54,6 +54,7 @@ class CommunicationEventListenerTest {
     @Test
     void onPaymentSucceeded_notifiesParentAndSchoolAdmin() {
         when(studentDataProvider.findStudent(7L)).thenReturn(Optional.of(student));
+        when(studentDataProvider.hasPlatformAccessOptIn(7L)).thenReturn(true);
         when(paymentDataProvider.findPayment(1L))
                 .thenReturn(Optional.of(new PaymentPublicInfo(1L, "PAY-1", new BigDecimal("50000"), "CASH", null)));
         when(studentDataProvider.findParentsByStudent(7L))
@@ -83,6 +84,7 @@ class CommunicationEventListenerTest {
     @Test
     void onPaymentSucceeded_noSchoolAdminPhone_skipsFounderAlertWithoutError() {
         when(studentDataProvider.findStudent(7L)).thenReturn(Optional.of(student));
+        when(studentDataProvider.hasPlatformAccessOptIn(7L)).thenReturn(true);
         when(paymentDataProvider.findPayment(1L))
                 .thenReturn(Optional.of(new PaymentPublicInfo(1L, "PAY-1", new BigDecimal("50000"), "CASH", null)));
         when(studentDataProvider.findParentsByStudent(7L)).thenReturn(List.of());

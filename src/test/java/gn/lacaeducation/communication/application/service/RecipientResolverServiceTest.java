@@ -32,7 +32,7 @@ class RecipientResolverServiceTest {
 
     @Test
     void allParents_returnsEveryParentPhone() {
-        when(studentDataProvider.findAllParents(1L)).thenReturn(List.of(
+        when(studentDataProvider.findAllParentsWithPlatformAccess(1L)).thenReturn(List.of(
                 new ParentPublicInfo(10L, "Awa", "Diallo", null, "623000001"),
                 new ParentPublicInfo(11L, "Ibrahima", "Bah", null, "623000002")));
 
@@ -46,6 +46,8 @@ class RecipientResolverServiceTest {
         StudentPublicInfo s1 = student(1L, "MALE");
         StudentPublicInfo s2 = student(2L, "FEMALE");
         when(studentDataProvider.findStudentsByClass(5L)).thenReturn(List.of(s1, s2));
+        when(studentDataProvider.hasPlatformAccessOptIn(1L)).thenReturn(true);
+        when(studentDataProvider.hasPlatformAccessOptIn(2L)).thenReturn(true);
         ParentPublicInfo sameParent = new ParentPublicInfo(10L, "Awa", "Diallo", null, "623000001");
         when(studentDataProvider.findParentsByStudent(1L)).thenReturn(List.of(sameParent));
         when(studentDataProvider.findParentsByStudent(2L)).thenReturn(List.of(sameParent));
@@ -61,6 +63,7 @@ class RecipientResolverServiceTest {
         StudentPublicInfo boy = student(1L, "MALE");
         StudentPublicInfo girl = student(2L, "FEMALE");
         when(studentDataProvider.findStudentsByClass(5L)).thenReturn(List.of(boy, girl));
+        when(studentDataProvider.hasPlatformAccessOptIn(1L)).thenReturn(true);
         when(studentDataProvider.findParentsByStudent(1L)).thenReturn(List.of(new ParentPublicInfo(10L, "A", "B", null, "623000001")));
 
         List<RecipientTarget> targets = resolver.resolve(1L, BroadcastAudience.CLASS_PARENTS_BOYS, 5L, null, CommunicationChannel.SMS);
@@ -70,12 +73,22 @@ class RecipientResolverServiceTest {
 
     @Test
     void studentParents_resolvesViaStudentDataProvider() {
+        when(studentDataProvider.hasPlatformAccessOptIn(7L)).thenReturn(true);
         when(studentDataProvider.findParentsByStudent(7L)).thenReturn(List.of(
                 new ParentPublicInfo(10L, "A", "B", null, "623000001")));
 
         List<RecipientTarget> targets = resolver.resolve(1L, BroadcastAudience.STUDENT_PARENTS, null, 7L, CommunicationChannel.SMS);
 
         assertThat(targets).extracting(RecipientTarget::destination).containsExactly("623000001");
+    }
+
+    @Test
+    void studentParents_withoutPlatformAccess_returnsEmpty() {
+        when(studentDataProvider.hasPlatformAccessOptIn(7L)).thenReturn(false);
+
+        List<RecipientTarget> targets = resolver.resolve(1L, BroadcastAudience.STUDENT_PARENTS, null, 7L, CommunicationChannel.SMS);
+
+        assertThat(targets).isEmpty();
     }
 
     @Test
@@ -90,7 +103,7 @@ class RecipientResolverServiceTest {
 
     @Test
     void emailChannel_usesEmailInsteadOfPhone() {
-        when(studentDataProvider.findAllParents(1L)).thenReturn(List.of(
+        when(studentDataProvider.findAllParentsWithPlatformAccess(1L)).thenReturn(List.of(
                 new ParentPublicInfo(10L, "Awa", "Diallo", "awa@ecole.gn", "623000001")));
 
         List<RecipientTarget> targets = resolver.resolve(1L, BroadcastAudience.ALL_PARENTS, null, null, CommunicationChannel.EMAIL);
@@ -100,7 +113,7 @@ class RecipientResolverServiceTest {
 
     @Test
     void ignoresRecipientsWithoutDestination() {
-        when(studentDataProvider.findAllParents(1L)).thenReturn(List.of(
+        when(studentDataProvider.findAllParentsWithPlatformAccess(1L)).thenReturn(List.of(
                 new ParentPublicInfo(10L, "Awa", "Diallo", null, null)));
 
         List<RecipientTarget> targets = resolver.resolve(1L, BroadcastAudience.ALL_PARENTS, null, null, CommunicationChannel.SMS);

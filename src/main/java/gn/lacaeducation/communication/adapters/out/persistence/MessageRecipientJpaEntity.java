@@ -13,4 +13,5 @@ public class MessageRecipientJpaEntity {
     @Enumerated(EnumType.STRING) @Column(name = "delivery_status", nullable = false) private DeliveryStatus deliveryStatus;
     @Column(nullable = false) private Boolean read;
     @Column(name = "delivered_at") private LocalDateTime deliveredAt;
+    @Column(name = "provider_message_id") private String providerMessageId;
 }

@@ -28,7 +28,7 @@ class EmploiDuTempsServiceTest {
 
     private CreateScheduleCommand cmd() {
         return new CreateScheduleCommand(10L, 1L, 2L, 3L, 4L,
-                JourSemaine.LUNDI, LocalTime.of(8, 0), LocalTime.of(10, 0));
+                JourSemaine.LUNDI, LocalTime.of(8, 0), LocalTime.of(10, 0), null);
     }
 
     @Test
@@ -68,7 +68,7 @@ class EmploiDuTempsServiceTest {
     @Test
     void create_invalidTimeRange_throws422() {
         CreateScheduleCommand bad = new CreateScheduleCommand(10L, 1L, 2L, 3L, 4L,
-                JourSemaine.LUNDI, LocalTime.of(10, 0), LocalTime.of(8, 0));
+                JourSemaine.LUNDI, LocalTime.of(10, 0), LocalTime.of(8, 0), null);
 
         assertThatThrownBy(() -> service.create(bad))
                 .isInstanceOf(BusinessRuleException.class);

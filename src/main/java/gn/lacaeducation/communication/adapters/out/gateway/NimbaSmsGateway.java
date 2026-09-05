@@ -72,7 +72,8 @@ public class NimbaSmsGateway implements NotificationGateway, SmsBalancePort {
                     .body(MessageResponse.class);
             boolean ok = response != null && response.messageId() != null && !response.messageId().isBlank();
             log.info("[SMS] Nimba -> {} : {}", destination, ok ? response.messageId() : "réponse invalide");
-            return new DeliveryResult(ok, ok ? "nimba " + response.messageId() : "nimba: réponse invalide");
+            return new DeliveryResult(ok, ok ? "nimba " + response.messageId() : "nimba: réponse invalide",
+                    ok ? response.messageId() : null);
         } catch (RuntimeException e) {
             log.error("[SMS] échec envoi Nimba vers {} : {}", destination, e.getMessage());
             return new DeliveryResult(false, e.getMessage());

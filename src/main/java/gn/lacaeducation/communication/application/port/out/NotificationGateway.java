@@ -6,7 +6,12 @@ import gn.lacaeducation.communication.domain.CommunicationChannel;
  * (SMS/Twilio, SMTP, WhatsApp Business API); the service selects the adapter via {@link #getChannel()}.
  */
 public interface NotificationGateway {
-    record DeliveryResult(boolean delivered, String detail) {}
+    record DeliveryResult(boolean delivered, String detail, String providerMessageId) {
+        /** Identifiant fournisseur absent (canal sans confirmation de livraison par webhook). */
+        public DeliveryResult(boolean delivered, String detail) {
+            this(delivered, detail, null);
+        }
+    }
 
     /** The channel this gateway dispatches to. */
     CommunicationChannel getChannel();
