@@ -1,9 +1,7 @@
 package gn.lacaeducation.courses.application.service;
 
 import gn.lacaeducation.academics.AcademicsDataProvider;
-import gn.lacaeducation.billing.application.port.in.SchoolFeeUseCase;
-import gn.lacaeducation.billing.domain.FeeType;
-import gn.lacaeducation.billing.domain.SchoolFee;
+import gn.lacaeducation.billing.CourseBillingApi;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.courses.application.port.in.CourseUseCase;
@@ -23,9 +21,10 @@ import java.util.Optional;
 
 /**
  * Gestion du catalogue de cours payants (§16 B). La facturation/le paiement ne sont jamais
- * réimplémentés ici : chaque cours possède un {@link SchoolFee} (type OTHER) miroir, réutilisé par
- * {@link CoursePurchaseService} pour émettre une facture normale, payable via le circuit Djomy
- * existant.
+ * réimplémentés ici : chaque cours possède un frais miroir (type OTHER) créé via {@link
+ * CourseBillingApi} — la seule porte d'entrée exposée par {@code billing}, jamais ses ports internes
+ * ni ses types de domaine — réutilisé par {@link CoursePurchaseService} pour émettre une facture
+ * normale, payable via le circuit Djomy existant.
  */
 @Service
 @Transactional
@@ -35,7 +34,7 @@ public class CourseService implements CourseUseCase {
     private final CourseRepository courseRepository;
     private final CourseResourceRepository resourceRepository;
     private final CoursePurchaseRepository purchaseRepository;
-    private final SchoolFeeUseCase schoolFeeUseCase;
+    private final CourseBillingApi courseBillingApi;
     private final AcademicsDataProvider academicsDataProvider;
 
     @Override
@@ -51,12 +50,12 @@ public class CourseService implements CourseUseCase {
         }
         String academicYear = academicsDataProvider.currentAcademicYearLabel(c.tenantId())
                 .orElseThrow(() -> new BusinessRuleException("Aucune année scolaire courante définie."));
-        SchoolFee fee = schoolFeeUseCase.create(new SchoolFeeUseCase.CreateFeeCommand(
-                c.tenantId(), c.classId(), null, FeeType.OTHER, c.price(), academicYear, feeLabel(c.title())));
+        Long feeId = courseBillingApi.createCourseFee(
+                c.tenantId(), c.classId(), c.price(), academicYear, feeLabel(c.title()));
         Course course = Course.builder()
                 .tenantId(c.tenantId()).classId(c.classId()).subjectLabel(c.subjectLabel())
                 .title(c.title()).description(c.description()).price(c.price())
-                .thumbnailUrl(c.thumbnailUrl()).schoolFeeId(fee.getId()).published(false)
+                .thumbnailUrl(c.thumbnailUrl()).schoolFeeId(feeId).published(false)
                 .createdAt(LocalDateTime.now())
                 .build();
         return courseRepository.save(course);
@@ -76,10 +75,7 @@ public class CourseService implements CourseUseCase {
             course.setPrice(c.price());
             // Le frais miroir suit le nouveau prix : seuls les achats futurs sont concernés, les
             // factures déjà émises gardent leur montant figé (comportement standard de la facturation).
-            schoolFeeUseCase.findById(course.getSchoolFeeId()).ifPresent(fee ->
-                    schoolFeeUseCase.update(fee.getId(), new SchoolFeeUseCase.UpdateFeeCommand(
-                            fee.getClassId(), fee.getRouteId(), fee.getType(), c.price(),
-                            fee.getAcademicYear(), feeLabel(course.getTitle()))));
+            courseBillingApi.updateCourseFeeAmount(course.getSchoolFeeId(), c.price(), feeLabel(course.getTitle()));
         }
         return courseRepository.save(course);
     }

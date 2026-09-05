@@ -2,8 +2,7 @@ package gn.lacaeducation.courses.application.service;
 
 import gn.lacaeducation.academics.AcademicYearPublicInfo;
 import gn.lacaeducation.academics.AcademicsDataProvider;
-import gn.lacaeducation.billing.application.port.in.InvoiceUseCase;
-import gn.lacaeducation.billing.domain.Invoice;
+import gn.lacaeducation.billing.CourseBillingApi;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.courses.application.port.in.CoursePurchaseUseCase;
@@ -34,7 +33,7 @@ public class CoursePurchaseService implements CoursePurchaseUseCase {
     private final CoursePurchaseRepository purchaseRepository;
     private final CourseRepository courseRepository;
     private final CourseResourceRepository resourceRepository;
-    private final InvoiceUseCase invoiceUseCase;
+    private final CourseBillingApi courseBillingApi;
     private final AcademicsDataProvider academicsDataProvider;
 
     @Override
@@ -52,11 +51,11 @@ public class CoursePurchaseService implements CoursePurchaseUseCase {
         }
         AcademicYearPublicInfo year = academicsDataProvider.currentAcademicYear(c.tenantId())
                 .orElseThrow(() -> new BusinessRuleException("Aucune année scolaire courante définie."));
-        Invoice invoice = invoiceUseCase.create(new InvoiceUseCase.CreateInvoiceCommand(
-                c.tenantId(), c.studentId(), course.getSchoolFeeId(), null, course.getPrice(), year.id()));
+        Long invoiceId = courseBillingApi.issueCourseInvoice(
+                c.tenantId(), c.studentId(), course.getSchoolFeeId(), year.id(), course.getPrice());
         CoursePurchase purchase = CoursePurchase.builder()
                 .tenantId(c.tenantId()).studentId(c.studentId()).courseId(c.courseId())
-                .invoiceId(invoice.getId()).status(CoursePurchaseStatus.PENDING)
+                .invoiceId(invoiceId).status(CoursePurchaseStatus.PENDING)
                 .createdAt(LocalDateTime.now())
                 .build();
         return purchaseRepository.save(purchase);
