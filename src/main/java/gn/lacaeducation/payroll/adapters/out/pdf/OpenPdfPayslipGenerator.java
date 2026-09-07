@@ -46,7 +46,7 @@ class OpenPdfPayslipGenerator implements PayslipPdfGenerator {
             TenantPublicInfo info = p.getTenantId() == null ? null
                     : tenantInfoProvider.findTenantInfo(p.getTenantId()).orElse(null);
             PdfWriter writer = PdfWriter.getInstance(doc, out);
-            writer.setPageEvent(new SchoolPdfPageFooter(info == null ? null : info.schoolName(),
+            writer.setPageEvent(new SchoolPdfPageFooter(info,
                     SchoolPdfHeader.parseColor(info == null ? null : info.brandColor())));
             doc.open();
 

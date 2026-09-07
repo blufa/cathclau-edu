@@ -28,6 +28,7 @@ public class AttendanceSettingsController {
     private final AttendanceSettingsUseCase useCase;
 
     public record UpdateMarginRequest(Integer transitionMarginMinutes) {}
+    public record UpdateEmployeeHoursRequest(LocalTime checkInTime, LocalTime checkOutTime) {}
     public record RecessWindowRequest(String label, LocalTime startTime, LocalTime endTime) {}
 
     @Operation(summary = "Réglage du tenant courant (marge de transition, défaut 5 min si non configuré)")
@@ -41,6 +42,13 @@ public class AttendanceSettingsController {
     @PutMapping
     public AttendanceSettings update(@RequestBody UpdateMarginRequest r) {
         return useCase.updateTransitionMargin(TenantContext.get(), r.transitionMarginMinutes());
+    }
+
+    @Operation(summary = "Configurer l'horaire de référence du personnel non-enseignant (entrée/sortie)")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PutMapping("/employee-hours")
+    public AttendanceSettings updateEmployeeHours(@RequestBody UpdateEmployeeHoursRequest r) {
+        return useCase.updateEmployeeHours(TenantContext.get(), r.checkInTime(), r.checkOutTime());
     }
 
     @Operation(summary = "Lister les fenêtres de récréation du tenant courant")

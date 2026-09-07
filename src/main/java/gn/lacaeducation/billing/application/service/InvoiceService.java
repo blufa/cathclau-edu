@@ -75,13 +75,33 @@ public class InvoiceService implements InvoiceUseCase {
     public Invoice create(CreateInvoiceCommand c) {
         String reference = (c.reference() == null || c.reference().isBlank())
                 ? generateReference(c.tenantId()) : c.reference();
+        // Frais d'usage plateforme (§billing) : appliqué ici aussi (pas seulement dans
+        // generateMonthly()) pour que la génération en lot ou la création manuelle d'une facture de
+        // mensualité respecte le même opt-in — sans quoi le frais plateforme n'était jamais facturé
+        // dès que l'école passait par "Générer en lot" plutôt que par la génération mensuelle standard.
+        BigDecimal platformFee = computePlatformFee(c.tenantId(), c.studentId(), c.academicYearId(), c.feeId());
+        BigDecimal totalAmount = platformFee.signum() > 0 ? c.totalAmount().add(platformFee) : c.totalAmount();
         Invoice inv = repo.save(Invoice.builder().tenantId(c.tenantId()).studentId(c.studentId()).feeId(c.feeId())
                 .academicYearId(c.academicYearId())
-                .reference(reference).totalAmount(c.totalAmount()).paidAmount(BigDecimal.ZERO).discountAmount(BigDecimal.ZERO)
-                .remainingBalance(c.totalAmount()).status(InvoiceStatus.UNPAID).issueDate(LocalDate.now()).recoveryStage(RecoveryStage.NONE).build());
+                .reference(reference).totalAmount(totalAmount).paidAmount(BigDecimal.ZERO).discountAmount(BigDecimal.ZERO)
+                .remainingBalance(totalAmount).status(InvoiceStatus.UNPAID).issueDate(LocalDate.now()).recoveryStage(RecoveryStage.NONE)
+                .platformFeeAmount(platformFee.signum() > 0 ? platformFee : null)
+                .build());
         eventPublisher.publishEvent(new InvoiceGeneratedEvent(c.tenantId(), c.studentId(), inv.getId(), inv.getReference()));
         eventPublisher.publishEvent(new InvoiceIssuedEvent(inv.getId(), c.studentId(), c.tenantId()));
         return inv;
+    }
+
+    /** Montant du frais d'usage plateforme à ajouter à une facture : uniquement pour un frais de type
+     * MONTHLY (jamais inscription/transport/cantine/examen) et seulement si le parent a accepté
+     * l'accès plateforme pour cet élève sur cette année scolaire ; zéro sinon. */
+    private BigDecimal computePlatformFee(Long tenantId, Long studentId, Long academicYearId, Long feeId) {
+        boolean isMonthlyTuition = feeId != null && schoolFeeRepository.findById(feeId)
+                .map(fee -> fee.getType() == gn.lacaeducation.billing.domain.FeeType.MONTHLY)
+                .orElse(false);
+        boolean platformAccessOptIn = isMonthlyTuition && studentId != null
+                && enrollmentQueryPort.hasPlatformAccessOptIn(studentId, academicYearId);
+        return platformAccessOptIn ? platformFeeQuoteApi.currentAmount() : BigDecimal.ZERO;
     }
 
     @Override public List<Invoice> generateMonthly(GenerateMonthlyCommand c) {
@@ -102,18 +122,10 @@ public class InvoiceService implements InvoiceUseCase {
         BigDecimal discountPercent = familyDiscount.percentage() != null
                 ? familyDiscount.percentage() : BigDecimal.ZERO;
 
-        // Frais d'usage plateforme (SUPER_ADMIN) : ajouté uniquement aux vraies mensualités (frais
-        // type MONTHLY), jamais au transport/cantine/etc. qui réutilisent aussi generateMonthly(), et
-        // seulement si le parent a accepté l'accès à la plateforme pour cet élève à l'inscription
-        // (frais annexe optionnel, §billing) — jamais imposé automatiquement à toutes les familles.
-        // Chaque facture fige le montant courant : un changement de tarif plateforme n'affecte que
-        // les factures générées ensuite, jamais celles déjà émises.
-        boolean isMonthlyTuition = schoolFeeRepository.findById(c.feeId())
-                .map(fee -> fee.getType() == gn.lacaeducation.billing.domain.FeeType.MONTHLY)
-                .orElse(false);
-        boolean platformAccessOptIn = isMonthlyTuition
-                && enrollmentQueryPort.hasPlatformAccessOptIn(c.studentId(), c.academicYearId());
-        BigDecimal platformFee = platformAccessOptIn ? platformFeeQuoteApi.currentAmount() : BigDecimal.ZERO;
+        // Frais d'usage plateforme (SUPER_ADMIN) : voir computePlatformFee — chaque facture fige le
+        // montant courant, un changement de tarif plateforme n'affecte que les factures générées
+        // ensuite, jamais celles déjà émises.
+        BigDecimal platformFee = computePlatformFee(c.tenantId(), c.studentId(), c.academicYearId(), c.feeId());
 
         List<Invoice> created = new ArrayList<>();
         for (gn.lacaeducation.billing.domain.Installment month : months) {

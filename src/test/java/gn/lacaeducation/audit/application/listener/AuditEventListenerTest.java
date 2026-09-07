@@ -64,7 +64,7 @@ class AuditEventListenerTest {
     @Test
     void onTenantCreated_neverLeaksAdminPassword() {
         listener().onTenantCreated(new TenantCreatedEvent(5L, "École Test", "admin@ecole.gn",
-                "Directeur X", "s3cr3t-p@ssword", true, "admin"));
+                "Directeur X", "s3cr3t-p@ssword", true, "admin", null));
 
         ArgumentCaptor<RecordAuditCommand> captor = ArgumentCaptor.forClass(RecordAuditCommand.class);
         verify(auditLogUseCase).record(captor.capture());

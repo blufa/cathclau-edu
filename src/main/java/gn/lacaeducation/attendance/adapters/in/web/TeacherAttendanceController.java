@@ -43,6 +43,17 @@ public class TeacherAttendanceController {
         return useCase.recordManualEntry(teacherId, date, checkInTime);
     }
 
+    @Operation(summary = "Correction manuelle : saisir l'heure de sortie d'un enseignant pour une date "
+            + "donnée (le départ anticipé est calculé automatiquement vs l'emploi du temps, comme pour un scan) "
+            + "— utile quand le badge a été oublié pour toute la séance")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @PostMapping("/{teacherId}/manual-exit")
+    public TeacherCheckin manualExit(@PathVariable Long teacherId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam LocalTime checkOutTime) {
+        return useCase.recordManualExit(teacherId, date, checkOutTime);
+    }
+
     @Operation(summary = "Update a teacher attendance record")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
     @PutMapping("/{id}")

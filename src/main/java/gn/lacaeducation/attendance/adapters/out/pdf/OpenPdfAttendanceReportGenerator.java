@@ -87,10 +87,10 @@ class OpenPdfAttendanceReportGenerator implements AttendanceReportPdfGenerator {
             TenantPublicInfo info = tenantId == null ? null : tenantInfoProvider.findTenantInfo(tenantId).orElse(null);
             Color brand = SchoolPdfHeader.parseColor(info == null ? null : info.brandColor());
             PdfWriter writer = PdfWriter.getInstance(doc, out);
-            writer.setPageEvent(new SchoolPdfPageFooter(info == null ? null : info.schoolName(), brand));
+            writer.setPageEvent(new SchoolPdfPageFooter(info, brand));
             doc.open();
 
-            SchoolPdfHeader.render(doc, tenantInfoProvider, tenantId);
+            SchoolPdfHeader.render(doc, tenantInfoProvider, tenantId, title);
 
             Paragraph t = new Paragraph(title, SchoolPdfHeader.font(FontFactory.HELVETICA_BOLD, 16, brand));
             t.setAlignment(Element.ALIGN_CENTER);

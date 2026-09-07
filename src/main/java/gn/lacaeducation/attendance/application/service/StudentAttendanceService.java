@@ -90,6 +90,33 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
                         "Aucun pointage d'entrée trouvé pour cette séance : scannez d'abord l'entrée."));
         checkin.setCheckOutTime(now);
         if (checkin.getSessionEnd() == null) checkin.setSessionEnd(LocalTime.parse(session.endTime()));
+        // Départ anticipé : sortie pointée avant la fin prévue de la séance (symétrique du retard à
+        // l'entrée, miroir de TeacherAttendanceService#recordExit).
+        int early = (int) Math.max(0, Duration.between(now, checkin.getSessionEnd()).toMinutes());
+        checkin.setEarlyMinutes(early);
+        return checkinRepository.save(checkin);
+    }
+
+    @Override
+    public StudentCheckin recordManualExit(Long studentId, LocalDate date, LocalTime checkOutTime) {
+        // Symétrique de recordManualEntry : crée le pointage si absent (badge oublié toute la séance),
+        // sinon complète le pointage d'entrée déjà existant avec l'heure de sortie saisie.
+        Long classId = studentDataProvider.findCurrentClassId(studentId)
+                .orElseThrow(() -> new BusinessRuleException("Élève sans classe courante : impossible de pointer"));
+        ScheduleSlotPublicInfo session = sessionResolver.currentSession(academicsProvider.findScheduleByClass(classId), date, checkOutTime);
+        if (session == null) {
+            throw new BusinessRuleException("Aucun cours programmé ce jour-là pour cette classe.");
+        }
+        LocalTime start = LocalTime.parse(session.startTime());
+        LocalTime end = LocalTime.parse(session.endTime());
+        StudentCheckin checkin = checkinRepository.findByStudentIdAndDateAndSlot(studentId, date, session.id())
+                .orElseGet(() -> StudentCheckin.builder()
+                        .tenantId(TenantContext.get()).studentId(studentId).classId(classId).checkinDate(date)
+                        .scheduleSlotId(session.id()).sessionStart(start).lateMinutes(0).createdAt(LocalDateTime.now()).build());
+        checkin.setSessionEnd(end);
+        checkin.setCheckOutTime(checkOutTime);
+        int early = (int) Math.max(0, Duration.between(checkOutTime, end).toMinutes());
+        checkin.setEarlyMinutes(early);
         return checkinRepository.save(checkin);
     }
 

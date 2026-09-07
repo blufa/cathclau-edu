@@ -6,6 +6,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Map;
 public interface TeacherAttendanceUseCase {
     record RecordTeacherAttendanceCommand(Long teacherId, LocalDate date, TeacherAttendanceStatus status, String reason) {}
     record TeacherAttendanceStatsResponse(Long teacherId, long totalDays, long presentDays, long absentDays, BigDecimal attendanceRate) {}
@@ -18,7 +19,13 @@ public interface TeacherAttendanceUseCase {
     record MonthlySummary(Long teacherId, int year, int month, long presentDays, long absentDays,
                           int totalLateMinutes, int totalEarlyMinutes, int dueMinutes, int absentMinutes,
                           int effectiveMinutes) {}
+    /** Retard + départ anticipé cumulés (minutes) pour une classe donnée sur le mois. */
+    record ClassLateEarly(int lateMinutes, int earlyMinutes) {}
     MonthlySummary monthlySummary(Long teacherId, int year, int month);
+    /** Comme {@link #monthlySummary}, mais retard/départ anticipé regroupés par classe (clé = classId,
+     * résolue depuis le créneau pointé) — permet à la paie d'appliquer le tarif horaire correspondant
+     * à la typologie de chaque classe (normal/examen, §paie) sur les heures réellement travaillées. */
+    Map<Long, ClassLateEarly> monthlyLateEarlyByClass(Long teacherId, int year, int month);
     TeacherAttendance record(RecordTeacherAttendanceCommand command);
     /** Pointage d'entrée sur la séance en cours : calcule automatiquement le retard vs l'heure de
      * début prévue et upsert la présence du jour. */
@@ -30,6 +37,11 @@ public interface TeacherAttendanceUseCase {
      * est calculé automatiquement vs l'emploi du temps, comme pour un scan. Écrase la valeur si un
      * pointage existait déjà pour cette séance (contrairement au scan, idempotent). */
     TeacherCheckin recordManualEntry(Long teacherId, LocalDate date, LocalTime checkInTime);
+    /** Correction manuelle (sans scan) : saisie de l'heure de sortie pour une date donnée — le départ
+     * anticipé est calculé automatiquement vs l'emploi du temps, comme pour un scan. Crée le pointage
+     * s'il n'existait pas encore (ex. badge oublié toute la séance, saisi a posteriori par le chef de
+     * classe ou la direction). */
+    TeacherCheckin recordManualExit(Long teacherId, LocalDate date, LocalTime checkOutTime);
     /** Marque manuellement l'enseignant absent aujourd'hui (un scan ne peut jamais produire ce statut). */
     TeacherAttendance markAbsent(Long teacherId, String reason);
     TeacherAttendance update(Long id, TeacherAttendanceStatus status, String reason);

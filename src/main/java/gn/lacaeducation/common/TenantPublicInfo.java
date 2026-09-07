@@ -10,4 +10,10 @@ public record TenantPublicInfo(Long id, String schoolName, String email, String 
                                String logo, String address, String city, String country,
                                String website, String director,
                                String accreditationNumber, String openingAuthorization,
-                               String brandColor) {}
+                               String brandColor,
+                               /** Inspection régionale / direction préfectorale / sous-préfectorale de rattachement
+                                * — en-tête officiel des documents pédagogiques (§common/pdf). */
+                               String ire, String dpeLabel, String sousPrefectureLabel,
+                               /** Devise de l'établissement (phrase courte, ex. "Excellence, Rigueur, Discipline")
+                                * — affichée sous le nom de l'école dans l'en-tête des documents (§common/pdf). */
+                               String motto) {}

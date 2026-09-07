@@ -61,11 +61,11 @@ public class StudentCertificateService {
                 : (schoolName != null && !schoolName.isBlank() ? schoolName : "L'Établissement");
 
         PdfWriter writer = PdfWriter.getInstance(doc, out);
-        writer.setPageEvent(new SchoolPdfPageFooter(school, brand));
+        writer.setPageEvent(new SchoolPdfPageFooter(info, brand));
         doc.open();
 
         // En-tête officiel de l'école (logo + nom + contacts + mentions légales).
-        SchoolPdfHeader.render(doc, tenantInfoProvider, tenantId);
+        SchoolPdfHeader.render(doc, tenantInfoProvider, tenantId, "CERTIFICAT DE RADIATION / TRANSFERT");
 
         Paragraph title = new Paragraph("CERTIFICAT DE RADIATION / TRANSFERT", TITLE);
         title.setAlignment(Element.ALIGN_CENTER);

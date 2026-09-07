@@ -34,8 +34,22 @@ public class AttendanceSettingsService implements AttendanceSettingsUseCase {
         if (transitionMarginMinutes != null && (transitionMarginMinutes < 0 || transitionMarginMinutes > 60)) {
             throw new BusinessRuleException("La marge de transition doit être comprise entre 0 et 60 minutes.");
         }
-        return settingsRepo.save(AttendanceSettings.builder()
-                .tenantId(tenantId).transitionMarginMinutes(transitionMarginMinutes).build());
+        // Repart des réglages actuels (pas d'un builder vierge) : sinon les horaires du personnel
+        // configurés par ailleurs seraient silencieusement réinitialisés à leur valeur par défaut.
+        AttendanceSettings current = getSettings(tenantId);
+        current.setTransitionMarginMinutes(transitionMarginMinutes);
+        return settingsRepo.save(current);
+    }
+
+    @Override
+    public AttendanceSettings updateEmployeeHours(Long tenantId, LocalTime checkInTime, LocalTime checkOutTime) {
+        if (checkInTime == null || checkOutTime == null || !checkInTime.isBefore(checkOutTime)) {
+            throw new BusinessRuleException("L'heure d'entrée du personnel doit être antérieure à l'heure de sortie.");
+        }
+        AttendanceSettings current = getSettings(tenantId);
+        current.setEmployeeCheckInTime(checkInTime);
+        current.setEmployeeCheckOutTime(checkOutTime);
+        return settingsRepo.save(current);
     }
 
     @Override

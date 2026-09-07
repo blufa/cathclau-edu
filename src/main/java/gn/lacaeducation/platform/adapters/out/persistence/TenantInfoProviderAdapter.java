@@ -15,7 +15,8 @@ public class TenantInfoProviderAdapter implements TenantInfoProvider {
                         t.getLogo(), t.getAddress(), t.getCity(), t.getCountry(),
                         t.getWebsite(), t.getDirector(),
                         t.getAccreditationNumber(), t.getOpeningAuthorization(),
-                        t.getBrandColor()));
+                        t.getBrandColor(),
+                        t.getIre(), t.getDpeLabel(), t.getSousPrefectureLabel(), t.getMotto()));
     }
     @Override
     public boolean isTenantActive(Long tenantId) {

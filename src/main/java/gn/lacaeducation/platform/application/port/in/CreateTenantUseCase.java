@@ -35,7 +35,7 @@ public interface CreateTenantUseCase {
             String address, String city, String country, String phone, String email,
             String website, String director, String accreditationNumber, String openingAuthorization,
             String payoutMerchantNumber, String payoutOperator, String payoutAccountName,
-            String motto, String slogan) {}
+            String motto, String slogan, String ire, String dpeLabel, String sousPrefectureLabel) {}
 
     /** Tenant detail with its current subscription, plan and consumed student quota (§1.1). */
     record TenantDetail(Tenant tenant, Subscription currentSubscription, Plan plan,

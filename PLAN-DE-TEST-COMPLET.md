@@ -392,6 +392,347 @@ d'attente), sans jamais être déconnecté de force par une simple coupure rése
 
 ---
 
+## Phase 15 — Correctifs septembre 2026 (documents, connexion, référentiels, personnel, site public)
+
+### 15.1 En-tête/pied de page administratifs sur tous les PDF
+
+**Rôle** : `SCHOOL_ADMIN`.
+
+1. `/settings` → renseigner « Rattachement administratif » (IRE, DPE, sous-préfecture).
+2. Générer chacun de ces documents et vérifier la présence du bandeau MEPU-A/RÉPUBLIQUE DE GUINÉE
+   + devise, et du pied de page (coordonnées école) : bulletin (`/grading/report-cards`), reçu de
+   paiement, facture (`/invoices`), fiche de paie (`/payroll`), certificat de scolarité
+   (`/students/{id}` → Documents), convocation d'examen, palmarès de classe, centralisateur.
+
+*Résultat attendu* : même en-tête/pied de page administratif sur tous les documents générés.
+
+### 15.2 Connexion par téléphone pour tous les rôles
+
+**Rôle** : tous, y compris `SCHOOL_ADMIN`.
+
+1. Se connecter sur `/login` avec le **numéro de téléphone** (au lieu de l'email) pour un compte
+   `SCHOOL_ADMIN` créé via `/platform/tenants` (onboarding SUPER_ADMIN) — doit fonctionner.
+2. Si le compte a été créé avant ce correctif et n'a pas de téléphone enregistré : se connecter par
+   email, puis `/account` → renseigner le téléphone soi-même, puis retester la connexion par
+   téléphone.
+
+*Résultat attendu* : tout utilisateur avec un téléphone en base peut se connecter avec.
+
+### 15.3 Email de réinitialisation de mot de passe
+
+**Rôle** : tous.
+
+1. `/forgot-password` → saisir l'email → un email (motif `PASSWORD_RESET`) doit être reçu avec le
+   lien de réinitialisation, que la plateforme soit en cours d'utilisation ou non par un admin.
+
+*Résultat attendu* : l'email de réinitialisation part systématiquement (avant ce correctif, aucun
+canal n'était déclenché).
+
+### 15.4 Référentiels : salles, cycle Garderie, niveaux
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR`.
+
+1. `/referentials` → Salles : modifier une salle existante (libellé) → elle doit rester à sa
+   position d'origine dans la liste, pas repasser en dernière position.
+2. Pour une école déclarant le type d'établissement « Garderie » (`/settings` ou à l'onboarding) :
+   créer une classe de cycle Garderie sur `/referentials` → Classes — ne doit plus être bloqué.
+3. `/referentials` → Niveaux : vérifier que Petite/Moyenne/Grande Section sont rattachées au cycle
+   Maternelle, et CI/CP/CE1/CE2/CM1/CM2 au cycle Primaire (pas des cycles à part entière).
+
+*Résultat attendu* : tri stable des salles, création de classes Garderie possible, modèle
+cycle/niveau cohérent.
+
+### 15.5 Création d'élève avec accès portail
+
+**Rôle** : `SCHOOL_ADMIN` / `SECRETARY`.
+
+1. `/students` → créer un élève en cochant la création d'un compte d'accès (identifiant/mot de
+   passe) → doit aboutir sans erreur 500 générique ; en cas d'échec, le message doit maintenant
+   nommer l'identifiant en cause.
+
+*Résultat attendu* : création fiable, ou message d'erreur exploitable en cas de doublon.
+
+### 15.6 Création d'enseignant simplifiée + personnel pouvant enseigner
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR`.
+
+1. `/teachers` → « Nouvel enseignant » : le formulaire ne comporte plus que 3 étapes (Identité,
+   Professionnel, Compte) — plus d'étape « Affectations ». Après création, l'enseignant apparaît
+   directement dans la liste ; les affectations (niveaux, classes/matières) se font depuis sa fiche
+   (`/teachers/{id}`).
+2. `/teachers` → onglet **Personnel** : sur un membre du personnel (administratif/direction/
+   soutien), cliquer « Devenir enseignant » → le formulaire de création d'enseignant s'ouvre
+   pré-rempli (nom, téléphone, email) → valider crée une fiche enseignant distincte, affectable
+   ensuite comme n'importe quel enseignant. Le salaire de base du personnel et la rémunération des
+   heures de cours restent deux fiches de paie séparées (`/payroll`).
+
+*Résultat attendu* : création d'enseignant en une passe sans affectation forcée ; un membre du
+personnel qui donne aussi des heures de cours peut être affecté à une classe/matière via une fiche
+enseignant liée, sans perdre sa fiche personnel/paie de base.
+
+### 15.7 Frais plateforme : cohérence facture/règlement
+
+**Rôle** : `SCHOOL_ADMIN` / `ACCOUNTANT`.
+
+1. Inscrire un élève avec l'option d'accès plateforme activée, générer sa facture de mensualité
+   (génération unitaire **ou** en lot `/invoices/generer-lot`) → le reçu de paiement doit afficher
+   la ligne « Dont frais d'usage plateforme ».
+2. `/reports` → carte de règlement des frais plateforme : après un encaissement réel avec facture,
+   le bouton de règlement ne doit plus rester grisé.
+
+*Résultat attendu* : le frais plateforme s'applique quel que soit le chemin de génération de
+facture (plus seulement la génération mensuelle automatique).
+
+### 15.8 Clarté du tableau de performance enseignants et fiche de paie
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR`.
+
+1. `/reports` → section Performance enseignants : survoler l'icône d'aide à côté de « Indice global
+   (/100) » → l'infobulle explique le calcul (50 % charge, 30 % assiduité, 20 % ponctualité).
+2. `/teachers/{id}` → carte « Fiches de paie » : lister les fiches existantes et télécharger le PDF
+   directement depuis la fiche enseignant.
+
+### 15.9 Filtre « accès plateforme » sur les inscriptions
+
+**Rôle** : `SCHOOL_ADMIN` / `SECRETARY` / `ACCOUNTANT`.
+
+1. `/enrollments` → utiliser le filtre « Accès plateforme » (Tous / Activé / Non activé) pour ne
+   voir que les inscriptions correspondantes.
+
+### 15.10 Grille d'emploi du temps en bandes d'1h
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR`.
+
+1. `/timetable` → sélectionner une classe : la grille affiche désormais des bandes d'1h (au lieu de
+   2h), de 08h à 18h (au-delà si des créneaux existants débordent).
+2. Affecter une matière sur une bande d'1h (ex. 08h-09h) → laisser l'heure de fin par défaut →
+   occupe une seule bande.
+3. Affecter une matière sur 2h (ex. 08h-10h, en modifiant l'heure de fin dans la cellule) →
+   enregistrer → la cellule doit fusionner visuellement les deux bandes (08h-09h et 09h-10h), sans
+   laisser la bande 09h-10h apparaître vide/disponible pour un autre cours.
+4. Vérifier qu'un conflit (même enseignant/salle/classe sur un créneau chevauchant) est toujours
+   refusé.
+
+*Résultat attendu* : saisie plus fine à l'heure, séances multi-heures fusionnées sur la grille,
+plage horaire étendue jusqu'à 18h.
+
+### 15.11 Formulaire élève simplifié + enchaînement inscription → frais
+
+**Rôle** : `SCHOOL_ADMIN` / `SECRETARY`.
+
+1. `/students` → « Nouvel élève » : le champ « Point de repère » n'apparaît plus (seuls Adresse et
+   Téléphone restent dans « Coordonnées »).
+2. Créer un élève → à la validation, le formulaire d'inscription (`EnrollModal`) s'ouvre
+   automatiquement.
+3. Inscrire l'élève dans une classe → dès la validation, la fenêtre d'encaissement s'ouvre
+   automatiquement (sans clic supplémentaire) et affiche déjà : la facture d'inscription (générée
+   automatiquement à la création de l'inscription) **et** les tranches de mensualité (générées
+   automatiquement à l'ouverture de cette fenêtre, sans bouton « Générer les tranches » à cliquer).
+4. Vérifier qu'ouvrir à nouveau cette fenêtre plus tard (depuis `/enrollments` → « Facture ») ne
+   régénère pas de doublons (message « déjà générées » si on force la génération manuelle restée
+   disponible en repli).
+
+*Résultat attendu* : parcours continu création élève → inscription → frais prêts à encaisser, sans
+étape de génération manuelle pour la scolarité.
+
+### 15.12 Site public simplifié et mobile-stable
+
+**Rôle** : visiteur non connecté.
+
+1. Ouvrir `/` (accueil) sur mobile (largeur ≤ 400px) : en-tête simple (bandeau coordonnées + barre
+   bleue avec menu hamburger), pas de carrousel plein écran, pas de saut de mise en page au
+   chargement (padding/marge stables).
+2. Faire défiler jusqu'au pied de page : colonnes de liens compactes, pas de long bloc Bootstrap.
+3. Parcourir `/a-propos`, `/tarifs`, `/faqs`, `/aide`, `/contact`, `/signup`, `/blog`,
+   `/fonctionnalites` : même en-tête/pied de page simple partout ; plus de témoignages fictifs sur
+   `/` , `/a-propos` et `/faqs`.
+
+*Résultat attendu* : navigation publique simple, cohérente entre pages, stable sur mobile, sans
+contenu inventé (témoignages/statistiques fictifs retirés).
+
+---
+
+## Phase 16 — Paie enseignant (retard/départ anticipé × classes normales/examen) et présences hors-ligne
+
+### 16.1 Paie : retard + départ anticipé combinés au tarif normal/examen
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR`.
+
+**Contexte** : un enseignant qui donne cours à la fois en classe normale et en classe d'examen (deux
+tarifs horaires différents, `/payroll` → fiche enseignant → « Rémunération ») doit être payé au bon
+tarif sur chaque partie, retard et départ anticipé cumulés déduits de la bonne typologie de classe.
+
+1. Configurer un enseignant avec un tarif « classe normale » et un tarif « classe d'examen »
+   différents (`/payroll` → sélectionner l'enseignant → Rémunération).
+2. Vérifier qu'il a des séances programmées à la fois sur une classe normale et une classe d'examen
+   (`/timetable`).
+3. Faire pointer (scan ou saisie manuelle) un retard sur une séance de classe d'examen, et un départ
+   anticipé sur une séance de classe normale, pour le mois en cours.
+4. Marquer les séances correspondantes « réalisées » dans le cahier de textes (`/lessons`).
+5. `/payroll` → sélectionner l'enseignant, le mois → carte « Paie du mois » : vérifier « Retard
+   cumulé », « Départ anticipé cumulé », et la répartition « Dont classes normales »/« Dont classes
+   d'examen » des heures effectives — le retard doit être déduit des heures d'examen, le départ
+   anticipé des heures normales, chacune payée à son tarif.
+6. Générer la fiche de paie (« Générer la fiche de paie ») et vérifier la note du bulletin détaille
+   bien la répartition normal/examen des heures effectives.
+
+*Résultat attendu* : aucun tarif appliqué à tort (plus de repli uniforme sur le tarif normal quand
+un enseignant a aussi des heures d'examen), retard et départ anticipé toujours déduits.
+
+### 16.2 Pointage manuel de sortie enseignant (badge oublié)
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR` / `SECRETARY`.
+
+1. `/attendance` → onglet enseignants → un enseignant sans pointage de sortie du jour → bouton
+   « Sortie » → saisir une heure avant la fin prévue de sa séance → « OK ».
+2. Vérifier la colonne « Départ anticipé » se met à jour, et que la correction est bien prise en
+   compte dans `/payroll` (voir 16.1).
+
+*Résultat attendu* : la sortie peut être corrigée manuellement exactement comme l'entrée, sans
+attendre un scan de badge.
+
+### 16.3 Présences hors-ligne (scan et saisie manuelle)
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR` / `SECRETARY` (+ élève chef de classe pour le scan).
+
+**Prérequis** : s'être connecté au moins une fois en ligne (§Phase 14).
+
+1. Couper le réseau. `/attendance/scan` : scanner un badge élève ou enseignant (entrée ou sortie) —
+   doit s'enregistrer localement (« Scan enregistré hors-ligne — sera synchronisé automatiquement »),
+   sans blocage ni erreur.
+2. Toujours hors-ligne, `/attendance` → appel manuel (élève ou enseignant), « Présent »/« Sortie » →
+   doit s'enregistrer localement avec le même message de confirmation adapté.
+3. Vérifier le bandeau hors-ligne global affiche bien les présences dans son compteur « en attente de
+   synchronisation ».
+4. Reconnecter le réseau : la file doit se rejouer automatiquement (bandeau qui se vide), dans l'ordre
+   d'origine (une entrée avant sa sortie sur la même séance).
+5. Provoquer un échec métier (ex. scanner un enseignant qui n'a aucune séance programmée ce jour-là)
+   pendant que le réseau est coupé, puis reconnecter : l'entrée doit apparaître en échec dans le
+   bandeau (pas silencieusement perdue), avec bouton « Réessayer »/« Ignorer ».
+
+*Résultat attendu* : le scan et la saisie manuelle des présences fonctionnent hors-ligne exactement
+comme les élèves/enseignants/paiements/parents, avec synchronisation automatique et fiable au retour
+du réseau. Note : « Marquer absent » reste une action en ligne uniquement (dépend du jour courant,
+non rejouable a posteriori sans risque de décalage de date).
+
+---
+
+## Phase 17 — Présence élève par cours, contacts parent et frais en mensualités égales
+
+### 17.1 Pointage élève par cours (entrée/sortie), y compris manuel
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR` / `SECRETARY` (+ élève chef de classe pour le scan).
+
+**Contexte** : chaque cours de l'emploi du temps d'un élève génère son propre pointage (comme pour
+les enseignants) — un élève avec 6 cours dans la journée a jusqu'à 6 pointages d'entrée/sortie.
+
+1. `/attendance/scan` : scanner un élève en entrée puis en sortie sur un cours → vérifier via
+   `/attendance` que le retard et le départ anticipé apparaissent bien pour ce cours précis.
+2. `/attendance` → onglet élèves (log de présence) : sur un élève sans pointage de sortie du jour →
+   bouton « Sortie » → saisir une heure avant la fin prévue du cours → « OK ». Fonctionne même si
+   l'élève n'a jamais été pointé en entrée (badge oublié toute la séance).
+3. Vérifier que ce pointage manuel de sortie fonctionne aussi hors-ligne (voir §16.3), avec
+   synchronisation automatique au retour du réseau.
+
+*Résultat attendu* : entrée ET sortie corrigeables manuellement pour un élève, par cours, en ligne
+comme hors-ligne — plus seulement pour les enseignants.
+
+### 17.2 Dashboard parent : heures d'entrée/sortie par cours
+
+**Rôle** : `PARENT`.
+
+1. `/children` → sélectionner un enfant → section « Présences du jour — entrée/sortie par cours » :
+   vérifier l'affichage de chaque cours du jour avec heure d'entrée, retard éventuel, heure de sortie
+   et départ anticipé éventuel.
+2. Changer la date (sélecteur) → vérifier que les pointages d'un autre jour s'affichent correctement.
+3. Vérifier qu'un parent ne voit **jamais** les pointages d'un élève qui n'est pas son enfant (accès
+   scopé, comme le reste du portail).
+
+*Résultat attendu* : le parent sait précisément à quelle heure son enfant est entré/sorti de chaque
+cours, pas seulement un taux d'assiduité global.
+
+### 17.3 Dashboard parent : contacts (enseignants de la classe + direction)
+
+**Rôle** : `PARENT`.
+
+1. `/children` → sélectionner un enfant → carte « Contacts de l'établissement » : vérifier la liste
+   des enseignants de sa classe (une ligne par enseignant, matières concaténées si plusieurs), avec
+   bouton d'appel direct (`tel:`) quand le téléphone est renseigné.
+2. Vérifier la section « Direction de l'école » : directeur et responsable pédagogique du tenant, avec
+   téléphone.
+3. Avec plusieurs enfants dans des classes différentes : changer d'enfant sélectionné → la liste des
+   enseignants doit changer en conséquence (propre à la classe de l'enfant affiché).
+
+*Résultat attendu* : le parent peut joindre directement, par téléphone, chaque enseignant de la
+classe de son enfant, ainsi que la direction de l'école.
+
+### 17.4 Frais : génération rapide de mensualités égales
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR` / `ACCOUNTANT`.
+
+1. `/invoices/fees` → « Nouveau frais » → type Mensualité → choisir le mois de départ de l'année
+   scolaire, saisir un montant mensuel, cliquer « Proposer 9 mensualités égales » → vérifier que 9
+   tranches (une par mois) apparaissent automatiquement, chacune au montant saisi — sans avoir à
+   cocher les mois une par une.
+2. Ajuster librement une tranche proposée (fusionner deux mois, changer un montant) avant de
+   confirmer la création — toujours possible après la génération rapide.
+3. Sur un frais déjà existant (« Échéances » → panneau d'échéances) : même bouton « Proposer N
+   mensualités égales » disponible pour ajouter des tranches manquantes.
+
+*Résultat attendu* : un cas standard (mensualités égales) se configure en un clic, sans perdre la
+possibilité de composer des tranches personnalisées pour les cas particuliers.
+
+---
+
+## Phase 18 — Présence du personnel non-enseignant (nouveau)
+
+**Contexte** : le personnel administratif, direction et soutien (`Employee`, distinct des
+enseignants) n'avait jusqu'ici aucun suivi de présence. Nouveau système, miroir simplifié de celui
+des enseignants : **un seul pointage par jour** (pas de créneau de cours par individu), retard/départ
+anticipé calculés vs un horaire de référence unique configuré par l'école.
+
+### 18.1 Réglage de l'horaire du personnel
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR`.
+
+1. `/attendance` → onglet Réglages → bloc « Horaire de référence du personnel » : définir une heure
+   d'entrée et de sortie (ex. 08h00–17h00) → Enregistrer.
+2. Rouvrir la page : les valeurs enregistrées doivent persister (pas de retour aux 08h00/17h00 par
+   défaut si elles ont été changées).
+3. Vérifier que modifier la marge de transition (bloc juste au-dessus, propre aux enseignants) ne
+   réinitialise pas l'horaire du personnel, et inversement (les deux réglages sont indépendants).
+
+### 18.2 Scan et saisie manuelle du personnel
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR` / `SECRETARY`.
+
+1. `/attendance/scan` → sélecteur « Personnel » (à côté d'Élève/Enseignant) → choisir un membre du
+   personnel dans le pointage manuel → Pointer (Entrée) → vérifier le retard calculé vs l'heure
+   d'entrée configurée.
+2. Sens Sortie → vérifier le départ anticipé calculé vs l'heure de sortie configurée.
+3. Scanner le badge imprimé d'un membre du personnel (badge généré depuis `/teachers` → onglet
+   Personnel → « Badge ») : doit être reconnu par matricule, comme pour un élève/enseignant.
+4. `/attendance` → onglet « Présences personnel » : appel manuel avec boutons « Présent »/« Sortie »/
+   « Absent », mêmes règles que les enseignants (badge oublié → saisie manuelle possible pour
+   l'entrée ET la sortie).
+5. Récap mensuel (même onglet, bloc du bas) : sélectionner un membre du personnel et un mois →
+   vérifier jours présents/absents, retard et départ anticipé cumulés, détail jour par jour.
+
+### 18.3 Hors-ligne
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR` / `SECRETARY`.
+
+1. Couper le réseau → scanner ou saisir manuellement une présence de personnel (entrée ou sortie) →
+   doit s'enregistrer localement avec le message « … hors-ligne — sera synchronisé automatiquement »,
+   comme pour élèves/enseignants.
+2. Reconnecter le réseau → vérifier la synchronisation automatique (bandeau hors-ligne qui se vide).
+
+*Résultat attendu* : le personnel non-enseignant bénéficie du même niveau de suivi de présence
+(scan, saisie manuelle entrée/sortie, hors-ligne) que les enseignants, avec un modèle adapté à
+l'absence de créneaux de cours individuels.
+
+---
+
 ## Annexe — Matrice rapide rôle × accès attendu
 
 | Rôle | Accès notable | Ne doit jamais voir |

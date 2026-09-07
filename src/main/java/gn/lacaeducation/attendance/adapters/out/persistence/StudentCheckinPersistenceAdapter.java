@@ -33,7 +33,7 @@ class StudentCheckinPersistenceAdapter implements StudentCheckinRepository {
                 .classId(e.getClassId()).checkinDate(e.getCheckinDate()).scheduleSlotId(e.getScheduleSlotId())
                 .sessionStart(e.getSessionStart()).sessionEnd(e.getSessionEnd())
                 .checkInTime(e.getCheckInTime()).checkOutTime(e.getCheckOutTime())
-                .lateMinutes(e.getLateMinutes()).createdAt(e.getCreatedAt()).build();
+                .lateMinutes(e.getLateMinutes()).earlyMinutes(e.getEarlyMinutes()).createdAt(e.getCreatedAt()).build();
     }
 
     private StudentCheckinJpaEntity toEntity(StudentCheckin c) {
@@ -43,6 +43,7 @@ class StudentCheckinPersistenceAdapter implements StudentCheckinRepository {
         e.setSessionStart(c.getSessionStart()); e.setSessionEnd(c.getSessionEnd());
         e.setCheckInTime(c.getCheckInTime()); e.setCheckOutTime(c.getCheckOutTime());
         e.setLateMinutes(c.getLateMinutes() != null ? c.getLateMinutes() : 0);
+        e.setEarlyMinutes(c.getEarlyMinutes() != null ? c.getEarlyMinutes() : 0);
         e.setCreatedAt(c.getCreatedAt());
         return e;
     }

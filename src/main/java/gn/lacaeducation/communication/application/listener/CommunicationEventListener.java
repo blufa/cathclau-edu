@@ -11,6 +11,7 @@ import gn.lacaeducation.communication.domain.*;
 import gn.lacaeducation.grading.application.event.AssessmentScheduledEvent;
 import gn.lacaeducation.grading.application.event.GradeModifiedEvent;
 import gn.lacaeducation.grading.application.event.ReportCardPublishedEvent;
+import gn.lacaeducation.iam.application.event.PasswordResetRequestedEvent;
 import gn.lacaeducation.iam.application.event.UserAccountCreatedEvent;
 import gn.lacaeducation.payments.PaymentDataProvider;
 import gn.lacaeducation.payments.application.event.PaymentSucceededEvent;
@@ -48,6 +49,9 @@ public class CommunicationEventListener {
     private final AcademicsDataProvider academicsDataProvider;
     private final TenantInfoProvider tenantInfoProvider;
     private final gn.lacaeducation.iam.SchoolStaffDirectory schoolStaffDirectory;
+
+    @org.springframework.beans.factory.annotation.Value("${app.platform.reset-password-url:https://app.lacaeducation.gn/reset-password}")
+    private String resetPasswordUrl;
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
@@ -204,11 +208,29 @@ public class CommunicationEventListener {
         String defaultBody = "Bienvenue " + fullName + ". Identifiant : " + event.username()
                 + " — Mot de passe : " + event.plainPassword() + ". Connectez-vous pour le modifier.";
         Resolved r = resolve(event.tenantId(), CommunicationReason.ACCOUNT_CREATED, "Votre compte a été créé", defaultBody, vars);
-        // SMS uniquement : les identifiants ne partent jamais par email même si un modèle EMAIL est
-        // configuré pour ce motif ailleurs — canal volontairement figé ici.
+        // les identifiants doivent partir par SMS et par email
         communicationUseCase.send(new SendCommunicationCommand(event.tenantId(), null, CommunicationChannel.SMS,
                 RecipientType.GROUP, r.subject(), r.content(), CommunicationReason.ACCOUNT_CREATED,
                 List.of(new RecipientTarget(event.userId(), event.phone()))));
+    }
+
+    /**
+     * Envoie le lien de réinitialisation de mot de passe par email — sans lui, le jeton créé en base
+     * à la demande « mot de passe oublié » n'était jamais communiqué à l'utilisateur (§2.1).
+     */
+    @TransactionalEventListener
+    public void onPasswordResetRequested(PasswordResetRequestedEvent event) {
+        if (event.email() == null || event.email().isBlank()) return;
+        String link = resetPasswordUrl + "?token=" + event.resetToken();
+        Map<String, String> vars = Map.of("ecole", schoolName(event.tenantId()), "lien", link);
+        String defaultBody = "Vous avez demandé la réinitialisation de votre mot de passe. "
+                + "Suivez ce lien (valable 24h) pour en choisir un nouveau : " + link
+                + "\nSi vous n'êtes pas à l'origine de cette demande, ignorez ce message.";
+        Resolved r = resolve(event.tenantId(), CommunicationReason.PASSWORD_RESET,
+                "Réinitialisation de votre mot de passe", defaultBody, vars);
+        communicationUseCase.send(new SendCommunicationCommand(event.tenantId(), null, CommunicationChannel.EMAIL,
+                RecipientType.GROUP, r.subject(), r.content(), CommunicationReason.PASSWORD_RESET,
+                List.of(new RecipientTarget(event.userId(), event.email()))));
     }
 
     // ── dispatch ───────────────────────────────────────────────────────────────

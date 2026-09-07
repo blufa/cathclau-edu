@@ -21,5 +21,8 @@ public class StudentCheckin {
     private LocalTime checkInTime;
     private LocalTime checkOutTime;
     private Integer lateMinutes;
+    /** Minutes de départ anticipé (sortie pointée avant la fin prévue) — 0 si la sortie n'a jamais
+     * été pointée (bénéfice du doute, pas de pénalité). */
+    private Integer earlyMinutes;
     private LocalDateTime createdAt;
 }

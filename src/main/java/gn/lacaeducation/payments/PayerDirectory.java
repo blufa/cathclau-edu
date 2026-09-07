@@ -28,7 +28,11 @@ public interface PayerDirectory {
      * reçu affiche toujours la réduction, même quand elle est calculée automatiquement.
      */
     record InvoiceFeeInfo(String feeTypeLabel, String periodLabel,
-                          java.math.BigDecimal discountAmount, String discountReason) {}
+                          java.math.BigDecimal discountAmount, String discountReason,
+                          /** Part de la facture due au frais d'usage plateforme (§billing) — null/zéro
+                           * si l'élève n'a pas accepté l'accès plateforme. Affichée sur le reçu pour
+                           * que la ligne ne disparaisse jamais silencieusement. */
+                          java.math.BigDecimal platformFeeAmount) {}
 
     /** Nature du frais couvert par une facture (pour l'observation « Inscription »/« Mensualité » du reçu). */
     Optional<InvoiceFeeInfo> invoiceFeeInfo(Long invoiceId);

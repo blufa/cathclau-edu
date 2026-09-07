@@ -26,4 +26,13 @@ public interface SchoolStaffDirectory {
      * dédié dans les paramètres du tenant.
      */
     List<SchoolAdminContact> findSchoolAdminContacts(Long tenantId);
+
+    /** Un membre de la direction, joignable par téléphone, avec sa fonction. */
+    record LeadershipContact(String phone, String fullName, String role) {}
+
+    /**
+     * Direction de l'école — DIRECTEUR et responsable pédagogique, avec leur téléphone — utilisé par
+     * le portail parent pour afficher les contacts de l'établissement (§portal).
+     */
+    List<LeadershipContact> findLeadershipContacts(Long tenantId);
 }

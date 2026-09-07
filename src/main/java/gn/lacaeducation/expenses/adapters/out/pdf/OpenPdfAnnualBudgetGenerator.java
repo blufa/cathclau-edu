@@ -53,10 +53,10 @@ class OpenPdfAnnualBudgetGenerator implements AnnualBudgetPdfGenerator {
                     : tenantInfoProvider.findTenantInfo(budget.getTenantId()).orElse(null);
             Color brand = SchoolPdfHeader.parseColor(info == null ? null : info.brandColor());
             PdfWriter writer = PdfWriter.getInstance(doc, out);
-            writer.setPageEvent(new SchoolPdfPageFooter(info == null ? null : info.schoolName(), brand));
+            writer.setPageEvent(new SchoolPdfPageFooter(info, brand));
             doc.open();
 
-            SchoolPdfHeader.render(doc, tenantInfoProvider, budget.getTenantId());
+            SchoolPdfHeader.render(doc, tenantInfoProvider, budget.getTenantId(), "BUDGET — " + safe(budget.getLabel()).toUpperCase(java.util.Locale.ROOT));
 
             Paragraph title = new Paragraph("BUDGET — " + safe(budget.getLabel()).toUpperCase(Locale.ROOT),
                     SchoolPdfHeader.font(FontFactory.HELVETICA_BOLD, 16, brand));

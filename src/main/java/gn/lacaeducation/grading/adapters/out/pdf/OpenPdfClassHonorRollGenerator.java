@@ -45,10 +45,10 @@ class OpenPdfClassHonorRollGenerator implements ClassHonorRollPdfGenerator {
             Color brand = SchoolPdfHeader.parseColor(info == null ? null : info.brandColor());
 
             PdfWriter writer = PdfWriter.getInstance(doc, out);
-            writer.setPageEvent(new SchoolPdfPageFooter(info == null ? null : info.schoolName(), brand));
+            writer.setPageEvent(new SchoolPdfPageFooter(info, brand));
             doc.open();
 
-            SchoolPdfHeader.render(doc, tenantInfoProvider, roll.tenantId());
+            SchoolPdfHeader.render(doc, tenantInfoProvider, roll.tenantId(), "PALMARÈS — TABLEAU D'HONNEUR");
 
             Paragraph title = new Paragraph("PALMARÈS — TABLEAU D'HONNEUR", SchoolPdfHeader.font(FontFactory.HELVETICA_BOLD, 16, brand));
             title.setAlignment(Element.ALIGN_CENTER);

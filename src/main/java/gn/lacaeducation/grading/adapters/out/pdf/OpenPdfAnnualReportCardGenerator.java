@@ -52,10 +52,10 @@ class OpenPdfAnnualReportCardGenerator implements AnnualReportCardPdfGenerator {
             Color brand = SchoolPdfHeader.parseColor(info == null ? null : info.brandColor());
 
             PdfWriter writer = PdfWriter.getInstance(doc, out);
-            writer.setPageEvent(new SchoolPdfPageFooter(info == null ? null : info.schoolName(), brand));
+            writer.setPageEvent(new SchoolPdfPageFooter(info, brand));
             doc.open();
 
-            SchoolPdfHeader.render(doc, tenantInfoProvider, ctx.tenantId());
+            SchoolPdfHeader.render(doc, tenantInfoProvider, ctx.tenantId(), "BULLETIN DE NOTES ANNUELLES");
 
             Paragraph title = new Paragraph("BULLETIN DE NOTES ANNUELLES", SchoolPdfHeader.font(FontFactory.HELVETICA_BOLD, 15, brand));
             title.setAlignment(Element.ALIGN_CENTER);

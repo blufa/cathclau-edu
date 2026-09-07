@@ -53,8 +53,17 @@ public class EleveService implements StudentUseCase {
         Long userId = cmd.userId();
         if (Boolean.TRUE.equals(cmd.createLogin()) && cmd.loginPassword() != null && !cmd.loginPassword().isBlank()) {
             String username = matricule.replace("-", "");
-            userId = portalAccountProvisioner.createStudentLogin(
-                    cmd.tenantId(), cmd.firstName(), cmd.lastName(), username, cmd.loginPassword());
+            try {
+                userId = portalAccountProvisioner.createStudentLogin(
+                        cmd.tenantId(), cmd.firstName(), cmd.lastName(), username, cmd.loginPassword());
+            } catch (RuntimeException e) {
+                // Rend l'échec explicite au lieu d'un 500 générique : sans ce message, l'élève ne
+                // pouvait pas être créé du tout et rien n'indiquait que la cause venait précisément
+                // de la création du compte d'accès plutôt que de l'élève lui-même.
+                throw new gn.lacaeducation.common.BusinessRuleException(
+                        "Échec de la création de l'accès portail (identifiant \"" + username
+                                + "\") : " + e.getMessage());
+            }
         }
 
         Student saved = studentRepository.save(Student.builder()

@@ -140,6 +140,29 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
     }
 
     @Override
+    public TeacherCheckin recordManualExit(Long teacherId, LocalDate date, LocalTime checkOutTime) {
+        // Symétrique de recordManualEntry : crée le pointage si absent (badge oublié toute la séance),
+        // sinon complète le pointage d'entrée déjà existant avec l'heure de sortie saisie.
+        ScheduleSlotPublicInfo session = sessionResolver.currentSession(academics.findScheduleByTeacher(teacherId), date, checkOutTime);
+        if (session == null) {
+            throw new gn.lacaeducation.common.BusinessRuleException("Aucune séance programmée ce jour-là pour cet enseignant.");
+        }
+        LocalTime start = LocalTime.parse(session.startTime());
+        LocalTime end = LocalTime.parse(session.endTime());
+        TeacherCheckin checkin = checkinRepository.findByTeacherIdAndDateAndSlot(teacherId, date, session.id())
+                .orElseGet(() -> TeacherCheckin.builder()
+                        .tenantId(TenantContext.get()).teacherId(teacherId).checkinDate(date)
+                        .scheduleSlotId(session.id()).sessionStart(start).lateMinutes(0).createdAt(LocalDateTime.now()).build());
+        checkin.setSessionEnd(end);
+        checkin.setCheckOutTime(checkOutTime);
+        int early = (int) Math.max(0, Duration.between(checkOutTime, end).toMinutes());
+        checkin.setEarlyMinutes(early);
+        TeacherCheckin saved = checkinRepository.save(checkin);
+        upsertDailyAttendance(teacherId, date);
+        return saved;
+    }
+
+    @Override
     public TeacherAttendance markAbsent(Long teacherId, String reason) {
         LocalDate today = LocalDate.now();
         List<TeacherAttendance> existing = attendanceRepository.findByTeacherIdAndDateBetween(teacherId, today, today);
@@ -209,6 +232,29 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
                 .sum();
         int effective = Math.max(0, dueMinutes - absentMinutes - totalLate - totalEarly);
         return new MonthlySummary(teacherId, year, month, present, absent, totalLate, totalEarly, dueMinutes, absentMinutes, effective);
+    }
+
+    @Override @Transactional(readOnly = true)
+    public Map<Long, ClassLateEarly> monthlyLateEarlyByClass(Long teacherId, int year, int month) {
+        LocalDate from = LocalDate.of(year, month, 1);
+        LocalDate to = from.withDayOfMonth(from.lengthOfMonth());
+        // Résout chaque pointage (par scheduleSlotId) vers la classe concernée, pour cumuler retard et
+        // départ anticipé séparément par classe (§paie — tarif normal/examen).
+        Map<Long, Long> classIdBySlot = new HashMap<>();
+        for (ScheduleSlotPublicInfo s : academics.findScheduleByTeacher(teacherId)) {
+            if (s.id() != null && s.classId() != null) classIdBySlot.put(s.id(), s.classId());
+        }
+        Map<Long, int[]> accByClass = new HashMap<>(); // [lateMinutes, earlyMinutes]
+        for (TeacherCheckin c : checkinRepository.findByTeacherIdAndDateBetween(teacherId, from, to)) {
+            Long classId = c.getScheduleSlotId() != null ? classIdBySlot.get(c.getScheduleSlotId()) : null;
+            if (classId == null) continue; // créneau non résolu (supprimé depuis) : ignoré du détail par classe
+            int[] acc = accByClass.computeIfAbsent(classId, k -> new int[2]);
+            acc[0] += c.getLateMinutes() != null ? c.getLateMinutes() : 0;
+            acc[1] += c.getEarlyMinutes() != null ? c.getEarlyMinutes() : 0;
+        }
+        Map<Long, ClassLateEarly> result = new HashMap<>();
+        for (var e : accByClass.entrySet()) result.put(e.getKey(), new ClassLateEarly(e.getValue()[0], e.getValue()[1]));
+        return result;
     }
 
     private static String frenchDay(DayOfWeek dow) {
