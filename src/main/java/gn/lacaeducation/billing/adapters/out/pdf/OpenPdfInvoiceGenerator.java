@@ -42,7 +42,7 @@ class OpenPdfInvoiceGenerator implements InvoicePdfGenerator {
             TenantPublicInfo info = inv.getTenantId() == null ? null
                     : tenantInfoProvider.findTenantInfo(inv.getTenantId()).orElse(null);
             PdfWriter writer = PdfWriter.getInstance(doc, out);
-            writer.setPageEvent(new SchoolPdfPageFooter(info == null ? null : info.schoolName(),
+            writer.setPageEvent(new SchoolPdfPageFooter(info,
                     SchoolPdfHeader.parseColor(info == null ? null : info.brandColor())));
             doc.open();
 

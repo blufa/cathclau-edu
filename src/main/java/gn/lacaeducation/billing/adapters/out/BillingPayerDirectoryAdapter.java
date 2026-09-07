@@ -84,6 +84,6 @@ public class BillingPayerDirectoryAdapter implements PayerDirectory {
         FeeType type = schoolFeeRepository.findById(invoice.getFeeId()).map(f -> f.getType()).orElse(null);
         if (type == null) return Optional.empty();
         return Optional.of(new InvoiceFeeInfo(FEE_TYPE_LABEL.getOrDefault(type, type.name()), invoice.getPeriodLabel(),
-                invoice.getDiscountAmount(), invoice.getDiscountReason()));
+                invoice.getDiscountAmount(), invoice.getDiscountReason(), invoice.getPlatformFeeAmount()));
     }
 }

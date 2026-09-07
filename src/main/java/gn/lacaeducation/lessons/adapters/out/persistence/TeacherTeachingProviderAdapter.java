@@ -6,6 +6,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
@@ -18,5 +20,12 @@ class TeacherTeachingProviderAdapter implements TeacherTeachingProvider {
         return jpa.findByTeacherIdAndStatusAndLessonDateBetween(teacherId, LessonStatus.DONE, from, to).stream()
                 .mapToInt(l -> l.getDurationMinutes() != null ? l.getDurationMinutes() : 0)
                 .sum();
+    }
+
+    @Override
+    public Map<Long, Integer> realizedMinutesByClass(Long teacherId, LocalDate from, LocalDate to) {
+        return jpa.findByTeacherIdAndStatusAndLessonDateBetween(teacherId, LessonStatus.DONE, from, to).stream()
+                .collect(Collectors.groupingBy(LessonEntryJpaEntity::getClassId,
+                        Collectors.summingInt(l -> l.getDurationMinutes() != null ? l.getDurationMinutes() : 0)));
     }
 }

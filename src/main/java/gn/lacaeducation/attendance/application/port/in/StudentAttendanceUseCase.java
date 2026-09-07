@@ -28,6 +28,11 @@ public interface StudentAttendanceUseCase {
      * la valeur si un pointage existait déjà pour cette séance. Aucune vérification chef-de-classe
      * (action staff, pas un scan). */
     StudentCheckin recordManualEntry(Long studentId, LocalDate date, LocalTime checkInTime);
+    /** Correction manuelle (sans scan) : saisie de l'heure de sortie pour une date donnée — le départ
+     * anticipé est calculé automatiquement vs l'emploi du temps, comme pour un scan. Crée le pointage
+     * s'il n'existait pas encore (ex. badge oublié toute la séance, saisi a posteriori par le chef de
+     * classe ou la direction). */
+    StudentCheckin recordManualExit(Long studentId, LocalDate date, LocalTime checkOutTime);
     /** Marque manuellement l'élève absent aujourd'hui (un scan ne peut jamais produire ce statut). */
     StudentAttendance markAbsent(Long studentId, String reason);
     /** Pointages (par séance) d'un élève à une date donnée. */

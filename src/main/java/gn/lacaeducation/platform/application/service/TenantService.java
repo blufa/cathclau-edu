@@ -68,7 +68,7 @@ public class TenantService implements CreateTenantUseCase, TenantEstablishmentTy
         // iam provisions the (verified) ADMIN_ECOLE + roles; onboarding/communication via TenantActivated.
         eventPublisher.publishEvent(new TenantCreatedEvent(
                 saved.getId(), saved.getSchoolName(), saved.getEmail(), saved.getDirector(),
-                effectivePassword, !chosen, c.adminUsername()));
+                effectivePassword, !chosen, c.adminUsername(), saved.getPhone()));
         if (!chosen) {
             // Envoi des identifiants (email + mot de passe temporaire) à l'administrateur de l'école.
             eventPublisher.publishEvent(new TenantAdminCredentialsIssuedEvent(
@@ -114,6 +114,7 @@ public class TenantService implements CreateTenantUseCase, TenantEstablishmentTy
         t.setPhone(c.phone()); t.setEmail(c.email()); t.setWebsite(c.website()); t.setDirector(c.director());
         t.setAccreditationNumber(c.accreditationNumber()); t.setOpeningAuthorization(c.openingAuthorization());
         t.setMotto(c.motto()); t.setSlogan(c.slogan());
+        t.setIre(c.ire()); t.setDpeLabel(c.dpeLabel()); t.setSousPrefectureLabel(c.sousPrefectureLabel());
         // Payout : ne pas écraser avec null (les éditions SUPER_ADMIN n'envoient pas ces champs).
         // Le formulaire de l'école envoie "" pour effacer, jamais null.
         if (c.payoutMerchantNumber() != null) t.setPayoutMerchantNumber(c.payoutMerchantNumber());

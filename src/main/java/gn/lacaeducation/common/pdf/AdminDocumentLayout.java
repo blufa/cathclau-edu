@@ -4,7 +4,6 @@ import com.lowagie.text.Document;
 import com.lowagie.text.Element;
 import com.lowagie.text.Font;
 import com.lowagie.text.FontFactory;
-import com.lowagie.text.Image;
 import com.lowagie.text.Paragraph;
 import com.lowagie.text.Phrase;
 import com.lowagie.text.Rectangle;
@@ -36,36 +35,24 @@ public final class AdminDocumentLayout {
 
     /** En-tête sobre (logo + nom de l'établissement + adresse + téléphone), sans bandeau coloré. */
     public static void header(Document doc, TenantPublicInfo info) {
-        PdfPTable band = new PdfPTable(new float[]{1f, 3.4f});
-        band.setWidthPercentage(100);
-        band.setSpacingAfter(10f);
+        header(doc, info, null);
+    }
 
-        PdfPCell logoCell = new PdfPCell();
-        logoCell.setBorder(0);
-        logoCell.setHorizontalAlignment(Element.ALIGN_CENTER);
-        logoCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
-        Image logo = info == null ? null : SchoolPdfHeader.loadLogo(info.logo());
-        if (logo != null) {
-            logo.scaleToFit(48, 48);
-            logoCell.addElement(logo);
+    /** Comme {@link #header(Document, TenantPublicInfo)}, en ajoutant le bloc administratif officiel
+     * (MEPU-A / IRE / DPE-DCE / DSSEE / République de Guinée / année) au-dessus — reproduit l'en-tête
+     * des documents pédagogiques papier (référence : "Fiche de note 7eme.docx"). Délègue à
+     * {@link SchoolPdfHeader} (bloc administratif + logo centré + nom d'établissement) pour éviter
+     * une seconde implémentation divergente et un logo dupliqué. */
+    public static void header(Document doc, TenantPublicInfo info, String academicYearLabel) {
+        if (info != null) {
+            SchoolPdfHeader.renderAdministrativeBlock(doc, info, academicYearLabel);
+            SchoolPdfHeader.renderSchoolName(doc, info, DARK);
+        } else {
+            Paragraph name = new Paragraph("Établissement", font(FontFactory.HELVETICA_BOLD, 13, DARK));
+            name.setAlignment(Element.ALIGN_CENTER);
+            doc.add(name);
         }
-        band.addCell(logoCell);
-
-        PdfPCell textCell = new PdfPCell();
-        textCell.setBorder(0);
-        textCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
-        textCell.addElement(new Paragraph(info == null || info.schoolName() == null ? "Établissement" : info.schoolName(),
-                font(FontFactory.HELVETICA_BOLD, 13, DARK)));
-        String address = join(", ", info == null ? null : info.address(), info == null ? null : info.city());
-        if (!address.isBlank()) {
-            textCell.addElement(new Paragraph(address, font(FontFactory.HELVETICA, 9, GREY)));
-        }
-        String phone = info == null ? null : info.phone();
-        if (phone != null && !phone.isBlank()) {
-            textCell.addElement(new Paragraph("Tél. " + phone, font(FontFactory.HELVETICA, 9, GREY)));
-        }
-        band.addCell(textCell);
-        doc.add(band);
+        SchoolPdfHeader.renderSeparator(doc, LINE);
     }
 
     /** Titre encadré (boîte à bordure fine, sans remplissage coloré). */

@@ -60,7 +60,9 @@ public class PayrollService {
 
     public record MonthlyPay(Long teacherId, int year, int month, String payMode,
                              int realizedMinutes, int lateMinutes, int earlyMinutes, int effectiveMinutes,
-                             BigDecimal hourlyRate, BigDecimal fixedSalary, BigDecimal teachingPay, BigDecimal grossPay) {}
+                             int normalEffectiveMinutes, int examEffectiveMinutes,
+                             BigDecimal hourlyRateNormal, BigDecimal hourlyRateExam,
+                             BigDecimal fixedSalary, BigDecimal teachingPay, BigDecimal grossPay) {}
 
     public TeacherCompensation setCompensation(Long tenantId, Long teacherId, PayMode mode,
                                                 BigDecimal hourlyRateNormal, BigDecimal hourlyRateExam, BigDecimal fixedSalary,
@@ -81,33 +83,61 @@ public class PayrollService {
     @Transactional(readOnly = true)
     public List<TeacherCompensation> compensations(Long tenantId) { return compRepo.findByTenantId(tenantId); }
 
+    /** Vrai si la classe est de typologie "classe d'examen" (tarif horaire dédié, §6) ; false si
+     * introuvable (classe supprimée depuis) — repli par défaut sur le tarif normal. */
+    private boolean isExamClass(Long classId, Map<Long, ClassPublicInfo> classCache) {
+        if (classId == null) return false;
+        ClassPublicInfo info = classCache.computeIfAbsent(classId, id -> academics.findClass(id).orElse(null));
+        return info != null && "EXAMEN".equals(info.classType());
+    }
+
     /**
      * Paie mensuelle basée sur les heures RÉALISÉES (séances « réalisées » du cahier de textes),
-     * diminuées des retards (pointage par séance). Horaire : heures effectives × tarif ; Fixe : salaire
-     * fixe + heures de cours effectives × tarif (cas direction qui enseigne aussi).
+     * diminuées des retards et départs anticipés cumulés (pointage par séance), le tout réparti par
+     * typologie de classe (normal/examen, §6) pour appliquer le bon tarif à chaque part — un
+     * enseignant qui donne cours à la fois en classe normale et en classe d'examen est ainsi payé
+     * correctement sur chaque partie, retards et départs anticipés déduits de la bonne typologie.
+     * Horaire : heures effectives × tarif (normal + examen) ; Fixe : salaire fixe + heures de cours
+     * effectives × tarif (cas direction qui enseigne aussi).
      */
     @Transactional(readOnly = true)
     public MonthlyPay computeMonthlyPay(Long teacherId, int year, int month) {
         LocalDate from = LocalDate.of(year, month, 1);
         LocalDate to = from.withDayOfMonth(from.lengthOfMonth());
-        int realized = teachingProvider.realizedMinutes(teacherId, from, to);
-        TeacherWorkProvider.MonthlyWork mw = workProvider.monthlyWork(teacherId, year, month);
-        int late = mw.lateMinutes();
-        int early = mw.earlyMinutes();
-        int effective = Math.max(0, realized - late - early);
+        Map<Long, Integer> realizedByClass = teachingProvider.realizedMinutesByClass(teacherId, from, to);
+        Map<Long, TeacherWorkProvider.ClassLateEarly> lateEarlyByClass = workProvider.monthlyLateEarlyByClass(teacherId, year, month);
+
+        Map<Long, ClassPublicInfo> classCache = new HashMap<>();
+        int realized = 0, late = 0, early = 0;
+        int normalRealized = 0, examRealized = 0;
+        int normalLate = 0, examLate = 0, normalEarly = 0, examEarly = 0;
+        for (var e : realizedByClass.entrySet()) {
+            int minutes = e.getValue();
+            realized += minutes;
+            if (isExamClass(e.getKey(), classCache)) examRealized += minutes; else normalRealized += minutes;
+        }
+        for (var e : lateEarlyByClass.entrySet()) {
+            int l = e.getValue().lateMinutes(), ea = e.getValue().earlyMinutes();
+            late += l; early += ea;
+            if (isExamClass(e.getKey(), classCache)) { examLate += l; examEarly += ea; }
+            else { normalLate += l; normalEarly += ea; }
+        }
+        int normalEffective = Math.max(0, normalRealized - normalLate - normalEarly);
+        int examEffective = Math.max(0, examRealized - examLate - examEarly);
+        int effective = normalEffective + examEffective;
 
         TeacherCompensation comp = compRepo.findByTeacherId(teacherId).orElse(null);
         PayMode mode = comp != null && comp.getPayMode() != null ? comp.getPayMode() : PayMode.HOURLY;
-        // Les heures réalisées (cahier de textes) ne distinguent pas la typologie de classe : on
-        // applique le tarif "classe normale" par défaut (voir computeTheoreticalMonthlyPay pour le
-        // calcul automatique par typologie, basé sur l'emploi du temps — §6).
-        BigDecimal rate = comp != null && comp.getHourlyRateNormal() != null ? comp.getHourlyRateNormal() : BigDecimal.ZERO;
+        BigDecimal rateNormal = comp != null && comp.getHourlyRateNormal() != null ? comp.getHourlyRateNormal() : BigDecimal.ZERO;
+        BigDecimal rateExam = comp != null && comp.getHourlyRateExam() != null ? comp.getHourlyRateExam() : BigDecimal.ZERO;
         BigDecimal fixed = comp != null && comp.getFixedSalary() != null ? comp.getFixedSalary() : BigDecimal.ZERO;
 
-        BigDecimal effHours = BigDecimal.valueOf(effective).divide(BigDecimal.valueOf(60), 2, RoundingMode.HALF_UP);
-        BigDecimal teachingPay = effHours.multiply(rate).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal normalHours = BigDecimal.valueOf(normalEffective).divide(BigDecimal.valueOf(60), 2, RoundingMode.HALF_UP);
+        BigDecimal examHours = BigDecimal.valueOf(examEffective).divide(BigDecimal.valueOf(60), 2, RoundingMode.HALF_UP);
+        BigDecimal teachingPay = normalHours.multiply(rateNormal).add(examHours.multiply(rateExam)).setScale(2, RoundingMode.HALF_UP);
         BigDecimal gross = mode == PayMode.FIXED ? fixed.add(teachingPay) : teachingPay;
-        return new MonthlyPay(teacherId, year, month, mode.name(), realized, late, early, effective, rate, fixed, teachingPay, gross);
+        return new MonthlyPay(teacherId, year, month, mode.name(), realized, late, early, effective,
+                normalEffective, examEffective, rateNormal, rateExam, fixed, teachingPay, gross);
     }
 
     private static final String[] FR_MONTHS = {"Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
@@ -119,9 +149,13 @@ public class PayrollService {
         LocalDate from = LocalDate.of(year, month, 1);
         LocalDate to = from.withDayOfMonth(from.lengthOfMonth());
         String periodLabel = FR_MONTHS[month - 1] + " " + year;
-        String notes = String.format("%dh%02d réalisées − %d min de retard − %d min de départ anticipé = %dh%02d effectives%s",
+        String notes = String.format(
+                "%dh%02d réalisées − %d min de retard − %d min de départ anticipé = %dh%02d effectives "
+                        + "(dont %dh%02d classes normales, %dh%02d classes d'examen)%s",
                 mp.realizedMinutes() / 60, mp.realizedMinutes() % 60, mp.lateMinutes(), mp.earlyMinutes(),
                 mp.effectiveMinutes() / 60, mp.effectiveMinutes() % 60,
+                mp.normalEffectiveMinutes() / 60, mp.normalEffectiveMinutes() % 60,
+                mp.examEffectiveMinutes() / 60, mp.examEffectiveMinutes() % 60,
                 "FIXED".equals(mp.payMode()) ? " + salaire fixe" : "");
         return generate(new GenerateCommand(tenantId, gn.lacaeducation.payroll.domain.EmployeeType.TEACHER,
                 teacherId, teacherName, periodLabel, from, to,
@@ -229,11 +263,7 @@ public class PayrollService {
             if (occurrences == 0) continue;
             int minutes = (int) Duration.between(LocalTime.parse(slot.startTime()), LocalTime.parse(slot.endTime())).toMinutes()
                     * occurrences;
-            ClassPublicInfo classInfo = slot.classId() != null
-                    ? classCache.computeIfAbsent(slot.classId(), id -> academics.findClass(id).orElse(null))
-                    : null;
-            boolean exam = classInfo != null && "EXAMEN".equals(classInfo.classType());
-            if (exam) examMinutes += minutes; else normalMinutes += minutes;
+            if (isExamClass(slot.classId(), classCache)) examMinutes += minutes; else normalMinutes += minutes;
         }
 
         PayMode mode = comp != null && comp.getPayMode() != null ? comp.getPayMode() : PayMode.HOURLY;

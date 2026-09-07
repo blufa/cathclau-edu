@@ -71,6 +71,27 @@ public class StudentAttendanceController {
         return useCase.recordManualEntry(studentId, date, checkInTime);
     }
 
+    @Operation(summary = "Correction manuelle : saisir l'heure de sortie d'un élève pour une date "
+            + "donnée (le départ anticipé est calculé automatiquement vs l'emploi du temps, comme pour "
+            + "un scan) — utile quand le badge a été oublié pour toute la séance")
+    @PreAuthorize("hasAuthority('presence:create')")
+    @PostMapping("/{studentId}/manual-exit")
+    public StudentCheckin manualExit(@PathVariable Long studentId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam LocalTime checkOutTime) {
+        return useCase.recordManualExit(studentId, date, checkOutTime);
+    }
+
+    @Operation(summary = "Pointages (par séance) d'un élève à une date donnée — heure d'arrivée/sortie, "
+            + "retard et départ anticipé par créneau (ex. pour le dashboard parent)")
+    @GetMapping("/{studentId}/checkins")
+    public List<StudentCheckin> checkins(@PathVariable Long studentId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @AuthenticationPrincipal Jwt jwt) {
+        assertParentScope(jwt, studentId);
+        return useCase.findCheckins(studentId, date);
+    }
+
     @Operation(summary = "Badge de retrait (maternelle/primaire) : enregistrer qui est venu récupérer "
             + "l'enfant — un parent déjà lié (pickerParentId) ou une personne saisie librement "
             + "(pickerName + pickerRelation)")

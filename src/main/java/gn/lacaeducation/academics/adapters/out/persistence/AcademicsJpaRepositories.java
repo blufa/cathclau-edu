@@ -24,7 +24,9 @@ interface PeriodeJpaRepository extends JpaRepository<PeriodeJpaEntity, Long> {
 }
 
 interface SalleJpaRepository extends JpaRepository<SalleJpaEntity, Long> {
-    List<SalleJpaEntity> findByTenantId(Long tenantId);
+    // Ordre explicite par id (création) : sans lui, Postgres peut faire réapparaître une salle modifiée
+    // en fin de liste (une mise à jour crée une nouvelle version physique de la ligne côté MVCC).
+    List<SalleJpaEntity> findByTenantIdOrderById(Long tenantId);
 }
 
 interface NiveauJpaRepository extends JpaRepository<NiveauJpaEntity, Long> {

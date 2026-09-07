@@ -47,10 +47,10 @@ class OpenPdfReportCardGenerator implements ReportCardPdfGenerator {
             String schoolName = info == null ? null : info.schoolName();
 
             PdfWriter writer = PdfWriter.getInstance(doc, out);
-            writer.setPageEvent(new SchoolPdfPageFooter(schoolName, brand));
+            writer.setPageEvent(new SchoolPdfPageFooter(info, brand));
             doc.open();
 
-            SchoolPdfHeader.render(doc, tenantInfoProvider, ctx.tenantId());
+            SchoolPdfHeader.render(doc, tenantInfoProvider, ctx.tenantId(), "BULLETIN SCOLAIRE");
 
             // ── Titre ──────────────────────────────────────────────────────────
             Paragraph title = new Paragraph("BULLETIN SCOLAIRE", SchoolPdfHeader.font(FontFactory.HELVETICA_BOLD, 16, brand));

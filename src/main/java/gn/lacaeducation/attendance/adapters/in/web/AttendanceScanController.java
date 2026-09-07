@@ -1,11 +1,14 @@
 package gn.lacaeducation.attendance.adapters.in.web;
 
+import gn.lacaeducation.attendance.application.port.in.EmployeeAttendanceUseCase;
 import gn.lacaeducation.attendance.application.port.in.StudentAttendanceUseCase;
 import gn.lacaeducation.attendance.application.port.in.TeacherAttendanceUseCase;
+import gn.lacaeducation.attendance.domain.EmployeeAttendance;
 import gn.lacaeducation.attendance.domain.StudentCheckin;
 import gn.lacaeducation.attendance.domain.TeacherCheckin;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.TenantContext;
+import gn.lacaeducation.staff.EmployeePublicInfoProvider;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +30,7 @@ import java.util.function.Supplier;
  * seulement le sens du scan (entrée/sortie). Une absence ne peut jamais résulter d'un scan (une
  * personne absente ne scanne pas) : voir les endpoints "mark-absent" dédiés.
  */
-@Tag(name = "Attendance Scan", description = "Pointage présence par scan de la carte scolaire (élève et enseignant)")
+@Tag(name = "Attendance Scan", description = "Pointage présence par scan de la carte scolaire (élève, enseignant et personnel non-enseignant)")
 @RestController
 @RequestMapping("/api/v1/attendance/scan")
 @RequiredArgsConstructor
@@ -35,8 +38,10 @@ public class AttendanceScanController {
 
     private final StudentAttendanceUseCase studentAttendance;
     private final TeacherAttendanceUseCase teacherAttendance;
+    private final EmployeeAttendanceUseCase employeeAttendance;
+    private final EmployeePublicInfoProvider employeePublicInfoProvider;
 
-    public enum SubjectType { STUDENT, TEACHER }
+    public enum SubjectType { STUDENT, TEACHER, EMPLOYEE }
     public enum ScanDirection { ENTRY, EXIT }
     public enum AttendanceOutcome { PRESENT, LATE }
 
@@ -53,18 +58,20 @@ public class AttendanceScanController {
             Boolean requiresPickupInfo,     // sortie élève uniquement : classe de cycle maternelle/primaire
             LocalDate date) {}
 
-    /** Vue commune pour construire une {@link ScanResponse}, quel que soit le type de pointage
-     * (élève ou enseignant — deux classes structurellement identiques mais sans interface commune). */
+    /** Vue commune pour construire une {@link ScanResponse}, quel que soit le type de pointage (élève,
+     * enseignant ou personnel — classes structurellement proches mais sans interface commune). */
     private record CheckinView(LocalTime sessionStart, LocalTime sessionEnd, LocalTime checkInTime, LocalTime checkOutTime, Integer lateMinutes) {}
 
-    // L'enseignant ne doit JAMAIS pouvoir scanner (ni sa propre présence, ni celle des élèves) —
-    // retiré volontairement de la liste des rôles autorisés. Le personnel (admin/direction/secrétariat)
-    // et l'élève chef de classe désigné restent autorisés. TODO : ajouter le rôle SURVEILLANT ici une
-    // fois créé (rôle prévu pour la surveillance/scan, distinct de TEACHER).
-    @Operation(summary = "Pointer une entrée ou une sortie de séance à partir d'un scan de carte "
-            + "(élève ou enseignant) — statut et durée réalisée calculés automatiquement à partir de "
-            + "l'emploi du temps. Un élève ne peut scanner que s'il est le chef de classe désigné de "
-            + "la classe scannée. Les enseignants ne peuvent jamais scanner (ni eux-mêmes ni les élèves).")
+    // L'enseignant ne doit JAMAIS pouvoir scanner (ni sa propre présence, ni celle des élèves ou du
+    // personnel) — retiré volontairement de la liste des rôles autorisés. Le personnel administratif
+    // (direction/secrétariat) et l'élève chef de classe désigné restent autorisés. TODO : ajouter le
+    // rôle SURVEILLANT ici une fois créé (rôle prévu pour la surveillance/scan, distinct de TEACHER).
+    @Operation(summary = "Pointer une entrée ou une sortie à partir d'un scan de carte (élève, "
+            + "enseignant ou personnel non-enseignant) — statut et durée réalisée calculés "
+            + "automatiquement (emploi du temps pour élève/enseignant, horaire de référence pour le "
+            + "personnel). Un élève ne peut scanner que s'il est le chef de classe désigné de la "
+            + "classe scannée. Les enseignants ne peuvent jamais scanner (ni eux-mêmes ni les élèves "
+            + "ou le personnel).")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','STUDENT')")
     @PostMapping
     public ScanResponse scan(@RequestBody ScanRequest r, @AuthenticationPrincipal Jwt jwt) {
@@ -84,6 +91,16 @@ public class AttendanceScanController {
             }
             TeacherCheckin c = idempotent(() -> teacherAttendance.recordExit(r.subjectId()));
             return response("TEACHER", r.subjectId(), null, r.direction(), toView(c), null);
+        }
+
+        if (type == SubjectType.EMPLOYEE) {
+            String name = employeePublicInfoProvider.findEmployee(r.subjectId()).map(EmployeePublicInfoProvider.EmployeeInfo::fullName).orElse(null);
+            if (r.direction() == ScanDirection.ENTRY) {
+                EmployeeAttendance a = idempotent(() -> employeeAttendance.recordEntry(r.subjectId()));
+                return response("EMPLOYEE", r.subjectId(), name, r.direction(), toView(a), null);
+            }
+            EmployeeAttendance a = idempotent(() -> employeeAttendance.recordExit(r.subjectId()));
+            return response("EMPLOYEE", r.subjectId(), name, r.direction(), toView(a), null);
         }
 
         Long scannerUserId = null;
@@ -106,6 +123,13 @@ public class AttendanceScanController {
 
     private static CheckinView toView(StudentCheckin c) {
         return new CheckinView(c.getSessionStart(), c.getSessionEnd(), c.getCheckInTime(), c.getCheckOutTime(), c.getLateMinutes());
+    }
+
+    // Pas de créneau de cours pour le personnel non-enseignant (un seul pointage par jour, vs
+    // l'horaire de référence de l'école) : sessionStart/sessionEnd toujours null, donc scheduledMinutes
+    // aussi (realizedMinutes reste calculable dès que l'entrée et la sortie sont pointées).
+    private static CheckinView toView(EmployeeAttendance a) {
+        return new CheckinView(null, null, a.getCheckInTime(), a.getCheckOutTime(), a.getLateMinutes());
     }
 
     private static ScanResponse response(String subjectType, Long subjectId, String name, ScanDirection direction, CheckinView v, Boolean requiresPickupInfo) {

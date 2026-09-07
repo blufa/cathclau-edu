@@ -24,11 +24,14 @@ class AttendanceSettingsPersistenceAdapter implements AttendanceSettingsReposito
                 .orElseGet(AttendanceSettingsJpaEntity::new);
         e.setTenantId(s.getTenantId());
         e.setTransitionMarginMinutes(s.transitionMarginMinutesOrDefault());
+        e.setEmployeeCheckInTime(s.employeeCheckInTimeOrDefault());
+        e.setEmployeeCheckOutTime(s.employeeCheckOutTimeOrDefault());
         return toDomain(repo.save(e));
     }
 
     private AttendanceSettings toDomain(AttendanceSettingsJpaEntity e) {
         return AttendanceSettings.builder().id(e.getId()).tenantId(e.getTenantId())
-                .transitionMarginMinutes(e.getTransitionMarginMinutes()).build();
+                .transitionMarginMinutes(e.getTransitionMarginMinutes())
+                .employeeCheckInTime(e.getEmployeeCheckInTime()).employeeCheckOutTime(e.getEmployeeCheckOutTime()).build();
     }
 }

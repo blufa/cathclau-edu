@@ -56,15 +56,16 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
             TenantPublicInfo info = payment.getTenantId() == null ? null
                     : tenantInfoProvider.findTenantInfo(payment.getTenantId()).orElse(null);
             PdfWriter writer = PdfWriter.getInstance(doc, out);
-            writer.setPageEvent(new SchoolPdfPageFooter(info == null ? null : info.schoolName(),
+            writer.setPageEvent(new SchoolPdfPageFooter(info,
                     SchoolPdfHeader.parseColor(info == null ? null : info.brandColor())));
             doc.open();
 
-            header(doc, info);
+            String academicYearLabel = payerDirectory.currentAcademicYearLabel(payment.getTenantId()).orElse(null);
+            header(doc, info, academicYearLabel);
             titleBox(doc, "REÇU DE PAIEMENT OFFICIEL");
 
             PdfPTable idBlock = infoTable();
-            row(idBlock, "Année scolaire", safe(payerDirectory.currentAcademicYearLabel(payment.getTenantId()).orElse(null)));
+            row(idBlock, "Année scolaire", safe(academicYearLabel));
             row(idBlock, "N° reçu", safe(receipt.getReference()));
             row(idBlock, "Date", receipt.getGeneratedAt() == null ? "-" : receipt.getGeneratedAt().format(DATE));
             row(idBlock, "Mode de paiement", channelLabel(payment));
@@ -110,6 +111,12 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
                 Paragraph discount = new Paragraph(discountNote, font(FontFactory.HELVETICA, 9, GREY));
                 discount.setSpacingBefore(4f);
                 doc.add(discount);
+            }
+            String platformFeeNote = platformFeeNote(payment);
+            if (platformFeeNote != null) {
+                Paragraph pf = new Paragraph(platformFeeNote, font(FontFactory.HELVETICA, 9, GREY));
+                pf.setSpacingBefore(4f);
+                doc.add(pf);
             }
             if (receipt.getRemainingAfter() != null) {
                 Paragraph rest = new Paragraph("Reste à payer : " + money(receipt.getRemainingAfter()) + " GNF",
@@ -183,6 +190,25 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
         }
         if (total.signum() <= 0) return null;
         return "Remise appliquée : -" + money(total) + " GNF" + (reason != null && !reason.isBlank() ? " (" + reason + ")" : "");
+    }
+
+    /**
+     * Part du paiement due au frais d'usage plateforme (§billing) — affichée pour que la ligne ne
+     * disparaisse jamais silencieusement du reçu même quand l'élève a bien accepté l'accès plateforme.
+     */
+    private String platformFeeNote(Payment payment) {
+        List<GroupLine> groupLines = parseGroupLines(payment.getGroupLines());
+        List<Long> invoiceIds = !groupLines.isEmpty()
+                ? groupLines.stream().map(GroupLine::invoiceId).toList()
+                : (payment.getInvoiceId() != null ? List.of(payment.getInvoiceId()) : List.of());
+        BigDecimal total = BigDecimal.ZERO;
+        for (Long id : invoiceIds) {
+            var info = payerDirectory.invoiceFeeInfo(id).orElse(null);
+            if (info == null || info.platformFeeAmount() == null || info.platformFeeAmount().signum() <= 0) continue;
+            total = total.add(info.platformFeeAmount());
+        }
+        if (total.signum() <= 0) return null;
+        return "Dont frais d'usage plateforme : " + money(total) + " GNF";
     }
 
     private List<GroupLine> parseGroupLines(String json) {
