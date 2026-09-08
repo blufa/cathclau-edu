@@ -18,5 +18,4 @@ public class TeacherCompensationJpaEntity {
     @Column(name = "hourly_rate_normal", nullable = false, precision = 15, scale = 2) private BigDecimal hourlyRateNormal;
     @Column(name = "hourly_rate_exam", nullable = false, precision = 15, scale = 2) private BigDecimal hourlyRateExam;
     @Column(name = "fixed_salary", nullable = false, precision = 15, scale = 2) private BigDecimal fixedSalary;
-    @Column(name = "paid_during_vacation", nullable = false) private boolean paidDuringVacation;
 }

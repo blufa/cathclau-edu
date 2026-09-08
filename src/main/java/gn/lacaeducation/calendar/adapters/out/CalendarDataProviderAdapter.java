@@ -18,10 +18,19 @@ class CalendarDataProviderAdapter implements CalendarDataProvider {
     private final AcademicEventRepository repository;
 
     @Override
-    public List<LocalDate> holidayDates(Long tenantId, LocalDate from, LocalDate to) {
+    public List<LocalDate> paidHolidayDates(Long tenantId, LocalDate from, LocalDate to) {
+        return datesOfType(tenantId, from, to, AcademicEventType.HOLIDAY);
+    }
+
+    @Override
+    public List<LocalDate> vacationDates(Long tenantId, LocalDate from, LocalDate to) {
+        return datesOfType(tenantId, from, to, AcademicEventType.VACATION);
+    }
+
+    private List<LocalDate> datesOfType(Long tenantId, LocalDate from, LocalDate to, AcademicEventType type) {
         List<LocalDate> dates = new ArrayList<>();
         for (AcademicEvent e : repository.findByTenantId(tenantId)) {
-            if (e.getEventType() != AcademicEventType.HOLIDAY && e.getEventType() != AcademicEventType.VACATION) continue;
+            if (e.getEventType() != type) continue;
             if (e.getStartDate() == null) continue;
             LocalDate start = e.getStartDate();
             LocalDate end = e.getEndDate() != null ? e.getEndDate() : start;

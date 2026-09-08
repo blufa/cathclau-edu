@@ -48,6 +48,7 @@ public class PayrollService {
     private final SalaryRuleRepository ruleRepo;
     private final gn.lacaeducation.payroll.application.port.out.PayslipPdfGenerator pdfGenerator;
     private final TeacherCompensationRepository compRepo;
+    private final gn.lacaeducation.payroll.application.port.out.TeacherVacationPayRepository vacationPayRepo;
     private final TeacherTeachingProvider teachingProvider;
     private final TeacherWorkProvider workProvider;
     private final gn.lacaeducation.payroll.application.port.in.SalaryFeeDeductionUseCase salaryFeeDeductionUseCase;
@@ -65,15 +66,13 @@ public class PayrollService {
                              BigDecimal fixedSalary, BigDecimal teachingPay, BigDecimal grossPay) {}
 
     public TeacherCompensation setCompensation(Long tenantId, Long teacherId, PayMode mode,
-                                                BigDecimal hourlyRateNormal, BigDecimal hourlyRateExam, BigDecimal fixedSalary,
-                                                Boolean paidDuringVacation) {
+                                                BigDecimal hourlyRateNormal, BigDecimal hourlyRateExam, BigDecimal fixedSalary) {
         TeacherCompensation c = compRepo.findByTeacherId(teacherId)
                 .orElseGet(() -> TeacherCompensation.builder().tenantId(tenantId).teacherId(teacherId).build());
         c.setPayMode(mode != null ? mode : PayMode.HOURLY);
         c.setHourlyRateNormal(hourlyRateNormal != null ? hourlyRateNormal : BigDecimal.ZERO);
         c.setHourlyRateExam(hourlyRateExam != null ? hourlyRateExam : BigDecimal.ZERO);
         c.setFixedSalary(fixedSalary != null ? fixedSalary : BigDecimal.ZERO);
-        c.setPaidDuringVacation(Boolean.TRUE.equals(paidDuringVacation));
         return compRepo.save(c);
     }
 
@@ -82,6 +81,29 @@ public class PayrollService {
 
     @Transactional(readOnly = true)
     public List<TeacherCompensation> compensations(Long tenantId) { return compRepo.findByTenantId(tenantId); }
+
+    /** Marque un mois précis (année + mois) comme payé pendant les vacances pour cet enseignant —
+     * avantage accordé au cas par cas par la direction (§6), pas un interrupteur valable toute
+     * l'année. Idempotent (repose sur la contrainte d'unicité teacher/year/month). */
+    public gn.lacaeducation.payroll.domain.TeacherVacationPayMonth addVacationPayMonth(Long tenantId, Long teacherId, int year, int month) {
+        if (vacationPayRepo.existsByTeacherIdAndYearAndMonth(teacherId, year, month)) {
+            return vacationPayRepo.findByTeacherId(teacherId).stream()
+                    .filter(m -> m.getYear() == year && m.getMonth() == month).findFirst().orElseThrow();
+        }
+        return vacationPayRepo.save(gn.lacaeducation.payroll.domain.TeacherVacationPayMonth.builder()
+                .tenantId(tenantId).teacherId(teacherId).year(year).month(month).build());
+    }
+
+    public void removeVacationPayMonth(Long teacherId, Long id) {
+        boolean owned = vacationPayRepo.findByTeacherId(teacherId).stream().anyMatch(m -> m.getId().equals(id));
+        if (!owned) throw new gn.lacaeducation.common.BusinessRuleException("Mois de congé payé introuvable pour cet enseignant.");
+        vacationPayRepo.deleteById(id);
+    }
+
+    @Transactional(readOnly = true)
+    public List<gn.lacaeducation.payroll.domain.TeacherVacationPayMonth> listVacationPayMonths(Long teacherId) {
+        return vacationPayRepo.findByTeacherId(teacherId);
+    }
 
     /** Vrai si la classe est de typologie "classe d'examen" (tarif horaire dédié, §6) ; false si
      * introuvable (classe supprimée depuis) — repli par défaut sur le tarif normal. */
@@ -238,12 +260,16 @@ public class PayrollService {
         TeacherCompensation comp = compRepo.findByTeacherId(teacherId).orElse(null);
         Long tenantId = comp != null && comp.getTenantId() != null ? comp.getTenantId() : TenantContext.get();
 
-        // Jours fériés/vacances (§calendar) exclus du comptage : un enseignant programmé le lundi ne
-        // doit pas être compté sur un lundi tombant en vacances (sinon les heures dues sont surestimées).
-        // Sauf avantage accordé par la direction (paidDuringVacation) : dans ce cas, on ne retire rien.
-        boolean paidDuringVacation = comp != null && comp.isPaidDuringVacation();
-        java.util.Set<LocalDate> nonWorkingDates = tenantId != null && !paidDuringVacation
-                ? new java.util.HashSet<>(calendar.holidayDates(tenantId, ym.atDay(1), ym.atEndOfMonth()))
+        // Vacances scolaires (§calendar) exclues du comptage par défaut : un enseignant programmé le
+        // lundi ne doit pas être compté sur un lundi tombant en vacances (sinon les heures dues sont
+        // surestimées). Sauf si CE mois précis (année + mois) est marqué payé pendant les vacances par
+        // la direction (avantage accordé au cas par cas, pas un interrupteur valable toute l'année) :
+        // dans ce cas, on ne retire rien pour ce mois-ci.
+        // Les jours fériés CHÔMÉS PAYÉS (ex. fête nationale), eux, ne sont JAMAIS exclus : légalement
+        // payés, ils comptent toujours comme travaillés, indépendamment du statut "vacances" ci-dessus.
+        boolean paidThisMonth = vacationPayRepo.existsByTeacherIdAndYearAndMonth(teacherId, year, month);
+        java.util.Set<LocalDate> nonWorkingDates = tenantId != null && !paidThisMonth
+                ? new java.util.HashSet<>(calendar.vacationDates(tenantId, ym.atDay(1), ym.atEndOfMonth()))
                 : java.util.Set.of();
         Map<DayOfWeek, Integer> occurrencesByDay = new HashMap<>();
         for (int day = 1; day <= ym.lengthOfMonth(); day++) {

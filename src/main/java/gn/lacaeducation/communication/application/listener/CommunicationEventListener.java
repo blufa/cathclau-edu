@@ -2,6 +2,7 @@ package gn.lacaeducation.communication.application.listener;
 
 import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.attendance.application.event.StudentAbsentEvent;
+import gn.lacaeducation.billing.application.event.EcheanceDepasseeEvent;
 import gn.lacaeducation.billing.application.event.InvoicePaymentAppliedEvent;
 import gn.lacaeducation.communication.application.port.in.CommunicationUseCase;
 import gn.lacaeducation.communication.application.port.in.CommunicationUseCase.RecipientTarget;
@@ -159,6 +160,28 @@ public class CommunicationEventListener {
             dispatch(event.tenantId(), CommunicationReason.GENERAL, "Paiement reçu", defaultBody, vars, event.studentId());
             notifyFounder(event.tenantId(), fullName(student), amount);
         });
+    }
+
+    /**
+     * Relance le parent de l'élève dont la facture rattachée à l'échéance dépassée n'est pas soldée
+     * (§8.2) — un événement par élève, déjà résolu côté {@code billing} (qui a accès à son propre
+     * dépôt de factures ; `communication` n'est autorisé à dépendre que des événements de `billing`,
+     * pas de son API de requête, voir ModularityTests). `event.tenantId()` est indispensable ici : ce
+     * job tourne hors requête HTTP (planifié), donc sans {@link gn.lacaeducation.common.TenantContext}
+     * déjà résolu par le filtre JWT — l'événement porte lui-même le tenant concerné plutôt que de
+     * dépendre du contexte ambiant.
+     */
+    @TransactionalEventListener
+    public void onEcheanceDepassee(EcheanceDepasseeEvent event) {
+        String amount = event.amount() + " FCFA";
+        String date = event.dueDate() != null ? event.dueDate().format(DATE_FMT) : "N/A";
+        Map<String, String> vars = Map.of(
+                "ecole", schoolName(event.tenantId()), "montant", amount, "date", date,
+                "reference", event.invoiceReference() == null ? "" : event.invoiceReference());
+        String defaultBody = "Rappel : une échéance du " + date + " (" + amount
+                + ") n'a pas été réglée. Merci de régulariser rapidement.";
+        dispatch(event.tenantId(), CommunicationReason.PAYMENT_DUE, "Échéance de paiement dépassée",
+                defaultBody, vars, event.studentId());
     }
 
     /** Notify every (non-cancelled) student of the class on their own contact when an assessment is scheduled. */

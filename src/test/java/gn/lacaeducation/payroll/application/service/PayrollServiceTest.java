@@ -34,6 +34,7 @@ class PayrollServiceTest {
     @Mock SalaryRuleRepository ruleRepo;
     @Mock PayslipPdfGenerator pdfGenerator;
     @Mock TeacherCompensationRepository compRepo;
+    @Mock gn.lacaeducation.payroll.application.port.out.TeacherVacationPayRepository vacationPayRepo;
     @Mock TeacherTeachingProvider teachingProvider;
     @Mock TeacherWorkProvider workProvider;
     @Mock SalaryFeeDeductionUseCase salaryFeeDeductionUseCase;
