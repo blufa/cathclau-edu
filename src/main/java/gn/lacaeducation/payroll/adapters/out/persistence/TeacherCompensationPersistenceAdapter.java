@@ -22,7 +22,7 @@ class TeacherCompensationPersistenceAdapter implements TeacherCompensationReposi
     private TeacherCompensation toDomain(TeacherCompensationJpaEntity e) {
         return TeacherCompensation.builder().id(e.getId()).tenantId(e.getTenantId()).teacherId(e.getTeacherId())
                 .payMode(e.getPayMode()).hourlyRateNormal(e.getHourlyRateNormal()).hourlyRateExam(e.getHourlyRateExam())
-                .fixedSalary(e.getFixedSalary()).paidDuringVacation(e.isPaidDuringVacation()).build();
+                .fixedSalary(e.getFixedSalary()).build();
     }
     private TeacherCompensationJpaEntity toEntity(TeacherCompensation c) {
         TeacherCompensationJpaEntity e = new TeacherCompensationJpaEntity();
@@ -31,7 +31,6 @@ class TeacherCompensationPersistenceAdapter implements TeacherCompensationReposi
         e.setHourlyRateNormal(c.getHourlyRateNormal() != null ? c.getHourlyRateNormal() : BigDecimal.ZERO);
         e.setHourlyRateExam(c.getHourlyRateExam() != null ? c.getHourlyRateExam() : BigDecimal.ZERO);
         e.setFixedSalary(c.getFixedSalary() != null ? c.getFixedSalary() : BigDecimal.ZERO);
-        e.setPaidDuringVacation(c.isPaidDuringVacation());
         return e;
     }
 }

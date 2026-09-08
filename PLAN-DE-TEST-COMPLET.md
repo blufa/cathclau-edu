@@ -733,6 +733,180 @@ l'absence de créneaux de cours individuels.
 
 ---
 
+## Phase 19 — Classes d'examen (assistant + liste) et paie pendant les vacances
+
+### 19.1 Assistant de création de classes — fenêtre qui ne s'élargit plus
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR`.
+
+1. `Référentiels → Classes → Assistant (en lot)` → cocher de nombreux grades/sections → vérifier que
+   la fenêtre garde une hauteur fixe avec défilement interne, au lieu de pousser toute la page vers
+   le bas à chaque case cochée.
+
+### 19.2 Marquer une classe « examen » — à la création en lot et sur des classes existantes
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR`.
+
+1. Assistant (en lot) : après avoir coché des grades (ex. CM2, 10ème, Terminale), une section
+   « Classes d'examen » liste ces grades avec une case à cocher chacun → cocher les grades concernés
+   → créer → vérifier que les classes générées (toutes sections/séries) portent bien la typologie
+   « Classe d'examen ».
+2. Liste des classes (déjà créées) : colonne « Typologie » → cliquer sur le badge « Normale »/« Classe
+   d'examen » pour basculer directement, sans ouvrir le formulaire complet.
+3. Formulaire classe (Modifier) : la case à cocher « Classe d'examen (CM2, BEPC/10ème, Terminale…) »
+   remplace l'ancien menu déroulant.
+
+### 19.3 Répercussion sur la paie
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR`.
+
+1. Affecter un enseignant à une classe normale, générer/consulter sa paie du mois → vérifier les
+   heures dans « classes normales ».
+2. Basculer cette classe en « Classe d'examen » (§19.2, sans toucher à l'affectation de l'enseignant)
+   → recharger la paie de ce même enseignant → les heures doivent maintenant apparaître dans
+   « Heures classes d'examen », sans aucune autre action.
+
+### 19.4 Paie pendant les vacances — mois précis au lieu d'un interrupteur global
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR`.
+
+**Contexte** : l'ancien interrupteur « payé pendant les vacances » (oui/non pour toute l'année) est
+remplacé par une liste de mois précis (ex. juillet 2026), ajoutés/retirés au cas par cas.
+
+1. `/payroll` → sélectionner un enseignant → bloc « Mois payés pendant les vacances » → ajouter un
+   mois (sélecteur année/mois) → vérifier qu'il apparaît dans la liste avec un bouton de retrait.
+2. Calculer la paie théorique (emploi du temps) de ce mois précis → vérifier que les jours fériés/
+   vacances de ce mois ne sont **pas** déduits des heures dues (comme s'il avait travaillé).
+3. Un autre mois de vacances, **non** ajouté à la liste → vérifier que les jours fériés restent bien
+   exclus normalement.
+4. Retirer le mois de la liste → recalculer → les jours fériés redeviennent exclus.
+5. Vérifier que le salaire fixe (mode Fixe) reste toujours versé en entier, que le mois soit dans la
+   liste ou non — seul le calcul des heures de cours théoriques est affecté.
+
+*Résultat attendu* : le paiement pendant les vacances se décide mois par mois précis, pas par un
+interrupteur valable toute l'année.
+
+### 19.5 Jours fériés chômés payés — toujours comptés comme travaillés en paie
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR`.
+
+**Contexte** : le calendrier distingue déjà « Jour férié » (HOLIDAY, légalement chômé ET payé, ex.
+fête nationale) de « Vacances » (VACATION, école fermée mais pas automatiquement payée). Avant ce
+correctif, la paie traitait les deux identiquement (déduits des heures dues) — un jour férié légal
+réduisait à tort les heures dues d'un enseignant/personnel programmé ce jour-là.
+
+1. `/calendar` → ajouter un événement type « Jour férié » sur un jour de semaine où un enseignant a
+   cours (hors période de vacances scolaires).
+2. `/payroll` → sélectionner cet enseignant → paie théorique (emploi du temps) du mois concerné →
+   vérifier que les heures de ce jour férié sont bien comptées comme dues (pas déduites), même sans
+   avoir ajouté ce mois à la liste « Mois payés pendant les vacances » (§19.4 — qui ne concerne que
+   les vacances scolaires, pas les jours fériés).
+3. Comparer avec un événement type « Vacances » sur une autre période → vérifier que celle-ci reste
+   bien déduite des heures dues par défaut, sauf mois explicitement ajouté à la liste (§19.4).
+
+*Résultat attendu* : un jour férié chômé payé ne réduit jamais la paie, indépendamment du statut
+« payé pendant les vacances » de l'enseignant — seules les vraies vacances scolaires en dépendent.
+
+## Phase 20 — Impression des badges/cartes (recto/verso) : le QR ne doit plus se décaler
+
+**Rôle** : tout rôle ayant accès à `/students`, `/teachers` ou `/teachers/staff` (fiche détail avec badge).
+
+**Contexte** : le badge imprimé (recto + verso, format carte CR80) forçait une hauteur *fixe* à
+l'impression (`53.98mm`) avec les débordements masqués (`overflow-hidden`). Dès que le rendu du texte
+à l'impression prenait ne serait-ce que quelques pixels de plus que prévu (variable selon
+navigateur/moteur d'impression), la dernière ligne de la carte (QR + note de pied) se retrouvait
+compressée/rognée — visuellement le QR « descendait » et quittait sa position d'origine, même si la
+carte tenait bien sur une seule page. Corrigé en remplaçant la hauteur fixe par une hauteur *minimale*
+(la carte peut légèrement dépasser le format CR80 exact à l'impression, sans conséquence puisqu'elle
+est destinée à être découpée à la main).
+
+1. Ouvrir la fiche d'un élève (`/students/{id}`) ou d'un enseignant/personnel (`/teachers/{id}`,
+   `/teachers/staff`) ayant une photo, un matricule et un QR généré.
+2. Cliquer sur « Imprimer / Télécharger en PDF » sur le badge.
+3. Dans l'aperçu d'impression (ou le PDF généré via « Enregistrer en PDF ») : vérifier que le recto et
+   le verso sortent bien côte à côte sur une seule page, ET que le QR reste à sa place normale (en bas
+   à gauche du recto, aligné avec la note de pied « Présenter ce badge... »), sans être décalé vers le
+   bas ni rogné.
+4. Vérifier aussi que le recto et le verso font la **même hauteur** à l'impression (bord inférieur
+   aligné) — le recto (plus chargé : photo, identité, QR) et le verso (plus sobre) s'étirent
+   maintenant l'un sur l'autre plutôt que d'avoir chacun sa propre hauteur indépendante.
+5. Répéter avec un texte de nom/champ volontairement long (pour maximiser le risque de débordement de
+   la ligne d'en-tête/identité) et confirmer que le QR ne bouge toujours pas et que les deux faces
+   restent alignées.
+
+*Résultat attendu* : impression sur une seule page, QR toujours à sa position d'origine sur le recto,
+recto et verso de même hauteur, quel que soit le navigateur utilisé pour imprimer.
+
+## Phase 21 — Le logo de l'école ne doit plus disparaître après modification des informations
+
+**Rôle** : `SCHOOL_ADMIN`.
+
+**Contexte** : `/settings` a deux formulaires distincts sauvegardant chacun indépendamment vers le même
+champ `logo` du tenant (« Informations de l'établissement » et « Apparence »). Le premier resoumettait
+sa propre copie chargée au montage de la page — s'il était enregistré APRÈS un changement de logo via
+« Apparence » (ex. après avoir renseigné IRE/DPE/DSSEE, §19), il réécrasait silencieusement le logo
+fraîchement téléversé avec l'ancienne valeur. Corrigé : « Informations de l'établissement » resoumet
+désormais toujours la valeur de logo la plus fraîche connue (contexte de branding partagé), jamais son
+propre instantané périmé.
+
+1. `/settings` → carte « Apparence » → téléverser un nouveau logo → vérifier qu'il apparaît (en-tête de
+   l'app, badges).
+2. Sans recharger la page, aller dans la carte « Informations de l'établissement » → modifier un champ
+   quelconque (ex. l'adresse) → Enregistrer.
+3. Vérifier que le logo est toujours présent (en-tête de l'app, `/settings` → « Apparence », badges) —
+   il ne doit plus revenir à l'ancien logo ou disparaître.
+
+*Résultat attendu* : le logo survit à l'enregistrement du formulaire « Informations de l'établissement »,
+quel que soit l'ordre dans lequel les deux formulaires sont utilisés.
+
+## Phase 22 — Relance SMS automatique des échéances de frais en retard
+
+**Rôle** : `SCHOOL_ADMIN` / `ACCOUNTANT` (configuration NimbaSMS + frais) ; effet observé côté parent.
+
+**Contexte** : la relance automatique (job planifié quotidien, 6h) des échéances dépassées ne
+fonctionnait pas : (1) le job tournait hors contexte de tenant (comme tout job planifié, pas de JWT),
+et interrogeait donc TOUTES les écoles à la fois au lieu d'une seule ; (2) même l'événement publié
+n'avait aucun écouteur côté `communication` — aucun SMS n'était en réalité jamais envoyé, ni
+automatiquement ni via le bouton manuel « Faire avancer le recouvrement » sur une facture. D'où
+l'impression que les SMS Nimba ne partaient que lorsqu'un utilisateur était connecté (seul cas où un
+contexte tenant existe déjà). Corrigé : le job boucle maintenant explicitement par école (comme le
+marquage automatique des absences), et un envoi SMS de relance est réellement déclenché pour chaque
+élève dont la facture liée à l'échéance n'est pas soldée.
+
+1. Configurer NimbaSMS dans les paramètres du tenant (clé API).
+2. `/billing` (ou équivalent) → créer un frais avec une échéance dont la date limite est déjà passée,
+   et une facture élève impayée rattachée à cette échéance.
+3. Attendre l'exécution du job planifié (6h) — ou, pour un test immédiat, invoquer manuellement le
+   déclenchement si un endpoint de test existe, sinon vérifier en environnement de dev via les logs
+   backend (`OverdueInstallmentProcessor`, `CommunicationEventListener.onEcheanceDepassee`).
+4. Vérifier dans `/communication` (historique) qu'un SMS motif « Échéance de paiement dépassée » a bien
+   été créé et envoyé au parent de l'élève concerné.
+
+*Résultat attendu* : un SMS de relance part automatiquement pour chaque élève en retard, sans qu'aucun
+utilisateur ne soit connecté au moment de l'exécution du job.
+
+## Phase 23 — Hiérarchie administrative (IRE, DPE/DCE, DSSEE) sur le verso des badges
+
+**Rôle** : tout rôle imprimant un badge (élève, enseignant, personnel).
+
+**Contexte** : ces informations n'étaient renseignables que dans « Paramètres » et utilisées sur les
+documents PDF (bulletins, factures, reçus…) — absentes des badges. Le endpoint `/tenant/branding`
+(consommé par tous les rôles pouvant imprimer un badge, pas seulement SCHOOL_ADMIN) exposait
+seulement logo/couleur/devise/slogan ; il expose désormais aussi IRE, DPE/DCE et DSSEE.
+
+1. `/settings` → renseigner IRE, DPE/DCE et DSSEE (§19 — déjà en place).
+2. Ouvrir la fiche d'un élève ou d'un enseignant/personnel → badge → vérifier qu'un bandeau
+   « MEPU-A / IRE : ... · DPE/DCE : ... · DSSEE : ... » apparaît en haut du **verso**, au-dessus de
+   « République de Guinée ».
+3. Vider un des trois champs dans les paramètres → régénérer le badge → vérifier que seuls les champs
+   renseignés apparaissent (le bandeau disparaît entièrement si les trois sont vides).
+4. Imprimer / « Enregistrer en PDF » → vérifier que le bandeau reste lisible à la taille imprimée.
+
+*Résultat attendu* : la hiérarchie administrative renseignée dans les paramètres apparaît sur le verso
+de tous les badges, à l'écran comme à l'impression.
+
+---
+
 ## Annexe — Matrice rapide rôle × accès attendu
 
 | Rôle | Accès notable | Ne doit jamais voir |

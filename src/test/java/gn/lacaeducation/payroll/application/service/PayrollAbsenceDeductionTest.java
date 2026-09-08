@@ -39,6 +39,7 @@ class PayrollAbsenceDeductionTest {
     @Mock gn.lacaeducation.payroll.application.port.out.SalaryRuleRepository ruleRepo;
     @Mock gn.lacaeducation.payroll.application.port.out.PayslipPdfGenerator pdfGenerator;
     @Mock gn.lacaeducation.payroll.application.port.out.TeacherCompensationRepository compRepo;
+    @Mock gn.lacaeducation.payroll.application.port.out.TeacherVacationPayRepository vacationPayRepo;
     @Mock gn.lacaeducation.lessons.TeacherTeachingProvider teachingProvider;
     @Mock TeacherWorkProvider workProvider;
     @Mock SalaryFeeDeductionUseCase salaryFeeDeductionUseCase;
@@ -51,7 +52,7 @@ class PayrollAbsenceDeductionTest {
     @BeforeEach
     void setUp() {
         service = new PayrollService(payslipRepo, lineRepo, structureRepo, ruleRepo, pdfGenerator,
-                compRepo, teachingProvider, workProvider, salaryFeeDeductionUseCase, academics, calendar);
+                compRepo, vacationPayRepo, teachingProvider, workProvider, salaryFeeDeductionUseCase, academics, calendar);
         savedLines = new ArrayList<>();
 
         // payslipRepo.save : assigne un id au premier passage, renvoie l'entité.
