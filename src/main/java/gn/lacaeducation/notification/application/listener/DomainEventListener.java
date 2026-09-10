@@ -59,7 +59,7 @@ public class DomainEventListener {
         studentDataProvider.findStudent(event.studentId()).ifPresent(student -> {
             invoiceDataProvider.findInvoice(event.invoiceId()).ifPresent(invoice -> {
                 String schoolName = schoolName(event.tenantId());
-                String amount = invoice.totalAmount() + " FCFA";
+                String amount = invoice.totalAmount() + " GNF";
                 String dueDate = invoice.issueDate() != null ? invoice.issueDate().format(DATE_FMT) : "N/A";
                 sendToParents(event.studentId(), email ->
                         notificationService.sendInvoiceNotification(email, schoolName,
@@ -79,7 +79,7 @@ public class DomainEventListener {
                 String schoolName = schoolName(event.tenantId());
                 String date = payment.paidAt() != null ? payment.paidAt().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) : "N/A";
                 String receiptRef = "REC-" + payment.id();
-                String amount = payment.amount() + " FCFA";
+                String amount = payment.amount() + " GNF";
                 sendToParents(event.studentId(), email ->
                         notificationService.sendPaymentReceipt(email, schoolName,
                                 fullName(student), receiptRef, amount, date, payment.channel()));

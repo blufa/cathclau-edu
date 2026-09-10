@@ -31,7 +31,7 @@ class EmployeePersistenceAdapter implements EmployeeRepository {
                 .employeeNumber(e.getEmployeeNumber()).firstName(e.getFirstName()).lastName(e.getLastName())
                 .phone(e.getPhone()).email(e.getEmail()).category(e.getCategory()).jobTitle(e.getJobTitle())
                 .hireDate(e.getHireDate()).baseSalary(e.getBaseSalary()).cnssNumber(e.getCnssNumber())
-                .active(e.getActive())
+                .active(e.getActive()).linkedTeacherId(e.getLinkedTeacherId())
                 .build();
     }
 
@@ -51,6 +51,7 @@ class EmployeePersistenceAdapter implements EmployeeRepository {
         e.setBaseSalary(d.getBaseSalary());
         e.setCnssNumber(d.getCnssNumber());
         e.setActive(d.getActive() != null ? d.getActive() : Boolean.TRUE);
+        e.setLinkedTeacherId(d.getLinkedTeacherId());
         return e;
     }
 }

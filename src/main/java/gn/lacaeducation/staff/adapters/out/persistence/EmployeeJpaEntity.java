@@ -26,4 +26,5 @@ class EmployeeJpaEntity {
     @Column(name = "base_salary", precision = 15, scale = 2) private BigDecimal baseSalary;
     @Column(name = "cnss_number") private String cnssNumber;
     @Column(nullable = false) private Boolean active = true;
+    @Column(name = "linked_teacher_id") private Long linkedTeacherId;
 }

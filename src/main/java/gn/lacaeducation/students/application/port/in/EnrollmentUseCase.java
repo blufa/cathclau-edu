@@ -17,6 +17,14 @@ public interface EnrollmentUseCase {
     Enrollment updatePlatformAccessOptIn(Long id, boolean optIn);
     Enrollment validate(Long id);
     Enrollment cancel(Long id);
+    /** Marque une inscription validée comme abandonnée (élève parti en cours d'année) — distinct de
+     * {@link #cancel}, qui reste réservé aux annulations (n'a jamais vraiment commencé). */
+    Enrollment abandon(Long id);
+    /** Transfère une inscription validée vers une autre classe en cours d'année (frais scolaires
+     * potentiellement différents) — publie {@code EnrollmentClassChangedEvent}, consommé par billing
+     * pour annuler les mensualités de l'ancienne classe et reporter le crédit déjà payé sur les
+     * nouvelles mensualités. */
+    Enrollment transferClass(Long id, Long newClassId);
     Enrollment findById(Long id);
     List<Enrollment> findByStudent(Long studentId);
     List<Enrollment> findByClass(Long classId);

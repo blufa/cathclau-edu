@@ -19,4 +19,10 @@ public interface EnrollmentQueryPort {
     /** Le parent a-t-il accepté l'accès à la plateforme pour l'inscription de cet élève sur cette
      * année scolaire ? Conditionne l'ajout du frais d'usage plateforme aux mensualités (§billing). */
     boolean hasPlatformAccessOptIn(Long studentId, Long academicYearId);
+
+    /** Année scolaire de l'inscription active (non annulée) la plus récente de cet élève, ou {@code
+     * null} s'il n'en a aucune. Filet de sécurité utilisé quand un appelant de facturation omet de
+     * préciser l'année scolaire — sans ça, la facture se retrouvait avec `academic_year_id = NULL`,
+     * invisible des tableaux de bord qui filtrent strictement par année (ex. Vision Fondateur). */
+    Long findActiveAcademicYearId(Long studentId);
 }

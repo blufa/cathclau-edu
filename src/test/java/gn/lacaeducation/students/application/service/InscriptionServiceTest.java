@@ -141,4 +141,93 @@ class InscriptionServiceTest {
         assertThat(result.getStatus()).isEqualTo(EnrollmentStatus.CANCELLED);
         verify(eventPublisher).publishEvent(any(gn.lacaeducation.students.application.event.EnrollmentCancelledEvent.class));
     }
+
+    @Test
+    void abandon_fromValidated_setsStatusAbandonedAndPublishesEvent() {
+        Enrollment validated = Enrollment.builder().id(1L).studentId(10L).classId(20L)
+                .academicYearId(30L).status(EnrollmentStatus.VALIDATED).build();
+        when(enrollmentRepository.findById(1L)).thenReturn(Optional.of(validated));
+        when(enrollmentRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        Enrollment result = service.abandon(1L);
+
+        assertThat(result.getStatus()).isEqualTo(EnrollmentStatus.ABANDONED);
+        ArgumentCaptor<gn.lacaeducation.students.application.event.EnrollmentAbandonedEvent> captor =
+                ArgumentCaptor.forClass(gn.lacaeducation.students.application.event.EnrollmentAbandonedEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        assertThat(captor.getValue().studentId()).isEqualTo(10L);
+        assertThat(captor.getValue().classId()).isEqualTo(20L);
+    }
+
+    @Test
+    void abandon_fromPending_throwsBusinessRule() {
+        Enrollment pending = Enrollment.builder().id(1L).status(EnrollmentStatus.PENDING).build();
+        when(enrollmentRepository.findById(1L)).thenReturn(Optional.of(pending));
+
+        assertThatThrownBy(() -> service.abandon(1L))
+                .isInstanceOf(gn.lacaeducation.common.BusinessRuleException.class);
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void abandon_fromCancelled_throwsBusinessRule() {
+        Enrollment cancelled = Enrollment.builder().id(1L).status(EnrollmentStatus.CANCELLED).build();
+        when(enrollmentRepository.findById(1L)).thenReturn(Optional.of(cancelled));
+
+        assertThatThrownBy(() -> service.abandon(1L))
+                .isInstanceOf(gn.lacaeducation.common.BusinessRuleException.class);
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void transferClass_fromValidated_changesClassAndPublishesEvent() {
+        Enrollment validated = Enrollment.builder().id(1L).studentId(10L).classId(20L)
+                .academicYearId(30L).status(EnrollmentStatus.VALIDATED).build();
+        when(enrollmentRepository.findById(1L)).thenReturn(Optional.of(validated));
+        when(classCapacityPort.maxCapacity(21L)).thenReturn(null);
+        when(enrollmentRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        Enrollment result = service.transferClass(1L, 21L);
+
+        assertThat(result.getClassId()).isEqualTo(21L);
+        ArgumentCaptor<gn.lacaeducation.students.application.event.EnrollmentClassChangedEvent> captor =
+                ArgumentCaptor.forClass(gn.lacaeducation.students.application.event.EnrollmentClassChangedEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        assertThat(captor.getValue().studentId()).isEqualTo(10L);
+        assertThat(captor.getValue().oldClassId()).isEqualTo(20L);
+        assertThat(captor.getValue().newClassId()).isEqualTo(21L);
+        assertThat(captor.getValue().academicYearId()).isEqualTo(30L);
+    }
+
+    @Test
+    void transferClass_fromPending_throwsBusinessRule() {
+        Enrollment pending = Enrollment.builder().id(1L).classId(20L).status(EnrollmentStatus.PENDING).build();
+        when(enrollmentRepository.findById(1L)).thenReturn(Optional.of(pending));
+
+        assertThatThrownBy(() -> service.transferClass(1L, 21L))
+                .isInstanceOf(gn.lacaeducation.common.BusinessRuleException.class);
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void transferClass_sameClass_throwsBusinessRule() {
+        Enrollment validated = Enrollment.builder().id(1L).classId(20L).status(EnrollmentStatus.VALIDATED).build();
+        when(enrollmentRepository.findById(1L)).thenReturn(Optional.of(validated));
+
+        assertThatThrownBy(() -> service.transferClass(1L, 20L))
+                .isInstanceOf(gn.lacaeducation.common.BusinessRuleException.class);
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void transferClass_targetClassFull_throwsConflict() {
+        Enrollment validated = Enrollment.builder().id(1L).classId(20L).status(EnrollmentStatus.VALIDATED).build();
+        when(enrollmentRepository.findById(1L)).thenReturn(Optional.of(validated));
+        when(classCapacityPort.maxCapacity(21L)).thenReturn(2);
+        when(enrollmentRepository.countByClassIdAndStatus(21L, EnrollmentStatus.VALIDATED)).thenReturn(2L);
+
+        assertThatThrownBy(() -> service.transferClass(1L, 21L))
+                .isInstanceOf(ConflictException.class);
+        verify(eventPublisher, never()).publishEvent(any());
+    }
 }

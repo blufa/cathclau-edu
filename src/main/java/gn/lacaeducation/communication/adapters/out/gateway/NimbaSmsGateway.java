@@ -19,9 +19,11 @@ import java.util.List;
  * Gateway SMS via l'API NimbaSMS (fournisseur guinéen) — fournisseur SMS actif par défaut pour le
  * canal {@link CommunicationChannel#SMS}.
  *
- * <p>Flux : Basic auth ({@code base64(service_id:secret_token)}) → POST {@code /v1/messages} avec
- * {@code {sender_name, to:[numéro], message}}. NimbaSMS accepte les numéros sous 3 formats
- * ({@code 623XXXXXX}, {@code 224623XXXXXX}, {@code +224623XXXXXX}) : pas besoin de forcer l'E.164.
+ * <p>Flux : Basic auth ({@code base64(service_id:secret_token)}) → POST {@code /v1/messages} en JSON
+ * {@code {sender_name, to:[numéro...], message}} (confirmé sur developers.nimbasms.com : {@code to}
+ * est un tableau de 1 à 30 numéros, {@code sender_name} 1-100 caractères, {@code message} ≤ 1071
+ * caractères). NimbaSMS accepte les numéros sous 3 formats ({@code 623XXXXXX}, {@code 224623XXXXXX},
+ * {@code +224623XXXXXX}) : pas besoin de forcer l'E.164.
  * Tant que les clés ne sont pas renseignées ({@code nimba.sms.enabled=false}), l'envoi se replie sur
  * la journalisation sans échouer (comportement dev, comme {@link OrangeSmsGateway}).</p>
  *
@@ -39,7 +41,12 @@ public class NimbaSmsGateway implements NotificationGateway, SmsBalancePort {
 
     public NimbaSmsGateway(NimbaSmsProperties props, RestClient.Builder builder) {
         this.props = props;
-        this.http = builder.baseUrl(props.baseUrlOrDefault()).build();
+        // Le timeout connexion/lecture est appliqué globalement par RestClientTimeoutConfig — sans ça,
+        // un appel réseau bloqué (DNS, tunnel, pare-feu) gèlerait indéfiniment le thread de la requête
+        // HTTP entrante, le backend « ne répondant plus du tout » à l'utilisateur.
+        this.http = builder.baseUrl(props.baseUrlOrDefault())
+                .requestInterceptor(new NimbaWireLoggingInterceptor())   // TEMP: remove after diagnostic
+                .build();
     }
 
     @Override
@@ -62,7 +69,7 @@ public class NimbaSmsGateway implements NotificationGateway, SmsBalancePort {
             return new DeliveryResult(true, "logged (nimba disabled)");
         }
         try {
-            MessageRequest body = new MessageRequest(props.senderName(), List.of(normalizeNumber(destination)), message);
+            MessageRequest body = new MessageRequest(props.senderName(), List.of(normalizeNumber(destination)), message, "sms");
             MessageResponse response = http.post()
                     .uri("/v1/messages")
                     .header("Authorization", "Basic " + basicToken())
@@ -116,11 +123,19 @@ public class NimbaSmsGateway implements NotificationGateway, SmsBalancePort {
         return digits.startsWith("00") ? digits.substring(2) : digits;
     }
 
+    /**
+     * Corps de la requête POST /v1/messages (developers.nimbasms.com) : {@code sender_name} [1-100
+     * caractères], {@code to} tableau de 1 à 30 numéros [1-17 caractères chacun], {@code message}
+     * ≤ 1071 caractères, {@code channel} explicite ("sms" — l'API accepte aussi "whatsapp"/"email",
+     * ne pas laisser au défaut implicite). {@code template_name}/{@code template_variables} ne
+     * s'appliquent qu'au canal WhatsApp, non utilisés ici.
+     */
     @JsonIgnoreProperties(ignoreUnknown = true)
     record MessageRequest(
             @JsonProperty("sender_name") String senderName,
             List<String> to,
-            String message) {}
+            String message,
+            String channel) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     record MessageResponse(

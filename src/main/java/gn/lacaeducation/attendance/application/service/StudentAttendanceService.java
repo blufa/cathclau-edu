@@ -9,9 +9,12 @@ import gn.lacaeducation.attendance.application.port.out.AttendanceReportPdfGener
 import gn.lacaeducation.attendance.application.port.out.AttendanceReportPdfGenerator.LatenessReport;
 import gn.lacaeducation.attendance.application.port.out.AttendanceReportPdfGenerator.LatenessRow;
 import gn.lacaeducation.academics.ScheduleSlotPublicInfo;
+import gn.lacaeducation.attendance.application.port.out.AttendanceSettingsRepository;
 import gn.lacaeducation.attendance.application.port.out.ChildPickupRepository;
+import gn.lacaeducation.attendance.application.port.out.RecessWindowRepository;
 import gn.lacaeducation.attendance.application.port.out.StudentAttendanceRepository;
 import gn.lacaeducation.attendance.application.port.out.StudentCheckinRepository;
+import gn.lacaeducation.attendance.domain.AttendanceSettings;
 import gn.lacaeducation.attendance.domain.AttendanceStatus;
 import gn.lacaeducation.attendance.domain.ChildPickup;
 import gn.lacaeducation.attendance.domain.StudentAttendance;
@@ -46,6 +49,24 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
     private final AcademicsDataProvider academicsProvider;
     private final AttendanceReportPdfGenerator reportPdfGenerator;
     private final SessionResolver sessionResolver;
+    private final AttendanceSettingsRepository settingsRepository;
+    private final RecessWindowRepository recessWindowRepository;
+
+    /**
+     * Heure à partir de laquelle un retard commence à être compté pour une entrée sur {@code session} :
+     * l'heure de début prévue, repoussée par la marge de tolérance PROPRE AUX ÉLÈVES (§réglages —
+     * distincte de celle des enseignants/personnel : le temps de trajet d'un enseignant entre deux
+     * salles n'a pas de raison de suivre la même tolérance qu'un élève) et/ou une fenêtre de
+     * récréation. Même mécanisme que pour l'enseignant (voir
+     * {@code TeacherAttendanceService#graceDeadline}), marge différente.
+     */
+    private LocalTime graceDeadline(ScheduleSlotPublicInfo session) {
+        LocalTime start = LocalTime.parse(session.startTime());
+        int margin = settingsRepository.findByTenantId(TenantContext.get())
+                .map(AttendanceSettings::studentTransitionMarginMinutesOrDefault)
+                .orElseGet(() -> AttendanceSettings.defaults().studentTransitionMarginMinutesOrDefault());
+        return sessionResolver.graceDeadline(start, margin, recessWindowRepository.findByTenantId(TenantContext.get()));
+    }
 
     @Override
     public StudentCheckin recordEntry(Long studentId, Long scannerUserId) {
@@ -63,7 +84,8 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
                 .orElseGet(() -> {
                     LocalTime start = LocalTime.parse(session.startTime());
                     LocalTime end = LocalTime.parse(session.endTime());
-                    int late = (int) Math.max(0, Duration.between(start, now).toMinutes());
+                    LocalTime deadline = graceDeadline(session);
+                    int late = (int) Math.max(0, Duration.between(deadline, now).toMinutes());
                     return checkinRepository.save(StudentCheckin.builder()
                             .tenantId(TenantContext.get()).studentId(studentId).classId(classId).checkinDate(today)
                             .scheduleSlotId(session.id()).sessionStart(start).sessionEnd(end)
@@ -134,7 +156,8 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
         }
         LocalTime start = LocalTime.parse(session.startTime());
         LocalTime end = LocalTime.parse(session.endTime());
-        int late = (int) Math.max(0, Duration.between(start, checkInTime).toMinutes());
+        LocalTime deadline = graceDeadline(session);
+        int late = (int) Math.max(0, Duration.between(deadline, checkInTime).toMinutes());
         StudentCheckin checkin = checkinRepository.findByStudentIdAndDateAndSlot(studentId, date, session.id())
                 .orElseGet(() -> StudentCheckin.builder()
                         .tenantId(TenantContext.get()).studentId(studentId).classId(classId).checkinDate(date)
@@ -165,6 +188,11 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
     @Override @Transactional(readOnly = true)
     public List<StudentCheckin> findCheckins(Long studentId, LocalDate date) {
         return checkinRepository.findByStudentIdAndDate(studentId, date);
+    }
+
+    @Override @Transactional(readOnly = true)
+    public List<StudentCheckin> findCheckinsByClass(Long classId, LocalDate date) {
+        return checkinRepository.findByClassIdAndDate(classId, date);
     }
 
     @Override
@@ -352,6 +380,18 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
     @Override
     public void markParentNotified(Long id) {
         StudentAttendance a = load(id); a.setParentNotified(true); attendanceRepository.save(a);
+    }
+
+    @Override
+    public void notifyParentNow(Long id) {
+        // Republie StudentAbsentEvent (mêmes écouteurs que l'envoi automatique : SMS/email via
+        // communication, email via notification) — PAS d'appel à markParentNotified() ici, pour éviter
+        // toute boucle : DomainEventListener (notification) appelle déjà markParentNotified() en retour
+        // quand son propre envoi réussit ; réutiliser cette méthode republierait l'événement à l'infini.
+        StudentAttendance a = load(id);
+        eventPublisher.publishEvent(new StudentAbsentEvent(a.getId(), a.getTenantId(), a.getStudentId(), a.getClassId(), a.getDate()));
+        a.setParentNotified(true);
+        attendanceRepository.save(a);
     }
     private StudentAttendance load(Long id) { return attendanceRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("StudentAttendance", id)); }
 

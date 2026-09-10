@@ -10,7 +10,6 @@ import gn.lacaeducation.attendance.application.port.out.TeacherAttendanceReposit
 import gn.lacaeducation.attendance.application.port.out.TeacherCheckinRepository;
 import gn.lacaeducation.attendance.domain.StudentAttendance;
 import gn.lacaeducation.attendance.domain.StudentCheckin;
-import gn.lacaeducation.attendance.domain.TeacherAttendance;
 import gn.lacaeducation.attendance.domain.TeacherCheckin;
 import gn.lacaeducation.platform.TenantListPort;
 import gn.lacaeducation.staff.TeacherPublicInfoProvider;
@@ -59,113 +58,108 @@ class AbsenceAutoMarkSchedulerTest {
     }
 
     @Test
-    void markNoShowsAbsent_studentWithSessionAndNoCheckin_getsMarkedAbsent() {
+    void markStudentNoShowsAbsent_studentWithStartedSessionAndNoCheckin_getsMarkedAbsent() {
         when(tenantListPort.listActiveTenantIds()).thenReturn(List.of(new TenantListPort.TenantRef(1L)));
         when(academics.findClassesByTenant(1L)).thenReturn(List.of(CLASS));
         when(academics.findScheduleByClass(20L)).thenReturn(List.of());
-        when(sessionResolver.hasSessionOn(any(), any())).thenReturn(true);
+        when(sessionResolver.hasStartedSessionOn(any(), any(), any())).thenReturn(true);
         when(studentCheckinRepository.findByClassIdAndDate(eq(20L), any())).thenReturn(List.of());
         when(students.findStudentsByClass(20L)).thenReturn(List.of(student(10L)));
         when(studentAttendanceRepository.findByStudentIdAndClassIdAndDate(eq(10L), eq(20L), any())).thenReturn(Optional.empty());
-        when(teachers.listTeachers(1L)).thenReturn(List.of());
 
-        scheduler.markNoShowsAbsent();
+        scheduler.markStudentNoShowsAbsent();
 
         verify(studentAttendance).markAbsent(eq(10L), any());
     }
 
     @Test
-    void markNoShowsAbsent_studentWithCheckin_notMarkedAbsent() {
+    void markStudentNoShowsAbsent_studentWithCheckin_notMarkedAbsent() {
         when(tenantListPort.listActiveTenantIds()).thenReturn(List.of(new TenantListPort.TenantRef(1L)));
         when(academics.findClassesByTenant(1L)).thenReturn(List.of(CLASS));
         when(academics.findScheduleByClass(20L)).thenReturn(List.of());
-        when(sessionResolver.hasSessionOn(any(), any())).thenReturn(true);
+        when(sessionResolver.hasStartedSessionOn(any(), any(), any())).thenReturn(true);
         StudentCheckin checkin = StudentCheckin.builder().studentId(10L).build();
         when(studentCheckinRepository.findByClassIdAndDate(eq(20L), any())).thenReturn(List.of(checkin));
         when(students.findStudentsByClass(20L)).thenReturn(List.of(student(10L)));
-        when(teachers.listTeachers(1L)).thenReturn(List.of());
 
-        scheduler.markNoShowsAbsent();
+        scheduler.markStudentNoShowsAbsent();
 
         verify(studentAttendance, never()).markAbsent(anyLong(), any());
     }
 
     @Test
-    void markNoShowsAbsent_studentAlreadyRecorded_skipped() {
+    void markStudentNoShowsAbsent_studentAlreadyRecorded_skipped() {
         when(tenantListPort.listActiveTenantIds()).thenReturn(List.of(new TenantListPort.TenantRef(1L)));
         when(academics.findClassesByTenant(1L)).thenReturn(List.of(CLASS));
         when(academics.findScheduleByClass(20L)).thenReturn(List.of());
-        when(sessionResolver.hasSessionOn(any(), any())).thenReturn(true);
+        when(sessionResolver.hasStartedSessionOn(any(), any(), any())).thenReturn(true);
         when(studentCheckinRepository.findByClassIdAndDate(eq(20L), any())).thenReturn(List.of());
         when(students.findStudentsByClass(20L)).thenReturn(List.of(student(10L)));
         when(studentAttendanceRepository.findByStudentIdAndClassIdAndDate(eq(10L), eq(20L), any()))
                 .thenReturn(Optional.of(StudentAttendance.builder().id(1L).build()));
-        when(teachers.listTeachers(1L)).thenReturn(List.of());
 
-        scheduler.markNoShowsAbsent();
+        scheduler.markStudentNoShowsAbsent();
 
         verify(studentAttendance, never()).markAbsent(anyLong(), any());
     }
 
     @Test
-    void markNoShowsAbsent_noSessionToday_skipped() {
+    void markStudentNoShowsAbsent_noStartedSessionYet_skipped() {
+        // Ex. un élève dont le seul cours du jour est l'après-midi : à 14h, ce cours n'a pas encore
+        // commencé, il ne doit pas être marqué absent par anticipation.
         when(tenantListPort.listActiveTenantIds()).thenReturn(List.of(new TenantListPort.TenantRef(1L)));
         when(academics.findClassesByTenant(1L)).thenReturn(List.of(CLASS));
         when(academics.findScheduleByClass(20L)).thenReturn(List.of());
-        when(sessionResolver.hasSessionOn(any(), any())).thenReturn(false);
-        when(teachers.listTeachers(1L)).thenReturn(List.of());
+        when(sessionResolver.hasStartedSessionOn(any(), any(), any())).thenReturn(false);
 
-        scheduler.markNoShowsAbsent();
+        scheduler.markStudentNoShowsAbsent();
 
         verify(studentAttendance, never()).markAbsent(anyLong(), any());
         verify(studentCheckinRepository, never()).findByClassIdAndDate(any(), any());
     }
 
     @Test
-    void markNoShowsAbsent_teacherWithSessionAndNoCheckin_getsMarkedAbsent() {
+    void markStudentNoShowsAbsent_loopsAcrossMultipleTenants_continuesAfterOneFails() {
+        when(tenantListPort.listActiveTenantIds()).thenReturn(List.of(
+                new TenantListPort.TenantRef(1L), new TenantListPort.TenantRef(2L)));
+        when(academics.findClassesByTenant(1L)).thenThrow(new RuntimeException("boom"));
+        when(academics.findClassesByTenant(2L)).thenReturn(List.of(CLASS));
+        when(academics.findScheduleByClass(20L)).thenReturn(List.of());
+        when(sessionResolver.hasStartedSessionOn(any(), any(), any())).thenReturn(true);
+        when(studentCheckinRepository.findByClassIdAndDate(eq(20L), any())).thenReturn(List.of());
+        when(students.findStudentsByClass(20L)).thenReturn(List.of(student(10L)));
+        when(studentAttendanceRepository.findByStudentIdAndClassIdAndDate(eq(10L), eq(20L), any())).thenReturn(Optional.empty());
+
+        scheduler.markStudentNoShowsAbsent();
+
+        verify(studentAttendance, times(1)).markAbsent(eq(10L), any());
+    }
+
+    @Test
+    void markTeacherNoShowsAbsent_teacherWithSessionAndNoCheckin_getsMarkedAbsent() {
         when(tenantListPort.listActiveTenantIds()).thenReturn(List.of(new TenantListPort.TenantRef(1L)));
-        when(academics.findClassesByTenant(1L)).thenReturn(List.of());
         when(teachers.listTeachers(1L)).thenReturn(List.of(teacher(3L)));
         when(academics.findScheduleByTeacher(3L)).thenReturn(List.of());
         when(sessionResolver.hasSessionOn(any(), any())).thenReturn(true);
         when(teacherCheckinRepository.findByTeacherIdAndDate(eq(3L), any())).thenReturn(List.of());
         when(teacherAttendanceRepository.findByTeacherIdAndDateBetween(eq(3L), any(), any())).thenReturn(List.of());
 
-        scheduler.markNoShowsAbsent();
+        scheduler.markTeacherNoShowsAbsent();
 
         verify(teacherAttendance).markAbsent(eq(3L), any());
     }
 
     @Test
-    void markNoShowsAbsent_teacherWithCheckin_notMarkedAbsent() {
+    void markTeacherNoShowsAbsent_teacherWithCheckin_notMarkedAbsent() {
         when(tenantListPort.listActiveTenantIds()).thenReturn(List.of(new TenantListPort.TenantRef(1L)));
-        when(academics.findClassesByTenant(1L)).thenReturn(List.of());
         when(teachers.listTeachers(1L)).thenReturn(List.of(teacher(3L)));
         when(academics.findScheduleByTeacher(3L)).thenReturn(List.of());
         when(sessionResolver.hasSessionOn(any(), any())).thenReturn(true);
         when(teacherCheckinRepository.findByTeacherIdAndDate(eq(3L), any()))
                 .thenReturn(List.of(TeacherCheckin.builder().teacherId(3L).build()));
 
-        scheduler.markNoShowsAbsent();
+        scheduler.markTeacherNoShowsAbsent();
 
         verify(teacherAttendance, never()).markAbsent(anyLong(), any());
-    }
-
-    @Test
-    void markNoShowsAbsent_loopsAcrossMultipleTenants_continuesAfterOneFails() {
-        when(tenantListPort.listActiveTenantIds()).thenReturn(List.of(
-                new TenantListPort.TenantRef(1L), new TenantListPort.TenantRef(2L)));
-        when(academics.findClassesByTenant(1L)).thenThrow(new RuntimeException("boom"));
-        when(academics.findClassesByTenant(2L)).thenReturn(List.of(CLASS));
-        when(academics.findScheduleByClass(20L)).thenReturn(List.of());
-        when(sessionResolver.hasSessionOn(any(), any())).thenReturn(true);
-        when(studentCheckinRepository.findByClassIdAndDate(eq(20L), any())).thenReturn(List.of());
-        when(students.findStudentsByClass(20L)).thenReturn(List.of(student(10L)));
-        when(studentAttendanceRepository.findByStudentIdAndClassIdAndDate(eq(10L), eq(20L), any())).thenReturn(Optional.empty());
-        when(teachers.listTeachers(anyLong())).thenReturn(List.of());
-
-        scheduler.markNoShowsAbsent();
-
-        verify(studentAttendance, times(1)).markAbsent(eq(10L), any());
     }
 }

@@ -50,7 +50,10 @@ public class EmployeeAttendanceService implements EmployeeAttendanceUseCase {
         // ne modifie rien (la sortie se pointe via recordExit, pas un second appel ici).
         return attendanceRepository.findByEmployeeIdAndDate(employeeId, today).orElseGet(() -> {
             AttendanceSettings s = settings(TenantContext.get());
-            int late = (int) Math.max(0, Duration.between(s.employeeCheckInTimeOrDefault(), now).toMinutes());
+            // Marge de tolérance générale (§réglages) : une entrée dans les N minutes après l'horaire de
+            // référence n'est jamais comptée en retard — même règle que pour élève/enseignant.
+            LocalTime deadline = s.employeeCheckInTimeOrDefault().plusMinutes(s.transitionMarginMinutesOrDefault());
+            int late = (int) Math.max(0, Duration.between(deadline, now).toMinutes());
             return attendanceRepository.save(EmployeeAttendance.builder()
                     .tenantId(TenantContext.get()).employeeId(employeeId).date(today)
                     .status(EmployeeAttendanceStatus.PRESENT).checkInTime(now).lateMinutes(late).earlyMinutes(0).build());
@@ -73,7 +76,8 @@ public class EmployeeAttendanceService implements EmployeeAttendanceUseCase {
     @Override
     public EmployeeAttendance recordManualEntry(Long employeeId, LocalDate date, LocalTime checkInTime) {
         AttendanceSettings s = settings(TenantContext.get());
-        int late = (int) Math.max(0, Duration.between(s.employeeCheckInTimeOrDefault(), checkInTime).toMinutes());
+        LocalTime deadline = s.employeeCheckInTimeOrDefault().plusMinutes(s.transitionMarginMinutesOrDefault());
+        int late = (int) Math.max(0, Duration.between(deadline, checkInTime).toMinutes());
         EmployeeAttendance a = attendanceRepository.findByEmployeeIdAndDate(employeeId, date)
                 .orElseGet(() -> EmployeeAttendance.builder()
                         .tenantId(TenantContext.get()).employeeId(employeeId).date(date).earlyMinutes(0).build());

@@ -28,6 +28,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -95,6 +96,7 @@ class TeacherAttendanceServiceTest {
     void recordEntry_afterSessionStart_computesLateMinutes() {
         when(academics.findScheduleByTeacher(5L)).thenReturn(List.of());
         when(sessionResolver.currentSession(any(), any(), any())).thenReturn(slot("00:00", "23:59"));
+        when(sessionResolver.graceDeadline(any(), anyInt(), any())).thenReturn(java.time.LocalTime.of(0, 0));
         when(checkinRepository.findByTeacherIdAndDateAndSlot(eq(5L), any(), eq(1L))).thenReturn(Optional.empty());
         when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
         when(checkinRepository.findByTeacherIdAndDate(eq(5L), any())).thenReturn(List.of());
@@ -110,6 +112,7 @@ class TeacherAttendanceServiceTest {
     void recordEntry_beforeSessionStart_zeroLateAndUpsertsPresent() {
         when(academics.findScheduleByTeacher(5L)).thenReturn(List.of());
         when(sessionResolver.currentSession(any(), any(), any())).thenReturn(slot("23:59", "23:59"));
+        when(sessionResolver.graceDeadline(any(), anyInt(), any())).thenReturn(java.time.LocalTime.of(23, 59));
         when(checkinRepository.findByTeacherIdAndDateAndSlot(eq(5L), any(), eq(1L))).thenReturn(Optional.empty());
         when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
         when(checkinRepository.findByTeacherIdAndDate(eq(5L), any()))
@@ -170,6 +173,7 @@ class TeacherAttendanceServiceTest {
                 .checkInTime(java.time.LocalTime.of(8, 0)).lateMinutes(0).build();
         when(academics.findScheduleByTeacher(5L)).thenReturn(List.of());
         when(sessionResolver.currentSession(any(), any(), any())).thenReturn(slot("08:00", "10:00"));
+        when(sessionResolver.graceDeadline(any(), anyInt(), any())).thenReturn(java.time.LocalTime.of(8, 5));
         when(checkinRepository.findByTeacherIdAndDateAndSlot(eq(5L), any(), eq(1L))).thenReturn(Optional.of(existing));
         when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
         when(checkinRepository.findByTeacherIdAndDate(eq(5L), any())).thenReturn(List.of(existing));
@@ -178,7 +182,26 @@ class TeacherAttendanceServiceTest {
         TeacherCheckin result = service.recordManualEntry(5L, LocalDate.of(2026, 8, 26), java.time.LocalTime.of(8, 20));
 
         assertThat(result.getCheckInTime()).isEqualTo(java.time.LocalTime.of(8, 20));
-        assertThat(result.getLateMinutes()).isEqualTo(20);
+        // 20 min après le début (8h00) moins la marge de tolérance générale (5 min, §réglages).
+        assertThat(result.getLateMinutes()).isEqualTo(15);
+    }
+
+    @Test
+    void recordManualEntry_withinToleranceMargin_notLate() {
+        // Entrée à 8h05 pour un cours à 8h00 avec une marge de tolérance de 5 min : pas de retard —
+        // le cas concret signalé : un enseignant pointant à 14h05 pour un cours à 14h00 avec 5 min de
+        // marge configurée ne doit jamais être compté en retard.
+        when(academics.findScheduleByTeacher(5L)).thenReturn(List.of());
+        when(sessionResolver.currentSession(any(), any(), any())).thenReturn(slot("08:00", "10:00"));
+        when(sessionResolver.graceDeadline(any(), anyInt(), any())).thenReturn(java.time.LocalTime.of(8, 5));
+        when(checkinRepository.findByTeacherIdAndDateAndSlot(eq(5L), any(), eq(1L))).thenReturn(Optional.empty());
+        when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(checkinRepository.findByTeacherIdAndDate(eq(5L), any())).thenReturn(List.of());
+        when(repo.findByTeacherIdAndDateBetween(eq(5L), any(), any())).thenReturn(List.of());
+
+        TeacherCheckin result = service.recordManualEntry(5L, LocalDate.of(2026, 8, 26), java.time.LocalTime.of(8, 5));
+
+        assertThat(result.getLateMinutes()).isZero();
     }
 
     @Test

@@ -137,6 +137,14 @@ public class StudentAttendanceController {
     @GetMapping("/class/{classId}")
     public List<StudentAttendance> findByClass(@PathVariable Long classId, @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) { return useCase.findByClass(classId, date); }
 
+    @Operation(summary = "Pointages (par séance, tous élèves) d'une classe à une date donnée — heure "
+            + "de sortie/départ anticipé par élève et par créneau, pour le tableau de suivi du personnel")
+    @GetMapping("/class/{classId}/checkins")
+    public List<StudentCheckin> checkinsByClass(@PathVariable Long classId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return useCase.findCheckinsByClass(classId, date);
+    }
+
     @Operation(summary = "Get attendance records for a student over a date range")
     @GetMapping("/student/{studentId}")
     public List<StudentAttendance> findByStudent(@PathVariable Long studentId,
@@ -194,10 +202,14 @@ public class StudentAttendanceController {
         return useCase.unjustifiedAlerts(classId, from, to, threshold);
     }
 
-    @Operation(summary = "Mark parent as notified about an absence or late arrival")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    // Redéclenche réellement l'envoi (SMS + email) plutôt que de seulement cocher la case — voir
+    // StudentAttendanceUseCase#notifyParentNow. Rôles alignés sur `canWrite` côté frontend (le bouton
+    // est visible aux mêmes rôles que la saisie de présence, dont TEACHER) ; sans ça, un enseignant
+    // voyait le bouton mais recevait un 403 silencieux en cliquant.
+    @Operation(summary = "Resend the absence/lateness notification to the parent and mark it as handled")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','TEACHER')")
     @PutMapping("/{id}/notify-parent")
-    public ResponseEntity<Void> notifyParent(@PathVariable Long id) { useCase.markParentNotified(id); return ResponseEntity.ok().build(); }
+    public ResponseEntity<Void> notifyParent(@PathVariable Long id) { useCase.notifyParentNow(id); return ResponseEntity.ok().build(); }
 
     @Operation(summary = "Delete an attendance record")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")

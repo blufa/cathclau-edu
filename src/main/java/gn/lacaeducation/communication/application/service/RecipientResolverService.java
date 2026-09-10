@@ -3,6 +3,7 @@ package gn.lacaeducation.communication.application.service;
 import gn.lacaeducation.communication.application.port.in.CommunicationUseCase.RecipientTarget;
 import gn.lacaeducation.communication.domain.BroadcastAudience;
 import gn.lacaeducation.communication.domain.CommunicationChannel;
+import gn.lacaeducation.staff.EmployeePublicInfoProvider;
 import gn.lacaeducation.staff.TeacherPublicInfoProvider;
 import gn.lacaeducation.students.ParentPublicInfo;
 import gn.lacaeducation.students.StudentDataProvider;
@@ -10,6 +11,7 @@ import gn.lacaeducation.students.StudentPublicInfo;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,12 +27,25 @@ class RecipientResolverService {
 
     private final StudentDataProvider studentDataProvider;
     private final TeacherPublicInfoProvider teacherPublicInfoProvider;
+    private final EmployeePublicInfoProvider employeePublicInfoProvider;
 
     List<RecipientTarget> resolve(Long tenantId, BroadcastAudience audience, Long classId, Long studentId,
                                   CommunicationChannel channel) {
         if (audience == BroadcastAudience.ALL_TEACHERS) {
             return teacherPublicInfoProvider.listTeachers(tenantId).stream()
                     .map(t -> destinationOf(t.email(), t.phone(), channel))
+                    .filter(d -> d != null && !d.isBlank())
+                    .map(d -> new RecipientTarget(null, d))
+                    .toList();
+        }
+        if (audience == BroadcastAudience.ALL_STAFF) {
+            List<String> destinations = new ArrayList<>();
+            teacherPublicInfoProvider.listTeachers(tenantId)
+                    .forEach(t -> destinations.add(destinationOf(t.email(), t.phone(), channel)));
+            employeePublicInfoProvider.listEmployees(tenantId).stream()
+                    .filter(EmployeePublicInfoProvider.EmployeeInfo::active)
+                    .forEach(e -> destinations.add(destinationOf(e.email(), e.phone(), channel)));
+            return destinations.stream()
                     .filter(d -> d != null && !d.isBlank())
                     .map(d -> new RecipientTarget(null, d))
                     .toList();
@@ -45,7 +60,7 @@ class RecipientResolverService {
             case CLASS_PARENTS_GIRLS -> parentsOfClass(classId, "FEMALE");
             case STUDENT_PARENTS -> studentDataProvider.hasPlatformAccessOptIn(studentId)
                     ? studentDataProvider.findParentsByStudent(studentId) : List.of();
-            case ALL_TEACHERS -> throw new IllegalStateException("traité plus haut");
+            case ALL_TEACHERS, ALL_STAFF -> throw new IllegalStateException("traité plus haut");
         };
 
         return parents.stream()

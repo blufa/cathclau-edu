@@ -146,7 +146,9 @@ public class LessonService {
     public List<LessonEntry> find(Long tenantId, Long classId, Long subjectId) {
         if (classId != null && subjectId != null) return repo.findByTenantIdAndClassIdAndSubjectId(tenantId, classId, subjectId);
         if (classId != null) return repo.findByTenantIdAndClassId(tenantId, classId);
-        return repo.findByTenantId(tenantId);
+        List<LessonEntry> all = repo.findByTenantId(tenantId);
+        if (subjectId == null) return all;
+        return all.stream().filter(l -> subjectId.equals(l.getSubjectId())).toList();
     }
 
     /** Cahier de textes de la classe courante d'un élève — pour les portails élève et parent. */

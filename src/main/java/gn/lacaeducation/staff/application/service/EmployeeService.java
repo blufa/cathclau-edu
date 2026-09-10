@@ -46,6 +46,7 @@ public class EmployeeService implements EmployeeUseCase {
         e.setHireDate(c.hireDate());
         e.setBaseSalary(c.baseSalary());
         e.setCnssNumber(c.cnssNumber());
+        e.setLinkedTeacherId(c.linkedTeacherId());
         return repo.save(e);
     }
 

@@ -37,6 +37,9 @@ public class PayslipController {
                                   BigDecimal overtimeHours, BigDecimal overtimeRate, BigDecimal overtimeMultiplier) {}
     public record BatchRequest(String periodLabel, LocalDate periodStart, LocalDate periodEnd, Long structureId,
                                List<TeacherWage> wages) {}
+    public record CombinedRequest(Long employeeId, String employeeName,
+                                  gn.lacaeducation.payroll.domain.EmployeeType employeeType,
+                                  BigDecimal baseSalary, Long linkedTeacherId, Long structureId) {}
     public record LineRequest(String label, PayslipLineType lineType, BigDecimal amount) {}
     public record PayRequest(String paymentMethod) {}
 
@@ -69,6 +72,15 @@ public class PayslipController {
     public List<Payslip> batch(@RequestBody BatchRequest r) {
         return service.generateBatch(TenantContext.get(), r.periodLabel(), r.periodStart(), r.periodEnd(),
                 r.structureId(), r.wages());
+    }
+
+    @Operation(summary = "Générer la fiche de paie combinée d'un personnel direction/administratif qui "
+            + "enseigne aussi : salaire de base fixe + ligne d'heures d'enseignement calculée depuis "
+            + "l'enseignant lié à sa fiche (§payroll)")
+    @PostMapping("/combined")
+    public Payslip generateCombined(@RequestParam int year, @RequestParam int month, @RequestBody CombinedRequest r) {
+        return service.generateCombinedPayslip(TenantContext.get(), r.employeeId(), r.employeeName(),
+                r.employeeType(), r.baseSalary(), r.linkedTeacherId(), year, month, r.structureId());
     }
 
     @Operation(summary = "Ajouter une ligne (prime/retenue) et recalculer")

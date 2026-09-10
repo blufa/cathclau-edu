@@ -31,6 +31,11 @@ public class Employee {
     private BigDecimal baseSalary;
     private String cnssNumber;
     private Boolean active;
+    /** Fiche {@code Teacher} de la même personne, si elle enseigne aussi en plus de son poste
+     * administratif/direction — lien manuel explicite (jamais déduit automatiquement), utilisé pour
+     * générer une fiche de paie combinée (salaire fixe + heures d'enseignement). Null si la personne
+     * n'enseigne pas. */
+    private Long linkedTeacherId;
 
     public String fullName() {
         String f = firstName != null ? firstName : "";

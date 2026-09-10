@@ -10,7 +10,11 @@ import gn.lacaeducation.payroll.application.port.out.PayslipRepository;
 import gn.lacaeducation.payroll.application.port.out.SalaryRuleRepository;
 import gn.lacaeducation.payroll.application.port.out.SalaryStructureRepository;
 import gn.lacaeducation.payroll.application.port.out.TeacherCompensationRepository;
+import gn.lacaeducation.payroll.domain.EmployeeType;
 import gn.lacaeducation.payroll.domain.PayMode;
+import gn.lacaeducation.payroll.domain.Payslip;
+import gn.lacaeducation.payroll.domain.PayslipLine;
+import gn.lacaeducation.payroll.domain.PayslipLineType;
 import gn.lacaeducation.payroll.domain.TeacherCompensation;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,10 +23,17 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -76,5 +87,60 @@ class PayrollServiceTest {
         assertThat(mass.teacherCount()).isZero();
         assertThat(mass.totalHourlyRateNormal()).isEqualByComparingTo("0");
         assertThat(mass.monthlyPayroll()).isEqualByComparingTo("0");
+    }
+
+    /** Fiche combinée : personnel de direction (salaire fixe) qui enseigne aussi (heures réalisées) —
+     * une seule fiche, salaire de base + une ligne EARNING pour les heures d'enseignement. */
+    @Test
+    void generateCombinedPayslip_addsBaseSalaryPlusTeachingHoursLine() {
+        Long employeeId = 5L;
+        Long linkedTeacherId = 42L;
+        BigDecimal baseSalary = new BigDecimal("2000000");
+
+        when(salaryFeeDeductionUseCase.computeFeeDeduction(anyLong(), eq(employeeId)))
+                .thenReturn(new SalaryFeeDeductionUseCase.FeeDeduction(BigDecimal.ZERO, null, 0));
+
+        AtomicReference<Payslip> saved = new AtomicReference<>();
+        when(payslipRepo.save(any())).thenAnswer(i -> {
+            Payslip p = i.getArgument(0);
+            if (p.getId() == null) p.setId(100L);
+            saved.set(p);
+            return p;
+        });
+        when(payslipRepo.findById(100L)).thenAnswer(i -> Optional.of(saved.get()));
+
+        List<PayslipLine> lines = new ArrayList<>();
+        when(lineRepo.save(any())).thenAnswer(i -> {
+            PayslipLine l = i.getArgument(0);
+            lines.add(l);
+            return l;
+        });
+        when(lineRepo.findByPayslipId(100L)).thenAnswer(i -> lines);
+
+        // Enseignant lié : 2h réalisées (120 min), aucun retard/départ anticipé, tarif normal 10 000.
+        when(teachingProvider.realizedMinutesByClass(eq(linkedTeacherId), any(), any())).thenReturn(Map.of(1L, 120));
+        when(workProvider.monthlyLateEarlyByClass(eq(linkedTeacherId), eq(2026), eq(3))).thenReturn(Map.of());
+        when(compRepo.findByTeacherId(linkedTeacherId)).thenReturn(Optional.of(
+                TeacherCompensation.builder().teacherId(linkedTeacherId).payMode(PayMode.HOURLY)
+                        .hourlyRateNormal(new BigDecimal("10000")).hourlyRateExam(BigDecimal.ZERO)
+                        .fixedSalary(BigDecimal.ZERO).build()));
+
+        Payslip result = payrollService.generateCombinedPayslip(9L, employeeId, "Mariam Bah",
+                EmployeeType.DIRECTION, baseSalary, linkedTeacherId, 2026, 3, null);
+
+        assertThat(result.getEmployeeType()).isEqualTo(EmployeeType.DIRECTION);
+        assertThat(result.getTeacherId()).isEqualTo(employeeId);
+        assertThat(result.getBaseSalary()).isEqualByComparingTo(baseSalary);
+        // 2h × 10 000 = 20 000 de paie d'enseignement, ajoutée en plus du salaire de base fixe.
+        assertThat(result.getGrossSalary()).isEqualByComparingTo(baseSalary.add(new BigDecimal("20000.00")));
+        assertThat(lines).hasSize(1);
+        assertThat(lines.get(0).getLineType()).isEqualTo(PayslipLineType.EARNING);
+    }
+
+    @Test
+    void generateCombinedPayslip_withoutLinkedTeacher_throws() {
+        assertThatThrownBy(() -> payrollService.generateCombinedPayslip(9L, 5L, "Mariam Bah",
+                EmployeeType.DIRECTION, new BigDecimal("2000000"), null, 2026, 3, null))
+                .isInstanceOf(gn.lacaeducation.common.BusinessRuleException.class);
     }
 }

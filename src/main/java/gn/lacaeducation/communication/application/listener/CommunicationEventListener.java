@@ -131,12 +131,13 @@ public class CommunicationEventListener {
         if (event.invoiceId() != null) return;
         studentDataProvider.findStudent(event.studentId()).ifPresent(student ->
             paymentDataProvider.findPayment(event.paymentId()).ifPresent(payment -> {
-                String amount = payment.amount() + " FCFA";
+                String amount = payment.amount() + " GNF";
                 Map<String, String> vars = Map.of(
                         "nom_eleve", fullName(student), "ecole", schoolName(event.tenantId()),
                         "montant", amount, "canal", payment.channel() == null ? "" : payment.channel(),
                         "reference", payment.reference() == null ? "" : payment.reference());
-                String defaultBody = "Paiement de " + amount + " reçu pour " + fullName(student) + ". Merci.";
+                String defaultBody = "Paiement de " + amount + " reçu pour " + fullName(student)
+                        + ". Connectez-vous à la plateforme pour voir la facture payée.";
                 dispatch(event.tenantId(), CommunicationReason.GENERAL, "Paiement reçu", defaultBody, vars, event.studentId());
                 notifyFounder(event.tenantId(), fullName(student), amount);
             }));
@@ -146,17 +147,19 @@ public class CommunicationEventListener {
     @TransactionalEventListener
     public void onInvoicePaymentApplied(InvoicePaymentAppliedEvent event) {
         studentDataProvider.findStudent(event.studentId()).ifPresent(student -> {
-            String amount = event.paidAmount() + " FCFA";
+            String amount = event.paidAmount() + " GNF";
             BigDecimal remaining = event.remainingBalance() == null ? BigDecimal.ZERO : event.remainingBalance();
             boolean settled = remaining.compareTo(BigDecimal.ZERO) <= 0;
-            String remainingStr = remaining + " FCFA";
+            String remainingStr = remaining + " GNF";
             Map<String, String> vars = Map.of(
                     "nom_eleve", fullName(student), "ecole", schoolName(event.tenantId()),
                     "montant", amount, "reste_a_payer", remainingStr,
                     "reference", event.reference() == null ? "" : event.reference());
             String defaultBody = settled
-                    ? "Paiement de " + amount + " reçu pour " + fullName(student) + ". Facture soldée. Merci."
-                    : "Paiement de " + amount + " reçu pour " + fullName(student) + ". Reste à payer : " + remainingStr + ".";
+                    ? "Paiement de " + amount + " reçu pour " + fullName(student)
+                        + ". Facture soldée. Connectez-vous à la plateforme pour la voir."
+                    : "Paiement de " + amount + " reçu pour " + fullName(student) + ". Reste à payer : " + remainingStr
+                        + ". Connectez-vous à la plateforme pour voir la facture.";
             dispatch(event.tenantId(), CommunicationReason.GENERAL, "Paiement reçu", defaultBody, vars, event.studentId());
             notifyFounder(event.tenantId(), fullName(student), amount);
         });
@@ -173,7 +176,7 @@ public class CommunicationEventListener {
      */
     @TransactionalEventListener
     public void onEcheanceDepassee(EcheanceDepasseeEvent event) {
-        String amount = event.amount() + " FCFA";
+        String amount = event.amount() + " GNF";
         String date = event.dueDate() != null ? event.dueDate().format(DATE_FMT) : "N/A";
         Map<String, String> vars = Map.of(
                 "ecole", schoolName(event.tenantId()), "montant", amount, "date", date,
@@ -273,11 +276,8 @@ public class CommunicationEventListener {
         String subject = template.map(t -> MessageTemplate.render(t.getSubject(), allVars)).orElse(defaultSubject);
         String content = template.map(t -> MessageTemplate.render(t.getBody(), allVars)).orElse(defaultBody);
 
-        // SMS : le sender Orange global est « CathClau » ; on préfixe le nom de l'école pour que le parent
-        // identifie l'expéditeur. Pas de doublon si le contenu contient déjà le nom (ex. modèle {{ecole}}).
-        if (channel == CommunicationChannel.SMS && content != null && !content.contains(school)) {
-            content = "[" + school + "] " + content;
-        }
+        // Le préfixe « [École] » sur les SMS est appliqué de façon centralisée par
+        // CommunicationService#send (point d'envoi unique, garanti quel que soit l'appelant) — pas ici.
         return new Resolved(channel, subject, content);
     }
 

@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.*;
 import java.net.URI;
 import java.util.List;
 
-@Tag(name = "Enrollments", description = "Enrollments and re-enrollments with validation workflow")
+@Tag(name = "Enrollments", description = "Inscriptions et réinscriptions, avec circuit de validation")
 @RestController
 @RequestMapping("/api/v1/enrollments")
 @RequiredArgsConstructor
@@ -24,7 +24,7 @@ public class EnrollmentController {
 
     private final EnrollmentUseCase useCase;
 
-    @Operation(summary = "Enroll a student in a class for an academic year")
+    @Operation(summary = "Inscrire un élève dans une classe pour une année scolaire")
     @PostMapping
     @PreAuthorize("hasAuthority('inscription:create')")
     public ResponseEntity<Enrollment> enroll(@Valid @RequestBody EnrollCommand cmd) {
@@ -32,7 +32,7 @@ public class EnrollmentController {
         return ResponseEntity.created(URI.create("/api/v1/enrollments/" + e.getId())).body(e);
     }
 
-    @Operation(summary = "Re-enroll a student (next academic year)")
+    @Operation(summary = "Réinscrire un élève (année scolaire suivante)")
     @PostMapping("/re-enrollment")
     @PreAuthorize("hasAuthority('inscription:create')")
     public ResponseEntity<Enrollment> reenroll(@Valid @RequestBody EnrollCommand cmd) {
@@ -40,14 +40,14 @@ public class EnrollmentController {
         return ResponseEntity.created(URI.create("/api/v1/enrollments/" + e.getId())).body(e);
     }
 
-    @Operation(summary = "Modify a pending enrollment (class / academic year / type)")
+    @Operation(summary = "Modifier une inscription en attente (classe / année scolaire / type)")
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('inscription:create')")
     public Enrollment update(@PathVariable Long id, @Valid @RequestBody EnrollCommand cmd) {
         return useCase.update(id, cmd);
     }
 
-    @Operation(summary = "Search enrollments by student, class, academic year and/or status")
+    @Operation(summary = "Rechercher des inscriptions par élève, classe, année scolaire et/ou statut")
     @GetMapping
     @PreAuthorize("hasAuthority('inscription:read')")
     public List<Enrollment> search(@RequestParam(required = false) Long studentId,
@@ -57,7 +57,7 @@ public class EnrollmentController {
         return useCase.search(studentId, classId, academicYearId, status);
     }
 
-    @Operation(summary = "Get an enrollment by ID")
+    @Operation(summary = "Détail d'une inscription")
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('inscription:read')")
     public Enrollment findById(@PathVariable Long id) {
@@ -73,21 +73,40 @@ public class EnrollmentController {
 
     public record PlatformAccessRequest(Boolean optIn) {}
 
-    @Operation(summary = "Validate a pending enrollment (checks capacity and one-validated-per-year)")
+    @Operation(summary = "Valider une inscription en attente (vérifie la capacité et l'unicité par année)")
     @PatchMapping("/{id}/validate")
     @PreAuthorize("hasAuthority('inscription:validate')")
     public Enrollment validate(@PathVariable Long id) {
         return useCase.validate(id);
     }
 
-    @Operation(summary = "Cancel an enrollment")
+    @Operation(summary = "Annuler une inscription")
     @PatchMapping("/{id}/cancel")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
     public Enrollment cancel(@PathVariable Long id) {
         return useCase.cancel(id);
     }
 
-    @Operation(summary = "Delete an enrollment")
+    @Operation(summary = "Marquer une inscription validée comme abandon (élève parti en cours d'année) — "
+            + "contrairement à l'annulation, les factures déjà émises continuent de compter dans le recouvrement de la classe")
+    @PatchMapping("/{id}/abandon")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    public Enrollment abandon(@PathVariable Long id) {
+        return useCase.abandon(id);
+    }
+
+    @Operation(summary = "Transférer une inscription validée vers une autre classe en cours d'année — "
+            + "si les frais scolaires diffèrent, les mensualités impayées de l'ancienne classe sont annulées "
+            + "et ce qui a déjà été payé est reporté en crédit sur les nouvelles mensualités")
+    @PatchMapping("/{id}/transfer-class")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    public Enrollment transferClass(@PathVariable Long id, @RequestBody TransferClassRequest r) {
+        return useCase.transferClass(id, r.newClassId());
+    }
+
+    public record TransferClassRequest(Long newClassId) {}
+
+    @Operation(summary = "Supprimer une inscription")
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
     @ResponseStatus(HttpStatus.NO_CONTENT)

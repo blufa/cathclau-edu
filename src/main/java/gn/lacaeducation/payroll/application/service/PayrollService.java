@@ -219,6 +219,36 @@ public class PayrollService {
         return new TeacherPayrollMass(totalNormal, totalExam, monthly, comps.size());
     }
 
+    /** Masse salariale RÉELLE des enseignants d'un tenant (Vision Fondateur) : contrairement à
+     * {@link #teacherPayrollMass}, qui projette depuis l'emploi du temps (heures théoriques, sans
+     * tenir compte des retards/départs anticipés réellement pointés), celle-ci part de
+     * {@link #computeMonthlyPay} — heures réellement réalisées (cahier de textes marqué "réalisée" par
+     * le directeur des études), retards et départs anticipés cumulés déjà déduits. La différence entre
+     * les deux masses révèle concrètement ce que coûtent les retards/départs anticipés non gérés — et
+     * sert à repérer une anomalie (un enseignant payé plein tarif malgré une présence très partielle). */
+    public record RealTeacherPayrollMass(BigDecimal monthlyPayroll, int totalLateMinutes, int totalEarlyMinutes,
+                                         int totalRealizedMinutes, int teacherCount) {}
+
+    @Transactional(readOnly = true)
+    public RealTeacherPayrollMass realTeacherPayrollMass(Long tenantId, int year, int month) {
+        List<TeacherCompensation> comps = compRepo.findByTenantId(tenantId);
+        BigDecimal monthly = BigDecimal.ZERO;
+        int totalLate = 0, totalEarly = 0, totalRealized = 0;
+        for (TeacherCompensation c : comps) {
+            // Le retard/départ anticipé compte dans le cumul école pour TOUS les enseignants, même à
+            // salaire fixe (dont le montant lui n'en dépend pas) — sans ça, le total sous-estimerait
+            // la réalité pour toute école ayant des enseignants payés au fixe.
+            MonthlyPay mp = computeMonthlyPay(c.getTeacherId(), year, month);
+            totalLate += mp.lateMinutes();
+            totalEarly += mp.earlyMinutes();
+            totalRealized += mp.realizedMinutes();
+            monthly = monthly.add(c.getPayMode() == PayMode.FIXED
+                    ? (c.getFixedSalary() != null ? c.getFixedSalary() : BigDecimal.ZERO)
+                    : mp.grossPay());
+        }
+        return new RealTeacherPayrollMass(monthly, totalLate, totalEarly, totalRealized, comps.size());
+    }
+
     /** Salaire (mensuel courant + estimation cumulée sur monthsCount mois) de chaque enseignant du
      * tenant (Vision Fondateur) — pas seulement le total agrégé de {@link #teacherPayrollMass}. */
     public record TeacherSalaryBreakdown(Long teacherId, BigDecimal monthlyPay, BigDecimal annualProjection) {}
@@ -318,6 +348,41 @@ public class PayrollService {
         return generate(new GenerateCommand(tenantId, gn.lacaeducation.payroll.domain.EmployeeType.TEACHER,
                 teacherId, teacherName, periodLabel, from, to,
                 tp.grossPay(), structureId, notes, null, null, null, null, null));
+    }
+
+    /**
+     * Fiche de paie combinée pour une personne à la fois administrative/direction et enseignante
+     * (§payroll — ex. un directeur qui donne aussi quelques heures de cours) : UNE seule fiche, avec
+     * le salaire de base fixe (fourni par l'appelant, depuis {@code Employee.baseSalary}) comme sur
+     * une fiche administrative classique, PLUS une ligne « Heures d'enseignement » calculée
+     * automatiquement depuis les heures réellement réalisées par l'enseignant lié
+     * ({@code linkedTeacherId}, même calcul que {@link #generateFromHours}). Le salarié de la fiche
+     * reste l'Employee (comme pour une fiche administrative simple) ; l'enseignement n'est qu'une
+     * ligne supplémentaire, pas une fiche séparée — pas de dépendance au module {@code staff} : c'est
+     * à l'appelant de résoudre {@code Employee} (nom, salaire de base, type, enseignant lié).
+     */
+    public Payslip generateCombinedPayslip(Long tenantId, Long employeeId, String employeeName,
+                                           gn.lacaeducation.payroll.domain.EmployeeType employeeType,
+                                           BigDecimal baseSalary, Long linkedTeacherId,
+                                           int year, int month, Long structureId) {
+        if (linkedTeacherId == null) {
+            throw new BusinessRuleException("Aucun enseignant lié à ce personnel — renseignez le lien dans sa fiche avant de générer la fiche combinée.");
+        }
+        String periodLabel = FR_MONTHS[month - 1] + " " + year;
+        LocalDate from = LocalDate.of(year, month, 1);
+        LocalDate to = from.withDayOfMonth(from.lengthOfMonth());
+        Payslip p = generate(new GenerateCommand(tenantId, employeeType, employeeId, employeeName, periodLabel,
+                from, to, baseSalary, structureId,
+                "Fiche combinée : salaire de base (direction/administratif) + heures d'enseignement",
+                null, null, null, null, null));
+
+        MonthlyPay mp = computeMonthlyPay(linkedTeacherId, year, month);
+        if (mp.grossPay() != null && mp.grossPay().signum() > 0) {
+            String label = String.format("Heures d'enseignement (%dh%02d effectives)",
+                    mp.effectiveMinutes() / 60, mp.effectiveMinutes() % 60);
+            p = addLine(p.getId(), label, PayslipLineType.EARNING, mp.grossPay());
+        }
+        return p;
     }
 
     // ── Structures salariales ────────────────────────────────────────────────

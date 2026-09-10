@@ -70,6 +70,29 @@ class InvoiceServiceTest {
     }
 
     @Test
+    void generateMonthly_withoutAcademicYearId_resolvesFromActiveEnrollment() {
+        // Régression : un appelant qui omet l'année scolaire (ex. facturation transport
+        // auto-générée) ne doit plus produire une facture avec `academic_year_id = NULL` — invisible
+        // des tableaux de bord qui filtrent strictement par année (Vision Fondateur).
+        when(enrollmentQueryPort.hasActiveEnrollment(7L)).thenReturn(true);
+        when(enrollmentQueryPort.findActiveAcademicYearId(7L)).thenReturn(42L);
+        when(installmentRepository.findByFeeId(3L)).thenReturn(java.util.List.of(
+                gn.lacaeducation.billing.domain.Installment.builder()
+                        .id(1L).feeId(3L).label("Septembre").amount(new BigDecimal("100")).build()));
+        when(repo.existsByStudentIdAndInstallmentId(7L, 1L)).thenReturn(false);
+        when(familyDiscountUseCase.computeApplicable(1L, 7L, gn.lacaeducation.billing.domain.FeeType.MONTHLY))
+                .thenReturn(new gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase.ApplicableDiscount(
+                        BigDecimal.ZERO, null));
+        when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
+
+        var invoices = service().generateMonthly(
+                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 3L, null));
+
+        assertThat(invoices).hasSize(1);
+        assertThat(invoices.get(0).getAcademicYearId()).isEqualTo(42L);
+    }
+
+    @Test
     void create_initialisesUnpaidWithFullRemainingBalanceAndPublishesEvents() {
         when(repo.save(any(Invoice.class))).thenAnswer(inv -> {
             Invoice i = inv.getArgument(0);
@@ -127,6 +150,74 @@ class InvoiceServiceTest {
         verify(eventPublisher).publishEvent(captor.capture());
         assertThat(captor.getValue().invoiceId()).isEqualTo(1L);
         assertThat(captor.getValue().reference()).isEqualTo("FAC-1");
+    }
+
+    @Test
+    void reversePayment_reducesPaidAmountAndRevertsStatusToPartial() {
+        // Régression : le remboursement doit se répercuter sur la facture (avant ce correctif, seul
+        // le statut du Payment changeait, la facture restait affichée soldée).
+        Invoice existing = Invoice.builder().id(1L).tenantId(10L).studentId(7L)
+                .totalAmount(new BigDecimal("100.00")).paidAmount(new BigDecimal("100.00"))
+                .remainingBalance(BigDecimal.ZERO).status(InvoiceStatus.PAID).build();
+        when(repo.findById(1L)).thenReturn(Optional.of(existing));
+        when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Invoice inv = service().reversePayment(1L, new BigDecimal("40.00"));
+
+        assertThat(inv.getPaidAmount()).isEqualByComparingTo("60.00");
+        assertThat(inv.getRemainingBalance()).isEqualByComparingTo("40.00");
+        assertThat(inv.getStatus()).isEqualTo(InvoiceStatus.PARTIAL);
+        // Ne doit publier aucun événement de notification (ne doit pas envoyer un SMS « paiement reçu »
+        // au parent alors qu'il s'agit d'un remboursement).
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void reversePayment_neverGoesBelowZero() {
+        Invoice existing = Invoice.builder().id(1L).tenantId(10L).studentId(7L)
+                .totalAmount(new BigDecimal("100.00")).paidAmount(new BigDecimal("30.00"))
+                .remainingBalance(new BigDecimal("70.00")).status(InvoiceStatus.PARTIAL).build();
+        when(repo.findById(1L)).thenReturn(Optional.of(existing));
+        when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Invoice inv = service().reversePayment(1L, new BigDecimal("999.00"));
+
+        assertThat(inv.getPaidAmount()).isEqualByComparingTo("0");
+        assertThat(inv.getStatus()).isEqualTo(InvoiceStatus.UNPAID);
+    }
+
+    @Test
+    void voidInvoice_setsCancelledStatusAndZeroesBalanceButKeepsHistory() {
+        Invoice existing = Invoice.builder().id(1L).tenantId(10L).studentId(7L)
+                .totalAmount(new BigDecimal("100.00")).paidAmount(new BigDecimal("40.00"))
+                .remainingBalance(new BigDecimal("60.00")).status(InvoiceStatus.PARTIAL).build();
+        when(repo.findById(1L)).thenReturn(Optional.of(existing));
+        when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Invoice inv = service().voidInvoice(1L);
+
+        assertThat(inv.getStatus()).isEqualTo(InvoiceStatus.CANCELLED);
+        assertThat(inv.getRemainingBalance()).isEqualByComparingTo("0");
+        // L'historique (montant facturé/payé) reste inchangé pour l'audit.
+        assertThat(inv.getPaidAmount()).isEqualByComparingTo("40.00");
+        assertThat(inv.getTotalAmount()).isEqualByComparingTo("100.00");
+    }
+
+    @Test
+    void applyCredit_increasesPaidAmountAndRecomputesBalance() {
+        Invoice existing = Invoice.builder().id(1L).tenantId(10L).studentId(7L)
+                .totalAmount(new BigDecimal("100.00")).paidAmount(BigDecimal.ZERO)
+                .remainingBalance(new BigDecimal("100.00")).status(InvoiceStatus.UNPAID).build();
+        when(repo.findById(1L)).thenReturn(Optional.of(existing));
+        when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Invoice inv = service().applyCredit(1L, new BigDecimal("60.00"));
+
+        assertThat(inv.getPaidAmount()).isEqualByComparingTo("60.00");
+        assertThat(inv.getRemainingBalance()).isEqualByComparingTo("40.00");
+        assertThat(inv.getStatus()).isEqualTo(InvoiceStatus.PARTIAL);
+        // Report de crédit, pas un nouveau paiement : aucune notification au parent.
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     @Test

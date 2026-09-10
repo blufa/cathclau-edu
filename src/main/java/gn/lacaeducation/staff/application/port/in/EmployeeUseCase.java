@@ -13,7 +13,10 @@ public interface EmployeeUseCase {
                                  String jobTitle, LocalDate hireDate, BigDecimal baseSalary, String cnssNumber) {}
     record UpdateEmployeeCommand(String employeeNumber, String firstName, String lastName, String phone,
                                  String email, EmployeeCategory category, String jobTitle, LocalDate hireDate,
-                                 BigDecimal baseSalary, String cnssNumber) {}
+                                 BigDecimal baseSalary, String cnssNumber,
+                                 /** Fiche Teacher de la même personne si elle enseigne aussi (§payroll,
+                                  * fiche de paie combinée) — null si elle n'enseigne pas. */
+                                 Long linkedTeacherId) {}
 
     Employee create(CreateEmployeeCommand command);
     Employee update(Long id, UpdateEmployeeCommand command);

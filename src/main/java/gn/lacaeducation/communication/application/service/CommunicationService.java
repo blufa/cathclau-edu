@@ -1,4 +1,6 @@
 package gn.lacaeducation.communication.application.service;
+import gn.lacaeducation.common.TenantInfoProvider;
+import gn.lacaeducation.common.TenantPublicInfo;
 import gn.lacaeducation.communication.application.port.in.CommunicationUseCase;
 import gn.lacaeducation.communication.application.port.out.CommunicationRepository;
 import gn.lacaeducation.communication.application.port.out.MessageRecipientRepository;
@@ -15,12 +17,19 @@ public class CommunicationService implements CommunicationUseCase {
     private final CommunicationRepository repo;
     private final MessageRecipientRepository recipientRepo;
     private final List<NotificationGateway> gateways;
+    private final TenantInfoProvider tenantInfoProvider;
 
     @Override public Communication send(SendCommunicationCommand c) {
         LocalDateTime now = LocalDateTime.now();
+        // Préfixe systématique du nom de l'école sur TOUS les SMS, quel que soit l'appelant (notification
+        // automatique déclenchée par un événement, diffusion manuelle composée par le personnel, ou tout
+        // futur appel direct à send()) — point d'envoi unique, donc le seul endroit fiable pour garantir
+        // que le destinataire identifie toujours l'expéditeur, sans dépendre de chaque appelant pour y
+        // penser individuellement.
+        String content = withSchoolPrefix(c.tenantId(), c.channel(), c.content());
         Communication comm = repo.save(Communication.builder().tenantId(c.tenantId()).senderId(c.senderId())
                 .channel(c.channel()).recipientType(c.recipientType()).subject(c.subject())
-                .content(c.content()).reason(c.reason()).sentAt(now).build());
+                .content(content).reason(c.reason()).sentAt(now).build());
         NotificationGateway gateway = gatewayFor(c.channel());
         if (c.recipients() != null) {
             for (RecipientTarget rt : c.recipients()) {
@@ -30,7 +39,7 @@ public class CommunicationService implements CommunicationUseCase {
                 // A destination-less recipient (manual send to a user account) stays PENDING until a
                 // contact is resolved; otherwise dispatch through the channel's gateway and record the outcome.
                 if (gateway != null && rt.destination() != null && !rt.destination().isBlank()) {
-                    NotificationGateway.DeliveryResult res = gateway.send(rt.destination(), c.subject(), c.content());
+                    NotificationGateway.DeliveryResult res = gateway.send(rt.destination(), c.subject(), content);
                     status = res.delivered() ? DeliveryStatus.DELIVERED : DeliveryStatus.FAILED;
                     deliveredAt = res.delivered() ? now : null;
                     providerMessageId = res.providerMessageId();
@@ -42,6 +51,13 @@ public class CommunicationService implements CommunicationUseCase {
             }
         }
         return comm;
+    }
+
+    private String withSchoolPrefix(Long tenantId, CommunicationChannel channel, String content) {
+        if (channel != CommunicationChannel.SMS || content == null || content.isBlank() || tenantId == null) return content;
+        String school = tenantInfoProvider.findTenantInfo(tenantId).map(TenantPublicInfo::schoolName).orElse(null);
+        if (school == null || school.isBlank() || content.contains(school)) return content;
+        return "[" + school + "] " + content;
     }
 
     private NotificationGateway gatewayFor(CommunicationChannel channel) {

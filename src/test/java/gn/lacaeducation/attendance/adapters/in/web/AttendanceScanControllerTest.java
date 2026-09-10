@@ -11,6 +11,8 @@ import gn.lacaeducation.attendance.domain.StudentCheckin;
 import gn.lacaeducation.attendance.domain.TeacherCheckin;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.TenantContext;
+import gn.lacaeducation.staff.TeacherPublicInfoProvider;
+import gn.lacaeducation.staff.TeacherPublicInfoProvider.TeacherInfo;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,6 +23,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 
 import java.time.LocalTime;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -31,6 +34,7 @@ class AttendanceScanControllerTest {
 
     @Mock StudentAttendanceUseCase studentAttendance;
     @Mock TeacherAttendanceUseCase teacherAttendance;
+    @Mock TeacherPublicInfoProvider teacherPublicInfoProvider;
     @InjectMocks AttendanceScanController controller;
 
     @BeforeEach void setTenant() { TenantContext.set(1L); }
@@ -49,6 +53,18 @@ class AttendanceScanControllerTest {
     }
 
     @Test
+    void scan_teacherEntry_resolvesTeacherNameForDisplay() {
+        TeacherCheckin checkin = TeacherCheckin.builder().checkInTime(LocalTime.of(8, 0)).lateMinutes(0).build();
+        when(teacherAttendance.recordEntry(3L)).thenReturn(checkin);
+        when(teacherPublicInfoProvider.findTeacher(3L))
+                .thenReturn(Optional.of(new TeacherInfo(3L, "Mamadou", "Diallo", "ENS-3", null, null, null)));
+
+        ScanResponse res = controller.scan(new ScanRequest(SubjectType.TEACHER, 3L, ScanDirection.ENTRY), null);
+
+        assertThat(res.name()).isEqualTo("Mamadou Diallo");
+    }
+
+    @Test
     void scan_teacherEntry_onTime_returnsPresent() {
         TeacherCheckin checkin = TeacherCheckin.builder().checkInTime(LocalTime.of(8, 0)).lateMinutes(0).build();
         when(teacherAttendance.recordEntry(3L)).thenReturn(checkin);
@@ -62,7 +78,7 @@ class AttendanceScanControllerTest {
     void scan_teacherExit_returnsRealizedMinutes() {
         TeacherCheckin checkin = TeacherCheckin.builder()
                 .sessionStart(LocalTime.of(8, 0)).sessionEnd(LocalTime.of(10, 0))
-                .checkInTime(LocalTime.of(8, 5)).checkOutTime(LocalTime.of(9, 35)).lateMinutes(5).build();
+                .checkInTime(LocalTime.of(8, 5)).checkOutTime(LocalTime.of(9, 35)).lateMinutes(5).earlyMinutes(25).build();
         when(teacherAttendance.recordExit(3L)).thenReturn(checkin);
 
         ScanResponse res = controller.scan(new ScanRequest(SubjectType.TEACHER, 3L, ScanDirection.EXIT), null);
@@ -70,6 +86,9 @@ class AttendanceScanControllerTest {
         assertThat(res.checkOutTime()).isEqualTo(LocalTime.of(9, 35));
         assertThat(res.realizedMinutes()).isEqualTo(90);
         assertThat(res.scheduledMinutes()).isEqualTo(120);
+        // Départ anticipé transmis tel quel (déjà calculé côté service) — le scan doit pouvoir
+        // l'afficher immédiatement, pas seulement une fois consulté sur le tableau de suivi.
+        assertThat(res.earlyMinutes()).isEqualTo(25);
         assertThat(res.outcome()).isNull();
     }
 

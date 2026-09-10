@@ -905,6 +905,538 @@ seulement logo/couleur/devise/slogan ; il expose désormais aussi IRE, DPE/DCE e
 *Résultat attendu* : la hiérarchie administrative renseignée dans les paramètres apparaît sur le verso
 de tous les badges, à l'écran comme à l'impression.
 
+## Phase 24 — Paiement groupé au guichet : un seul reçu, une seule notification
+
+**Rôle** : `ACCOUNTANT` / `SECRETARY` (`/guichet`) ; effet observé côté parent.
+
+**Contexte** : au guichet, régler en une fois plusieurs factures d'un même élève (ex. inscription +
+tranche 1 + tranche 2) produisait déjà UN SEUL reçu (correct), mais déclenchait UNE NOTIFICATION PAR
+FACTURE couverte (3 SMS pour 3 factures réglées en un seul geste), en plus de la notification globale
+du paiement groupé — alors que le code prévoyait explicitement de n'en envoyer qu'une seule pour tout
+le règlement. Corrigé : le règlement de chaque facture du groupe ne déclenche plus sa propre
+notification ; seule la notification globale du paiement (montant total, référence du règlement)
+part au parent.
+
+1. `/guichet` → sélectionner un élève ayant plusieurs factures impayées (ex. inscription + 2 tranches).
+2. Effectuer un paiement groupé couvrant les trois.
+3. Vérifier qu'**un seul** reçu est généré (déjà le cas avant ce correctif).
+4. Vérifier dans `/communication` (historique) qu'**une seule** notification « Paiement reçu » a été
+   créée pour ce règlement, pas une par facture.
+
+*Résultat attendu* : un paiement groupé au guichet produit toujours un seul reçu et déclenche
+désormais une seule notification, quel que soit le nombre de factures couvertes.
+
+## Phase 25 — Confirmation : SMS et mode hors-ligne du guichet
+
+**Contexte, pour information (pas un correctif — comportement déjà correct et volontaire)** : le
+guichet (`/guichet`) a un mode hors-ligne (file locale IndexedDB, rejeu automatique à la reconnexion)
+pour les canaux encaissés physiquement (espèces, Orange Money guichet, carte bancaire). Si le
+comptable encaisse un paiement alors que l'appareil n'a pas de réseau, le paiement est mis en file
+localement — le SMS de confirmation au parent ne part que lorsque l'appareil retrouve une connexion et
+que la synchronisation avec le serveur réussit (l'envoi du SMS se fait toujours côté serveur, jamais
+depuis l'appareil du comptable). Pas d'action requise ; à vérifier si besoin en coupant le réseau de
+l'appareil pendant un encaissement au guichet, puis en le rétablissant.
+
+## Phase 26 — Présence manuelle élève alignée sur enseignant/personnel
+
+**Rôle** : `SECRETARY` / `TEACHER` (`canWrite`) sur `/attendance` ; effet observé côté parent sur `/children`.
+
+**Contexte** : la présence manuelle (entrée + sortie, pas juste un statut) existait déjà côté backend
+pour les élèves (mêmes endpoints/mécanisme que pour les enseignants/personnel, y compris hors-ligne),
+mais DEUX écarts la rendaient invisible/peu utilisable en pratique par rapport aux enseignants/personnel :
+1. L'onglet s'appelait « Suivi & corrections » — aucun nom évoquant « élèves », contrairement à
+   « Présences enseignants »/« Présences personnel ». Renommé en **« Présences élèves »**.
+2. Plus important : cet onglet n'affichait que les élèves ayant déjà un enregistrement de présence pour
+   la date (créé via « Appel de classe ») — tant que l'appel n'avait pas été fait, l'onglet restait
+   **vide**. Les onglets enseignants/personnel, eux, partent toujours de la liste complète (tous les
+   enseignants/employés apparaissent, avec « Aucun pointage » si rien n'est encore saisi). L'onglet
+   élèves fait maintenant pareil : tous les élèves de la classe choisie apparaissent immédiatement,
+   avec les boutons directs « Présent », « Retard », « Sortie », « Absent » (fonctionnels même sans
+   pointage préalable — même mécanisme d'enregistrement que l'appel de classe, un seul élève à la fois).
+
+1. `/attendance` → choisir une classe et une date **sans avoir fait l'appel** → onglet « Présences élèves ».
+2. Vérifier que TOUS les élèves de la classe apparaissent immédiatement (pas seulement ceux ayant déjà
+   un pointage), chacun avec un badge « Aucun pointage » et les boutons « Présent », « Retard »,
+   « Sortie », « Absent » — comme les onglets « Présences enseignants »/« Présences personnel ».
+3. Cliquer « Présent » sur un élève sans pointage préalable → saisir une heure → confirmer → vérifier
+   que le statut, l'heure d'entrée et le retard (calculé automatiquement vs l'emploi du temps)
+   apparaissent.
+4. Cliquer « Retard » ou « Absent » directement (sans passer par « Appel de classe ») → vérifier
+   l'enregistrement immédiat.
+5. Cliquer « Sortie » → saisir une heure → confirmer → vérifier l'heure de sortie enregistrée.
+6. Se connecter en tant que parent de cet élève (`/children`) → section « Présences du jour —
+   entrée/sortie par cours » → vérifier que l'entrée/la sortie saisies apparaissent avec le bon cours,
+   la même date.
+
+*Résultat attendu* : onglet « Présences élèves » immédiatement exploitable dès qu'une classe et une
+date sont choisies, sans devoir d'abord faire l'appel de classe — même logique que pour les
+enseignants/personnel ; heures d'entrée/sortie par cours visibles côté parent (déjà en place, aucune
+régression).
+
+## Phase 27 — Bouton « Notifier parent » : renvoi réel de la notification (pas juste une case cochée)
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR` / `SECRETARY` / `TEACHER` sur `/attendance` → onglet « Présences élèves ».
+
+**Contexte** : le bouton « Notifier parent » (visible sur une ligne ABSENT/RETARD non encore notifiée)
+ne faisait que cocher un indicateur interne — il ne déclenchait AUCUN envoi. La notification
+automatique existe bien (SMS via `communication`, email via `notification`, déclenchés dès qu'un élève
+est marqué absent/en retard), mais rien ne remettait la case « notifié » à jour après un envoi SMS
+réussi (elle n'était mise à jour automatiquement qu'après un envoi EMAIL réussi — rare, la plupart des
+parents n'ayant qu'un numéro de téléphone). Corrigé : le bouton déclenche maintenant un **nouvel essai
+réel** (mêmes canaux que l'envoi automatique) avant de marquer la ligne comme traitée — utile
+notamment si l'envoi automatique avait échoué (ex. NimbaSMS pas encore configuré à ce moment-là).
+Au passage, un enseignant (`TEACHER`) voyait ce bouton mais recevait un refus silencieux en cliquant
+(permission serveur non alignée avec l'affichage) — corrigé aussi.
+
+1. `/attendance` → onglet « Présences élèves » → marquer un élève « Absent » ou « Retard ».
+2. Cliquer « Notifier parent ».
+3. Vérifier dans `/communication` (historique) qu'un nouvel envoi (SMS et/ou email selon les contacts
+   du parent) apparaît pour cet élève, motif absence/retard.
+4. Vérifier que le bouton disparaît (ligne marquée « Notifié ») après le clic.
+
+*Rappel* : l'envoi réel dépend toujours de la configuration NimbaSMS sur le serveur (§22) et de
+l'acceptation par le parent de l'accès plateforme (opt-in) — sans l'un ou l'autre, l'essai est
+journalisé mais n'atteint pas le parent.
+
+*Résultat attendu* : « Notifier parent » déclenche un envoi réel, pas seulement un indicateur visuel ;
+accessible aux mêmes rôles que la saisie de présence.
+
+## Phase 28 — Absences élèves détectées à 14h ; nom de l'école toujours sur les SMS ; annonce paie
+
+**Rôle** : effet observé côté parent (absences) et par tout rôle envoyant des SMS.
+
+**28.1 — Marquage auto d'absence élève avancé à 14h (au lieu de 22h)**
+
+Contexte : le filet de sécurité qui marque absent un élève sans aucun pointage (ni scan, ni saisie
+manuelle) tournait à 22h pour tout le monde (élèves et enseignants dans le même job). Séparé en deux
+jobs : les élèves sont désormais vérifiés à **14h** (le parent est averti le jour même, pendant qu'il
+peut encore agir), les enseignants/personnel restent vérifiés à 22h (usage RH, pas une notification à
+un tiers). Pour éviter de signaler à tort un élève dont le seul cours du jour est l'après-midi, le job
+de 14h ne considère que les cours **déjà commencés** à cette heure-là.
+
+1. Un élève sans aucun cours avant 14h ce jour-là (ex. classe qui ne commence qu'à 15h) ne doit
+   PAS être marqué absent par le job de 14h — vérifier après exécution (ou en environnement de dev en
+   invoquant le job manuellement) qu'il reste sans statut tant que son cours de l'après-midi n'a pas
+   commencé.
+2. Un élève avec un cours le matin et aucun pointage doit être marqué absent à 14h, et son parent
+   reçoit le SMS d'absence automatique le jour même (pas seulement au signalement de 22h comme avant).
+3. Si l'élève arrive/est pointé plus tard dans la journée (cours de l'après-midi), le statut repasse
+   correctement à « Présent ».
+
+**28.2 — Le nom de l'école apparaît désormais sur TOUS les SMS, pas seulement les notifications automatiques**
+
+Contexte : le préfixe `[Nom de l'école]` n'était appliqué que dans le code des notifications
+automatiques (absence, paiement, bulletin…) — une diffusion de masse composée manuellement par le
+personnel (`/communications` → Diffusion) ou tout futur envoi direct n'en bénéficiait pas forcément.
+Déplacé au point d'envoi unique (`CommunicationService`), donc désormais garanti pour tout SMS, quel
+que soit l'appelant.
+
+1. `/communications` → Diffusion → composer un message SMS libre à une audience quelconque → envoyer.
+2. Vérifier que le SMS reçu commence bien par `[Nom de l'école]`.
+
+**28.3 — Bouton « Notifier salaires disponibles » (tous enseignants + personnel)**
+
+Contexte : nouvelle fonctionnalité demandée — un bouton pour prévenir tout le personnel (enseignant ET
+non-enseignant) par SMS que les salaires sont disponibles, en un clic, sans composer une diffusion
+manuelle à chaque fois. Nouvelle audience de diffusion `ALL_STAFF` (enseignants + personnel actif),
+réutilisable aussi depuis l'écran générique de diffusion (`/communications`).
+
+1. `/payroll` → onglet « Fiches de paie » → bouton « Notifier salaires disponibles » → confirmer.
+2. Vérifier dans `/communication` (historique) qu'un SMS est parti à tous les enseignants ET à tout le
+   personnel actif (pas le personnel inactif/désactivé), préfixé du nom de l'école.
+3. Vérifier depuis `/communications` → Diffusion que l'audience « Tout le personnel (enseignants +
+   personnel) » est aussi disponible dans le sélecteur générique.
+
+*Résultat attendu des trois points* : absences élèves signalées dès 14h (sans faux positifs pour les
+cours de l'après-midi) ; nom de l'école systématiquement présent sur les SMS, quel que soit le canal
+d'envoi ; diffusion en un clic à tout le personnel pour l'annonce de la paie.
+
+## Phase 29 — Nom de l'enseignant affiché au scan (au lieu de « #id ») ; heures au format HH:mm
+
+**29.1 — Le scan d'un enseignant affichait « #3 » au lieu de son nom**
+
+Contexte : au scan d'une carte élève ou personnel, le nom de la personne s'affichait correctement,
+mais au scan d'une carte ENSEIGNANT, le backend renvoyait toujours `name: null` (jamais résolu,
+contrairement à l'élève et au personnel) — le frontend retombait alors sur l'identifiant brut
+(`#3`). Corrigé : le nom de l'enseignant est désormais résolu et renvoyé comme pour les autres profils.
+
+1. `/attendance/scan` → sélectionner « Enseignant » → scanner (ou saisir manuellement) la carte d'un
+   enseignant.
+2. Vérifier que le journal de scan affiche le **nom** de l'enseignant, pas `#<id>`.
+
+**29.2 — Les heures affichées avaient les secondes/millisecondes (ex. `13:47:09.691`)**
+
+Contexte : plusieurs tableaux de présence (suivi élèves, présences enseignants/personnel, récaps
+mensuels, tableau de bord parent, journal de scan) affichaient l'heure brute renvoyée par le serveur
+(`HH:mm:ss.SSS`) au lieu de `HH:mm`. Une fonction de formatage (`formatTime`) existait déjà dans le
+projet mais n'était pas utilisée à ces endroits. Appliquée partout où une heure de pointage est
+affichée.
+
+1. `/attendance` (tous les onglets), `/children` (parent, section présences du jour) et
+   `/attendance/scan` (journal de scan) → vérifier que toutes les heures affichées sont au format
+   `HH:mm` (ex. `13:47`), jamais avec les secondes.
+
+*Résultat attendu* : nom affiché (pas d'identifiant brut) partout où une personne scannée est
+identifiée ; heures toujours au format `HH:mm`.
+
+## Phase 30 — Heure de sortie / départ anticipé visibles sur le tableau « Présences élèves »
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR` / `SECRETARY` / `TEACHER` sur `/attendance` → onglet « Présences élèves ».
+
+**Contexte** : l'onglet « Présences élèves » n'affichait que l'heure d'entrée et le retard —
+contrairement aux onglets « Présences enseignants »/« Présences personnel », il n'avait tout
+simplement pas de colonnes « Heure de sortie »/« Départ anticipé ». Après un scan ou une saisie de
+sortie, rien ne l'indiquait sur ce tableau, même si l'information était bien enregistrée côté serveur
+(déjà visible côté parent, voir §portail). Un élève pouvant avoir plusieurs séances (donc plusieurs
+sorties) dans la même journée, contrairement à un enseignant/employé (un seul pointage jour), les deux
+nouvelles colonnes agrègent : la dernière heure de sortie connue et le total des minutes de départ
+anticipé cumulées sur la journée.
+
+1. `/attendance/scan` → scanner l'entrée d'un élève, puis sa sortie (ou utiliser la saisie manuelle
+   depuis l'onglet « Présences élèves »).
+2. `/attendance` → onglet « Présences élèves » → vérifier que les colonnes « Heure de sortie » et
+   « Départ anticipé » affichent bien les valeurs enregistrées pour cet élève.
+3. Répéter avec un élève ayant plusieurs séances/sorties le même jour (ex. cours du matin ET de
+   l'après-midi) → vérifier que la dernière sortie de la journée est affichée, et que le départ
+   anticipé cumule les minutes des séances concernées.
+4. Se connecter en tant que parent (`/children`) → confirmer que les mêmes informations (entrée/sortie
+   par cours) étaient déjà visibles là aussi.
+
+*Résultat attendu* : le personnel voit désormais l'heure de sortie et le départ anticipé des élèves
+sur le même tableau que l'entrée/le retard, sans avoir à consulter une autre page.
+
+## Phase 31 — Marge de tolérance générale (retard) + détail des séances par cours
+
+**31.1 — La marge de tolérance ne s'appliquait pas à une entrée « normale »**
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR` (réglage) ; effet observé côté `SECRETARY`/`TEACHER` sur `/attendance`.
+
+**Contexte** : la marge de tolérance (§réglages, ex. 5 min) n'était appliquée qu'à un cas précis
+(deux séances consécutives dans des salles différentes, temps de trajet) — une entrée « normale »
+(1ᵉʳ cours de la journée, ou salle inchangée) ne bénéficiait d'AUCUNE tolérance : pointer à 14h05 pour
+un cours à 14h00 était compté en retard même avec 5 min de marge configurée. Corrigé : la marge
+s'applique désormais à TOUTE entrée (élève, enseignant, personnel), quelle qu'en soit la raison — un
+délai de tolérance générale, comme l'attendait la configuration.
+
+1. `/attendance` → onglet « Réglages » → vérifier/définir la marge de tolérance (ex. 5 min).
+2. Scanner ou saisir manuellement l'entrée d'un enseignant à « heure de début du cours + 5 min ou
+   moins » (ex. cours à 14h00, entrée à 14h05) → vérifier qu'AUCUN retard n'est compté, quelle que soit
+   la séance (première du jour, salle inchangée ou changée).
+3. Entrée à « heure de début + 6 min » → vérifier que le retard compté est de 1 min (6 − 5), pas 6.
+4. Répéter pour un élève (onglet « Présences élèves ») et pour le personnel non-enseignant (onglet
+   « Présences personnel ») → même comportement.
+
+**31.2 — Détail des séances : pour quel cours il est arrivé à l'heure, en retard, reparti en avance**
+
+**Rôle** : idem, sur `/attendance` → onglet « Présences enseignants » ou « Présences élèves ».
+
+**Contexte** : le tableau n'affichait que des totaux journaliers (1ʳᵉ heure d'entrée, dernière heure
+de sortie, retard/départ anticipé cumulés) — impossible de savoir pour QUEL cours précisément la
+personne était en retard ou repartie en avance dès qu'il y avait plusieurs séances le même jour.
+Ajouté : une flèche à côté de chaque ligne ayant au moins un pointage déplie un détail séance par
+séance (nom du cours, heure d'entrée + statut à l'heure/retard, heure de sortie + statut à
+l'heure/départ anticipé).
+
+1. Un enseignant ou un élève ayant plusieurs séances pointées le même jour (au moins une en retard ou
+   avec départ anticipé) → cliquer la flèche sur sa ligne.
+2. Vérifier que le détail liste chaque séance avec le nom du cours (ou l'intitulé libre si pas de
+   matière formelle), l'heure d'entrée avec un badge « À l'heure »/« Retard X min », et l'heure de
+   sortie avec un badge « À l'heure »/« Anticipé X min » (ou « — » si pas encore sorti).
+3. Une ligne sans aucun pointage ce jour-là ne doit pas afficher de flèche (rien à déplier).
+4. Onglet « Présences enseignants » spécifiquement : vérifier qu'une colonne « Classe » apparaît dans
+   le détail (un enseignant peut donner la même matière dans plusieurs classes — le nom du cours seul
+   ne suffit pas à savoir laquelle). Onglet « Présences élèves » : pas de colonne « Classe » dans le
+   détail (déjà fixée pour tout le tableau, redondant de la répéter).
+
+*Résultat attendu* : marge de tolérance appliquée uniformément ; détail par cours consultable en un
+clic, sans quitter le tableau récapitulatif.
+
+## Phase 32 — Scan de sortie : heure et départ anticipé enfin affichés (élève/enseignant/personnel)
+
+**Rôle** : tout rôle scannant sur `/attendance/scan`.
+
+**Contexte** : au scan d'une sortie, la réponse immédiate affichait soit une comparaison peu claire
+« X réalisées / Y prévues (+/-Z) » (sans heure ni mention explicite « départ anticipé »), soit rien du
+tout si les minutes prévues n'étaient pas calculables — jamais l'heure de sortie elle-même. Cause :
+la minute exacte de départ anticipé (déjà calculée et enregistrée côté serveur, visible sur les
+tableaux de suivi) n'était simplement jamais renvoyée dans la réponse du scan. Corrigé pour les trois
+profils (élève, enseignant, personnel) : le scan affiche désormais toujours l'heure de sortie, avec un
+badge « À l'heure » ou « Anticipé X min ».
+
+1. `/attendance/scan` → scanner l'entrée puis la sortie d'un élève (ou enseignant, ou personnel).
+2. Vérifier que le journal de scan affiche bien « Sortie HH:mm », avec un badge vert « (à l'heure) »
+   si sorti à l'heure prévue ou après, ou un badge ambre « — Anticipé X min » si sorti avant.
+3. Répéter pour les trois profils (élève/enseignant/personnel) → même comportement partout.
+
+*Résultat attendu* : heure de sortie et départ anticipé toujours visibles immédiatement au scan, pour
+tous les profils — pas seulement sur le tableau de suivi consulté après coup.
+
+## Phase 33 — Basculer Entrée/Sortie après le démarrage de la caméra n'était pas pris en compte
+
+**Rôle** : tout rôle scannant via la caméra sur `/attendance/scan`.
+
+**Contexte** : bug réel confirmé — une fois la caméra démarrée, la boucle de lecture des QR codes
+gardait en mémoire le sens (Entrée/Sortie) ET le profil (élève/enseignant/personnel) sélectionnés AU
+MOMENT du démarrage de la caméra, sans jamais les rafraîchir (closure figée, bug React classique sur
+une boucle `requestAnimationFrame`). Résultat : basculer sur « Sortie » après avoir démarré la caméra
+n'avait aucun effet sur les scans suivants — ils continuaient à être traités comme une entrée, sur la
+même séance déjà pointée, d'où le même retard déjà affiché à l'entrée qui réapparaissait. Seule la
+saisie manuelle (recherche par nom + bouton « Pointer ») n'était pas concernée, elle lisait toujours
+la sélection à jour.
+
+1. `/attendance/scan` → démarrer la caméra → scanner l'entrée d'un élève (ou enseignant/personnel).
+2. Sans arrêter la caméra, basculer sur « Sortie » → rescanner la même carte.
+3. Vérifier que le journal affiche bien « Sortie HH:mm » (pas un nouveau « Retard » comme à l'entrée).
+4. Basculer le profil (élève → enseignant) sans arrêter la caméra → scanner une carte enseignant →
+   vérifier qu'elle est bien traitée comme un enseignant, pas comme un élève.
+
+*Résultat attendu* : le sens (entrée/sortie) et le profil sélectionnés à l'écran sont toujours ceux
+réellement appliqués au scan suivant, caméra déjà démarrée ou non.
+
+## Phase 34 — Frais plateforme cohérent, marge de tolérance à 0 par défaut, réalisation de séance à choix explicite, fiche de paie combinée
+
+**34.1 — Cohérence de l'opt-in frais plateforme (frais annexe)**
+
+**Rôle** : `SCHOOL_ADMIN`.
+
+**Contexte** : le frais plateforme n'apparaît sur une facture que si l'école a explicitement activé
+l'accès plateforme pour l'élève (déjà opt-in, déjà `false` par défaut — pas de changement nécessaire
+sur ce point). Le vrai bug : deux vérifications différentes de cet opt-in pouvaient diverger sur une
+inscription encore `PENDING` (facturée mais pas notifiée, ou l'inverse). Corrigé : les deux exigent
+maintenant une inscription `VALIDÉE`.
+
+1. Créer une inscription `EN_ATTENTE` (pas encore validée) avec l'opt-in plateforme coché.
+2. Vérifier qu'aucune facture ne comporte le frais plateforme tant que l'inscription n'est pas validée.
+3. Valider l'inscription → régénérer/émettre une facture → vérifier que la ligne « dont frais de
+   service plateforme » apparaît bien sur le PDF.
+
+**34.2 — Marge de tolérance à 0 par défaut**
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR`.
+
+1. `/attendance` → onglet « Réglages » → sur une école n'ayant jamais configuré la marge, vérifier
+   qu'elle affiche « 0 » (aucune tolérance), pas une valeur non nulle implicite.
+2. Sans configurer de marge, pointer une entrée avec quelques minutes de retard → vérifier que le
+   retard est bien compté (0 min de tolérance).
+
+**34.3 — Choix explicite théorique/réel en marquant une séance réalisée**
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR` sur `/lessons`.
+
+1. Marquer une séance comme réalisée pour un enseignant pointé (entrée + sortie) ce jour-là.
+2. Vérifier que la modale propose deux options cliquables : « Durée théorique du créneau » et « Durée
+   réelle pointée » (avec le détail entrée/sortie et le retard éventuel) — pas une simple suggestion
+   facultative.
+3. Sélectionner chaque option → vérifier que le champ durée se met à jour en conséquence ; modifier le
+   champ manuellement → l'option affichée passe à « personnalisée ».
+4. Confirmer → vérifier sur la paie du mois de l'enseignant que la durée retenue est bien celle
+   choisie.
+
+**34.4 — Fiche de paie combinée (direction/administratif + enseignement)**
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR` / `ACCOUNTANT` (paie).
+
+1. `/teachers/staff` (ou équivalent) → éditer un membre du personnel de direction/administratif →
+   dans « Enseigne aussi », sélectionner sa fiche enseignant → enregistrer.
+2. `/payroll` → onglet « Fiches de paie » → bouton « Personnel (direction/admin.) » → choisir le mois
+   → vérifier que cette personne propose bien un bouton « Fiche combinée » (les autres n'ont que
+   « Fiche simple »).
+3. Générer la fiche combinée → ouvrir son détail → vérifier une ligne de salaire de base (fixe) et une
+   ligne « Heures d'enseignement » calculée automatiquement, avec un net = somme des deux.
+4. Personnel sans enseignant lié → seule « Fiche simple » proposée, générée avec le salaire de base
+   fixe uniquement.
+
+*Résultat attendu des quatre points* : facturation du frais plateforme cohérente entre modules ;
+aucune tolérance de retard non configurée explicitement ; choix clair théorique/réel à la validation
+d'une séance ; une fiche de paie unique pour le personnel cumulant direction et enseignement.
+
+## Phase 35 — Reçu affiché aussitôt l'encaissement + refonte visuelle des badges
+
+**35.1 — Reçu affiché immédiatement après un encaissement guichet**
+
+**Rôle** : `SECRETARY` / `ACCOUNTANT` sur `/students` (encaissement d'un élève ou d'une fratrie).
+
+1. Créer un élève → passer directement à l'inscription → encaisser les frais d'inscription au
+   guichet (espèces, Orange Money ou virement — pas Djomy en ligne).
+2. Vérifier que la modale reste ouverte et que le reçu PDF s'affiche automatiquement (visualiser,
+   télécharger, imprimer) sans avoir à fermer la fenêtre ni à aller sur la fiche élève → onglet
+   factures.
+3. Fermer manuellement l'aperçu du reçu → vérifier que la modale d'encaissement est toujours ouverte
+   (elle ne se ferme plus automatiquement) et permet de régler d'autres factures si besoin.
+4. Même vérification depuis « Encaissement groupé » (fratrie, `MultiChildCollectModal`) et depuis la
+   fiche élève existante (`CollectFeeModal` sur `/students/{id}`).
+
+**35.2 — Nouveau visuel des badges (recto/verso conforme au modèle fourni)**
+
+**Rôle** : `SCHOOL_ADMIN` / `SECRETARY` sur `/student-cards`, `/teachers`, `/teachers/staff`,
+`/attendance/scan` (aperçu badge après scan).
+
+1. Ouvrir un badge élève → vérifier le recto : bandeau coloré (logo + nom école + slogan), bandeau
+   noir avec le type de badge, photo ronde en chevauchement sur une vague, nom + informations
+   alignées « libellé : valeur » — sans QR sur le recto.
+2. Vérifier le verso : bandeau noir « République de Guinée », armoiries en filigrane, devise
+   nationale, informations école/IRE/DPE-DCE/DSSEE, puis le QR de vérification en bas avec la note de
+   présentation — le QR n'apparaît plus qu'au verso.
+3. Imprimer / télécharger en PDF → vérifier que le recto et le verso sortent côte à côte, à la taille
+   réelle d'une carte CR80, sans contenu rogné.
+4. Même vérification sur un badge enseignant et un badge personnel (recto/verso générique réutilisé).
+
+*Résultat attendu* : un reçu consultable en un clic dès l'encaissement, sans détour par la fiche
+élève ; des badges visuellement alignés sur le modèle fourni par l'établissement, QR au verso,
+contenu officiel (armoiries, hiérarchie) conservé.
+
+## Phase 36 — Badge : ajustements visuels (vague, bandeau noir, positions) + bug d'impression
+
+**36.1 — Design recto/verso affiné**
+
+**Rôle** : `SCHOOL_ADMIN` / `SECRETARY` sur `/student-cards` (badge élève, enseignant ou personnel).
+
+1. Recto : vérifier que le titre du type de badge (ex. « Carte élève ») est centré dans le bandeau
+   coloré, sans fond noir.
+2. Verso : vérifier que « République de Guinée » et la devise nationale « Travail — Justice —
+   Solidarité » sont l'un directement sous l'autre (pas séparés par la vague ni par un grand espace),
+   toujours sans bandeau noir.
+3. Verso : vérifier que le nom de l'école, sa propre devise (entre guillemets) et son slogan sont
+   affichés de façon visible et distincte (pas noyés dans la liste IRE/DPE-DCE/DSSEE).
+4. Verso : vérifier que le QR code est positionné en bas à gauche, en chevauchement sur la vague du
+   bas (comme sur le modèle fourni), avec la note de présentation à droite.
+
+**36.2 — Bug corrigé : l'impression/téléchargement PDF ne doit plus changer le visuel**
+
+**Contexte** : le mécanisme d'impression (`printNode`) recopiait le texte des feuilles de style en le
+reconstruisant via `cssRules`/`cssText` — cette lecture échouait silencieusement pour une partie du
+CSS Tailwind compilé, produisant un PDF quasi sans mise en forme (pas de couleurs, pas de bordures de
+carte, texte aligné à gauche). Corrigé en reliant directement les vraies feuilles de style (`<link>`)
+dans l'iframe d'impression au lieu de les resérialiser — vérifié en reproduisant fidèlement le pipeline
+d'impression hors application (comparaison avant/après : avant = PDF totalement sans style, après =
+identique à l'aperçu écran).
+
+**Rôle** : `SCHOOL_ADMIN` / `SECRETARY` sur `/student-cards`.
+
+1. Ouvrir un badge (élève, enseignant ou personnel), cliquer « Imprimer / Télécharger en PDF ».
+2. Dans l'aperçu d'impression, vérifier que le rendu est identique à l'écran : couleurs de l'en-tête,
+   vagues, photo ronde, bandes tricolores, QR, tout doit apparaître — pas de texte brut sans mise en
+   forme.
+3. Vérifier que « Imprimer en PDF » (Enregistrer en PDF) donne le même résultat que l'impression papier.
+
+*Résultat attendu* : le PDF/l'impression reproduit fidèlement ce qui est affiché à l'écran, sans perte
+de style.
+
+**36.3 — QR mal positionné (chevauchait le texte) + recto/verso de tailles différentes**
+
+**Rôle** : `SCHOOL_ADMIN` / `SECRETARY` sur `/student-cards`.
+
+1. Ouvrir le verso d'un badge dont l'IRE/DPE-DCE/DSSEE sont renseignés → vérifier que le QR (en bas à
+   gauche) ne recouvre plus la ligne « DSSEE » ni aucune autre ligne d'information — il ne chevauche
+   que la vague décorative, pas de texte.
+2. Comparer visuellement le recto et le verso d'un même badge → vérifier qu'ils font la même hauteur
+   (la bande tricolore du bas est au même niveau sur les deux faces), même quand l'une des deux faces
+   a moins de contenu que l'autre (ex. IRE/DPE non renseignés).
+
+*Résultat attendu* : QR toujours lisible sans chevaucher de texte ; recto et verso visuellement de
+même taille, à l'écran comme à l'impression.
+
+## Phase 37 — Vision Fondateur : cohérence des données + refonte visuelle
+
+**37.1 — Recettes de l'école cohérentes avec Rapports & analytique**
+
+**Rôle** : `SCHOOL_ADMIN` (fondateur) sur `/dashboard` (Vision Fondateur) et `/reports`.
+
+1. Relever le montant de la carte « Recettes de l'école » sur Vision Fondateur.
+2. Aller sur `/reports` → relever le montant « Encaissé ».
+3. Vérifier que les deux montants sont désormais identiques (les deux viennent du même endpoint
+   `GET /dashboard/finance`).
+
+**37.2 — Taux d'assiduité des enseignants visible**
+
+1. Sur Vision Fondateur, section « Masse salariale du mois » → vérifier la présence d'un diagramme
+   circulaire « Assiduité des enseignants » (présences vs absences, taux affiché dans le titre).
+2. Sur chaque carte enseignant (section « Salaire par enseignant »), vérifier la présence d'un badge
+   d'assiduité (vert/ambre/rouge selon le taux) quand la donnée existe pour ce mois.
+
+**37.3 — « Salaire par enseignant » et « Estimation de la masse salariale » visuellement distincts**
+
+1. Vérifier que « Salaire par enseignant » est maintenant une grille de cartes verticales (photo ou
+   initiales, nom, salaire du mois, estimation annuelle, badge assiduité) — plus un tableau.
+2. Vérifier qu'une nouvelle grille « Personnel administratif » (cartes avec initiales, salaire fixe)
+   apparaît juste en dessous.
+3. Vérifier que « Estimation de la masse salariale sur l'année scolaire » affiche désormais un
+   graphique en barres (Enseignants/Personnel par mois) au-dessus du tableau détaillé — visuellement
+   non confondable avec les cartes enseignant.
+
+**37.4 — Diagrammes circulaires ajoutés**
+
+1. Section Recouvrement : vérifier la présence d'un donut « Encaissé vs impayés ».
+2. Section Masse salariale : vérifier la présence d'un donut « Répartition de la masse salariale »
+   (Enseignants vs Personnel) et du donut assiduité (37.2).
+
+*Résultat attendu* : chiffres cohérents entre Vision Fondateur et Rapports ; taux d'assiduité des
+enseignants visible ; page globalement plus lisible (cartes + graphiques plutôt que des tableaux
+denses empilés).
+
+---
+
+## Phase 38 — Correction-hier.md : 3 bugs critiques corrigés
+
+**38.1 — Session « zombie » après un 401 sur une requête déjà rejouée**
+
+**Contexte** : après plusieurs heures d'inactivité, les actions semblaient échouer silencieusement
+(« comme non connecté »), les listes restaient périmées tant qu'on ne rafraîchissait pas (F5), et le
+Scan perdait parfois ses données. Cause : `src/lib/api/http.ts`, l'intercepteur ne nettoyait la
+session (tokens + redirection `/login`) que si le **premier** rafraîchissement échouait — si la
+requête rejouée après un rafraîchissement réussi essuyait elle-même un nouveau 401, plus rien ne
+nettoyait la session : token mort en `localStorage`, toute requête suivante échouait sans jamais
+rediriger vers la connexion.
+
+**Rôle** : n'importe quel rôle connecté.
+
+1. Se connecter, laisser le token expirer (ou simuler un 401 persistant côté backend).
+2. Faire une action (sauvegarde, scan…) → vérifier une redirection propre vers `/login` plutôt qu'un
+   échec silencieux avec données périmées.
+
+**38.2 — Factures sans année scolaire (`academic_year_id` NULL), invisibles sur Vision Fondateur**
+
+**Contexte** : « Impayés » affichait toujours 0 GNF et le taux de recouvrement toujours 100 % sur
+Vision Fondateur, alors que de vraies factures impayées existaient. Cause : les mensualités générées
+depuis la fiche élève (`CollectFeeModal` → `generateMonthlyInvoices`) et les factures de transport
+auto-générées (`TransportInvoiceListener`) ne renseignaient jamais l'année scolaire, laissant
+`academic_year_id = NULL` — invisibles pour Vision Fondateur, qui filtre strictement par année.
+Corrigé à la source : `InvoiceService.resolveAcademicYearId()` (backend) résout automatiquement
+l'année scolaire depuis l'inscription active de l'élève dès qu'elle n'est pas fournie explicitement
+par l'appelant — couvre tous les appelants actuels et futurs de `create()`/`generateMonthly()`.
+
+**Rôle** : `SECRETARY` / `ACCOUNTANT` puis `SCHOOL_ADMIN` (fondateur).
+
+1. Générer des mensualités pour un élève depuis sa fiche (`CollectFeeModal`) sans les régler.
+2. Vérifier sur `/dashboard` (Vision Fondateur) → section Recouvrement, que « Impayés » et le taux de
+   recouvrement reflètent bien cette facture impayée (plus de 0 GNF / 100 % artificiels).
+3. Même vérification après un abonnement transport fraîchement créé (facture auto-générée).
+
+**38.3 — « Net à payer » affichait en réalité le montant brut, avant fiche de paie**
+
+**Contexte** : sur `/payroll` → onglet Rémunération et paie → « Paie du mois » et « Estimation
+prévisionnelle », le libellé « Net à payer » affichait en fait `grossPay` (le montant brut, avant
+déduction CNSS/frais scolarité personnel) — le vrai net n'existe qu'une fois la fiche de paie
+générée. Corrigé : libellé renommé en « Montant brut estimé » + note explicative ; le vrai « Net à
+payer » reste correctement calculé et affiché dans les fiches de paie individuelles (`recompute()`,
+non affecté par ce bug d'affichage).
+
+**Rôle** : `SCHOOL_ADMIN` / `ACCOUNTANT` sur `/payroll`.
+
+1. Sélectionner un enseignant → onglet Rémunération et paie → vérifier que le libellé indique
+   « Montant brut estimé » (pas « Net à payer »), avec la note explicative en dessous.
+2. Générer la fiche de paie → ouvrir son détail → vérifier que le vrai net (après déductions) y est
+   bien affiché, distinct du montant brut vu à l'étape précédente.
+
+*Résultat attendu* : plus de session zombie après expiration de token ; les impayés/le taux de
+recouvrement sur Vision Fondateur reflètent la réalité ; les libellés brut/net ne prêtent plus à
+confusion.
+
+*Reste de `Correction-hier.md`* : 14 autres points recensés (voir l'analyse donnée à l'utilisateur en
+conversation) — confusion/clarté sur Vision Fondateur, filtres par défaut sur classe (partiellement
+traité en Phase 34), statut « Abandon » élève, recherche sur les listes de présence, responsive
+mobile complet et PWA — traités en suivi séparé, hors de cette passe.
+
 ---
 
 ## Annexe — Matrice rapide rôle × accès attendu
@@ -922,3 +1454,356 @@ de tous les badges, à l'écran comme à l'impression.
 | `PARENT` | `/children`, `/courses`, notifications de ses enfants opt-in | Élèves non rattachés, tout écran de gestion |
 | `STUDENT` | `/my-results`, `/courses` | Données d'autres élèves, tout écran de gestion |
 | `DPE_ADMIN` | `/dpe/*` (lecture, écoles du périmètre) | Écriture sur les écoles, autres préfectures |
+
+---
+
+## Phase 39 — Statut « Abandon » élève + correction du remboursement non répercuté
+
+**39.1 — Marquer un élève comme abandon (en cours d'année)**
+
+**Contexte** : nouveau statut `ABANDONED`, distinct de `CANCELLED` — un élève qui a suivi les cours un
+temps puis arrêté reste visible pour sa classe en facturation/recouvrement (ses factures déjà émises
+restent dues), mais disparaît des listes actives du quotidien (appel, saisie de notes) et de
+l'effectif de classe.
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR`.
+
+1. Fiche élève (`/students/{id}`) ou `/enrollments` → sur une inscription **validée**, cliquer
+   « Marquer comme abandon » → confirmer.
+2. Vérifier le badge « Abandon » (indigo), et que le bouton n'apparaît plus (transition définitive,
+   seulement disponible depuis VALIDÉE).
+3. `/attendance` (appel du jour) et saisie de notes (`/grading`) pour cette classe → vérifier que
+   l'élève n'apparaît plus.
+4. Fiche élève → bouton « Facture » → vérifier qu'il reste accessible (rattraper un impayé).
+5. Fiche classe / effectif → vérifier qu'il a baissé d'une unité.
+6. Vision Fondateur → Recouvrement par classe → vérifier que les factures impayées de cet élève
+   comptent toujours dans le taux de recouvrement de sa classe.
+7. Essayer de réinscrire l'élève dans une autre classe la même année scolaire → vérifier que c'est
+   toujours bloqué (comme pour une inscription validée classique).
+
+**39.2 — Remboursement répercuté sur la facture**
+
+**Contexte** : `PaymentService.markRefunded()` ne faisait que changer le statut du paiement —
+`PaymentRefundedEvent` n'était écouté par aucun listener côté facturation. Corrigé : un nouveau
+listener répercute désormais le remboursement sur `paidAmount`/solde/statut de la facture.
+
+**Rôle** : `ACCOUNTANT` / `SCHOOL_ADMIN` sur `/payments`.
+
+1. Encaisser une facture (partiellement ou en totalité).
+2. Cliquer « Rembourser » sur ce paiement.
+3. Ouvrir la fiche élève → onglet factures → vérifier que le solde restant a bien augmenté (la
+   facture repasse à IMPAYÉE ou PARTIELLE selon le montant remboursé), visible immédiatement sans
+   rechargement manuel.
+
+*Résultat attendu* : un abandon reste financièrement traçable pour sa classe sans polluer les listes
+actives du quotidien ; un remboursement se voit immédiatement sur la facture concernée.
+
+## Phase 40 — Onglet Scolarité (factures scopées) + marge de tolérance élèves séparée
+
+**40.1 — « Factures de l'élève » scopées à cet élève**
+
+**Contexte** : le lien « Factures de l'élève » (onglet Scolarité de la fiche élève) pointait vers
+`/invoices?student={id}`, mais la page `/invoices` ignorait complètement ce paramètre d'URL et
+affichait toujours la liste de tous les élèves.
+
+**Rôle** : n'importe quel rôle avec accès facturation.
+
+1. Fiche élève → onglet Scolarité → « Factures de l'élève ».
+2. Vérifier que la liste de factures est déjà filtrée sur cet élève (pas la liste complète), le
+   sélecteur d'élève du filtre affichant déjà son nom.
+
+**40.2 — Marge de tolérance élèves distincte de celle des enseignants/personnel**
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR` sur `/attendance` → onglet Réglages.
+
+1. Vérifier deux champs séparés : « Marge de tolérance enseignants / personnel » et « Marge de
+   tolérance élèves », chacun avec son propre bouton Enregistrer.
+2. Configurer une marge différente pour chacun (ex. 10 min enseignants, 5 min élèves) → pointer une
+   entrée élève en retard de 7 min → vérifier qu'elle compte bien comme en retard (au-delà des 5 min
+   élève), alors qu'un enseignant dans la même situation (marge 10 min) ne le serait pas.
+
+*Résultat attendu* : facturation d'un élève toujours scopée depuis sa fiche ; marge de tolérance
+réglable indépendamment pour les élèves et pour les enseignants/personnel.
+
+## Phase 41 — Recherche sur les listes de présence + actions immédiates au scan d'un retard
+
+**41.1 — Barre de recherche sur les listes de présence**
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR` / `SECRETARY` sur `/attendance`.
+
+1. Onglets « Présences élèves », « Présences enseignants », « Présences personnel » → vérifier la
+   présence d'un champ de recherche par nom en haut de chaque liste, qui filtre instantanément la
+   liste (élève/enseignant/personnel) sans recharger la page.
+
+**41.2 — Notifier/justifier directement depuis le fil de scan**
+
+**Contexte** : un retard élève déclenche déjà un SMS automatique au parent (aucune action requise),
+mais rien ne permettait au surveillant d'agir depuis l'écran de scan lui-même (renvoyer la
+notification en cas d'échec, ou justifier le retard) — il fallait naviguer vers `/attendance`.
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR` / `SECRETARY` sur `/attendance/scan`.
+
+1. Scanner l'entrée d'un élève en retard (après l'heure de début + marge de tolérance).
+2. Vérifier que la ligne du fil de scan affiche, en plus du badge « Retard », deux boutons
+   « Notifier parent » et « Justifier »/« Non justifié ».
+3. Cliquer « Notifier parent » → vérifier la confirmation « Parent notifié » (renvoi réel de la
+   notification, pas un simple cochage).
+4. Cliquer « Justifier » ou « Non justifié » → vérifier que le fil affiche la décision, et que la
+   fiche de présence de l'élève (`/attendance`) reflète bien ce choix.
+
+*Résultat attendu* : listes de présence filtrables par nom ; retard élève actionnable (notifier,
+justifier) sans quitter l'écran de scan.
+
+## Phase 42 — Détail du calcul sur les bulletins + enseignants avec leurs classes en paie
+
+**42.1 — Détail du calcul visible sur la fiche de paie**
+
+**Contexte** : le calcul détaillé (heures réalisées, retard cumulé, départ anticipé, heures
+effectives) était déjà présent sur le PDF du bulletin (bloc « Heures dues/réalisées ») mais invisible
+dans le panneau web « Détails », qui ne montrait que base/brut/net.
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR` / `ACCOUNTANT` sur `/payroll`.
+
+1. Onglet « Fiches de paie » → générer une fiche depuis les heures réalisées → cliquer « Détails ».
+2. Vérifier un encart « Détail du calcul » avec la phrase récapitulative (heures réalisées − retard −
+   départ anticipé = heures effectives).
+3. Cliquer « PDF » → vérifier le même détail, plus complet (heures dues/réalisées/non réalisées),
+   dans le bulletin téléchargé.
+
+**42.2 — Sélecteur enseignant avec ses classes (onglet Rémunération & heures)**
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR` / `ACCOUNTANT` sur `/payroll` → onglet « Rémunération & heures ».
+
+1. Ouvrir le sélecteur « Enseignant / personnel » → vérifier que chaque enseignant affiche ses
+   classes entre parenthèses (ex. « Jean Camara — 6ème A, 5ème B »), pas seulement son nom.
+
+*Résultat attendu* : détail du calcul visible sans télécharger de PDF ; sélection d'un enseignant
+sans ambiguïté sur ses classes.
+
+## Phase 43 — Vision Fondateur : allègement + données concrètement demandées
+
+**Contexte** : le fondateur ne comprenait pas certaines données (déjà réglé en Phase 39-40 :
+impayés/recouvrement cohérents) et demandait explicitement de retirer le graphique « Recettes vs
+dépenses — 6 derniers mois » (dont les chiffres divergeaient de la source désormais utilisée pour la
+carte « Recettes de l'école », Phase 39.1) au profit de données concrètes : nombre d'élèves, factures
+encaissées avec heure précise, enseignants payés/non payés, SMS de relance envoyés, bénéfice réel du
+mois après déduction de la masse salariale.
+
+**Rôle** : `SCHOOL_ADMIN` (fondateur) sur `/dashboard`.
+
+1. Vérifier que le graphique « Recettes vs dépenses — 6 derniers mois » a disparu.
+2. Vérifier la nouvelle carte « Élèves dans l'école » (comptage total) en tête de page.
+3. Vérifier la nouvelle carte « Bénéfice du mois » (recettes − dépenses − masse salariale, distincte
+   de « Balance globale » qui ne déduit pas la masse salariale — le libellé le précise).
+4. Vérifier le nouveau tableau « Derniers encaissements » (date + heure précise, référence, montant).
+5. Section Recouvrement → vérifier la carte « SMS de relance (ce mois) » (comptage réel des SMS
+   envoyés pour échéances impayées).
+6. Section Masse salariale → vérifier la carte « Enseignants payés ce mois » (X / Y, avec le nombre
+   de non-payés en évidence si besoin de relance).
+
+*Résultat attendu* : page recentrée sur les données que le fondateur a explicitement demandées, sans
+le graphique jugé source de confusion.
+
+## Phase 44 — Recouvrement par classe/débiteurs corrigés (rattrapage) + masse salariale réelle
+
+**Contexte** : le fondateur a signalé que malgré la Phase 39-40, « Recouvrement par classe » affichait
+encore certaines classes à 100 % et « Plus gros débiteurs » restait vide — root cause identifiée par
+investigation : le correctif `resolveAcademicYearId` (session précédente) ne s'appliquait qu'aux
+NOUVELLES factures ; les factures déjà en base avec `academic_year_id` NULL (mensualités générées
+depuis la fiche élève, factures de transport) restaient invisibles du filtre par année scolaire
+strict utilisé par le recouvrement, faussant les taux (seules les quelques factures déjà correctement
+taguées et soldées restaient comptées). Le fondateur a aussi rappelé une demande jamais traitée : voir
+la somme des retards/départs anticipés de tous les enseignants, le coût que ça représente, et la masse
+salariale RÉELLE (sur heures réalisées, cahier de textes) en plus de la masse théorique déjà affichée.
+
+**Rôle** : `SCHOOL_ADMIN` (fondateur) sur `/dashboard`.
+
+1. Migration `V166__backfill_invoice_academic_year.sql` appliquée au démarrage (rattrape les factures
+   existantes à `academic_year_id` NULL depuis l'inscription non-annulée la plus récente de l'élève).
+2. Section Recouvrement → « Recouvrement par classe » : vérifier que les taux reflètent désormais
+   toutes les factures de la classe (plus de classe bloquée artificiellement à 100 %).
+3. « Plus gros débiteurs » : vérifier que la liste n'est plus vide dès lors qu'il existe des factures
+   impayées, même anciennes.
+4. Section Masse salariale → nouveau bloc « Masse salariale réelle (sur heures réalisées) —
+   enseignants » :
+   - carte « Masse salariale réelle » (basée sur `computeMonthlyPay`, heures cahier de textes,
+     retards/départs déjà déduits) ;
+   - carte « Écart théorique / réel » (masse théorique − masse réelle ; positif = économisé sur des
+     heures non réalisées, négatif = dépassement) ;
+   - carte « Retards cumulés » et « Départs anticipés cumulés » (somme sur tous les enseignants, au
+     format `Xh MM`).
+
+*Résultat attendu* : les deux écrans de recouvrement montrent des chiffres cohérents avec la
+facturation réelle de l'école, et le fondateur peut comparer d'un coup d'œil la masse salariale
+théorique (projetée depuis l'emploi du temps) à la masse réellement due sur la base des heures
+effectivement réalisées, avec le cumul des retards/départs anticipés de tous les enseignants.
+
+## Phase 45 — Cahier de textes : plus de classe présélectionnée par défaut + retour sur le scan
+
+**Contexte** : audit systématique du reste de `Correction-hier.md` — plusieurs points étaient déjà
+couverts par des sessions précédentes (frais plateforme sur facture Phase 34.1, checkbox d'accès
+plateforme à l'inscription, salaire fixe pré-rempli en paie, détail heures réalisées/retard/départ
+anticipé sur la paie du mois, filtre de classe non pré-appliqué sur les présences enseignants/
+personnel — vérifiés à nouveau, aucun changement nécessaire). Deux points restaient réellement non
+traités :
+
+**45.1 — Cahier de textes affiche toutes les classes par défaut**
+
+**Rôle** : tout rôle ayant accès à `/lessons`.
+
+1. Arriver sur `/lessons` sans avoir touché le filtre « Classe » → vérifier qu'il affiche « Toutes les
+   classes » (pas la première classe de la liste) et que le tableau liste les séances de TOUTES les
+   classes, avec une colonne « Classe » ajoutée le temps qu'aucun filtre classe n'est choisi.
+2. Sélectionner une classe précise → la colonne « Classe » disparaît (redondante), le tableau se
+   filtre normalement.
+3. Cliquer « Nouvelle séance » sans avoir sélectionné de classe → vérifier que le formulaire s'ouvre
+   normalement (chaque ligne du formulaire a son propre sélecteur de classe).
+
+*Résultat attendu* : plus aucune classe sans séance planifiée ne donne l'impression trompeuse que
+« rien n'existe dans le cahier de textes ».
+
+**45.2 — Bouton retour sur la page de scan**
+
+**Rôle** : tout rôle ayant accès à `/attendance/scan`.
+
+1. Depuis `/attendance`, ouvrir le pointage par scan de carte.
+2. Vérifier la présence d'un lien « ← Retour aux présences » en haut de page, ramenant à `/attendance`.
+
+*Résultat attendu* : plus besoin d'utiliser le bouton retour du navigateur pour revenir à la liste des
+présences après un scan.
+
+## Phase 46 — Transfert de classe d'un élève inscrit (frais scolaires différents)
+
+**Contexte** : dernier point de `Correction-hier.md` — un élève déjà inscrit (et ayant déjà payé une
+ou plusieurs mensualités) doit parfois changer de classe en cours d'année (erreur d'orientation
+corrigée après-coup), or les frais de scolarité diffèrent souvent d'une classe à l'autre. Décision
+validée avec le fondateur : recalcul automatique — les mensualités impayées de l'ancienne classe sont
+annulées (conservées à l'état « Annulée » pour l'historique, jamais supprimées) et tout ce qui avait
+déjà été payé dessus est reporté en crédit sur les nouvelles mensualités générées pour la nouvelle
+classe, sans notification de paiement trompeuse pour le parent. Seule la scolarité (mensualités) est
+concernée — les frais d'inscription déjà payés ne sont jamais re-facturés lors d'un transfert.
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR`.
+
+1. Fiche élève → onglet Inscriptions → sur une inscription **validée**, cliquer « Transférer » →
+   choisir une autre classe de la même année scolaire → confirmer.
+2. Vérifier que la classe de l'inscription a changé, et que l'effectif baisse dans l'ancienne classe
+   et augmente dans la nouvelle (`/classes`).
+3. Onglet Scolarité de l'élève → vérifier que les mensualités impayées de l'ancienne classe sont
+   passées au statut « Annulée » (plus comptées dans le recouvrement), et que de nouvelles mensualités
+   sont apparues pour la nouvelle classe.
+4. Si l'élève avait déjà payé une ou deux mensualités avant le transfert → vérifier que les nouvelles
+   mensualités de la nouvelle classe apparaissent déjà partiellement ou totalement soldées (crédit
+   reporté), sans qu'aucun SMS « paiement reçu » ne soit envoyé au parent pour ce report.
+5. Vision Fondateur → Recouvrement par classe → vérifier que les montants annulés ne comptent plus ni
+   dans le facturé ni dans l'impayé d'aucune des deux classes.
+6. Cas limite : transférer vers une classe sans frais MENSUALITE configuré → vérifier dans les logs
+   serveur qu'un avertissement signale le crédit non reporté (à régulariser manuellement par le
+   comptable) plutôt qu'une erreur silencieuse.
+
+*Résultat attendu* : le transfert de classe ne fait perdre aucune trace des paiements déjà effectués,
+et la facturation de l'élève reflète immédiatement le nouveau barème de sa nouvelle classe.
+
+## Phase 47 — Vision Fondateur : cartes personnes cherchables + masse salariale réelle condensée
+
+**Contexte** : avec une centaine d'enseignants/personnel, les grilles de cartes « Salaire par
+enseignant » et « Personnel administratif » rendaient la page interminable à faire défiler. Par
+ailleurs les 4 cartes de masse salariale réelle (masse réelle, écart théorique/réel, retards, départs
+anticipés) étaient trop éclatées — le fondateur voulait les heures réalisées directement dans la carte
+« Masse salariale réelle », et retards + départs anticipés réunis dans une seule carte avec le coût
+correspondant.
+
+**Rôle** : `SCHOOL_ADMIN` (fondateur) sur `/dashboard`.
+
+1. Section « Salaire par enseignant » / « Personnel administratif » : au-delà de 12 personnes, vérifier
+   l'apparition d'une barre de recherche par nom et d'un bouton « Afficher les N autres » (plus de mur
+   de cartes interminable par défaut).
+2. Rechercher un nom → vérifier que seules les cartes correspondantes s'affichent.
+3. Carte « Masse salariale réelle » → vérifier la mention des heures réalisées dans le sous-texte
+   (ex. « Sur 42 h réalisées »).
+4. Vérifier qu'il n'y a plus que 2 cartes (au lieu de 4) dans le bloc masse salariale réelle : « Masse
+   salariale réelle » et « Retards & départs anticipés cumulés » — cette dernière affichant le détail
+   retards/départs et le coût estimé (déjà déduit du salaire) en GNF.
+
+*Résultat attendu* : page utilisable quel que soit l'effectif de l'école, et lecture plus directe du
+coût réel des retards/départs anticipés des enseignants.
+
+## Phase 48 — Notification parent : email cassé (SpEL) + SMS Nimba (canal manquant)
+
+**Contexte** : en testant « Notifier le parent » sur une absence, deux échecs distincts sont apparus
+dans les logs.
+
+**48.1 — Email d'absence cassé (`SpelParseException`)**
+
+`templates/email/absence-notification.html` utilisait `th:text="${studentName + ' est absent(e)
+aujourd\'hui'}"` — en SpEL (moteur d'expression de Thymeleaf), un guillemet simple à l'intérieur d'un
+littéral se double (`''`), il ne s'échappe jamais avec un antislash comme en Java. Le `\'` cassait le
+parsing de l'expression, et l'email échouait silencieusement à chaque absence (exception attrapée et
+journalisée dans `EmailService`, sans bloquer le reste). Corrigé en `aujourd''hui`.
+
+**48.2 — SMS Nimba : `sender_name`/`to` « obligatoire » malgré leur présence**
+
+Root cause : le corps JSON envoyé ne précisait pas le champ `channel` (attendu par
+developers.nimbasms.com, défaut `"sms"` mais l'école a préféré le rendre explicite). `NimbaSmsGateway`
+envoie maintenant `{sender_name, to:[...], message, channel:"sms"}`. Un intercepteur de diagnostic
+temporaire (`NIMBA-WIRE`, sur le modèle de `DJOMY-WIRE`) journalise la requête/réponse brute échangée
+avec Nimba — à retirer une fois le SMS confirmé livré en conditions réelles.
+
+**48.3 — Backend qui ne répond plus du tout à l'envoi (aucun log, aucune trace)**
+
+Root cause : aucun timeout connexion/lecture n'était configuré sur AUCUN des 4 clients HTTP sortants
+(Nimba, Orange SMS, Resend email, Djomy paiements) — un appel réseau bloqué (DNS, tunnel ngrok mal
+configuré, pare-feu) gelait indéfiniment le thread de la requête HTTP entrante, donnant l'impression
+que « la méthode d'envoi ne se déclenche même pas » alors qu'elle était juste bloquée en attente sans
+jamais expirer. Corrigé par un bean centralisé `RestClientTimeoutConfig`
+(`gn.lacaeducation.common`) : timeout connexion 10s / lecture 20s appliqué automatiquement à tout
+`RestClient` construit depuis le bean Spring `RestClient.Builder` (donc les 4 gateways), sans toucher
+aux tests qui construisent leur propre `RestClient.builder()` hors contexte Spring.
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR` sur `/attendance` (scan ou liste, notifier un retard/absence).
+
+1. Notifier le parent d'un élève absent → vérifier dans les logs `NIMBA-WIRE` que la requête part bien
+   avec `sender_name`, `to`, `message`, `channel` renseignés, et que la réponse contient un
+   `messageid` (succès), pas une erreur 400.
+2. Vérifier que le SMS est effectivement reçu sur le téléphone du parent.
+3. Si l'email est configuré pour ce parent, vérifier qu'il le reçoit aussi, avec le texte « [Élève] est
+   absent(e) aujourd'hui » correctement affiché (apostrophe visible, pas d'erreur serveur dans les
+   logs).
+4. Simuler un réseau indisponible (ex. couper le tunnel ngrok pendant l'appel) → vérifier que la
+   requête HTTP côté frontend échoue avec une erreur en ~20s maximum, au lieu de rester bloquée
+   indéfiniment.
+
+*Résultat attendu* : les deux canaux (SMS + email) fonctionnent pour une notification d'absence, et le
+backend ne reste plus jamais bloqué silencieusement en cas de souci réseau côté fournisseur.
+
+## Phase 49 — Nouveau message : liste cherchable par type + bug d'envoi jamais transmis corrigé
+
+**Contexte** : sur `/communications` → « Nouveau message », choisir le type « Parent » n'avait aucun
+effet — la liste de destinataires restait la liste générique de TOUS les comptes utilisateur (jusqu'à
+300, mélangeant admin/comptable/enseignant/parent), sans filtre ni recherche, rendant impossible de
+cibler un parent ou un enseignant précis.
+
+En creusant, bug plus grave découvert en chemin : `CommunicationService.send()` ne transmet réellement
+un SMS/e-mail au fournisseur QUE si une destination (téléphone/e-mail) est fournie — un envoi manuel
+qui ne référence qu'un `recipientUserId` (comme le faisait ce formulaire, et aussi le bouton
+« Relancer » sur la fiche élève / dossier documents) ne fait que créer un enregistrement "en attente"
+indéfiniment, sans jamais rien envoyer, et aucune tâche ne résout ce `userId` en contact plus tard.
+Corrigé partout où c'était utilisé : la destination (téléphone pour SMS/WhatsApp, e-mail pour EMAIL)
+est désormais toujours résolue et envoyée directement.
+
+**Rôle** : `SCHOOL_ADMIN` / `DIRECTOR` / `SECRETARY` / `TEACHER`.
+
+1. `/communications` → « Nouveau message » → Type = « Parent » → vérifier que la liste passe aux
+   parents de l'école (pas les comptes utilisateur génériques), avec une barre de recherche par nom ou
+   numéro au-dessus.
+2. Type = « Enseignant » → vérifier que la liste passe aux enseignants.
+3. Sélectionner un canal SMS puis un parent sans numéro connu → vérifier qu'il apparaît grisé,
+   non-cochable, avec la mention « pas de numéro ».
+4. Envoyer un SMS à un parent précis → vérifier qu'il le reçoit réellement (avant ce correctif, rien
+   ne partait jamais pour un envoi manuel ciblé).
+5. Fiche élève → bouton « Relancer » (facture impayée ou dossier documents incomplet) → envoyer une
+   relance SMS à un parent qui n'a jamais eu de compte plateforme → vérifier qu'il la reçoit quand même
+   (avant : bloqué avec « Aucun parent avec un compte »).
+
+*Résultat attendu* : le ciblage d'un destinataire précis fonctionne enfin, avec recherche, et l'envoi
+part réellement au lieu de rester silencieusement bloqué.
