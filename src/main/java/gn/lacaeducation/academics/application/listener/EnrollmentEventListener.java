@@ -2,7 +2,9 @@ package gn.lacaeducation.academics.application.listener;
 
 import gn.lacaeducation.academics.application.port.out.ClasseRepository;
 import gn.lacaeducation.academics.application.port.out.EnrollmentQueryPort;
+import gn.lacaeducation.students.application.event.EnrollmentAbandonedEvent;
 import gn.lacaeducation.students.application.event.EnrollmentCancelledEvent;
+import gn.lacaeducation.students.application.event.EnrollmentClassChangedEvent;
 import gn.lacaeducation.students.application.event.EnrollmentValidatedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +35,19 @@ public class EnrollmentEventListener {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onEnrollmentCancelled(EnrollmentCancelledEvent event) {
         recomputeHeadcount(event.classId());
+    }
+
+    @TransactionalEventListener
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onEnrollmentAbandoned(EnrollmentAbandonedEvent event) {
+        recomputeHeadcount(event.classId());
+    }
+
+    @TransactionalEventListener
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onEnrollmentClassChanged(EnrollmentClassChangedEvent event) {
+        recomputeHeadcount(event.oldClassId());
+        recomputeHeadcount(event.newClassId());
     }
 
     private void recomputeHeadcount(Long classId) {

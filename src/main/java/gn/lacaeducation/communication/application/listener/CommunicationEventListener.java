@@ -23,6 +23,7 @@ import gn.lacaeducation.students.StudentDataProvider;
 import gn.lacaeducation.students.StudentPublicInfo;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionalEventListener;
 
@@ -55,6 +56,7 @@ public class CommunicationEventListener {
     private String resetPasswordUrl;
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+    private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH'h'mm");
 
     /**
      * Alerte par email, à chaque modification de note par un enseignant, l'administration de l'école, le
@@ -62,6 +64,7 @@ public class CommunicationEventListener {
      * valeur et le motif obligatoire (§7.2).
      */
     @TransactionalEventListener
+    @Async
     public void onGradeModified(GradeModifiedEvent event) {
         String studentName = studentDataProvider.findStudent(event.studentId())
                 .map(this::fullName).orElse("l'élève #" + event.studentId());
@@ -98,21 +101,43 @@ public class CommunicationEventListener {
         }
     }
 
+    /**
+     * Notifie le parent par SMS à chaque pointage — présent à l'heure, en retard, ou absent — pas
+     * uniquement les absences/retards comme avant : un scan de badge réussi doit confirmer l'arrivée
+     * de l'enfant en temps réel, quelle que soit l'issue.
+     */
     @TransactionalEventListener
+    @Async
     public void onStudentAbsent(StudentAbsentEvent event) {
         studentDataProvider.findStudent(event.studentId()).ifPresent(student -> {
             String className = academicsDataProvider.findClass(event.classId()).map(c -> c.label()).orElse("N/A");
             String date = event.date() != null ? event.date().format(DATE_FMT) : "N/A";
+            String status = event.status();
+            String time = event.checkInTime() != null ? event.checkInTime().format(TIME_FMT) : null;
             Map<String, String> vars = Map.of(
                     "nom_eleve", fullName(student), "ecole", schoolName(event.tenantId()),
                     "classe", className, "date", date);
-            String defaultBody = "Votre enfant " + fullName(student) + " a été absent(e) le " + date
-                    + " en classe de " + className + ".";
-            dispatch(event.tenantId(), CommunicationReason.ABSENCE, "Absence signalée", defaultBody, vars, event.studentId());
+            if ("LATE".equals(status)) {
+                int minutes = event.lateMinutes() != null ? event.lateMinutes() : 0;
+                String arrival = time != null ? " à " + time : "";
+                String defaultBody = "Votre enfant " + fullName(student) + " est arrivé(e) en retard ("
+                        + minutes + " min)" + arrival + " le " + date + " en classe de " + className + ".";
+                dispatch(event.tenantId(), CommunicationReason.LATE, "Retard signalé", defaultBody, vars, event.studentId());
+            } else if ("PRESENT".equals(status)) {
+                String arrival = time != null ? " à " + time : "";
+                String defaultBody = "Votre enfant " + fullName(student) + " est bien arrivé(e) à l'école"
+                        + arrival + " le " + date + " en classe de " + className + ".";
+                dispatch(event.tenantId(), CommunicationReason.GENERAL, "Arrivée confirmée", defaultBody, vars, event.studentId());
+            } else {
+                String defaultBody = "Votre enfant " + fullName(student) + " a été absent(e) le " + date
+                        + " en classe de " + className + ".";
+                dispatch(event.tenantId(), CommunicationReason.ABSENCE, "Absence signalée", defaultBody, vars, event.studentId());
+            }
         });
     }
 
     @TransactionalEventListener
+    @Async
     public void onReportCardPublished(ReportCardPublishedEvent event) {
         studentDataProvider.findStudent(event.studentId()).ifPresent(student -> {
             String period = academicsDataProvider.findPeriod(event.periodId()).map(p -> p.label()).orElse("N/A");
@@ -125,38 +150,44 @@ public class CommunicationEventListener {
     }
 
     @TransactionalEventListener
+    @Async
     public void onPaymentSucceeded(PaymentSucceededEvent event) {
         // Invoice-linked payments are handled by onInvoicePaymentApplied (which knows the remaining
         // balance). Here we only cover payments not tied to a school-fee invoice, to avoid duplicates.
         if (event.invoiceId() != null) return;
-        studentDataProvider.findStudent(event.studentId()).ifPresent(student ->
-            paymentDataProvider.findPayment(event.paymentId()).ifPresent(payment -> {
-                String amount = payment.amount() + " FCFA";
+        studentDataProvider.findStudent(event.studentId()).ifPresentOrElse(student ->
+            paymentDataProvider.findPayment(event.paymentId()).ifPresentOrElse(payment -> {
+                String amount = payment.amount() + " GNF";
                 Map<String, String> vars = Map.of(
                         "nom_eleve", fullName(student), "ecole", schoolName(event.tenantId()),
                         "montant", amount, "canal", payment.channel() == null ? "" : payment.channel(),
                         "reference", payment.reference() == null ? "" : payment.reference());
-                String defaultBody = "Paiement de " + amount + " reçu pour " + fullName(student) + ". Merci.";
+                String defaultBody = "Paiement de " + amount + " reçu pour " + fullName(student)
+                        + ". Connectez-vous à la plateforme pour voir la facture payée.";
                 dispatch(event.tenantId(), CommunicationReason.GENERAL, "Paiement reçu", defaultBody, vars, event.studentId());
                 notifyFounder(event.tenantId(), fullName(student), amount);
-            }));
+            }, () -> log.warn("PaymentSucceededEvent paymentId={} introuvable ; notification paiement ignorée", event.paymentId())),
+            () -> log.warn("PaymentSucceededEvent studentId={} introuvable ; notification paiement ignorée", event.studentId()));
     }
 
     /** Notify the parent of each payment applied to a school-fee invoice, stating the remaining balance (§11.1). */
     @TransactionalEventListener
+    @Async
     public void onInvoicePaymentApplied(InvoicePaymentAppliedEvent event) {
         studentDataProvider.findStudent(event.studentId()).ifPresent(student -> {
-            String amount = event.paidAmount() + " FCFA";
+            String amount = event.paidAmount() + " GNF";
             BigDecimal remaining = event.remainingBalance() == null ? BigDecimal.ZERO : event.remainingBalance();
             boolean settled = remaining.compareTo(BigDecimal.ZERO) <= 0;
-            String remainingStr = remaining + " FCFA";
+            String remainingStr = remaining + " GNF";
             Map<String, String> vars = Map.of(
                     "nom_eleve", fullName(student), "ecole", schoolName(event.tenantId()),
                     "montant", amount, "reste_a_payer", remainingStr,
                     "reference", event.reference() == null ? "" : event.reference());
             String defaultBody = settled
-                    ? "Paiement de " + amount + " reçu pour " + fullName(student) + ". Facture soldée. Merci."
-                    : "Paiement de " + amount + " reçu pour " + fullName(student) + ". Reste à payer : " + remainingStr + ".";
+                    ? "Paiement de " + amount + " reçu pour " + fullName(student)
+                        + ". Facture soldée. Connectez-vous à la plateforme pour la voir."
+                    : "Paiement de " + amount + " reçu pour " + fullName(student) + ". Reste à payer : " + remainingStr
+                        + ". Connectez-vous à la plateforme pour voir la facture.";
             dispatch(event.tenantId(), CommunicationReason.GENERAL, "Paiement reçu", defaultBody, vars, event.studentId());
             notifyFounder(event.tenantId(), fullName(student), amount);
         });
@@ -172,8 +203,9 @@ public class CommunicationEventListener {
      * dépendre du contexte ambiant.
      */
     @TransactionalEventListener
+    @Async
     public void onEcheanceDepassee(EcheanceDepasseeEvent event) {
-        String amount = event.amount() + " FCFA";
+        String amount = event.amount() + " GNF";
         String date = event.dueDate() != null ? event.dueDate().format(DATE_FMT) : "N/A";
         Map<String, String> vars = Map.of(
                 "ecole", schoolName(event.tenantId()), "montant", amount, "date", date,
@@ -186,6 +218,7 @@ public class CommunicationEventListener {
 
     /** Notify every (non-cancelled) student of the class on their own contact when an assessment is scheduled. */
     @TransactionalEventListener
+    @Async
     public void onAssessmentScheduled(AssessmentScheduledEvent event) {
         List<StudentPublicInfo> students = studentDataProvider.findStudentsByClass(event.classId());
         if (students.isEmpty()) {
@@ -221,6 +254,7 @@ public class CommunicationEventListener {
      * au sujet d'un élève, mais l'accès du compte lui-même.
      */
     @TransactionalEventListener
+    @Async
     public void onUserAccountCreated(UserAccountCreatedEvent event) {
         String fullName = ((event.firstName() != null ? event.firstName() : "") + " "
                 + (event.lastName() != null ? event.lastName() : "")).trim();
@@ -242,6 +276,7 @@ public class CommunicationEventListener {
      * à la demande « mot de passe oublié » n'était jamais communiqué à l'utilisateur (§2.1).
      */
     @TransactionalEventListener
+    @Async
     public void onPasswordResetRequested(PasswordResetRequestedEvent event) {
         if (event.email() == null || event.email().isBlank()) return;
         String link = resetPasswordUrl + "?token=" + event.resetToken();
@@ -273,11 +308,8 @@ public class CommunicationEventListener {
         String subject = template.map(t -> MessageTemplate.render(t.getSubject(), allVars)).orElse(defaultSubject);
         String content = template.map(t -> MessageTemplate.render(t.getBody(), allVars)).orElse(defaultBody);
 
-        // SMS : le sender Orange global est « CathClau » ; on préfixe le nom de l'école pour que le parent
-        // identifie l'expéditeur. Pas de doublon si le contenu contient déjà le nom (ex. modèle {{ecole}}).
-        if (channel == CommunicationChannel.SMS && content != null && !content.contains(school)) {
-            content = "[" + school + "] " + content;
-        }
+        // Le préfixe « [École] » sur les SMS est appliqué de façon centralisée par
+        // CommunicationService#send (point d'envoi unique, garanti quel que soit l'appelant) — pas ici.
         return new Resolved(channel, subject, content);
     }
 
@@ -287,7 +319,7 @@ public class CommunicationEventListener {
         // plateforme reçoivent les notifications automatiques (paiement, absence, retard, bulletin...)
         // — pas de facturation du frais plateforme, pas de notification, quel que soit le canal.
         if (!studentDataProvider.hasPlatformAccessOptIn(studentId)) {
-            log.debug("Élève {} sans accès plateforme accepté ; notification {} ignorée", studentId, reason);
+            log.info("Élève {} sans accès plateforme accepté ; notification {} ignorée", studentId, reason);
             return;
         }
         Resolved r = resolve(tenantId, reason, defaultSubject, defaultBody, vars);
@@ -297,11 +329,13 @@ public class CommunicationEventListener {
                 .map(dest -> new RecipientTarget(null, dest))
                 .toList();
         if (targets.isEmpty()) {
-            log.debug("No reachable parent for student {} on channel {}; skipping {} notification", studentId, r.channel(), reason);
+            log.info("No reachable parent for student {} on channel {}; skipping {} notification", studentId, r.channel(), reason);
             return;
         }
         communicationUseCase.send(new SendCommunicationCommand(tenantId, null, r.channel(),
                 RecipientType.PARENT, r.subject(), r.content(), reason, targets));
+        log.info("Notification {} envoyée à {} destinataire(s) pour l'élève {} via {}",
+                reason, targets.size(), studentId, r.channel());
     }
 
     /**

@@ -15,6 +15,10 @@ public interface InvoiceRepository {
     List<Invoice> findByInstallmentId(Long installmentId);
     boolean existsByStudentIdAndFeeId(Long studentId, Long feeId);
     boolean existsByStudentIdAndInstallmentId(Long studentId, Long installmentId);
+    /** Idempotence pour une facture éclatée mois par mois (opt-in paiement mensuel, §billing) : une
+     * même échéance multi-mois produit alors plusieurs factures pour le même élève, distinguées par
+     * leur periodLabel (un mois précis) plutôt que par le seul installmentId. */
+    boolean existsByStudentIdAndInstallmentIdAndPeriodLabel(Long studentId, Long installmentId, String periodLabel);
     void deleteById(Long id);
     boolean existsById(Long id);
 }

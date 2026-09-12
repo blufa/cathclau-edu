@@ -44,4 +44,12 @@ public class InstallmentController {
     @Operation(summary = "Delete an installment deadline")
     @PreAuthorize("hasAuthority('echeance:manage')")
     @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id) { useCase.delete(id); return ResponseEntity.noContent().build(); }
+
+    @Operation(summary = "Déclenche immédiatement la vérification des échéances en retard (même traitement "
+            + "que le job planifié de 6h) — pour tester une relance sans attendre le lendemain matin")
+    @PreAuthorize("hasAuthority('echeance:manage')")
+    @PostMapping("/check-overdue-now") public ResponseEntity<Void> checkOverdueNow() {
+        useCase.checkOverdueNow();
+        return ResponseEntity.noContent().build();
+    }
 }

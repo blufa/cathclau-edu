@@ -12,6 +12,7 @@ import gn.lacaeducation.platform.application.event.TenantSignupRequestedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionalEventListener;
 
@@ -35,6 +36,7 @@ public class PlatformOnboardingListener {
     private String loginUrl;
 
     @TransactionalEventListener
+    @Async
     public void onTenantSignupRequested(TenantSignupRequestedEvent event) {
         if (event.adminEmail() == null || event.adminEmail().isBlank()) {
             return;
@@ -50,6 +52,7 @@ public class PlatformOnboardingListener {
      * l'école créée manuellement par le SUPER_ADMIN sans mot de passe fourni.
      */
     @TransactionalEventListener
+    @Async
     public void onTenantAdminCredentialsIssued(TenantAdminCredentialsIssuedEvent event) {
         if (event.adminEmail() == null || event.adminEmail().isBlank()) {
             return;
@@ -65,6 +68,7 @@ public class PlatformOnboardingListener {
     }
 
     @TransactionalEventListener
+    @Async
     public void onTenantOnboarded(TenantOnboardedEvent event) {
         if (event.adminEmail() == null || event.adminEmail().isBlank()) {
             return;

@@ -19,6 +19,21 @@ public interface SchoolPayrollStatsProvider {
     PayrollMassSummary payrollMassSummary(Long tenantId, int year, int month);
 
     /**
+     * Masse salariale RÉELLE (Vision Fondateur) : contrairement à {@link #payrollMassSummary}, qui
+     * projette la part enseignants depuis l'emploi du temps (heures théoriques), celle-ci se base sur
+     * les heures réellement réalisées (cahier de textes, retards/départs anticipés déjà déduits) —
+     * avec le cumul des retards/départs anticipés de tous les enseignants, pour que le fondateur voie
+     * concrètement l'écart entre ce qui est théoriquement dû et ce qui est réellement facturé, et
+     * repère une anomalie de pointage. La part personnel non-enseignant reste identique (salaire de
+     * base fixe, aucune notion d'heures réalisées pour eux).
+     */
+    record RealPayrollSummary(BigDecimal teacherMonthlyPayroll, BigDecimal staffMonthlyPayroll,
+                              BigDecimal totalMonthlyPayroll, int totalLateMinutes, int totalEarlyMinutes,
+                              int totalRealizedMinutes) {}
+
+    RealPayrollSummary realPayrollSummary(Long tenantId, int year, int month);
+
+    /**
      * Progression des heures réalisées (cahier de textes, séances marquées « Réalisée ») par rapport
      * aux heures dues (projection de l'emploi du temps sur le mois) — Vision Fondateur : le fondateur
      * doit voir combien un enseignant doit réaliser ce mois-ci et la progression au fil des séances.

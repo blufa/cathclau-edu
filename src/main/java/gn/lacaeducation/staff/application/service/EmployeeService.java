@@ -29,7 +29,7 @@ public class EmployeeService implements EmployeeUseCase {
                 .tenantId(c.tenantId()).userId(c.userId()).employeeNumber(c.employeeNumber())
                 .firstName(c.firstName()).lastName(c.lastName()).phone(c.phone()).email(c.email())
                 .category(c.category()).jobTitle(c.jobTitle()).hireDate(c.hireDate())
-                .baseSalary(c.baseSalary()).cnssNumber(c.cnssNumber()).active(true)
+                .baseSalary(c.baseSalary()).cnssNumber(c.cnssNumber()).bankAccount(c.bankAccount()).active(true)
                 .build());
     }
 
@@ -46,6 +46,8 @@ public class EmployeeService implements EmployeeUseCase {
         e.setHireDate(c.hireDate());
         e.setBaseSalary(c.baseSalary());
         e.setCnssNumber(c.cnssNumber());
+        e.setBankAccount(c.bankAccount());
+        e.setLinkedTeacherId(c.linkedTeacherId());
         return repo.save(e);
     }
 

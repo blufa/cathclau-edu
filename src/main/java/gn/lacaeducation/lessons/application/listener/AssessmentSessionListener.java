@@ -4,6 +4,8 @@ import gn.lacaeducation.grading.application.event.AssessmentScheduledEvent;
 import gn.lacaeducation.lessons.application.service.LessonService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.stereotype.Component;
 
@@ -20,6 +22,7 @@ public class AssessmentSessionListener {
     private final LessonService lessonService;
 
     @TransactionalEventListener
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onAssessmentScheduled(AssessmentScheduledEvent event) {
         try {
             lessonService.recordAssessmentSession(event.tenantId(), event.classId(), event.subjectId(),

@@ -50,7 +50,7 @@ class OverdueInstallmentProcessor {
                 }
 
                 List<Invoice> unpaid = invoiceRepository.findByInstallmentId(installment.getId()).stream()
-                        .filter(i -> i.getStatus() != InvoiceStatus.PAID)
+                        .filter(i -> i.getStatus() != InvoiceStatus.PAID && i.getStatus() != InvoiceStatus.CANCELLED)
                         .toList();
                 for (Invoice invoice : unpaid) {
                     eventPublisher.publishEvent(new EcheanceDepasseeEvent(

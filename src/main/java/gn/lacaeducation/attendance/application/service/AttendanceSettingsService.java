@@ -42,6 +42,16 @@ public class AttendanceSettingsService implements AttendanceSettingsUseCase {
     }
 
     @Override
+    public AttendanceSettings updateStudentTransitionMargin(Long tenantId, Integer studentTransitionMarginMinutes) {
+        if (studentTransitionMarginMinutes != null && (studentTransitionMarginMinutes < 0 || studentTransitionMarginMinutes > 60)) {
+            throw new BusinessRuleException("La marge de tolérance élève doit être comprise entre 0 et 60 minutes.");
+        }
+        AttendanceSettings current = getSettings(tenantId);
+        current.setStudentTransitionMarginMinutes(studentTransitionMarginMinutes);
+        return settingsRepo.save(current);
+    }
+
+    @Override
     public AttendanceSettings updateEmployeeHours(Long tenantId, LocalTime checkInTime, LocalTime checkOutTime) {
         if (checkInTime == null || checkOutTime == null || !checkInTime.isBefore(checkOutTime)) {
             throw new BusinessRuleException("L'heure d'entrée du personnel doit être antérieure à l'heure de sortie.");

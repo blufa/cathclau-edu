@@ -36,8 +36,11 @@ public class BroadcastService implements BroadcastUseCase {
             return null;
         }
 
-        RecipientType recipientType = c.audience() == BroadcastAudience.ALL_TEACHERS
-                ? RecipientType.TEACHER : RecipientType.PARENT;
+        RecipientType recipientType = switch (c.audience()) {
+            case ALL_TEACHERS -> RecipientType.TEACHER;
+            case ALL_STAFF -> RecipientType.GROUP;
+            default -> RecipientType.PARENT;
+        };
 
         return communicationUseCase.send(new CommunicationUseCase.SendCommunicationCommand(
                 c.tenantId(), c.senderId(), c.channel(), recipientType,

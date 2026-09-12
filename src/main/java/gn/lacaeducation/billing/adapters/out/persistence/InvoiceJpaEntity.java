@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.Setter;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 @Entity @Table(name = "invoices") @Getter @Setter
 @org.hibernate.annotations.Filter(name = "tenantFilter")
 public class InvoiceJpaEntity {
@@ -27,4 +28,7 @@ public class InvoiceJpaEntity {
     @Enumerated(EnumType.STRING) @Column(name = "recovery_stage", length = 16) private gn.lacaeducation.billing.domain.RecoveryStage recoveryStage;
     @Column(name = "last_reminder_at") private java.time.LocalDate lastReminderAt;
     @Column(name = "platform_fee_amount", precision = 15, scale = 2) private BigDecimal platformFeeAmount;
+    @Convert(converter = InstallmentMonthsConverter.class)
+    @Column(name = "paid_months")
+    private List<String> paidMonths;
 }

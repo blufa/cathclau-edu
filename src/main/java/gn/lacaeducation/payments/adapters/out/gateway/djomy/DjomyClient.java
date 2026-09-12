@@ -37,6 +37,7 @@ public class DjomyClient {
 
     public DjomyClient(DjomyProperties props, RestClient.Builder builder) {
         this.props = props;
+        // Timeout connexion/lecture appliqué globalement par RestClientTimeoutConfig.
         this.http = builder.baseUrl(props.baseUrl() == null ? "" : props.baseUrl())
                 .requestInterceptor(new DjomyWireLoggingInterceptor())   // TEMP: remove after testing
                 .build();

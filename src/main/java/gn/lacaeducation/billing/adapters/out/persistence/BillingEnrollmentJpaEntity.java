@@ -30,4 +30,6 @@ class BillingEnrollmentJpaEntity {
     private Long academicYearId;
     @Column(name = "platform_access_opt_in", nullable = false)
     private Boolean platformAccessOptIn;
+    @Column(name = "monthly_payment_opt_in", nullable = false)
+    private Boolean monthlyPaymentOptIn;
 }

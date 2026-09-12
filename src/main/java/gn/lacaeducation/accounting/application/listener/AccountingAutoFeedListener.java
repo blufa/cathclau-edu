@@ -6,6 +6,7 @@ import gn.lacaeducation.accounting.domain.CashFlowDirection;
 import gn.lacaeducation.accounting.domain.CashFlowReferenceType;
 import gn.lacaeducation.expenses.application.event.ExpensePaidEvent;
 import gn.lacaeducation.payments.application.event.PaymentSucceededEvent;
+import gn.lacaeducation.payroll.application.event.PayslipPaidEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -36,5 +37,12 @@ public class AccountingAutoFeedListener {
     public void onExpensePaid(ExpensePaidEvent e) {
         treasuryService.recordAuto(e.tenantId(), CashFlowDirection.OUT, e.amount(), CashFlowCategory.SUPPLIER,
                 CashFlowReferenceType.EXPENSE, e.expenseId(), "Règlement dépense #" + e.expenseId());
+    }
+
+    @TransactionalEventListener
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onPayslipPaid(PayslipPaidEvent e) {
+        treasuryService.recordAuto(e.tenantId(), CashFlowDirection.OUT, e.amount(), CashFlowCategory.SALARY,
+                CashFlowReferenceType.PAYSLIP, e.payslipId(), "Règlement fiche de paie #" + e.payslipId());
     }
 }

@@ -13,6 +13,7 @@ import gn.lacaeducation.payments.SchoolCollectionStatsProvider;
 import gn.lacaeducation.payments.SchoolCollectionStatsProvider.MonthlyCollection;
 import gn.lacaeducation.payroll.SchoolPayrollStatsProvider;
 import gn.lacaeducation.payroll.SchoolPayrollStatsProvider.PayrollMassSummary;
+import gn.lacaeducation.payroll.SchoolPayrollStatsProvider.RealPayrollSummary;
 import gn.lacaeducation.payroll.SchoolPayrollStatsProvider.SchoolYearProjection;
 import gn.lacaeducation.payroll.SchoolPayrollStatsProvider.TeacherHoursProgress;
 import gn.lacaeducation.payroll.SchoolPayrollStatsProvider.TeacherSalary;
@@ -175,6 +176,7 @@ public class SchoolDashboardController {
     public record RecoveryView(BillingStats overall, List<ClassRecoveryRow> byClass,
                               List<SchoolBillingStatsProvider.PeriodRecovery> byPeriod, List<TopDebtorRow> topDebtors) {}
     public record FounderDashboard(Long academicYearId, RecoveryView recovery, PayrollMassSummary payroll,
+                                   RealPayrollSummary realPayroll,
                                    List<TeacherHoursProgress> teacherHours, SchoolYearProjection payrollProjection,
                                    List<TeacherSalary> teacherSalaries, SubsidyStats subsidy,
                                    List<FounderAlert> alerts, FounderYearComparison comparison) {}
@@ -206,6 +208,7 @@ public class SchoolDashboardController {
                                 className(d.classId()), d.outstanding()))
                         .toList());
         PayrollMassSummary payroll = payrollStatsProvider.payrollMassSummary(tenantId, y, m);
+        RealPayrollSummary realPayroll = payrollStatsProvider.realPayrollSummary(tenantId, y, m);
         // Triée par progression croissante : met en avant les enseignants les plus en retard sur
         // leurs heures dues du mois.
         List<TeacherHoursProgress> teacherHours = payrollStatsProvider.teacherHoursProgress(tenantId, y, m).stream()
@@ -263,7 +266,7 @@ public class SchoolDashboardController {
                     recovery.overall().recoveryRate().subtract(compareStats.recoveryRate()));
         }
 
-        return new FounderDashboard(academicYearId, recovery, payroll, teacherHours, payrollProjection, teacherSalaries, subsidy, alerts, comparison);
+        return new FounderDashboard(academicYearId, recovery, payroll, realPayroll, teacherHours, payrollProjection, teacherSalaries, subsidy, alerts, comparison);
     }
 
     // ── 10.3 RH ─────────────────────────────────────────────────────────────

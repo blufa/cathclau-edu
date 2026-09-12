@@ -45,6 +45,7 @@ public class OrangeSmsGateway implements NotificationGateway, SmsBalancePort {
 
     public OrangeSmsGateway(OrangeSmsProperties props, RestClient.Builder builder) {
         this.props = props;
+        // Timeout connexion/lecture appliqué globalement par RestClientTimeoutConfig.
         this.http = builder.baseUrl(props.baseUrlOrDefault()).build();
     }
 

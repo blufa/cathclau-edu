@@ -6,6 +6,7 @@ import gn.lacaeducation.academics.ScheduleSlotPublicInfo;
 import gn.lacaeducation.attendance.TeacherWorkProvider;
 import gn.lacaeducation.calendar.CalendarDataProvider;
 import gn.lacaeducation.common.BusinessRuleException;
+import gn.lacaeducation.common.ConflictException;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.common.TenantContext;
 import gn.lacaeducation.lessons.TeacherTeachingProvider;
@@ -14,8 +15,10 @@ import gn.lacaeducation.payroll.application.port.out.PayslipRepository;
 import gn.lacaeducation.payroll.application.port.out.SalaryRuleRepository;
 import gn.lacaeducation.payroll.application.port.out.SalaryStructureRepository;
 import gn.lacaeducation.payroll.application.port.out.TeacherCompensationRepository;
+import gn.lacaeducation.payroll.application.event.PayslipPaidEvent;
 import gn.lacaeducation.payroll.domain.*;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -54,6 +57,7 @@ public class PayrollService {
     private final gn.lacaeducation.payroll.application.port.in.SalaryFeeDeductionUseCase salaryFeeDeductionUseCase;
     private final AcademicsDataProvider academics;
     private final CalendarDataProvider calendar;
+    private final ApplicationEventPublisher eventPublisher;
 
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
 
@@ -114,13 +118,19 @@ public class PayrollService {
     }
 
     /**
-     * Paie mensuelle basée sur les heures RÉALISÉES (séances « réalisées » du cahier de textes),
-     * diminuées des retards et départs anticipés cumulés (pointage par séance), le tout réparti par
-     * typologie de classe (normal/examen, §6) pour appliquer le bon tarif à chaque part — un
-     * enseignant qui donne cours à la fois en classe normale et en classe d'examen est ainsi payé
-     * correctement sur chaque partie, retards et départs anticipés déduits de la bonne typologie.
-     * Horaire : heures effectives × tarif (normal + examen) ; Fixe : salaire fixe + heures de cours
-     * effectives × tarif (cas direction qui enseigne aussi).
+     * Paie mensuelle basée sur les heures RÉALISÉES (séances « réalisées » du cahier de textes) —
+     * exactement la durée choisie dans le modal de confirmation de chaque séance (durée théorique de
+     * l'emploi du temps, OU durée réelle pointée entrée/sortie) : ce choix, fait séance par séance par
+     * la personne qui valide, est la seule source de vérité pour la paie, jamais recalculée ou corrigée
+     * ensuite. Retards et départs anticipés (pointage) restent calculés et affichés sur la fiche de
+     * paie à titre d'information, mais ne sont plus déduits du temps réalisé : les déduire aurait
+     * pénalisé deux fois le même retard quand la durée RÉELLE pointée est choisie (elle l'exclut déjà,
+     * puisqu'elle part de l'heure d'arrivée effective), et aurait contredit le choix explicite de payer
+     * la durée THÉORIQUE complète quand celle-ci est retenue à la place.
+     * Réparti par typologie de classe (normal/examen, §6) pour appliquer le bon tarif à chaque part —
+     * un enseignant qui donne cours à la fois en classe normale et en classe d'examen est ainsi payé
+     * correctement sur chaque partie. Horaire : heures réalisées × tarif (normal + examen) ; Fixe :
+     * salaire fixe + heures de cours réalisées × tarif (cas direction qui enseigne aussi).
      */
     @Transactional(readOnly = true)
     public MonthlyPay computeMonthlyPay(Long teacherId, int year, int month) {
@@ -132,20 +142,19 @@ public class PayrollService {
         Map<Long, ClassPublicInfo> classCache = new HashMap<>();
         int realized = 0, late = 0, early = 0;
         int normalRealized = 0, examRealized = 0;
-        int normalLate = 0, examLate = 0, normalEarly = 0, examEarly = 0;
         for (var e : realizedByClass.entrySet()) {
             int minutes = e.getValue();
             realized += minutes;
             if (isExamClass(e.getKey(), classCache)) examRealized += minutes; else normalRealized += minutes;
         }
+        // Retard/départ anticipé : uniquement informatifs sur la fiche de paie (voir javadoc ci-dessus),
+        // plus jamais soustraits de la durée réalisée qui sert de base au calcul du salaire.
         for (var e : lateEarlyByClass.entrySet()) {
-            int l = e.getValue().lateMinutes(), ea = e.getValue().earlyMinutes();
-            late += l; early += ea;
-            if (isExamClass(e.getKey(), classCache)) { examLate += l; examEarly += ea; }
-            else { normalLate += l; normalEarly += ea; }
+            late += e.getValue().lateMinutes();
+            early += e.getValue().earlyMinutes();
         }
-        int normalEffective = Math.max(0, normalRealized - normalLate - normalEarly);
-        int examEffective = Math.max(0, examRealized - examLate - examEarly);
+        int normalEffective = normalRealized;
+        int examEffective = examRealized;
         int effective = normalEffective + examEffective;
 
         TeacherCompensation comp = compRepo.findByTeacherId(teacherId).orElse(null);
@@ -166,22 +175,25 @@ public class PayrollService {
             "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"};
 
     /** Génère automatiquement la fiche de paie du mois à partir des heures réalisées (brut calculé). */
-    public Payslip generateFromHours(Long tenantId, Long teacherId, String teacherName, int year, int month, Long structureId) {
+    public Payslip generateFromHours(Long tenantId, Long teacherId, String teacherName, int year, int month,
+                                     Long structureId, String teacherPhone, String bankAccount) {
         MonthlyPay mp = computeMonthlyPay(teacherId, year, month);
         LocalDate from = LocalDate.of(year, month, 1);
         LocalDate to = from.withDayOfMonth(from.lengthOfMonth());
         String periodLabel = FR_MONTHS[month - 1] + " " + year;
+        // Le retard/départ anticipé cumulés sont purement informatifs (voir computeMonthlyPay) : la
+        // durée payée est celle réalisée, jamais diminuée d'un retard déjà pris en compte (ou
+        // volontairement ignoré) dans le choix théorique/réel fait séance par séance.
         String notes = String.format(
-                "%dh%02d réalisées − %d min de retard − %d min de départ anticipé = %dh%02d effectives "
-                        + "(dont %dh%02d classes normales, %dh%02d classes d'examen)%s",
-                mp.realizedMinutes() / 60, mp.realizedMinutes() % 60, mp.lateMinutes(), mp.earlyMinutes(),
-                mp.effectiveMinutes() / 60, mp.effectiveMinutes() % 60,
+                "%dh%02d réalisées et payées (dont %dh%02d classes normales, %dh%02d classes d'examen)%s"
+                        + " — retard cumulé %d min, départ anticipé cumulé %d min (informatif, non déduit)",
+                mp.realizedMinutes() / 60, mp.realizedMinutes() % 60,
                 mp.normalEffectiveMinutes() / 60, mp.normalEffectiveMinutes() % 60,
                 mp.examEffectiveMinutes() / 60, mp.examEffectiveMinutes() % 60,
-                "FIXED".equals(mp.payMode()) ? " + salaire fixe" : "");
+                "FIXED".equals(mp.payMode()) ? " + salaire fixe" : "", mp.lateMinutes(), mp.earlyMinutes());
         return generate(new GenerateCommand(tenantId, gn.lacaeducation.payroll.domain.EmployeeType.TEACHER,
                 teacherId, teacherName, periodLabel, from, to,
-                mp.grossPay(), structureId, notes, null, null, null, null, null));
+                mp.grossPay(), structureId, notes, null, null, null, null, null, teacherPhone, bankAccount));
     }
 
     // ── Calcul automatique par typologie de classe, depuis l'emploi du temps validé (§6) ──────
@@ -217,6 +229,36 @@ public class PayrollService {
             }
         }
         return new TeacherPayrollMass(totalNormal, totalExam, monthly, comps.size());
+    }
+
+    /** Masse salariale RÉELLE des enseignants d'un tenant (Vision Fondateur) : contrairement à
+     * {@link #teacherPayrollMass}, qui projette depuis l'emploi du temps (heures théoriques, sans
+     * tenir compte des retards/départs anticipés réellement pointés), celle-ci part de
+     * {@link #computeMonthlyPay} — heures réellement réalisées (cahier de textes marqué "réalisée" par
+     * le directeur des études), retards et départs anticipés cumulés déjà déduits. La différence entre
+     * les deux masses révèle concrètement ce que coûtent les retards/départs anticipés non gérés — et
+     * sert à repérer une anomalie (un enseignant payé plein tarif malgré une présence très partielle). */
+    public record RealTeacherPayrollMass(BigDecimal monthlyPayroll, int totalLateMinutes, int totalEarlyMinutes,
+                                         int totalRealizedMinutes, int teacherCount) {}
+
+    @Transactional(readOnly = true)
+    public RealTeacherPayrollMass realTeacherPayrollMass(Long tenantId, int year, int month) {
+        List<TeacherCompensation> comps = compRepo.findByTenantId(tenantId);
+        BigDecimal monthly = BigDecimal.ZERO;
+        int totalLate = 0, totalEarly = 0, totalRealized = 0;
+        for (TeacherCompensation c : comps) {
+            // Le retard/départ anticipé compte dans le cumul école pour TOUS les enseignants, même à
+            // salaire fixe (dont le montant lui n'en dépend pas) — sans ça, le total sous-estimerait
+            // la réalité pour toute école ayant des enseignants payés au fixe.
+            MonthlyPay mp = computeMonthlyPay(c.getTeacherId(), year, month);
+            totalLate += mp.lateMinutes();
+            totalEarly += mp.earlyMinutes();
+            totalRealized += mp.realizedMinutes();
+            monthly = monthly.add(c.getPayMode() == PayMode.FIXED
+                    ? (c.getFixedSalary() != null ? c.getFixedSalary() : BigDecimal.ZERO)
+                    : mp.grossPay());
+        }
+        return new RealTeacherPayrollMass(monthly, totalLate, totalEarly, totalRealized, comps.size());
     }
 
     /** Salaire (mensuel courant + estimation cumulée sur monthsCount mois) de chaque enseignant du
@@ -307,7 +349,8 @@ public class PayrollService {
 
     /** Génère automatiquement la fiche de paie du mois à partir de l'emploi du temps validé (§6),
      * sans aucune saisie manuelle : heures théoriques par typologie de classe × tarif correspondant. */
-    public Payslip generateFromTimetable(Long tenantId, Long teacherId, String teacherName, int year, int month, Long structureId) {
+    public Payslip generateFromTimetable(Long tenantId, Long teacherId, String teacherName, int year, int month,
+                                         Long structureId, String teacherPhone, String bankAccount) {
         TheoreticalMonthlyPay tp = computeTheoreticalMonthlyPay(teacherId, year, month);
         LocalDate from = LocalDate.of(year, month, 1);
         LocalDate to = from.withDayOfMonth(from.lengthOfMonth());
@@ -317,7 +360,51 @@ public class PayrollService {
                 "FIXED".equals(tp.payMode()) ? " + salaire fixe" : "");
         return generate(new GenerateCommand(tenantId, gn.lacaeducation.payroll.domain.EmployeeType.TEACHER,
                 teacherId, teacherName, periodLabel, from, to,
-                tp.grossPay(), structureId, notes, null, null, null, null, null));
+                tp.grossPay(), structureId, notes, null, null, null, null, null, teacherPhone, bankAccount));
+    }
+
+    /**
+     * Fiche de paie combinée pour une personne à la fois administrative/direction et enseignante
+     * (§payroll — ex. un directeur qui donne aussi quelques heures de cours) : UNE seule fiche, avec
+     * le salaire de base fixe (fourni par l'appelant, depuis {@code Employee.baseSalary}) comme sur
+     * une fiche administrative classique, PLUS une ligne « Heures d'enseignement » calculée
+     * automatiquement depuis les heures réellement réalisées par l'enseignant lié
+     * ({@code linkedTeacherId}, même calcul que {@link #generateFromHours}). Le salarié de la fiche
+     * reste l'Employee (comme pour une fiche administrative simple) ; l'enseignement n'est qu'une
+     * ligne supplémentaire, pas une fiche séparée — pas de dépendance au module {@code staff} : c'est
+     * à l'appelant de résoudre {@code Employee} (nom, salaire de base, type, enseignant lié).
+     */
+    public Payslip generateCombinedPayslip(Long tenantId, Long employeeId, String employeeName,
+                                           gn.lacaeducation.payroll.domain.EmployeeType employeeType,
+                                           BigDecimal baseSalary, Long linkedTeacherId,
+                                           int year, int month, Long structureId) {
+        return generateCombinedPayslip(tenantId, employeeId, employeeName, employeeType, baseSalary,
+                linkedTeacherId, year, month, structureId, null, null);
+    }
+
+    public Payslip generateCombinedPayslip(Long tenantId, Long employeeId, String employeeName,
+                                           gn.lacaeducation.payroll.domain.EmployeeType employeeType,
+                                           BigDecimal baseSalary, Long linkedTeacherId,
+                                           int year, int month, Long structureId,
+                                           String employeePhone, String bankAccount) {
+        if (linkedTeacherId == null) {
+            throw new BusinessRuleException("Aucun enseignant lié à ce personnel — renseignez le lien dans sa fiche avant de générer la fiche combinée.");
+        }
+        String periodLabel = FR_MONTHS[month - 1] + " " + year;
+        LocalDate from = LocalDate.of(year, month, 1);
+        LocalDate to = from.withDayOfMonth(from.lengthOfMonth());
+        Payslip p = generate(new GenerateCommand(tenantId, employeeType, employeeId, employeeName, periodLabel,
+                from, to, baseSalary, structureId,
+                "Fiche combinée : salaire de base (direction/administratif) + heures d'enseignement",
+                null, null, null, null, null, employeePhone, bankAccount));
+
+        MonthlyPay mp = computeMonthlyPay(linkedTeacherId, year, month);
+        if (mp.grossPay() != null && mp.grossPay().signum() > 0) {
+            String label = String.format("Heures d'enseignement (%dh%02d effectives)",
+                    mp.effectiveMinutes() / 60, mp.effectiveMinutes() % 60);
+            p = addLine(p.getId(), label, PayslipLineType.EARNING, mp.grossPay());
+        }
+        return p;
     }
 
     // ── Structures salariales ────────────────────────────────────────────────
@@ -360,17 +447,29 @@ public class PayrollService {
                                   Long teacherId, String teacherName, String periodLabel,
                                   LocalDate periodStart, LocalDate periodEnd, BigDecimal baseSalary, Long structureId,
                                   String notes, Integer absentDays, Integer workingDays,
-                                  BigDecimal overtimeHours, BigDecimal overtimeRate, BigDecimal overtimeMultiplier) {}
+                                  BigDecimal overtimeHours, BigDecimal overtimeRate, BigDecimal overtimeMultiplier,
+                                  /** Téléphone et compte bancaire de l'enseignant/employé, transmis par l'appelant
+                                   * (qui a déjà la fiche) — figés sur la fiche de paie pour le fichier bancaire. */
+                                  String teacherPhone, String bankAccount) {}
 
     public Payslip generate(GenerateCommand c) {
         if (c.teacherId() == null) throw new BusinessRuleException("Le salarié est requis");
         if (c.periodLabel() == null || c.periodLabel().isBlank()) throw new BusinessRuleException("La période est requise");
         gn.lacaeducation.payroll.domain.EmployeeType type = c.employeeType() != null
                 ? c.employeeType() : gn.lacaeducation.payroll.domain.EmployeeType.TEACHER;
+        // Empêche un doublon silencieux (double-clic sur « Générer en lot »/« Générer une fiche », ou
+        // relance par erreur du même mois) : une fiche existe déjà pour ce salarié sur cette période.
+        if (payslipRepo.existsByTenantIdAndTeacherIdAndPeriodLabelAndEmployeeType(c.tenantId(), c.teacherId(), c.periodLabel(), type)) {
+            throw new ConflictException(
+                    "Une fiche de paie existe déjà pour ce salarié sur la période « " + c.periodLabel()
+                            + " » — modifiez ou supprimez la fiche existante plutôt que d'en générer une nouvelle.");
+        }
         BigDecimal base = c.baseSalary() != null ? c.baseSalary() : BigDecimal.ZERO;
         Payslip p = payslipRepo.save(Payslip.builder()
                 .tenantId(c.tenantId()).employeeType(type)
-                .teacherId(c.teacherId()).teacherName(c.teacherName()).periodLabel(c.periodLabel())
+                .teacherId(c.teacherId()).teacherName(c.teacherName())
+                .teacherPhone(c.teacherPhone()).bankAccount(c.bankAccount())
+                .periodLabel(c.periodLabel())
                 .periodStart(c.periodStart()).periodEnd(c.periodEnd())
                 .baseSalary(base).grossSalary(base).netSalary(base)
                 .status(PayslipStatus.DRAFT).notes(c.notes()).createdAt(LocalDateTime.now()).build());
@@ -437,12 +536,17 @@ public class PayrollService {
                                        Long structureId, List<TeacherWage> wages) {
         return wages.stream()
                 .map(w -> generate(new GenerateCommand(tenantId, gn.lacaeducation.payroll.domain.EmployeeType.TEACHER,
-                        w.teacherId(), null, periodLabel, start, end,
-                        w.baseSalary(), structureId, null, null, null, null, null, null)))
+                        w.teacherId(), w.teacherName(), periodLabel, start, end,
+                        w.baseSalary(), structureId, null, null, null, null, null, null,
+                        w.teacherPhone(), w.bankAccount())))
                 .toList();
     }
 
-    public record TeacherWage(Long teacherId, BigDecimal baseSalary) {}
+    /** {@code teacherName}/{@code teacherPhone}/{@code bankAccount} sont facultatifs (rétro-compatible
+     * avec un appelant qui ne les fournit pas encore) — transmis par le frontend, qui a déjà la fiche
+     * enseignant, pour que le fichier bancaire fonctionne aussi sur les fiches générées en lot. */
+    public record TeacherWage(Long teacherId, BigDecimal baseSalary, String teacherName,
+                              String teacherPhone, String bankAccount) {}
 
     private void applyStructure(Payslip p, Long structureId) {
         List<SalaryRule> rules = ruleRepo.findByStructureIdOrderBySequenceAsc(structureId);
@@ -521,7 +625,12 @@ public class PayrollService {
         p.setStatus(PayslipStatus.PAID);
         p.setPaymentMethod(paymentMethod != null ? paymentMethod : "BANK_TRANSFER");
         p.setPaidAt(LocalDateTime.now());
-        return payslipRepo.save(p);
+        Payslip saved = payslipRepo.save(p);
+        // Fait remonter la paie dans la trésorerie (sortie de caisse "Salaires") — jamais dans le
+        // budget annuel voté, qui couvre le fonctionnement courant (carburant, kermesse, événements),
+        // financièrement distinct de la masse salariale (toujours puisée dans les recettes de l'école).
+        eventPublisher.publishEvent(new PayslipPaidEvent(saved.getTenantId(), saved.getId(), saved.getNetSalary()));
+        return saved;
     }
 
     public void delete(Long id) {
@@ -556,23 +665,35 @@ public class PayrollService {
             int due = theoretical.normalMinutes() + theoretical.examMinutes();
             MonthlyPay mp = computeMonthlyPay(p.getTeacherId(), year, month);
             hours = new gn.lacaeducation.payroll.application.port.out.PayslipPdfGenerator.TeacherHours(
-                    due, mp.realizedMinutes(), Math.max(0, due - mp.realizedMinutes()), mp.lateMinutes(), mp.earlyMinutes());
+                    due, mp.realizedMinutes(), Math.max(0, due - mp.realizedMinutes()), mp.lateMinutes(), mp.earlyMinutes(),
+                    mp.effectiveMinutes());
         }
         return pdfGenerator.generate(p, lineRepo.findByPayslipId(id), hours);
     }
 
-    /** Fichier bancaire simple (CSV) : une ligne par fiche payée/validée avec le net à virer. */
+    /**
+     * Fichier bancaire (CSV) : une ligne par fiche payée/validée avec le net à virer, le nom, et les
+     * coordonnées de virement — téléphone Mobile Money en priorité, compte bancaire sinon (colonne
+     * {@code identifiant_virement}), les deux valeurs brutes restant disponibles pour vérification.
+     */
     @Transactional(readOnly = true)
     public String bankFileCsv(Long tenantId) {
-        StringBuilder sb = new StringBuilder("teacher_id;periode;net;mode\n");
+        StringBuilder sb = new StringBuilder("nom;telephone;compte_bancaire;identifiant_virement;periode;net;mode\n");
         for (Payslip p : payslipRepo.findByTenantId(tenantId)) {
             if (p.getStatus() == PayslipStatus.DRAFT) continue;
-            sb.append(p.getTeacherId()).append(';').append(p.getPeriodLabel()).append(';')
+            String phone = p.getTeacherPhone();
+            String bankAccount = p.getBankAccount();
+            String identifiant = (phone != null && !phone.isBlank()) ? phone
+                    : (bankAccount != null && !bankAccount.isBlank()) ? bankAccount : "";
+            sb.append(csv(p.getTeacherName())).append(';').append(csv(phone)).append(';').append(csv(bankAccount))
+              .append(';').append(csv(identifiant)).append(';').append(csv(p.getPeriodLabel())).append(';')
               .append(p.getNetSalary() == null ? "0" : p.getNetSalary().toPlainString()).append(';')
               .append(p.getPaymentMethod() == null ? "BANK_TRANSFER" : p.getPaymentMethod()).append('\n');
         }
         return sb.toString();
     }
+
+    private static String csv(String value) { return value == null ? "" : value.replace(";", ","); }
 
     private Payslip mutable(Long id) {
         Payslip p = loadPayslip(id);

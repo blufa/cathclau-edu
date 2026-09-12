@@ -34,6 +34,7 @@ public class ResendEmailAdapter implements NotificationGateway {
 
     public ResendEmailAdapter(ResendProperties props, RestClient.Builder builder, EmailTemplateRenderer renderer) {
         this.props = props;
+        // Timeout connexion/lecture appliqué globalement par RestClientTimeoutConfig.
         this.http = builder.baseUrl(props.baseUrlOrDefault()).build();
         this.renderer = renderer;
     }

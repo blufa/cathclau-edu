@@ -2,6 +2,7 @@ package gn.lacaeducation.students.adapters.in.web;
 
 import gn.lacaeducation.common.PageResponse;
 import gn.lacaeducation.common.TenantContext;
+import gn.lacaeducation.students.StudentDataProvider;
 import gn.lacaeducation.students.application.port.in.ParentUseCase;
 import gn.lacaeducation.students.domain.Parent;
 import gn.lacaeducation.students.domain.Relationship;
@@ -30,6 +31,7 @@ import java.util.List;
 public class ParentController {
 
     private final ParentUseCase parentUseCase;
+    private final StudentDataProvider studentDataProvider;
 
     @Operation(summary = "Register a new parent")
     @PostMapping
@@ -135,5 +137,13 @@ public class ParentController {
     @GetMapping("/{id}/students")
     public List<gn.lacaeducation.students.domain.Student> findChildren(@PathVariable Long id) {
         return parentUseCase.findStudentsByParent(id);
+    }
+
+    @Operation(summary = "Parents dont au moins un enfant a accepté l'accès à la plateforme — présélection "
+            + "automatique des destinataires lors de la composition d'un message (§communication)")
+    @GetMapping("/with-platform-access")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','TEACHER')")
+    public List<gn.lacaeducation.students.ParentPublicInfo> findAllWithPlatformAccess() {
+        return studentDataProvider.findAllParentsWithPlatformAccess(TenantContext.get());
     }
 }

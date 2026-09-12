@@ -50,6 +50,7 @@ public class EnseignantService implements TeacherUseCase {
                 .employmentStatus(cmd.employmentStatus()).diploma(cmd.diploma())
                 .remunerationType(cmd.remunerationType()).remunerationRate(cmd.remunerationRate())
                 .teachingAuthorizationNumber(cmd.teachingAuthorizationNumber()).cnssNumber(cmd.cnssNumber())
+                .bankAccount(cmd.bankAccount())
                 .idempotencyKey(cmd.idempotencyKey())
                 .active(true).build());
         eventPublisher.publishEvent(new StaffCreatedEvent(saved.getTenantId(), saved.getId(), saved.getStaffNumber()));
@@ -85,6 +86,7 @@ public class EnseignantService implements TeacherUseCase {
         t.setEmploymentStatus(cmd.employmentStatus()); t.setDiploma(cmd.diploma());
         t.setRemunerationType(cmd.remunerationType()); t.setRemunerationRate(cmd.remunerationRate());
         t.setTeachingAuthorizationNumber(cmd.teachingAuthorizationNumber()); t.setCnssNumber(cmd.cnssNumber());
+        t.setBankAccount(cmd.bankAccount());
         return teacherRepository.save(t);
     }
 

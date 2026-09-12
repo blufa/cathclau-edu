@@ -9,6 +9,7 @@ import gn.lacaeducation.payments.application.event.PaymentSucceededEvent;
 import gn.lacaeducation.students.ParentAccessProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionalEventListener;
 
@@ -27,6 +28,7 @@ public class InboxEventListener {
     private final ParentAccessProvider parentAccessProvider;
 
     @TransactionalEventListener
+    @Async
     public void onReportCardPublished(ReportCardPublishedEvent event) {
         notifyParents(event.tenantId(), event.studentId(), NotificationType.REPORT_CARD,
                 "Nouveau bulletin disponible",
@@ -35,7 +37,11 @@ public class InboxEventListener {
     }
 
     @TransactionalEventListener
+    @Async
     public void onStudentAbsent(StudentAbsentEvent event) {
+        // StudentAbsentEvent couvre désormais aussi PRESENT (premier scan du jour, pour le SMS) —
+        // la cloche in-app reste volontairement limitée aux absences/retards, comme avant.
+        if ("PRESENT".equals(event.status())) return;
         notifyParents(event.tenantId(), event.studentId(), NotificationType.ABSENCE,
                 "Absence / retard signalé",
                 "Une absence ou un retard a été enregistré pour votre enfant le " + event.date() + ".",
@@ -43,6 +49,7 @@ public class InboxEventListener {
     }
 
     @TransactionalEventListener
+    @Async
     public void onPaymentSucceeded(PaymentSucceededEvent event) {
         notifyParents(event.tenantId(), event.studentId(), NotificationType.PAYMENT,
                 "Paiement enregistré",

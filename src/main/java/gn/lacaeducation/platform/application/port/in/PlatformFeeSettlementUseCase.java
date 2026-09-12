@@ -24,4 +24,9 @@ public interface PlatformFeeSettlementUseCase {
     PlatformFeeSettlement confirmViaDjomy(Long settlementId) throws JsonProcessingException;
 
     List<PlatformFeeSettlement> findByTenantId(Long tenantId);
+
+    /** SUPER_ADMIN : solde dû par chaque école (toutes, y compris celles à 0) — pour voir en un coup
+     * d'œil combien chaque école doit actuellement à la plateforme. */
+    record TenantBalance(Long tenantId, String tenantName, BigDecimal collected, BigDecimal settled, BigDecimal balance) {}
+    List<TenantBalance> balancesByTenant();
 }

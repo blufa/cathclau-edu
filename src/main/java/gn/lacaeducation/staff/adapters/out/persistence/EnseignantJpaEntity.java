@@ -29,5 +29,6 @@ class EnseignantJpaEntity {
     @Column(name = "remuneration_rate", precision = 12, scale = 2) private BigDecimal remunerationRate;
     @Column(name = "teaching_authorization_number") private String teachingAuthorizationNumber;
     @Column(name = "cnss_number") private String cnssNumber;
+    @Column(name = "bank_account") private String bankAccount;
     @Column(name = "idempotency_key") private String idempotencyKey;
 }

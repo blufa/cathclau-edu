@@ -7,7 +7,6 @@ import gn.lacaeducation.attendance.application.port.out.RecessWindowRepository;
 import gn.lacaeducation.attendance.application.port.out.TeacherAttendanceRepository;
 import gn.lacaeducation.attendance.application.port.out.TeacherCheckinRepository;
 import gn.lacaeducation.attendance.domain.AttendanceSettings;
-import gn.lacaeducation.attendance.domain.RecessWindow;
 import gn.lacaeducation.attendance.domain.TeacherAttendance;
 import gn.lacaeducation.attendance.domain.TeacherAttendanceStatus;
 import gn.lacaeducation.attendance.domain.TeacherCheckin;
@@ -27,7 +26,6 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 @Service @Transactional @RequiredArgsConstructor
 public class TeacherAttendanceService implements TeacherAttendanceUseCase {
     private final TeacherAttendanceRepository attendanceRepository;
@@ -39,29 +37,17 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
 
     /**
      * Heure à partir de laquelle un retard commence à être compté pour cette séance : l'heure de
-     * début prévue, repoussée si (a) elle tombe dans une fenêtre de récréation définie par l'école
-     * (temps non imputable à l'enseignant) et/ou (b) la séance précédente du même jour se termine
-     * pile à cette heure dans une salle différente (marge de transition, temps de trajet).
+     * début prévue, repoussée par la marge de tolérance générale configurée par l'école (§réglages —
+     * s'applique à TOUTE entrée, pas seulement en cas de changement de salle : une tolérance de 5 min
+     * signifie qu'une entrée à l'heure + 5 min n'est jamais comptée en retard, quelle qu'en soit la
+     * raison) et/ou par une fenêtre de récréation (temps non imputable à l'enseignant).
      */
-    private LocalTime graceDeadline(Long teacherId, LocalDate date, ScheduleSlotPublicInfo session) {
+    private LocalTime graceDeadline(ScheduleSlotPublicInfo session) {
         LocalTime start = LocalTime.parse(session.startTime());
-        LocalTime deadline = start;
-        for (RecessWindow w : recessWindowRepository.findByTenantId(TenantContext.get())) {
-            if (w.contains(start) && w.getEndTime().isAfter(deadline)) deadline = w.getEndTime();
-        }
-        List<ScheduleSlotPublicInfo> daySlots = sessionResolver.slotsForDay(academics.findScheduleByTeacher(teacherId), date);
-        ScheduleSlotPublicInfo previous = daySlots.stream()
-                .filter(s -> !Objects.equals(s.id(), session.id()))
-                .filter(s -> LocalTime.parse(s.endTime()).equals(start))
-                .findFirst().orElse(null);
-        if (previous != null && !Objects.equals(previous.roomId(), session.roomId())) {
-            int margin = settingsRepository.findByTenantId(TenantContext.get())
-                    .map(AttendanceSettings::transitionMarginMinutesOrDefault)
-                    .orElseGet(() -> AttendanceSettings.defaults().transitionMarginMinutesOrDefault());
-            LocalTime withMargin = start.plusMinutes(margin);
-            if (withMargin.isAfter(deadline)) deadline = withMargin;
-        }
-        return deadline;
+        int margin = settingsRepository.findByTenantId(TenantContext.get())
+                .map(AttendanceSettings::transitionMarginMinutesOrDefault)
+                .orElseGet(() -> AttendanceSettings.defaults().transitionMarginMinutesOrDefault());
+        return sessionResolver.graceDeadline(start, margin, recessWindowRepository.findByTenantId(TenantContext.get()));
     }
     @Override
     public TeacherAttendance record(RecordTeacherAttendanceCommand cmd) {
@@ -82,7 +68,7 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
                 .orElseGet(() -> {
                     LocalTime start = LocalTime.parse(session.startTime());
                     LocalTime end = LocalTime.parse(session.endTime());
-                    LocalTime deadline = graceDeadline(teacherId, today, session);
+                    LocalTime deadline = graceDeadline(session);
                     int late = (int) Math.max(0, Duration.between(deadline, now).toMinutes());
                     return checkinRepository.save(TeacherCheckin.builder()
                             .tenantId(TenantContext.get()).teacherId(teacherId).checkinDate(today)
@@ -124,7 +110,7 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
         }
         LocalTime start = LocalTime.parse(session.startTime());
         LocalTime end = LocalTime.parse(session.endTime());
-        LocalTime deadline = graceDeadline(teacherId, date, session);
+        LocalTime deadline = graceDeadline(session);
         int late = (int) Math.max(0, Duration.between(deadline, checkInTime).toMinutes());
         TeacherCheckin checkin = checkinRepository.findByTeacherIdAndDateAndSlot(teacherId, date, session.id())
                 .orElseGet(() -> TeacherCheckin.builder()

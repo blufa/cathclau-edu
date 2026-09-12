@@ -1,6 +1,7 @@
 package gn.lacaeducation.platform.adapters.in.web;
 
 import gn.lacaeducation.platform.application.port.in.PlatformFeeSettingUseCase;
+import gn.lacaeducation.platform.application.port.in.PlatformFeeSettlementUseCase;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * SUPER_ADMIN : montant du frais d'usage de la plateforme, ajouté aux factures de mensualité de
@@ -27,6 +29,7 @@ import java.math.BigDecimal;
 public class PlatformFeeSettingController {
 
     private final PlatformFeeSettingUseCase useCase;
+    private final PlatformFeeSettlementUseCase settlementUseCase;
 
     public record PlatformFeeSettingResponse(BigDecimal amount) {}
 
@@ -48,6 +51,14 @@ public class PlatformFeeSettingController {
                                                  @AuthenticationPrincipal Jwt jwt) {
         var setting = useCase.setAmount(req.amount(), userIdOf(jwt));
         return new PlatformFeeSettingResponse(setting.getAmount());
+    }
+
+    @Operation(summary = "Solde dû par chaque école (toutes, y compris celles à 0) — combien chaque "
+            + "école doit actuellement à la plateforme")
+    @GetMapping("/soldes")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public List<PlatformFeeSettlementUseCase.TenantBalance> balances() {
+        return settlementUseCase.balancesByTenant();
     }
 
     private static Long userIdOf(Jwt jwt) {

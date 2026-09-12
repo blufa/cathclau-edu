@@ -46,16 +46,30 @@ class SchoolPayrollStatsProviderAdapter implements SchoolPayrollStatsProvider {
     @Transactional(readOnly = true)
     public PayrollMassSummary payrollMassSummary(Long tenantId, int year, int month) {
         PayrollService.TeacherPayrollMass teachers = payrollService.teacherPayrollMass(tenantId, year, month);
-        BigDecimal staffPayroll = employeePublicInfoProvider.listEmployees(tenantId).stream()
-                .filter(EmployeePublicInfoProvider.EmployeeInfo::active)
-                .map(EmployeePublicInfoProvider.EmployeeInfo::baseSalary)
-                .filter(java.util.Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal staffPayroll = activeStaffPayroll(tenantId);
         int staffCount = (int) employeePublicInfoProvider.listEmployees(tenantId).stream()
                 .filter(EmployeePublicInfoProvider.EmployeeInfo::active).count();
         return new PayrollMassSummary(teachers.totalHourlyRateNormal(), teachers.totalHourlyRateExam(),
                 teachers.monthlyPayroll(), staffPayroll, teachers.monthlyPayroll().add(staffPayroll),
                 teachers.teacherCount(), staffCount);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public RealPayrollSummary realPayrollSummary(Long tenantId, int year, int month) {
+        PayrollService.RealTeacherPayrollMass teachers = payrollService.realTeacherPayrollMass(tenantId, year, month);
+        BigDecimal staffPayroll = activeStaffPayroll(tenantId);
+        return new RealPayrollSummary(teachers.monthlyPayroll(), staffPayroll,
+                teachers.monthlyPayroll().add(staffPayroll), teachers.totalLateMinutes(), teachers.totalEarlyMinutes(),
+                teachers.totalRealizedMinutes());
+    }
+
+    private BigDecimal activeStaffPayroll(Long tenantId) {
+        return employeePublicInfoProvider.listEmployees(tenantId).stream()
+                .filter(EmployeePublicInfoProvider.EmployeeInfo::active)
+                .map(EmployeePublicInfoProvider.EmployeeInfo::baseSalary)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     @Override
