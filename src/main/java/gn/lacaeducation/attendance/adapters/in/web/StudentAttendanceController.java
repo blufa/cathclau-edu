@@ -71,6 +71,27 @@ public class StudentAttendanceController {
         return useCase.recordManualEntry(studentId, date, checkInTime);
     }
 
+    @Operation(summary = "Correction manuelle : saisir l'heure de sortie d'un élève pour une date "
+            + "donnée (le départ anticipé est calculé automatiquement vs l'emploi du temps, comme pour "
+            + "un scan) — utile quand le badge a été oublié pour toute la séance")
+    @PreAuthorize("hasAuthority('presence:create')")
+    @PostMapping("/{studentId}/manual-exit")
+    public StudentCheckin manualExit(@PathVariable Long studentId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam LocalTime checkOutTime) {
+        return useCase.recordManualExit(studentId, date, checkOutTime);
+    }
+
+    @Operation(summary = "Pointages (par séance) d'un élève à une date donnée — heure d'arrivée/sortie, "
+            + "retard et départ anticipé par créneau (ex. pour le dashboard parent)")
+    @GetMapping("/{studentId}/checkins")
+    public List<StudentCheckin> checkins(@PathVariable Long studentId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @AuthenticationPrincipal Jwt jwt) {
+        assertParentScope(jwt, studentId);
+        return useCase.findCheckins(studentId, date);
+    }
+
     @Operation(summary = "Badge de retrait (maternelle/primaire) : enregistrer qui est venu récupérer "
             + "l'enfant — un parent déjà lié (pickerParentId) ou une personne saisie librement "
             + "(pickerName + pickerRelation)")
@@ -115,6 +136,14 @@ public class StudentAttendanceController {
     @Operation(summary = "Get attendance records for a class on a given date")
     @GetMapping("/class/{classId}")
     public List<StudentAttendance> findByClass(@PathVariable Long classId, @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) { return useCase.findByClass(classId, date); }
+
+    @Operation(summary = "Pointages (par séance, tous élèves) d'une classe à une date donnée — heure "
+            + "de sortie/départ anticipé par élève et par créneau, pour le tableau de suivi du personnel")
+    @GetMapping("/class/{classId}/checkins")
+    public List<StudentCheckin> checkinsByClass(@PathVariable Long classId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return useCase.findCheckinsByClass(classId, date);
+    }
 
     @Operation(summary = "Get attendance records for a student over a date range")
     @GetMapping("/student/{studentId}")
@@ -173,10 +202,14 @@ public class StudentAttendanceController {
         return useCase.unjustifiedAlerts(classId, from, to, threshold);
     }
 
-    @Operation(summary = "Mark parent as notified about an absence or late arrival")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    // Redéclenche réellement l'envoi (SMS + email) plutôt que de seulement cocher la case — voir
+    // StudentAttendanceUseCase#notifyParentNow. Rôles alignés sur `canWrite` côté frontend (le bouton
+    // est visible aux mêmes rôles que la saisie de présence, dont TEACHER) ; sans ça, un enseignant
+    // voyait le bouton mais recevait un 403 silencieux en cliquant.
+    @Operation(summary = "Resend the absence/lateness notification to the parent and mark it as handled")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','TEACHER')")
     @PutMapping("/{id}/notify-parent")
-    public ResponseEntity<Void> notifyParent(@PathVariable Long id) { useCase.markParentNotified(id); return ResponseEntity.ok().build(); }
+    public ResponseEntity<Void> notifyParent(@PathVariable Long id) { useCase.notifyParentNow(id); return ResponseEntity.ok().build(); }
 
     @Operation(summary = "Delete an attendance record")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")

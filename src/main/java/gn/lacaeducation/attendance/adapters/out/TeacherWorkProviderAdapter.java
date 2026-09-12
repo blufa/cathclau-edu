@@ -17,4 +17,12 @@ class TeacherWorkProviderAdapter implements TeacherWorkProvider {
         return new MonthlyWork(s.dueMinutes(), s.totalLateMinutes(), s.totalEarlyMinutes(), s.absentMinutes(),
                 s.effectiveMinutes(), s.presentDays(), s.absentDays());
     }
+
+    @Override
+    public java.util.Map<Long, ClassLateEarly> monthlyLateEarlyByClass(Long teacherId, int year, int month) {
+        java.util.Map<Long, ClassLateEarly> result = new java.util.HashMap<>();
+        useCase.monthlyLateEarlyByClass(teacherId, year, month)
+                .forEach((classId, v) -> result.put(classId, new ClassLateEarly(v.lateMinutes(), v.earlyMinutes())));
+        return result;
+    }
 }

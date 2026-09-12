@@ -11,6 +11,8 @@ import gn.lacaeducation.platform.application.event.TenantSuspendedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 /**
@@ -27,13 +29,14 @@ public class PlatformEventListener {
     private final TenantProvisioningService provisioningService;
 
     @TransactionalEventListener
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onTenantCreated(TenantCreatedEvent event) {
         // Effet de bord après-commit : ne doit jamais faire échouer la requête de création du tenant
         // (le tenant est déjà persisté). Une erreur de provisioning est journalisée, pas propagée.
         try {
             provisioningService.provisionTenantAdmin(
                     event.tenantId(), event.schoolName(), event.adminEmail(), event.director(),
-                    event.adminPassword(), event.temporaryPassword(), event.adminUsername());
+                    event.adminPassword(), event.temporaryPassword(), event.adminUsername(), event.adminPhone());
         } catch (RuntimeException e) {
             log.error("Provisioning de l'admin échoué pour le tenant {} : {}", event.tenantId(), e.getMessage(), e);
         }
@@ -41,6 +44,7 @@ public class PlatformEventListener {
 
     /** Self-service signup: create the unverified ADMIN_ECOLE with the chosen password. */
     @TransactionalEventListener
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onTenantSignupRequested(TenantSignupRequestedEvent event) {
         provisioningService.provisionUnverifiedAdmin(
                 event.tenantId(), event.schoolName(), event.adminEmail(),
@@ -51,6 +55,7 @@ public class PlatformEventListener {
 
     /** School became usable (email verified or manual activation): activate the admin account. */
     @TransactionalEventListener
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onTenantActivated(TenantActivatedEvent event) {
         // Après-commit : ne jamais propager (le tenant/activation sont déjà persistés).
         try {
@@ -61,21 +66,25 @@ public class PlatformEventListener {
     }
 
     @TransactionalEventListener
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onSubscriptionSuspended(SubscriptionSuspendedEvent event) {
         provisioningService.revokeTenantSessions(event.tenantId());
     }
 
     @TransactionalEventListener
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onTenantSuspended(TenantSuspendedEvent event) {
         provisioningService.revokeTenantSessions(event.tenantId());
     }
 
     @TransactionalEventListener
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onSubscriptionActivated(SubscriptionActivatedEvent event) {
         log.info("Subscription activated for tenant {}: access unblocked", event.tenantId());
     }
 
     @TransactionalEventListener
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onTenantReactivated(TenantReactivatedEvent event) {
         log.info("Tenant {} reactivated: access unblocked", event.tenantId());
     }

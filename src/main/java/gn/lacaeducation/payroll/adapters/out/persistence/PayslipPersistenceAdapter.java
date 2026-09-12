@@ -21,5 +21,9 @@ class PayslipPersistenceAdapter implements PayslipRepository {
     @Override public List<Payslip> findByTenantId(Long t) { return jpa.findByTenantId(t).stream().map(mapper::toDomain).toList(); }
     @Override public List<Payslip> findByTenantIdAndTeacherId(Long t, Long te) { return jpa.findByTenantIdAndTeacherId(t, te).stream().map(mapper::toDomain).toList(); }
     @Override public List<Payslip> findByTenantIdAndStatus(Long t, PayslipStatus s) { return jpa.findByTenantIdAndStatus(t, s).stream().map(mapper::toDomain).toList(); }
+    @Override public boolean existsByTenantIdAndTeacherIdAndPeriodLabelAndEmployeeType(
+            Long t, Long te, String p, gn.lacaeducation.payroll.domain.EmployeeType type) {
+        return jpa.existsByTenantIdAndTeacherIdAndPeriodLabelAndEmployeeType(t, te, p, type);
+    }
     @Override public void deleteById(Long id) { jpa.deleteById(id); }
 }

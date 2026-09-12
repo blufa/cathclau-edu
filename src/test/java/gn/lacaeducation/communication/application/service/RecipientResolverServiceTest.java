@@ -3,6 +3,8 @@ package gn.lacaeducation.communication.application.service;
 import gn.lacaeducation.communication.application.port.in.CommunicationUseCase.RecipientTarget;
 import gn.lacaeducation.communication.domain.BroadcastAudience;
 import gn.lacaeducation.communication.domain.CommunicationChannel;
+import gn.lacaeducation.staff.EmployeePublicInfoProvider;
+import gn.lacaeducation.staff.EmployeePublicInfoProvider.EmployeeInfo;
 import gn.lacaeducation.staff.TeacherPublicInfoProvider;
 import gn.lacaeducation.staff.TeacherPublicInfoProvider.TeacherInfo;
 import gn.lacaeducation.students.ParentPublicInfo;
@@ -14,6 +16,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -24,6 +27,7 @@ class RecipientResolverServiceTest {
 
     @Mock StudentDataProvider studentDataProvider;
     @Mock TeacherPublicInfoProvider teacherPublicInfoProvider;
+    @Mock EmployeePublicInfoProvider employeePublicInfoProvider;
     @InjectMocks RecipientResolverService resolver;
 
     private static StudentPublicInfo student(long id, String gender) {
@@ -99,6 +103,21 @@ class RecipientResolverServiceTest {
         List<RecipientTarget> targets = resolver.resolve(1L, BroadcastAudience.ALL_TEACHERS, null, null, CommunicationChannel.SMS);
 
         assertThat(targets).extracting(RecipientTarget::destination).containsExactly("623000099");
+    }
+
+    @Test
+    void allStaff_combinesTeachersAndActiveEmployees() {
+        when(teacherPublicInfoProvider.listTeachers(1L)).thenReturn(List.of(
+                new TeacherInfo(20L, "Mariam", "Camara", "ENS-1", "Maths", "mariam@ecole.gn", "623000099")));
+        when(employeePublicInfoProvider.listEmployees(1L)).thenReturn(List.of(
+                new EmployeeInfo(30L, "Aissatou Bah", "COMPTABLE", BigDecimal.TEN, true, "623000088", null),
+                new EmployeeInfo(31L, "Ancien Employé", "GARDIEN", BigDecimal.ONE, false, "623000077", null)));
+
+        List<RecipientTarget> targets = resolver.resolve(1L, BroadcastAudience.ALL_STAFF, null, null, CommunicationChannel.SMS);
+
+        // L'employé inactif (31L) est exclu ; seuls l'enseignant et l'employé actif reçoivent le SMS.
+        assertThat(targets).extracting(RecipientTarget::destination)
+                .containsExactlyInAnyOrder("623000099", "623000088");
     }
 
     @Test

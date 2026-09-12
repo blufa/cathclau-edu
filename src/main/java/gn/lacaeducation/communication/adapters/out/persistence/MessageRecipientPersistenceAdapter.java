@@ -9,7 +9,10 @@ import java.util.Optional;
 class MessageRecipientPersistenceAdapter implements MessageRecipientRepository {
     private final MessageRecipientJpaRepository jpa;
     private final CommunicationMapper mapper;
-    @Override public MessageRecipient save(MessageRecipient r) { return mapper.toDomain(jpa.save(mapper.toEntity(r))); }
+    // saveAndFlush : même raison que CommunicationPersistenceAdapter — CommunicationService.send()
+    // utilise l'id généré ici tout de suite (liste des destinataires à traiter par
+    // CommunicationDispatchListener), Hibernate 6/7 ne le garantit plus disponible sans flush explicite.
+    @Override public MessageRecipient save(MessageRecipient r) { return mapper.toDomain(jpa.saveAndFlush(mapper.toEntity(r))); }
     @Override public Optional<MessageRecipient> findById(Long id) { return jpa.findById(id).map(mapper::toDomain); }
     @Override public List<MessageRecipient> findByCommunicationId(Long id) { return jpa.findByCommunicationId(id).stream().map(mapper::toDomain).toList(); }
     @Override public List<MessageRecipient> findByUserId(Long id) { return jpa.findByUserId(id).stream().map(mapper::toDomain).toList(); }

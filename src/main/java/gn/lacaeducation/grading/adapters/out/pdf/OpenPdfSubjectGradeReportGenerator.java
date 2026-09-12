@@ -45,10 +45,10 @@ class OpenPdfSubjectGradeReportGenerator implements SubjectGradeReportPdfGenerat
                     : tenantInfoProvider.findTenantInfo(rep.tenantId()).orElse(null);
             Color brand = SchoolPdfHeader.parseColor(info == null ? null : info.brandColor());
             PdfWriter writer = PdfWriter.getInstance(doc, out);
-            writer.setPageEvent(new SchoolPdfPageFooter(info == null ? null : info.schoolName(), brand));
+            writer.setPageEvent(new SchoolPdfPageFooter(info, brand));
             doc.open();
 
-            SchoolPdfHeader.render(doc, tenantInfoProvider, rep.tenantId());
+            SchoolPdfHeader.render(doc, tenantInfoProvider, rep.tenantId(), "RELEVÉ DE NOTES");
 
             Paragraph title = new Paragraph("RELEVÉ DE NOTES", SchoolPdfHeader.font(FontFactory.HELVETICA_BOLD, 16, brand));
             title.setAlignment(Element.ALIGN_CENTER);

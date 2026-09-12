@@ -37,6 +37,13 @@ public class Tenant {
     private String motto;
     /** Slogan de l'établissement (accroche marketing), imprimé au verso des badges/cartes. */
     private String slogan;
+    /** Inspection Régionale de l'Éducation de rattachement (ex. "KINDIA") — en-tête officiel des
+     * documents pédagogiques (bulletins, fiches de note...). */
+    private String ire;
+    /** Direction Préfectorale de l'Éducation de rattachement (ex. "COYAH"). */
+    private String dpeLabel;
+    /** Direction Sous-préfectorale/communale de l'Éducation de rattachement (ex. "MANGATA"). */
+    private String sousPrefectureLabel;
     /**
      * Numéro marchand de reversement de l'école (compte Mobile Money). L'encaissement des parents se
      * fait sur le compte plateforme Djomy ; ce numéro est celui sur lequel la plateforme reverse à

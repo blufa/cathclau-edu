@@ -29,9 +29,15 @@ class PlatformFeeSettingPersistenceAdapter implements PlatformFeeSettingReposito
     @Override
     @Transactional
     public void deactivateActive() {
+        // saveAndFlush (pas save) : sans ça, Hibernate exécute par défaut les INSERT avant les UPDATE
+        // au flush de la transaction, quel que soit l'ordre d'appel dans le code — l'INSERT de la
+        // nouvelle ligne active=true partait donc avant l'UPDATE désactivant l'ancienne, violant
+        // l'index unique partiel idx_platform_fee_settings_one_active (deux lignes actives à la fois).
+        // Le flush explicite force l'UPDATE à s'exécuter immédiatement, avant que setAmount() ne
+        // déclenche l'INSERT suivant.
         jpa.findByActiveTrue().ifPresent(e -> {
             e.setActive(false);
-            jpa.save(e);
+            jpa.saveAndFlush(e);
         });
     }
 }

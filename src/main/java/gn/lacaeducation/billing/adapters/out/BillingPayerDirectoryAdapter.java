@@ -36,7 +36,8 @@ public class BillingPayerDirectoryAdapter implements PayerDirectory {
             FeeType.MONTHLY, "Mensualité",
             FeeType.TRANSPORT, "Transport",
             FeeType.CANTEEN, "Cantine",
-            FeeType.EXAM, "Examen");
+            FeeType.EXAM, "Examen",
+            FeeType.OTHER, "Autre");
 
     @Override
     public Optional<String> studentName(Long studentId) {
@@ -84,6 +85,6 @@ public class BillingPayerDirectoryAdapter implements PayerDirectory {
         FeeType type = schoolFeeRepository.findById(invoice.getFeeId()).map(f -> f.getType()).orElse(null);
         if (type == null) return Optional.empty();
         return Optional.of(new InvoiceFeeInfo(FEE_TYPE_LABEL.getOrDefault(type, type.name()), invoice.getPeriodLabel(),
-                invoice.getDiscountAmount(), invoice.getDiscountReason()));
+                invoice.getDiscountAmount(), invoice.getDiscountReason(), invoice.getPlatformFeeAmount()));
     }
 }

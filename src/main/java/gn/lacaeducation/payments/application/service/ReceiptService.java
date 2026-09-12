@@ -49,12 +49,11 @@ public class ReceiptService implements ReceiptUseCase {
                 .studentName(resolveStudentName(p.getStudentId()))
                 .collectedByName(resolveCollectedByName(p.getCollectedByUserId()))
                 .generatedAt(LocalDateTime.now()).build());
-        // Génération du PDF + upload Cloudinary, sans bloquer le paiement si l'upload échoue.
-        String url = renderAndUpload(receipt, p);
-        if (url != null) {
-            receipt.setPdfFile(url);
-            receipt = repo.save(receipt);
-        }
+        // Le PDF (rendu + upload Cloudinary, potentiellement lent) n'est PAS généré ici : ça bloquait
+        // l'encaissement le temps de l'appel réseau vers Cloudinary, à chaque paiement. Génération
+        // paresseuse : {@link #pdfUrl} le rend et le met en cache seulement au premier téléchargement
+        // demandé par le frontend (juste après l'encaissement, mais sur un appel réseau séparé — donc
+        // sans bloquer la confirmation du paiement elle-même).
         return receipt;
     }
 
@@ -76,11 +75,7 @@ public class ReceiptService implements ReceiptUseCase {
                 .collectedByName(resolveCollectedByName(p.getCollectedByUserId()))
                 .coveredMonths(coveredMonths).monthsCount(monthsCount).remainingAfter(remainingAfter)
                 .generatedAt(LocalDateTime.now()).build());
-        String url = renderAndUpload(receipt, p);
-        if (url != null) {
-            receipt.setPdfFile(url);
-            receipt = repo.save(receipt);
-        }
+        // Génération paresseuse — voir le commentaire équivalent dans generate().
         return receipt;
     }
 

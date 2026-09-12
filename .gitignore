@@ -41,3 +41,8 @@ build/
 # Secrets de déploiement (garder les *.example)
 deploy/.env.prod
 deploy/.env.dev
+
+# Notes de travail / documents métier — pas du code produit
+*.md
+/docs-metier/
+/features/

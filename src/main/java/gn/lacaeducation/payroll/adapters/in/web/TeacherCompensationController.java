@@ -26,7 +26,7 @@ public class TeacherCompensationController {
     private final PayrollService service;
 
     public record CompensationRequest(PayMode payMode, BigDecimal hourlyRateNormal, BigDecimal hourlyRateExam,
-                                      BigDecimal fixedSalary, Boolean paidDuringVacation) {}
+                                      BigDecimal fixedSalary) {}
 
     @Operation(summary = "Lister les rémunérations paramétrées")
     @PreAuthorize("hasAuthority('paie:manage')")
@@ -45,7 +45,30 @@ public class TeacherCompensationController {
     @PutMapping("/compensation/{teacherId}")
     public TeacherCompensation set(@PathVariable Long teacherId, @RequestBody CompensationRequest r) {
         return service.setCompensation(TenantContext.get(), teacherId, r.payMode(),
-                r.hourlyRateNormal(), r.hourlyRateExam(), r.fixedSalary(), r.paidDuringVacation());
+                r.hourlyRateNormal(), r.hourlyRateExam(), r.fixedSalary());
+    }
+
+    @Operation(summary = "Marquer un mois précis (année + mois) comme payé pendant les vacances pour cet enseignant")
+    @PreAuthorize("hasAuthority('paie:manage')")
+    @PostMapping("/compensation/{teacherId}/vacation-pay")
+    public gn.lacaeducation.payroll.domain.TeacherVacationPayMonth addVacationPay(
+            @PathVariable Long teacherId, @RequestParam int year, @RequestParam int month) {
+        return service.addVacationPayMonth(TenantContext.get(), teacherId, year, month);
+    }
+
+    @Operation(summary = "Lister les mois payés pendant les vacances pour cet enseignant")
+    @PreAuthorize("hasAuthority('paie:manage')")
+    @GetMapping("/compensation/{teacherId}/vacation-pay")
+    public List<gn.lacaeducation.payroll.domain.TeacherVacationPayMonth> listVacationPay(@PathVariable Long teacherId) {
+        return service.listVacationPayMonths(teacherId);
+    }
+
+    @Operation(summary = "Retirer un mois payé pendant les vacances")
+    @PreAuthorize("hasAuthority('paie:manage')")
+    @DeleteMapping("/compensation/{teacherId}/vacation-pay/{id}")
+    public ResponseEntity<Void> removeVacationPay(@PathVariable Long teacherId, @PathVariable Long id) {
+        service.removeVacationPayMonth(teacherId, id);
+        return ResponseEntity.noContent().build();
     }
 
     @Operation(summary = "Calcul de la paie mensuelle (heures réalisées − retards × tarif, + fixe le cas échéant)")
@@ -62,7 +85,7 @@ public class TeacherCompensationController {
         return service.computeTheoreticalMonthlyPay(teacherId, year, month);
     }
 
-    public record GenPayslipRequest(String teacherName, Long structureId) {}
+    public record GenPayslipRequest(String teacherName, Long structureId, String teacherPhone, String bankAccount) {}
 
     @Operation(summary = "Générer automatiquement la fiche de paie du mois (brut basé sur les heures réalisées)")
     @PreAuthorize("hasAuthority('paie:manage')")
@@ -70,7 +93,8 @@ public class TeacherCompensationController {
     public Payslip generatePayslip(@PathVariable Long teacherId, @RequestParam int year, @RequestParam int month,
                                    @RequestBody(required = false) GenPayslipRequest r) {
         return service.generateFromHours(TenantContext.get(), teacherId, r != null ? r.teacherName() : null,
-                year, month, r != null ? r.structureId() : null);
+                year, month, r != null ? r.structureId() : null,
+                r != null ? r.teacherPhone() : null, r != null ? r.bankAccount() : null);
     }
 
     @Operation(summary = "Générer automatiquement la fiche de paie du mois depuis l'emploi du temps validé (§6), sans saisie manuelle")
@@ -79,6 +103,7 @@ public class TeacherCompensationController {
     public Payslip generatePayslipFromTimetable(@PathVariable Long teacherId, @RequestParam int year, @RequestParam int month,
                                                 @RequestBody(required = false) GenPayslipRequest r) {
         return service.generateFromTimetable(TenantContext.get(), teacherId, r != null ? r.teacherName() : null,
-                year, month, r != null ? r.structureId() : null);
+                year, month, r != null ? r.structureId() : null,
+                r != null ? r.teacherPhone() : null, r != null ? r.bankAccount() : null);
     }
 }

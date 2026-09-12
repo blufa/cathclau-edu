@@ -38,13 +38,15 @@ class SchoolBillingStatsProviderAdapter implements SchoolBillingStatsProvider {
     @Override
     @Transactional(readOnly = true)
     public BillingStats billingStats(Long tenantId) {
-        return computeStats(invoiceRepository.findByTenantId(tenantId));
+        return computeStats(excludeCancelled(invoiceRepository.findByTenantId(tenantId)));
     }
 
     @Override
     @Transactional(readOnly = true)
     public RecoveryBreakdown recoveryBreakdown(Long tenantId, Long academicYearId, int topDebtorLimit) {
-        List<Invoice> invoices = invoiceRepository.findByTenantIdAndAcademicYearId(tenantId, academicYearId);
+        // Une facture CANCELLED (ex. mensualités d'une ancienne classe après un transfert) ne doit
+        // plus peser ni dans le facturé ni dans l'impayé — elle n'est plus due.
+        List<Invoice> invoices = excludeCancelled(invoiceRepository.findByTenantIdAndAcademicYearId(tenantId, academicYearId));
         Map<Long, Long> feeIdToClassId = schoolFeeRepository.findByTenantId(tenantId).stream()
                 .filter(f -> f.getClassId() != null)
                 .collect(Collectors.toMap(SchoolFee::getId, SchoolFee::getClassId, (a, b) -> a));
@@ -93,7 +95,7 @@ class SchoolBillingStatsProviderAdapter implements SchoolBillingStatsProvider {
         long totalExemptions = exemptions.stream().filter(e -> e.getType() == ExemptionType.TOTAL).count();
         long partialExemptions = exemptions.stream().filter(e -> e.getType() == ExemptionType.PARTIAL).count();
 
-        List<Invoice> yearInvoices = invoiceRepository.findByTenantIdAndAcademicYearId(tenantId, academicYearId);
+        List<Invoice> yearInvoices = excludeCancelled(invoiceRepository.findByTenantIdAndAcademicYearId(tenantId, academicYearId));
 
         BigDecimal familyDiscountAmount = yearInvoices.stream()
                 .filter(i -> i.getDiscountReason() != null && i.getDiscountReason().startsWith(FAMILY_DISCOUNT_REASON_PREFIX))
@@ -145,6 +147,10 @@ class SchoolBillingStatsProviderAdapter implements SchoolBillingStatsProvider {
                 .filter(i -> i.getStatus() == InvoiceStatus.UNPAID || i.getStatus() == InvoiceStatus.PARTIAL)
                 .count();
         return new BillingStats(invoiced, collected, outstanding, recoveryRate, unpaidCount);
+    }
+
+    private List<Invoice> excludeCancelled(List<Invoice> invoices) {
+        return invoices.stream().filter(i -> i.getStatus() != InvoiceStatus.CANCELLED).toList();
     }
 
     private BigDecimal sum(List<Invoice> invoices, Function<Invoice, BigDecimal> field) {

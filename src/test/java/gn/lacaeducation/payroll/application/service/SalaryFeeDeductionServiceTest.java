@@ -34,7 +34,7 @@ class SalaryFeeDeductionServiceTest {
 
     private void staffWithTwoChildren() {
         when(teacherProvider.findUserIdByTeacherId(9L)).thenReturn(Optional.of(50L));
-        when(parentAccessProvider.findChildStudentIds(50L)).thenReturn(List.of(1L, 2L));
+        when(parentAccessProvider.findChildStudentIdsWithValidatedEnrollment(50L)).thenReturn(List.of(1L, 2L));
     }
 
     @Test
@@ -72,11 +72,25 @@ class SalaryFeeDeductionServiceTest {
     @Test
     void computeFeeDeduction_noChildren_returnsZero() {
         when(teacherProvider.findUserIdByTeacherId(9L)).thenReturn(Optional.of(50L));
-        when(parentAccessProvider.findChildStudentIds(50L)).thenReturn(List.of());
+        when(parentAccessProvider.findChildStudentIdsWithValidatedEnrollment(50L)).thenReturn(List.of());
 
         FeeDeduction d = service.computeFeeDeduction(1L, 9L);
 
         assertThat(d.amount()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void computeFeeDeduction_onlyCountsChildrenWithValidatedEnrollment() {
+        // L'adaptateur exclut déjà les enfants sans inscription VALIDÉE (abandon, annulée, jamais
+        // inscrite) : le service ne voit que ceux qui restent, ici un seul au lieu de deux.
+        when(teacherProvider.findUserIdByTeacherId(9L)).thenReturn(Optional.of(50L));
+        when(parentAccessProvider.findChildStudentIdsWithValidatedEnrollment(50L)).thenReturn(List.of(1L));
+        when(repo.findByTenantId(1L)).thenReturn(List.of(rule("50000", null, null)));
+
+        FeeDeduction d = service.computeFeeDeduction(1L, 9L);
+
+        assertThat(d.amount()).isEqualByComparingTo("50000");
+        assertThat(d.childrenCount()).isEqualTo(1);
     }
 
     @Test

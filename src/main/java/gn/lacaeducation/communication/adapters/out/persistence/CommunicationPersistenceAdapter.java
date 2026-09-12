@@ -9,7 +9,12 @@ import java.util.Optional;
 class CommunicationPersistenceAdapter implements CommunicationRepository {
     private final CommunicationJpaRepository jpa;
     private final CommunicationMapper mapper;
-    @Override public Communication save(Communication c) { return mapper.toDomain(jpa.save(mapper.toEntity(c))); }
+    // saveAndFlush (pas save) : Hibernate 6/7 retarde par défaut l'INSERT d'une entité à génération
+    // IDENTITY pour permettre le batching JDBC — sans flush immédiat, l'id généré reste null tant que
+    // la transaction n'a pas flush/commit, alors que l'appelant en a besoin tout de suite (lier les
+    // MessageRecipient à cette Communication, publier CommunicationRecipientsPendingEvent). Sans ce
+    // flush, la notification restait indéfiniment invisible (id=null) sans jamais planter.
+    @Override public Communication save(Communication c) { return mapper.toDomain(jpa.saveAndFlush(mapper.toEntity(c))); }
     @Override public Optional<Communication> findById(Long id) { return jpa.findById(id).map(mapper::toDomain); }
     @Override public List<Communication> findByTenantId(Long t) { return jpa.findByTenantId(t).stream().map(mapper::toDomain).toList(); }
     @Override public List<Communication> findBySenderId(Long s) { return jpa.findBySenderId(s).stream().map(mapper::toDomain).toList(); }

@@ -1,60 +1,48 @@
 package gn.lacaeducation.billing.application.service;
 
-import gn.lacaeducation.billing.application.event.EcheanceDepasseeEvent;
-import gn.lacaeducation.billing.application.port.out.InstallmentRepository;
-import gn.lacaeducation.billing.domain.Installment;
-import gn.lacaeducation.billing.domain.InstallmentStatus;
+import gn.lacaeducation.common.TenantContext;
+import gn.lacaeducation.platform.TenantListPort;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
-import java.util.List;
 
 /**
  * Daily scheduled job that detects overdue installments.
  * For each installment whose due_date has passed and that is not yet PAID,
  * it marks it OVERDUE and emits an EcheanceDepasseeEvent so the communication
  * module can send reminders to parents.
+ *
+ * <p>S'exécute hors contexte de requête (pas de JWT, donc pas de {@link TenantContext} déjà résolu) :
+ * boucle explicitement par tenant en restaurant {@link TenantContext}, comme
+ * {@code AbsenceAutoMarkScheduler}. Sans cette boucle, le filtre Hibernate multi-tenant restait
+ * désactivé (voir {@code TenantFilterAspect}), la recherche d'échéances en retard remontait TOUS les
+ * tenants à la fois, et le traitement par {@code communication} (résolution des contacts parents, de la
+ * config SMS du tenant…) n'avait aucun tenant sur lequel s'appuyer — d'où l'impression que les relances
+ * SMS ne partaient que lorsqu'un utilisateur était connecté (seul cas où le filtre JWT pose déjà le
+ * contexte tenant).</p>
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class DeadlineCheckScheduler {
 
-    private final InstallmentRepository installmentRepository;
-    private final ApplicationEventPublisher eventPublisher;
+    private final TenantListPort tenantListPort;
+    private final OverdueInstallmentProcessor processor;
 
     @Scheduled(cron = "0 0 6 * * *") // daily at 6am
-    @Transactional
     public void checkOverdueDeadlines() {
         LocalDate today = LocalDate.now();
-        List<Installment> overdue = installmentRepository.findOverdue(today);
-
-        log.info("Overdue deadline check: found {} overdue installments", overdue.size());
-
-        for (Installment installment : overdue) {
+        for (TenantListPort.TenantRef tenant : tenantListPort.listActiveTenantIds()) {
+            TenantContext.set(tenant.id());
             try {
-                // Mark as OVERDUE if not already
-                if (InstallmentStatus.OVERDUE != installment.getStatus()) {
-                    installment.setStatus(InstallmentStatus.OVERDUE);
-                    installmentRepository.save(installment);
-                }
-
-                eventPublisher.publishEvent(new EcheanceDepasseeEvent(
-                        installment.getId(),
-                        installment.getFeeId(),
-                        installment.getAmount(),
-                        installment.getDueDate()
-                ));
-
-                log.debug("Emitted EcheanceDepasseeEvent for installment id={} fee id={}",
-                        installment.getId(), installment.getFeeId());
+                processor.checkOverdueDeadlinesForTenant(tenant.id(), today);
             } catch (Exception e) {
-                log.error("Failed to process overdue installment id={}: {}", installment.getId(), e.getMessage());
+                log.error("Overdue deadline check failed for tenant {}: {}", tenant.id(), e.getMessage());
+            } finally {
+                TenantContext.clear();
             }
         }
     }

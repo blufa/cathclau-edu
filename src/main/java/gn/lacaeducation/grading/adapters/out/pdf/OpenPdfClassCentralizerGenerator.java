@@ -45,10 +45,10 @@ class OpenPdfClassCentralizerGenerator implements ClassCentralizerPdfGenerator {
             Color brand = SchoolPdfHeader.parseColor(info == null ? null : info.brandColor());
 
             PdfWriter writer = PdfWriter.getInstance(doc, out);
-            writer.setPageEvent(new SchoolPdfPageFooter(info == null ? null : info.schoolName(), brand));
+            writer.setPageEvent(new SchoolPdfPageFooter(info, brand));
             doc.open();
 
-            SchoolPdfHeader.render(doc, tenantInfoProvider, data.tenantId());
+            SchoolPdfHeader.render(doc, tenantInfoProvider, data.tenantId(), "FICHE DE CENTRALISATION DES MOYENNES PAR MATIÈRE");
 
             Paragraph title = new Paragraph("FICHE DE CENTRALISATION DES MOYENNES PAR MATIÈRE",
                     SchoolPdfHeader.font(FontFactory.HELVETICA_BOLD, 14, brand));

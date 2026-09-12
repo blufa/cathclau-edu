@@ -149,6 +149,10 @@ public class AuthService implements AuthUseCase {
                     .used(false)
                     .build();
             passwordResetTokenRepository.save(resetToken);
+            // Sans cet événement, le jeton n'existait qu'en base : l'utilisateur n'avait aucun moyen
+            // de le connaître pour réinitialiser son mot de passe.
+            eventPublisher.publishEvent(new gn.lacaeducation.iam.application.event.PasswordResetRequestedEvent(
+                    user.getTenantId(), user.getId(), email, token));
         });
     }
 

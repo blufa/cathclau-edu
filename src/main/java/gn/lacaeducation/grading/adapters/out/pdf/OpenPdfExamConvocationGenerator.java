@@ -45,10 +45,10 @@ class OpenPdfExamConvocationGenerator implements ExamConvocationPdfGenerator {
             Color brand = SchoolPdfHeader.parseColor(info == null ? null : info.brandColor());
 
             PdfWriter writer = PdfWriter.getInstance(doc, out);
-            writer.setPageEvent(new SchoolPdfPageFooter(info == null ? null : info.schoolName(), brand));
+            writer.setPageEvent(new SchoolPdfPageFooter(info, brand));
             doc.open();
 
-            SchoolPdfHeader.render(doc, tenantInfoProvider, exam.getTenantId());
+            SchoolPdfHeader.render(doc, tenantInfoProvider, exam.getTenantId(), "CONVOCATION À L'EXAMEN");
 
             Paragraph title = new Paragraph("CONVOCATION À L'EXAMEN", SchoolPdfHeader.font(FontFactory.HELVETICA_BOLD, 16, brand));
             title.setAlignment(Element.ALIGN_CENTER);

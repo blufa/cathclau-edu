@@ -62,7 +62,10 @@ public class SalaryFeeDeductionService implements SalaryFeeDeductionUseCase {
         if (userId == null) {
             return new FeeDeduction(BigDecimal.ZERO, null, 0);
         }
-        int childCount = parentAccessProvider.findChildStudentIds(userId).size();
+        // Ne compte que les enfants effectivement scolarisés (inscription VALIDÉE) : un enfant parti
+        // (abandon/annulation) ou jamais formellement inscrit ne doit pas continuer à faire retenir de
+        // l'argent sur le salaire indéfiniment.
+        int childCount = parentAccessProvider.findChildStudentIdsWithValidatedEnrollment(userId).size();
         if (childCount == 0) {
             return new FeeDeduction(BigDecimal.ZERO, null, 0);
         }

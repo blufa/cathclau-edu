@@ -40,8 +40,13 @@ public class StudentDataProviderAdapter implements StudentDataProvider {
 
     @Override
     public List<StudentPublicInfo> findStudentsByClass(Long classId) {
+        // ABANDONED (élève parti en cours d'année) est exclu comme CANCELLED : ces listes alimentent
+        // l'appel/pointage (attendance) et la saisie de notes (grading), qui ne concernent que les
+        // élèves encore présents — contrairement à la facturation/au recouvrement, qui doivent au
+        // contraire continuer à compter les factures d'un abandon (voir EnrollmentQueryPort côté
+        // billing, non touché par ce filtre).
         return enrollmentRepository.findByClassId(classId).stream()
-                .filter(e -> e.getStatus() != EnrollmentStatus.CANCELLED)
+                .filter(e -> e.getStatus() != EnrollmentStatus.CANCELLED && e.getStatus() != EnrollmentStatus.ABANDONED)
                 .map(e -> findStudent(e.getStudentId()).orElse(null))
                 .filter(s -> s != null)
                 .distinct()

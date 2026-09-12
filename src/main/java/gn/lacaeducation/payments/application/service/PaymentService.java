@@ -117,7 +117,7 @@ public class PaymentService implements PaymentUseCase {
             payment.setPaidAt(LocalDateTime.now());
             Payment saved = repo.save(payment);
             settleGroup(saved);
-            log.info("Paiement groupé guichet {} : {} mois, total={}, élève id={}",
+            log.info("Paiement groupé guichet {} : {} échéance(s), total={}, élève id={}",
                     reference, c.shares().size(), total, c.studentId());
             return saved;
         }
@@ -138,7 +138,7 @@ public class PaymentService implements PaymentUseCase {
                     payment.getId(), null, total));
             throw new BusinessRuleException("Échec de l'initiation du paiement groupé en ligne : " + e.getMessage());
         }
-        log.info("Paiement groupé en ligne {} initié : {} mois, total={}, élève id={}",
+        log.info("Paiement groupé en ligne {} initié : {} échéance(s), total={}, élève id={}",
                 reference, c.shares().size(), total, c.studentId());
         return repo.save(payment);
     }
@@ -155,7 +155,7 @@ public class PaymentService implements PaymentUseCase {
     private String serializeShares(List<PaymentUseCase.InvoiceShare> shares, Long fallbackStudentId) {
         List<GroupedInvoiceSettlementEvent.Share> s = shares.stream()
                 .map(x -> new GroupedInvoiceSettlementEvent.Share(
-                        x.invoiceId(), x.studentId() != null ? x.studentId() : fallbackStudentId, x.amount()))
+                        x.invoiceId(), x.studentId() != null ? x.studentId() : fallbackStudentId, x.amount(), x.paidMonths()))
                 .toList();
         try {
             return objectMapper.writeValueAsString(s);

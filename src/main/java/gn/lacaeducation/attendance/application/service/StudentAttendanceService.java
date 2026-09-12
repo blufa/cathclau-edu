@@ -9,9 +9,12 @@ import gn.lacaeducation.attendance.application.port.out.AttendanceReportPdfGener
 import gn.lacaeducation.attendance.application.port.out.AttendanceReportPdfGenerator.LatenessReport;
 import gn.lacaeducation.attendance.application.port.out.AttendanceReportPdfGenerator.LatenessRow;
 import gn.lacaeducation.academics.ScheduleSlotPublicInfo;
+import gn.lacaeducation.attendance.application.port.out.AttendanceSettingsRepository;
 import gn.lacaeducation.attendance.application.port.out.ChildPickupRepository;
+import gn.lacaeducation.attendance.application.port.out.RecessWindowRepository;
 import gn.lacaeducation.attendance.application.port.out.StudentAttendanceRepository;
 import gn.lacaeducation.attendance.application.port.out.StudentCheckinRepository;
+import gn.lacaeducation.attendance.domain.AttendanceSettings;
 import gn.lacaeducation.attendance.domain.AttendanceStatus;
 import gn.lacaeducation.attendance.domain.ChildPickup;
 import gn.lacaeducation.attendance.domain.StudentAttendance;
@@ -46,6 +49,24 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
     private final AcademicsDataProvider academicsProvider;
     private final AttendanceReportPdfGenerator reportPdfGenerator;
     private final SessionResolver sessionResolver;
+    private final AttendanceSettingsRepository settingsRepository;
+    private final RecessWindowRepository recessWindowRepository;
+
+    /**
+     * Heure à partir de laquelle un retard commence à être compté pour une entrée sur {@code session} :
+     * l'heure de début prévue, repoussée par la marge de tolérance PROPRE AUX ÉLÈVES (§réglages —
+     * distincte de celle des enseignants/personnel : le temps de trajet d'un enseignant entre deux
+     * salles n'a pas de raison de suivre la même tolérance qu'un élève) et/ou une fenêtre de
+     * récréation. Même mécanisme que pour l'enseignant (voir
+     * {@code TeacherAttendanceService#graceDeadline}), marge différente.
+     */
+    private LocalTime graceDeadline(ScheduleSlotPublicInfo session) {
+        LocalTime start = LocalTime.parse(session.startTime());
+        int margin = settingsRepository.findByTenantId(TenantContext.get())
+                .map(AttendanceSettings::studentTransitionMarginMinutesOrDefault)
+                .orElseGet(() -> AttendanceSettings.defaults().studentTransitionMarginMinutesOrDefault());
+        return sessionResolver.graceDeadline(start, margin, recessWindowRepository.findByTenantId(TenantContext.get()));
+    }
 
     @Override
     public StudentCheckin recordEntry(Long studentId, Long scannerUserId) {
@@ -63,7 +84,8 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
                 .orElseGet(() -> {
                     LocalTime start = LocalTime.parse(session.startTime());
                     LocalTime end = LocalTime.parse(session.endTime());
-                    int late = (int) Math.max(0, Duration.between(start, now).toMinutes());
+                    LocalTime deadline = graceDeadline(session);
+                    int late = (int) Math.max(0, Duration.between(deadline, now).toMinutes());
                     return checkinRepository.save(StudentCheckin.builder()
                             .tenantId(TenantContext.get()).studentId(studentId).classId(classId).checkinDate(today)
                             .scheduleSlotId(session.id()).sessionStart(start).sessionEnd(end)
@@ -90,6 +112,33 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
                         "Aucun pointage d'entrée trouvé pour cette séance : scannez d'abord l'entrée."));
         checkin.setCheckOutTime(now);
         if (checkin.getSessionEnd() == null) checkin.setSessionEnd(LocalTime.parse(session.endTime()));
+        // Départ anticipé : sortie pointée avant la fin prévue de la séance (symétrique du retard à
+        // l'entrée, miroir de TeacherAttendanceService#recordExit).
+        int early = (int) Math.max(0, Duration.between(now, checkin.getSessionEnd()).toMinutes());
+        checkin.setEarlyMinutes(early);
+        return checkinRepository.save(checkin);
+    }
+
+    @Override
+    public StudentCheckin recordManualExit(Long studentId, LocalDate date, LocalTime checkOutTime) {
+        // Symétrique de recordManualEntry : crée le pointage si absent (badge oublié toute la séance),
+        // sinon complète le pointage d'entrée déjà existant avec l'heure de sortie saisie.
+        Long classId = studentDataProvider.findCurrentClassId(studentId)
+                .orElseThrow(() -> new BusinessRuleException("Élève sans classe courante : impossible de pointer"));
+        ScheduleSlotPublicInfo session = sessionResolver.currentSession(academicsProvider.findScheduleByClass(classId), date, checkOutTime);
+        if (session == null) {
+            throw new BusinessRuleException("Aucun cours programmé ce jour-là pour cette classe.");
+        }
+        LocalTime start = LocalTime.parse(session.startTime());
+        LocalTime end = LocalTime.parse(session.endTime());
+        StudentCheckin checkin = checkinRepository.findByStudentIdAndDateAndSlot(studentId, date, session.id())
+                .orElseGet(() -> StudentCheckin.builder()
+                        .tenantId(TenantContext.get()).studentId(studentId).classId(classId).checkinDate(date)
+                        .scheduleSlotId(session.id()).sessionStart(start).lateMinutes(0).createdAt(LocalDateTime.now()).build());
+        checkin.setSessionEnd(end);
+        checkin.setCheckOutTime(checkOutTime);
+        int early = (int) Math.max(0, Duration.between(checkOutTime, end).toMinutes());
+        checkin.setEarlyMinutes(early);
         return checkinRepository.save(checkin);
     }
 
@@ -107,7 +156,8 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
         }
         LocalTime start = LocalTime.parse(session.startTime());
         LocalTime end = LocalTime.parse(session.endTime());
-        int late = (int) Math.max(0, Duration.between(start, checkInTime).toMinutes());
+        LocalTime deadline = graceDeadline(session);
+        int late = (int) Math.max(0, Duration.between(deadline, checkInTime).toMinutes());
         StudentCheckin checkin = checkinRepository.findByStudentIdAndDateAndSlot(studentId, date, session.id())
                 .orElseGet(() -> StudentCheckin.builder()
                         .tenantId(TenantContext.get()).studentId(studentId).classId(classId).checkinDate(date)
@@ -138,6 +188,11 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
     @Override @Transactional(readOnly = true)
     public List<StudentCheckin> findCheckins(Long studentId, LocalDate date) {
         return checkinRepository.findByStudentIdAndDate(studentId, date);
+    }
+
+    @Override @Transactional(readOnly = true)
+    public List<StudentCheckin> findCheckinsByClass(Long classId, LocalDate date) {
+        return checkinRepository.findByClassIdAndDate(classId, date);
     }
 
     @Override
@@ -191,15 +246,22 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
     }
 
     /** Statut du jour toujours PRESENT depuis un scan (le retard reste représenté par lateMinutes > 0 —
-     * un scan ne peut jamais produire ABSENT, voir {@link #markAbsent}). Notifie le parent en cas de
-     * retard, comme avant (déclenché par le calcul automatique plutôt que par un clic manuel). */
+     * un scan ne peut jamais produire ABSENT, voir {@link #markAbsent}). Notifie le parent par SMS à
+     * chaque premier scan du jour (arrivée confirmée), qu'il soit à l'heure ou en retard — un second
+     * scan le même jour (ex. retour après la pause) ne renvoie pas de notification. */
     private void upsertDailyAttendance(Long studentId, Long classId, LocalDate today) {
-        LocalTime firstCheckIn = checkinRepository.findByStudentIdAndDate(studentId, today).stream()
-                .map(StudentCheckin::getCheckInTime).filter(Objects::nonNull)
-                .min(Comparator.naturalOrder()).orElse(null);
-        int dayLate = checkinRepository.findByStudentIdAndDate(studentId, today).stream()
-                .mapToInt(c -> c.getLateMinutes() != null ? c.getLateMinutes() : 0).sum();
-        StudentAttendance saved = attendanceRepository.findByStudentIdAndClassIdAndDate(studentId, classId, today)
+        // Retard = celui du PREMIER pointage du jour uniquement (l'arrivée du matin) — jamais la somme
+        // des lateMinutes de chaque créneau/période scanné dans la journée : un élève pointant à
+        // plusieurs séances (matin, retour de pause…) voyait sinon son « retard » gonfler à chaque
+        // nouveau scan (ex. 351 min cumulées sur la journée pour un retard réel de 20 min le matin).
+        StudentCheckin firstCheckin = checkinRepository.findByStudentIdAndDate(studentId, today).stream()
+                .filter(c -> c.getCheckInTime() != null)
+                .min(Comparator.comparing(StudentCheckin::getCheckInTime)).orElse(null);
+        LocalTime firstCheckIn = firstCheckin != null ? firstCheckin.getCheckInTime() : null;
+        int dayLate = firstCheckin != null && firstCheckin.getLateMinutes() != null ? firstCheckin.getLateMinutes() : 0;
+        Optional<StudentAttendance> existing = attendanceRepository.findByStudentIdAndClassIdAndDate(studentId, classId, today);
+        boolean firstScanOfDay = existing.isEmpty();
+        StudentAttendance saved = existing
                 .map(a -> {
                     a.setStatus(AttendanceStatus.PRESENT);
                     a.setCheckInTime(firstCheckIn);
@@ -210,11 +272,12 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
                         .tenantId(TenantContext.get()).studentId(studentId).classId(classId).date(today)
                         .status(AttendanceStatus.PRESENT).reason("Scan carte scolaire").parentNotified(false)
                         .checkInTime(firstCheckIn).lateMinutes(dayLate).build()));
-        // Statut toujours PRESENT depuis un scan — le retard est signalé au parent via lateMinutes,
-        // pas via le statut (qui ne devient LATE que pour une saisie manuelle, cf. record()/recordBulk()).
-        if (dayLate > 0) {
-            eventPublisher.publishEvent(new StudentAbsentEvent(
-                    saved.getId(), saved.getTenantId(), saved.getStudentId(), saved.getClassId(), saved.getDate()));
+        // Notification uniquement au premier scan du jour — un scan suivant (retour de pause, autre
+        // période) ne doit jamais redéclencher un SMS au parent, déjà prévenu de l'arrivée.
+        if (firstScanOfDay) {
+            String status = dayLate > 0 ? AttendanceStatus.LATE.name() : AttendanceStatus.PRESENT.name();
+            eventPublisher.publishEvent(new StudentAbsentEvent(saved.getId(), saved.getTenantId(),
+                    saved.getStudentId(), saved.getClassId(), saved.getDate(), status, dayLate, firstCheckIn));
         }
     }
 
@@ -242,7 +305,8 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
     private void publishIfAbsent(StudentAttendance a) {
         if (a.getStatus() == AttendanceStatus.ABSENT || a.getStatus() == AttendanceStatus.LATE) {
             eventPublisher.publishEvent(new StudentAbsentEvent(
-                    a.getId(), a.getTenantId(), a.getStudentId(), a.getClassId(), a.getDate()));
+                    a.getId(), a.getTenantId(), a.getStudentId(), a.getClassId(), a.getDate(),
+                    a.getStatus().name(), a.getLateMinutes(), a.getCheckInTime()));
         }
     }
     @Override
@@ -325,6 +389,19 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
     @Override
     public void markParentNotified(Long id) {
         StudentAttendance a = load(id); a.setParentNotified(true); attendanceRepository.save(a);
+    }
+
+    @Override
+    public void notifyParentNow(Long id) {
+        // Republie StudentAbsentEvent (mêmes écouteurs que l'envoi automatique : SMS/email via
+        // communication, email via notification) — PAS d'appel à markParentNotified() ici, pour éviter
+        // toute boucle : DomainEventListener (notification) appelle déjà markParentNotified() en retour
+        // quand son propre envoi réussit ; réutiliser cette méthode republierait l'événement à l'infini.
+        StudentAttendance a = load(id);
+        eventPublisher.publishEvent(new StudentAbsentEvent(a.getId(), a.getTenantId(), a.getStudentId(), a.getClassId(),
+                a.getDate(), a.getStatus().name(), a.getLateMinutes(), a.getCheckInTime()));
+        a.setParentNotified(true);
+        attendanceRepository.save(a);
     }
     private StudentAttendance load(Long id) { return attendanceRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("StudentAttendance", id)); }
 

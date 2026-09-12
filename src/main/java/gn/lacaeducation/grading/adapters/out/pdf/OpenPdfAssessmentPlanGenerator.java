@@ -45,10 +45,10 @@ class OpenPdfAssessmentPlanGenerator implements AssessmentPlanPdfGenerator {
             Color brand = SchoolPdfHeader.parseColor(info == null ? null : info.brandColor());
 
             PdfWriter writer = PdfWriter.getInstance(doc, out);
-            writer.setPageEvent(new SchoolPdfPageFooter(info == null ? null : info.schoolName(), brand));
+            writer.setPageEvent(new SchoolPdfPageFooter(info, brand));
             doc.open();
 
-            SchoolPdfHeader.render(doc, tenantInfoProvider, plan.tenantId());
+            SchoolPdfHeader.render(doc, tenantInfoProvider, plan.tenantId(), "FICHE DE NOTES — PLANNING DES ÉVALUATIONS");
 
             Paragraph title = new Paragraph("FICHE DE NOTES — PLANNING DES ÉVALUATIONS",
                     SchoolPdfHeader.font(FontFactory.HELVETICA_BOLD, 14, brand));

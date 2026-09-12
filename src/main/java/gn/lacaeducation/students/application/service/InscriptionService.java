@@ -4,7 +4,9 @@ import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ConflictException;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.students.EnrollmentValidationApi;
+import gn.lacaeducation.students.application.event.EnrollmentAbandonedEvent;
 import gn.lacaeducation.students.application.event.EnrollmentCancelledEvent;
+import gn.lacaeducation.students.application.event.EnrollmentClassChangedEvent;
 import gn.lacaeducation.students.application.event.EnrollmentCreatedEvent;
 import gn.lacaeducation.students.application.event.EnrollmentValidatedEvent;
 import gn.lacaeducation.students.application.port.in.EnrollmentUseCase;
@@ -44,7 +46,8 @@ public class InscriptionService implements EnrollmentUseCase, EnrollmentValidati
                 .academicYearId(cmd.academicYearId())
                 .type(type)
                 .status(EnrollmentStatus.PENDING).enrolledAt(LocalDate.now())
-                .platformAccessOptIn(Boolean.TRUE.equals(cmd.platformAccessOptIn())).build());
+                .platformAccessOptIn(Boolean.TRUE.equals(cmd.platformAccessOptIn()))
+                .monthlyPaymentOptIn(Boolean.TRUE.equals(cmd.monthlyPaymentOptIn())).build());
         publishCreated(saved);
         return saved;
     }
@@ -53,6 +56,13 @@ public class InscriptionService implements EnrollmentUseCase, EnrollmentValidati
     public Enrollment updatePlatformAccessOptIn(Long id, boolean optIn) {
         Enrollment e = load(id);
         e.setPlatformAccessOptIn(optIn);
+        return enrollmentRepository.save(e);
+    }
+
+    @Override
+    public Enrollment updateMonthlyPaymentOptIn(Long id, boolean optIn) {
+        Enrollment e = load(id);
+        e.setMonthlyPaymentOptIn(optIn);
         return enrollmentRepository.save(e);
     }
 
@@ -122,6 +132,47 @@ public class InscriptionService implements EnrollmentUseCase, EnrollmentValidati
         Enrollment saved = enrollmentRepository.save(e);
         eventPublisher.publishEvent(new EnrollmentCancelledEvent(
                 null, e.getStudentId(), e.getClassId(), e.getAcademicYearId()));
+        return saved;
+    }
+
+    @Override
+    public Enrollment abandon(Long id) {
+        Enrollment e = load(id);
+        // Un abandon en cours d'année ne se déclare que sur une inscription déjà validée — sinon
+        // c'est une simple annulation (cancel) qu'il faut utiliser à la place.
+        if (e.getStatus() != EnrollmentStatus.VALIDATED) {
+            throw new BusinessRuleException(
+                    "Seule une inscription validée peut être marquée comme abandon : id=" + id);
+        }
+        e.setStatus(EnrollmentStatus.ABANDONED);
+        Enrollment saved = enrollmentRepository.save(e);
+        eventPublisher.publishEvent(new EnrollmentAbandonedEvent(
+                null, e.getStudentId(), e.getClassId(), e.getAcademicYearId()));
+        return saved;
+    }
+
+    @Override
+    public Enrollment transferClass(Long id, Long newClassId) {
+        Enrollment e = load(id);
+        if (e.getStatus() != EnrollmentStatus.VALIDATED) {
+            throw new BusinessRuleException(
+                    "Seule une inscription validée peut être transférée vers une autre classe : id=" + id);
+        }
+        if (e.getClassId().equals(newClassId)) {
+            throw new BusinessRuleException("L'élève est déjà inscrit dans cette classe.");
+        }
+        Integer max = classCapacityPort.maxCapacity(newClassId);
+        if (max != null) {
+            long validated = enrollmentRepository.countByClassIdAndStatus(newClassId, EnrollmentStatus.VALIDATED);
+            if (validated >= max) {
+                throw new ConflictException("Class " + newClassId + " has reached its capacity (" + max + ").");
+            }
+        }
+        Long oldClassId = e.getClassId();
+        e.setClassId(newClassId);
+        Enrollment saved = enrollmentRepository.save(e);
+        eventPublisher.publishEvent(new EnrollmentClassChangedEvent(
+                null, e.getStudentId(), e.getId(), oldClassId, newClassId, e.getAcademicYearId()));
         return saved;
     }
 

@@ -10,10 +10,15 @@ import java.util.Optional;
 public interface EmployeeUseCase {
     record CreateEmployeeCommand(Long tenantId, Long userId, String employeeNumber, String firstName,
                                  String lastName, String phone, String email, EmployeeCategory category,
-                                 String jobTitle, LocalDate hireDate, BigDecimal baseSalary, String cnssNumber) {}
+                                 String jobTitle, LocalDate hireDate, BigDecimal baseSalary, String cnssNumber,
+                                 /** Compte bancaire (RIB/IBAN) optionnel, pour le fichier bancaire de paie. */
+                                 String bankAccount) {}
     record UpdateEmployeeCommand(String employeeNumber, String firstName, String lastName, String phone,
                                  String email, EmployeeCategory category, String jobTitle, LocalDate hireDate,
-                                 BigDecimal baseSalary, String cnssNumber) {}
+                                 BigDecimal baseSalary, String cnssNumber, String bankAccount,
+                                 /** Fiche Teacher de la même personne si elle enseigne aussi (§payroll,
+                                  * fiche de paie combinée) — null si elle n'enseigne pas. */
+                                 Long linkedTeacherId) {}
 
     Employee create(CreateEmployeeCommand command);
     Employee update(Long id, UpdateEmployeeCommand command);

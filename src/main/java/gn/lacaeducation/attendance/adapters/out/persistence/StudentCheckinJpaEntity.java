@@ -23,5 +23,6 @@ class StudentCheckinJpaEntity {
     @Column(name = "check_in_time", nullable = false) private LocalTime checkInTime;
     @Column(name = "check_out_time") private LocalTime checkOutTime;
     @Column(name = "late_minutes", nullable = false) private Integer lateMinutes;
+    @Column(name = "early_minutes", nullable = false) private Integer earlyMinutes;
     @Column(name = "created_at") private LocalDateTime createdAt;
 }

@@ -39,11 +39,13 @@ class PayrollAbsenceDeductionTest {
     @Mock gn.lacaeducation.payroll.application.port.out.SalaryRuleRepository ruleRepo;
     @Mock gn.lacaeducation.payroll.application.port.out.PayslipPdfGenerator pdfGenerator;
     @Mock gn.lacaeducation.payroll.application.port.out.TeacherCompensationRepository compRepo;
+    @Mock gn.lacaeducation.payroll.application.port.out.TeacherVacationPayRepository vacationPayRepo;
     @Mock gn.lacaeducation.lessons.TeacherTeachingProvider teachingProvider;
     @Mock TeacherWorkProvider workProvider;
     @Mock SalaryFeeDeductionUseCase salaryFeeDeductionUseCase;
     @Mock gn.lacaeducation.academics.AcademicsDataProvider academics;
     @Mock gn.lacaeducation.calendar.CalendarDataProvider calendar;
+    @Mock org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     PayrollService service;
     List<PayslipLine> savedLines;
@@ -51,7 +53,8 @@ class PayrollAbsenceDeductionTest {
     @BeforeEach
     void setUp() {
         service = new PayrollService(payslipRepo, lineRepo, structureRepo, ruleRepo, pdfGenerator,
-                compRepo, teachingProvider, workProvider, salaryFeeDeductionUseCase, academics, calendar);
+                compRepo, vacationPayRepo, teachingProvider, workProvider, salaryFeeDeductionUseCase, academics, calendar,
+                eventPublisher);
         savedLines = new ArrayList<>();
 
         // payslipRepo.save : assigne un id au premier passage, renvoie l'entité.
@@ -80,7 +83,7 @@ class PayrollAbsenceDeductionTest {
                 9L, null, 7L, "M. Diallo", "Mars 2026",
                 LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 31),
                 BigDecimal.valueOf(300000), null, null,
-                null, null, null, null, null));
+                null, null, null, null, null, null, null));
 
         // Retenue = (300000 / 20) × 2 = 30000, libellé "Absences (2 j)".
         PayslipLine absence = savedLines.stream()
@@ -98,7 +101,7 @@ class PayrollAbsenceDeductionTest {
                 9L, null, 7L, "M. Diallo", "Mars 2026",
                 LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 31),
                 BigDecimal.valueOf(300000), null, null,
-                1, 20, null, null, null));
+                1, 20, null, null, null, null, null));
 
         PayslipLine absence = savedLines.stream()
                 .filter(l -> l.getLabel() != null && l.getLabel().startsWith("Absences"))
@@ -116,7 +119,7 @@ class PayrollAbsenceDeductionTest {
                 9L, gn.lacaeducation.payroll.domain.EmployeeType.ADMINISTRATIVE, 7L, "Mme Sow", "Mars 2026",
                 LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 31),
                 BigDecimal.valueOf(300000), null, null,
-                null, null, null, null, null));
+                null, null, null, null, null, null, null));
 
         assertThat(savedLines).noneMatch(l -> l.getLabel() != null && l.getLabel().startsWith("Absences"));
         org.mockito.Mockito.verify(workProvider, never()).monthlyWork(anyLong(),
@@ -131,7 +134,7 @@ class PayrollAbsenceDeductionTest {
                 9L, null, 7L, "M. Diallo", "Mars 2026",
                 LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 31),
                 BigDecimal.valueOf(300000), null, null,
-                null, null, null, null, null));
+                null, null, null, null, null, null, null));
 
         assertThat(savedLines).noneMatch(l -> l.getLabel() != null && l.getLabel().startsWith("Absences"));
     }

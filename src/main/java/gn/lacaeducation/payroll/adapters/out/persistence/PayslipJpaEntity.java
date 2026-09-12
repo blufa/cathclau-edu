@@ -21,6 +21,8 @@ public class PayslipJpaEntity {
     private gn.lacaeducation.payroll.domain.EmployeeType employeeType = gn.lacaeducation.payroll.domain.EmployeeType.TEACHER;
     @Column(name = "teacher_id") private Long teacherId;
     @Column(name = "teacher_name") private String teacherName;
+    @Column(name = "teacher_phone") private String teacherPhone;
+    @Column(name = "bank_account") private String bankAccount;
     @Column(name = "period_label", nullable = false, length = 64) private String periodLabel;
     @Column(name = "period_start") private LocalDate periodStart;
     @Column(name = "period_end") private LocalDate periodEnd;

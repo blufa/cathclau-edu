@@ -18,11 +18,17 @@ import gn.lacaeducation.students.application.event.EnrollmentValidatedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import gn.lacaeducation.students.ParentPublicInfo;
 
+// @Async sur chaque écouteur : onStudentAbsent écrit en base (markParentNotified) depuis un callback
+// après-commit synchrone, où aucune transaction réellement active n'est disponible pour
+// StudentAttendanceService (@Transactional) — même piège que CommunicationEventListener (voir
+// PLAN-DE-TEST-COMPLET.md, Phase 77) ; @Async lève aussi le blocage du thread de la requête d'origine
+// pendant les appels SMTP synchrones des autres méthodes.
 @Component @RequiredArgsConstructor @Slf4j
 public class DomainEventListener {
 
@@ -37,6 +43,7 @@ public class DomainEventListener {
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     @org.springframework.transaction.event.TransactionalEventListener
+    @Async
     public void onEnrollmentValidated(EnrollmentValidatedEvent event) {
         studentDataProvider.findStudent(event.studentId()).ifPresent(student -> {
             String schoolName = schoolName(event.tenantId());
@@ -55,11 +62,12 @@ public class DomainEventListener {
     }
 
     @org.springframework.transaction.event.TransactionalEventListener
+    @Async
     public void onInvoiceGenerated(InvoiceGeneratedEvent event) {
         studentDataProvider.findStudent(event.studentId()).ifPresent(student -> {
             invoiceDataProvider.findInvoice(event.invoiceId()).ifPresent(invoice -> {
                 String schoolName = schoolName(event.tenantId());
-                String amount = invoice.totalAmount() + " FCFA";
+                String amount = invoice.totalAmount() + " GNF";
                 String dueDate = invoice.issueDate() != null ? invoice.issueDate().format(DATE_FMT) : "N/A";
                 sendToParents(event.studentId(), email ->
                         notificationService.sendInvoiceNotification(email, schoolName,
@@ -73,13 +81,14 @@ public class DomainEventListener {
     }
 
     @org.springframework.transaction.event.TransactionalEventListener
+    @Async
     public void onPaymentSucceeded(PaymentSucceededEvent event) {
         studentDataProvider.findStudent(event.studentId()).ifPresent(student -> {
             paymentDataProvider.findPayment(event.paymentId()).ifPresent(payment -> {
                 String schoolName = schoolName(event.tenantId());
                 String date = payment.paidAt() != null ? payment.paidAt().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) : "N/A";
                 String receiptRef = "REC-" + payment.id();
-                String amount = payment.amount() + " FCFA";
+                String amount = payment.amount() + " GNF";
                 sendToParents(event.studentId(), email ->
                         notificationService.sendPaymentReceipt(email, schoolName,
                                 fullName(student), receiptRef, amount, date, payment.channel()));
@@ -92,7 +101,11 @@ public class DomainEventListener {
     }
 
     @org.springframework.transaction.event.TransactionalEventListener
+    @Async
     public void onStudentAbsent(StudentAbsentEvent event) {
+        // StudentAbsentEvent couvre désormais aussi PRESENT (premier scan du jour, pour le SMS) — cet
+        // email d'absence reste volontairement limité aux absences/retards, comme avant.
+        if ("PRESENT".equals(event.status())) return;
         int notified = studentDataProvider.findStudent(event.studentId()).map(student -> {
             String schoolName = schoolName(event.tenantId());
             String className = academicsDataProvider.findClass(event.classId())
@@ -109,6 +122,7 @@ public class DomainEventListener {
     }
 
     @org.springframework.transaction.event.TransactionalEventListener
+    @Async
     public void onReportCardPublished(ReportCardPublishedEvent event) {
         studentDataProvider.findStudent(event.studentId()).ifPresent(student -> {
             String schoolName = schoolName(null);

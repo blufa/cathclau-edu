@@ -65,6 +65,15 @@ public class TenantJpaEntity {
     @Column(name = "slogan")
     private String slogan;
 
+    @Column(name = "ire")
+    private String ire;
+
+    @Column(name = "dpe_label")
+    private String dpeLabel;
+
+    @Column(name = "sous_prefecture_label")
+    private String sousPrefectureLabel;
+
     /** Numéro marchand de reversement de l'école (Mobile Money) ; voir {@code Tenant#payoutMerchantNumber}. */
     @Column(name = "payout_merchant_number")
     private String payoutMerchantNumber;

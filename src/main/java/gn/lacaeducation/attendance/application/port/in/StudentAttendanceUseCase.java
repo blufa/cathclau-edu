@@ -28,10 +28,19 @@ public interface StudentAttendanceUseCase {
      * la valeur si un pointage existait déjà pour cette séance. Aucune vérification chef-de-classe
      * (action staff, pas un scan). */
     StudentCheckin recordManualEntry(Long studentId, LocalDate date, LocalTime checkInTime);
+    /** Correction manuelle (sans scan) : saisie de l'heure de sortie pour une date donnée — le départ
+     * anticipé est calculé automatiquement vs l'emploi du temps, comme pour un scan. Crée le pointage
+     * s'il n'existait pas encore (ex. badge oublié toute la séance, saisi a posteriori par le chef de
+     * classe ou la direction). */
+    StudentCheckin recordManualExit(Long studentId, LocalDate date, LocalTime checkOutTime);
     /** Marque manuellement l'élève absent aujourd'hui (un scan ne peut jamais produire ce statut). */
     StudentAttendance markAbsent(Long studentId, String reason);
     /** Pointages (par séance) d'un élève à une date donnée. */
     List<StudentCheckin> findCheckins(Long studentId, LocalDate date);
+    /** Pointages (par séance, tous élèves confondus) d'une classe à une date donnée — pour que le
+     * tableau de suivi du personnel affiche l'heure de sortie/départ anticipé comme pour les
+     * enseignants/personnel, un élève pouvant avoir plusieurs séances (donc plusieurs sorties) par jour. */
+    List<StudentCheckin> findCheckinsByClass(Long classId, LocalDate date);
     /** Enregistre qui est venu récupérer l'enfant (badge de retrait, maternelle/primaire) : un parent
      * déjà lié ({@code pickerParentId}) ou une personne saisie librement ({@code pickerName} +
      * {@code pickerRelation}). */
@@ -56,6 +65,11 @@ public interface StudentAttendanceUseCase {
     AttendanceStatsResponse getStats(Long studentId, LocalDate from, LocalDate to);
     void delete(Long id);
     void markParentNotified(Long id);
+    /** Redéclenche l'envoi de la notification d'absence/retard (SMS + email, via les mêmes canaux que
+     * l'envoi automatique) puis marque la ligne comme traitée — utile si l'envoi automatique a échoué
+     * ou n'a pas eu lieu (ex. fournisseur SMS non configuré au moment des faits) : contrairement à
+     * {@link #markParentNotified}, qui se contente de cocher la case, ceci déclenche un nouvel essai. */
+    void notifyParentNow(Long id);
     /** Liste des absents d'une classe pour une date (PDF). */
     byte[] absenteeListPdf(Long classId, LocalDate date);
     /** Rapport des retards d'une classe sur une période (PDF, agrégé par élève). */

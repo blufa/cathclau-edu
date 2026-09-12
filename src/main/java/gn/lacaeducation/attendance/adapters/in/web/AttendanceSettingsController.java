@@ -28,6 +28,8 @@ public class AttendanceSettingsController {
     private final AttendanceSettingsUseCase useCase;
 
     public record UpdateMarginRequest(Integer transitionMarginMinutes) {}
+    public record UpdateStudentMarginRequest(Integer studentTransitionMarginMinutes) {}
+    public record UpdateEmployeeHoursRequest(LocalTime checkInTime, LocalTime checkOutTime) {}
     public record RecessWindowRequest(String label, LocalTime startTime, LocalTime endTime) {}
 
     @Operation(summary = "Réglage du tenant courant (marge de transition, défaut 5 min si non configuré)")
@@ -36,11 +38,25 @@ public class AttendanceSettingsController {
         return useCase.getSettings(TenantContext.get());
     }
 
-    @Operation(summary = "Configurer la marge de transition entre deux séances consécutives")
+    @Operation(summary = "Configurer la marge de transition entre deux séances consécutives (enseignants/personnel)")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
     @PutMapping
     public AttendanceSettings update(@RequestBody UpdateMarginRequest r) {
         return useCase.updateTransitionMargin(TenantContext.get(), r.transitionMarginMinutes());
+    }
+
+    @Operation(summary = "Configurer la marge de tolérance des élèves (distincte de celle des enseignants/personnel)")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PutMapping("/student-margin")
+    public AttendanceSettings updateStudentMargin(@RequestBody UpdateStudentMarginRequest r) {
+        return useCase.updateStudentTransitionMargin(TenantContext.get(), r.studentTransitionMarginMinutes());
+    }
+
+    @Operation(summary = "Configurer l'horaire de référence du personnel non-enseignant (entrée/sortie)")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PutMapping("/employee-hours")
+    public AttendanceSettings updateEmployeeHours(@RequestBody UpdateEmployeeHoursRequest r) {
+        return useCase.updateEmployeeHours(TenantContext.get(), r.checkInTime(), r.checkOutTime());
     }
 
     @Operation(summary = "Lister les fenêtres de récréation du tenant courant")

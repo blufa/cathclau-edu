@@ -34,22 +34,47 @@ class ReceiptServiceTest {
     @InjectMocks ReceiptService service;
 
     @Test
-    void generate_forSucceededPayment_createsReceiptWithPdfUrl() {
+    void generate_forSucceededPayment_createsReceiptWithoutRenderingPdfYet() {
+        // Le PDF (rendu + upload Cloudinary, potentiellement lent) ne doit PAS être généré ici — ça
+        // bloquerait l'encaissement le temps de l'appel réseau. Génération paresseuse via pdfUrl().
         when(repo.findByPaymentId(1L)).thenReturn(Optional.empty());
         when(paymentRepo.findById(1L)).thenReturn(Optional.of(Payment.builder()
                 .id(1L).tenantId(10L).amount(new BigDecimal("100.00")).status(PaymentStatus.SUCCEEDED).build()));
         when(repo.save(any(Receipt.class))).thenAnswer(i -> i.getArgument(0));
-        when(pdfGenerator.generate(any(), any())).thenReturn(new byte[]{1, 2, 3});
-        when(mediaUploadService.uploadDocument(any(), any(), any()))
-                .thenReturn("https://cdn.test/raw/receipts/rec.pdf");
 
         Receipt r = service.generate(1L);
 
         // Référence au format <codeÉcole>-REC-<année>-<identifiant>, ex. EC-REC-2026-046E7C.
         assertThat(r.getReference()).matches("[A-Z]{2}-REC-\\d{4}-.*");
-        // Le PDF est rendu puis uploadé ; l'URL de stockage est persistée sur le reçu.
-        assertThat(r.getPdfFile()).isEqualTo("https://cdn.test/raw/receipts/rec.pdf");
+        assertThat(r.getPdfFile()).isNull();
         assertThat(r.getAmount()).isEqualByComparingTo("100.00");
+        verifyNoInteractions(pdfGenerator, mediaUploadService);
+    }
+
+    @Test
+    void pdfUrl_notYetGenerated_rendersUploadsAndCaches() {
+        Receipt receipt = Receipt.builder().id(1L).paymentId(1L).reference("EC-REC-2026-AAA").pdfFile(null).build();
+        when(repo.findById(1L)).thenReturn(Optional.of(receipt));
+        when(paymentRepo.findById(1L)).thenReturn(Optional.of(Payment.builder().id(1L).status(PaymentStatus.SUCCEEDED).build()));
+        when(pdfGenerator.generate(any(), any())).thenReturn(new byte[]{1, 2, 3});
+        when(mediaUploadService.uploadDocument(any(), any(), any())).thenReturn("https://cdn.test/raw/receipts/rec.pdf");
+        when(repo.save(any(Receipt.class))).thenAnswer(i -> i.getArgument(0));
+
+        String url = service.pdfUrl(1L);
+
+        assertThat(url).isEqualTo("https://cdn.test/raw/receipts/rec.pdf");
+        assertThat(receipt.getPdfFile()).isEqualTo("https://cdn.test/raw/receipts/rec.pdf");
+    }
+
+    @Test
+    void pdfUrl_alreadyCached_returnsWithoutRegenerating() {
+        Receipt receipt = Receipt.builder().id(1L).paymentId(1L).pdfFile("https://cdn.test/raw/receipts/rec.pdf").build();
+        when(repo.findById(1L)).thenReturn(Optional.of(receipt));
+
+        String url = service.pdfUrl(1L);
+
+        assertThat(url).isEqualTo("https://cdn.test/raw/receipts/rec.pdf");
+        verifyNoInteractions(pdfGenerator, mediaUploadService);
     }
 
     @Test

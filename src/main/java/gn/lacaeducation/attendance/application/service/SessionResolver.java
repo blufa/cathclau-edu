@@ -1,6 +1,7 @@
 package gn.lacaeducation.attendance.application.service;
 
 import gn.lacaeducation.academics.ScheduleSlotPublicInfo;
+import gn.lacaeducation.attendance.domain.RecessWindow;
 import org.springframework.stereotype.Component;
 
 import java.time.DayOfWeek;
@@ -37,6 +38,30 @@ class SessionResolver {
     boolean hasSessionOn(List<ScheduleSlotPublicInfo> allSlots, DayOfWeek day) {
         String dayName = frenchDay(day);
         return allSlots.stream().anyMatch(s -> dayName.equalsIgnoreCase(s.day()));
+    }
+
+    /** True si au moins une séance du jour a déjà commencé à l'heure {@code at} — utilisé par le
+     * marquage auto d'absence de mi-journée (14h) pour ne pas signaler à tort un élève dont le seul
+     * cours du jour est l'après-midi et n'a pas encore débuté. */
+    boolean hasStartedSessionOn(List<ScheduleSlotPublicInfo> allSlots, LocalDate date, LocalTime at) {
+        return slotsForDay(allSlots, date).stream()
+                .anyMatch(s -> !LocalTime.parse(s.startTime()).isAfter(at));
+    }
+
+    /**
+     * Heure à partir de laquelle un retard commence à être compté pour une entrée prévue à
+     * {@code start} : {@code start} repoussée (a) par la marge de tolérance générale configurée par
+     * l'école ({@code marginMinutes} — ex. 5 min, s'applique à TOUTE entrée, pas seulement en cas de
+     * changement de salle) et/ou (b) si elle tombe dans une fenêtre de récréation (temps non
+     * imputable à la personne). Commun élève/enseignant/personnel — la même tolérance vaut pour tous.
+     */
+    LocalTime graceDeadline(LocalTime start, int marginMinutes, List<RecessWindow> recessWindows) {
+        LocalTime deadline = start;
+        for (RecessWindow w : recessWindows) {
+            if (w.contains(start) && w.getEndTime().isAfter(deadline)) deadline = w.getEndTime();
+        }
+        LocalTime withMargin = start.plusMinutes(marginMinutes);
+        return withMargin.isAfter(deadline) ? withMargin : deadline;
     }
 
     private static String frenchDay(DayOfWeek dow) {

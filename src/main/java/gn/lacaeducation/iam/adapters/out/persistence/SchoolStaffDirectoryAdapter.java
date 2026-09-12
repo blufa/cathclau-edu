@@ -35,6 +35,18 @@ class SchoolStaffDirectoryAdapter implements SchoolStaffDirectory {
                 .toList();
     }
 
+    @Override
+    public List<LeadershipContact> findLeadershipContacts(Long tenantId) {
+        if (tenantId == null) return List.of();
+        List<LeadershipContact> directors = jpa.findActiveByTenantIdAndRoleCodes(tenantId, List.of(RoleCode.DIRECTOR)).stream()
+                .map(u -> new LeadershipContact(u.getPhone(), (safe(u.getFirstName()) + " " + safe(u.getLastName())).trim(), "Directeur"))
+                .toList();
+        List<LeadershipContact> pedagogicalLeads = jpa.findActiveByTenantIdAndRoleCodes(tenantId, List.of(RoleCode.RESPONSABLE_PEDAGOGIQUE)).stream()
+                .map(u -> new LeadershipContact(u.getPhone(), (safe(u.getFirstName()) + " " + safe(u.getLastName())).trim(), "Responsable pédagogique"))
+                .toList();
+        return java.util.stream.Stream.concat(directors.stream(), pedagogicalLeads.stream()).toList();
+    }
+
     private static String safe(String s) {
         return s == null ? "" : s;
     }

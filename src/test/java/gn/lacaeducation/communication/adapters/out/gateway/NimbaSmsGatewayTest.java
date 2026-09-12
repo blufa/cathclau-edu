@@ -10,17 +10,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 class NimbaSmsGatewayTest {
 
     @Test
-    void normalizesAcceptedFormats() {
-        assertThat(NimbaSmsGateway.normalizeNumber("623273737")).isEqualTo("623273737");           // local
-        assertThat(NimbaSmsGateway.normalizeNumber("224623273737")).isEqualTo("224623273737");      // avec indicatif
-        assertThat(NimbaSmsGateway.normalizeNumber("+224623273737")).isEqualTo("224623273737");     // avec +
-        assertThat(NimbaSmsGateway.normalizeNumber("00224623273737")).isEqualTo("224623273737");    // préfixe 00
-        assertThat(NimbaSmsGateway.normalizeNumber("+224 623 27 37 37")).isEqualTo("224623273737");  // espaces
+    void normalizesToStrictE164WithPlus() {
+        // Un SMS a déjà été accepté (HTTP 201) par Nimba mais jamais livré avec un numéro sans "+" —
+        // on force désormais systématiquement la forme +224XXXXXXXXX, la plus stricte des 3 acceptées.
+        assertThat(NimbaSmsGateway.normalizeNumber("623273737", "224")).isEqualTo("+224623273737");           // local
+        assertThat(NimbaSmsGateway.normalizeNumber("224623273737", "224")).isEqualTo("+224623273737");        // avec indicatif
+        assertThat(NimbaSmsGateway.normalizeNumber("+224623273737", "224")).isEqualTo("+224623273737");       // avec +
+        assertThat(NimbaSmsGateway.normalizeNumber("00224623273737", "224")).isEqualTo("+224623273737");      // préfixe 00
+        assertThat(NimbaSmsGateway.normalizeNumber("+224 623 27 37 37", "224")).isEqualTo("+224623273737");   // espaces
     }
 
     @Test
     void returnsNullForNullInput() {
-        assertThat(NimbaSmsGateway.normalizeNumber(null)).isNull();
+        assertThat(NimbaSmsGateway.normalizeNumber(null, "224")).isNull();
     }
 
     @Test

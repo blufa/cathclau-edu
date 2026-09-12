@@ -13,6 +13,12 @@ public interface ParentAccessProvider {
     /** Identifiants des élèves rattachés au compte parent {@code userId} (vide si non parent). */
     java.util.List<Long> findChildStudentIds(Long userId);
 
+    /** Comme {@link #findChildStudentIds}, mais restreint aux élèves ayant une inscription VALIDÉE —
+     * pour les usages qui ne doivent compter que les enfants effectivement scolarisés (ex. retenue sur
+     * salaire des frais de scolarité, §7 payroll), contrairement à l'accès au portail parent qui reste
+     * volontairement permissif (historique) sur {@link #findChildStudentIds}. */
+    java.util.List<Long> findChildStudentIdsWithValidatedEnrollment(Long userId);
+
     /** Identifiants des comptes utilisateurs des parents d'un élève (pour notifier ; vide si aucun). */
     java.util.List<Long> findParentUserIdsByStudent(Long studentId);
 }

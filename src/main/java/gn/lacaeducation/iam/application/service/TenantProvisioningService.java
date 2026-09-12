@@ -40,7 +40,8 @@ public class TenantProvisioningService {
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void provisionTenantAdmin(Long tenantId, String schoolName, String adminEmail, String director,
-                                     String rawPassword, boolean temporaryPassword, String adminUsername) {
+                                     String rawPassword, boolean temporaryPassword, String adminUsername,
+                                     String adminPhone) {
         boolean hasEmail = adminEmail != null && !adminEmail.isBlank();
         boolean hasUsername = adminUsername != null && !adminUsername.isBlank();
         if (!hasEmail && !hasUsername) {
@@ -65,6 +66,7 @@ public class TenantProvisioningService {
                 .lastName(name[1])
                 .username(username)
                 .email(hasEmail ? adminEmail : null)
+                .phone(adminPhone)
                 .passwordHash(passwordHasher.hash(hasPassword ? rawPassword : UUID.randomUUID().toString()))
                 .mustChangePassword(temporaryPassword || !hasPassword)
                 .active(true)

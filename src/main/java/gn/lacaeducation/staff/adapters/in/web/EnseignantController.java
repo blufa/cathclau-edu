@@ -34,7 +34,8 @@ public class EnseignantController {
                 TenantContext.get(), cmd.userId(), cmd.staffNumber(), cmd.firstName(), cmd.lastName(),
                 cmd.phone(), cmd.email(), cmd.specialization(), cmd.hireDate(),
                 cmd.employmentStatus(), cmd.diploma(), cmd.remunerationType(),
-                cmd.remunerationRate(), cmd.teachingAuthorizationNumber(), cmd.cnssNumber(), cmd.idempotencyKey()));
+                cmd.remunerationRate(), cmd.teachingAuthorizationNumber(), cmd.cnssNumber(),
+                cmd.bankAccount(), cmd.idempotencyKey()));
         return ResponseEntity.created(URI.create("/api/staff/teachers/" + t.getId())).body(t);
     }
 

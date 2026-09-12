@@ -30,7 +30,15 @@ public class Employee {
     /** Salaire de base mensuel, utilisé comme base de la fiche de paie. */
     private BigDecimal baseSalary;
     private String cnssNumber;
+    /** Compte bancaire (RIB/IBAN) optionnel — pour le fichier bancaire de paie. Le téléphone
+     * ({@link #phone}) reste prioritaire pour le virement Mobile Money. */
+    private String bankAccount;
     private Boolean active;
+    /** Fiche {@code Teacher} de la même personne, si elle enseigne aussi en plus de son poste
+     * administratif/direction — lien manuel explicite (jamais déduit automatiquement), utilisé pour
+     * générer une fiche de paie combinée (salaire fixe + heures d'enseignement). Null si la personne
+     * n'enseigne pas. */
+    private Long linkedTeacherId;
 
     public String fullName() {
         String f = firstName != null ? firstName : "";

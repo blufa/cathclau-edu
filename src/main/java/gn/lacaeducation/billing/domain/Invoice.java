@@ -2,6 +2,7 @@ package gn.lacaeducation.billing.domain;
 import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 @Getter @Setter @Builder @NoArgsConstructor @AllArgsConstructor
 public class Invoice {
     private Long id;
@@ -34,4 +35,10 @@ public class Invoice {
      * la génération de la facture — un changement de tarif ne modifie jamais les factures déjà émises).
      * Null/zéro si aucun frais plateforme n'était configuré au moment de la génération. */
     private BigDecimal platformFeeAmount;
+    /** Sous-ensemble de mois "YYYY-MM" (parmi ceux de l'échéance liée, {@code Installment.months})
+     * effectivement réglés jusqu'ici — pour une facture multi-mois payée en plusieurs fois (ex. une
+     * tranche de 3 mois réglée en 2 encaissements de 2 puis 1 mois), la facture doit refléter quels
+     * mois sont couverts, pas seulement un solde global. Vide/null pour une facture d'un seul mois
+     * (le periodLabel suffit alors). Alimenté par InvoiceUseCase#applyPayment. */
+    private List<String> paidMonths;
 }

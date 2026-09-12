@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Optional;
 
 @Component
 @RequiredArgsConstructor
@@ -16,9 +17,18 @@ class EmployeePublicInfoProviderAdapter implements EmployeePublicInfoProvider {
     @Override
     public List<EmployeeInfo> listEmployees(Long tenantId) {
         return employeeRepository.findByTenantId(tenantId).stream()
-                .map(e -> new EmployeeInfo(e.getId(), e.fullName(),
-                        e.getCategory() != null ? e.getCategory().name() : null,
-                        e.getBaseSalary(), Boolean.TRUE.equals(e.getActive())))
+                .map(this::toInfo)
                 .toList();
+    }
+
+    @Override
+    public Optional<EmployeeInfo> findEmployee(Long id) {
+        return employeeRepository.findById(id).map(this::toInfo);
+    }
+
+    private EmployeeInfo toInfo(gn.lacaeducation.staff.domain.Employee e) {
+        return new EmployeeInfo(e.getId(), e.fullName(),
+                e.getCategory() != null ? e.getCategory().name() : null,
+                e.getBaseSalary(), Boolean.TRUE.equals(e.getActive()), e.getPhone(), e.getEmail());
     }
 }

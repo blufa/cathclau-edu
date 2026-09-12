@@ -22,7 +22,7 @@ class ReferentielPersistenceAdapter implements ReferentielRepository {
 
     @Override public Salle saveRoom(Salle s) { return mapper.toDomain(salleRepo.save(mapper.toEntity(s))); }
     @Override public Optional<Salle> findRoomById(Long id) { return salleRepo.findById(id).map(mapper::toDomain); }
-    @Override public List<Salle> findRoomsByTenantId(Long t) { return salleRepo.findByTenantId(t).stream().map(mapper::toDomain).toList(); }
+    @Override public List<Salle> findRoomsByTenantId(Long t) { return salleRepo.findByTenantIdOrderById(t).stream().map(mapper::toDomain).toList(); }
     @Override public void deleteRoomById(Long id) { salleRepo.deleteById(id); }
     @Override public Niveau saveLevel(Niveau n) { return mapper.toDomain(niveauRepo.save(mapper.toEntity(n))); }
     @Override public Optional<Niveau> findLevelById(Long id) { return niveauRepo.findById(id).map(mapper::toDomain); }
