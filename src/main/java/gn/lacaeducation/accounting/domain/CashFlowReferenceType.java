@@ -1,2 +1,2 @@
 package gn.lacaeducation.accounting.domain;
-public enum CashFlowReferenceType { PAYMENT, EXPENSE, MANUAL }
+public enum CashFlowReferenceType { PAYMENT, EXPENSE, PAYSLIP, MANUAL }

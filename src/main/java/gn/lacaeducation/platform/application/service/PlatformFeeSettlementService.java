@@ -8,6 +8,7 @@ import gn.lacaeducation.payments.DjomyGatewayApi;
 import gn.lacaeducation.platform.application.port.in.PlatformFeeSettlementUseCase;
 import gn.lacaeducation.platform.application.port.out.PlatformFeeLedgerRepository;
 import gn.lacaeducation.platform.application.port.out.PlatformFeeSettlementRepository;
+import gn.lacaeducation.platform.application.port.out.TenantRepository;
 import gn.lacaeducation.platform.domain.PaymentChannel;
 import gn.lacaeducation.platform.domain.PaymentStatus;
 import gn.lacaeducation.platform.domain.PlatformFeeSettlement;
@@ -20,6 +21,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -37,6 +39,7 @@ public class PlatformFeeSettlementService implements PlatformFeeSettlementUseCas
     private final PlatformFeeLedgerRepository ledgerRepository;
     private final PlatformFeeSettlementRepository settlementRepository;
     private final DjomyGatewayApi djomyGatewayApi;
+    private final TenantRepository tenantRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -103,6 +106,23 @@ public class PlatformFeeSettlementService implements PlatformFeeSettlementUseCas
     @Transactional(readOnly = true)
     public List<PlatformFeeSettlement> findByTenantId(Long tenantId) {
         return settlementRepository.findByTenantId(tenantId);
+    }
+
+    /** SUPER_ADMIN (aucun tenant courant, donc les sommes explicites "hors filtre" ci-dessous plutôt
+     * que celles filtrées automatiquement) : solde de chaque école, y compris celles à 0. */
+    @Override
+    @Transactional(readOnly = true)
+    public List<TenantBalance> balancesByTenant() {
+        return tenantRepository.findAll().stream()
+                .map(t -> {
+                    BigDecimal collected = ledgerRepository.sumByTenantId(t.getId());
+                    BigDecimal settled = settlementRepository.sumSucceededByTenantId(t.getId());
+                    BigDecimal balance = collected.subtract(settled);
+                    return new TenantBalance(t.getId(), t.getSchoolName(), collected, settled,
+                            balance.signum() < 0 ? BigDecimal.ZERO : balance);
+                })
+                .sorted(Comparator.comparing(TenantBalance::balance).reversed())
+                .toList();
     }
 
     private String generateRef(String prefix) {

@@ -1,7 +1,10 @@
 package gn.lacaeducation.students.application.service;
 
+import gn.lacaeducation.students.application.port.out.EnrollmentRepository;
 import gn.lacaeducation.students.application.port.out.ParentRepository;
 import gn.lacaeducation.students.application.port.out.StudentParentRepository;
+import gn.lacaeducation.students.domain.Enrollment;
+import gn.lacaeducation.students.domain.EnrollmentStatus;
 import gn.lacaeducation.students.domain.Parent;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,6 +23,7 @@ class ParentAccessProviderAdapterTest {
 
     @Mock ParentRepository parentRepository;
     @Mock StudentParentRepository studentParentRepository;
+    @Mock EnrollmentRepository enrollmentRepository;
     @InjectMocks ParentAccessProviderAdapter adapter;
 
     @Test
@@ -48,5 +52,24 @@ class ParentAccessProviderAdapterTest {
     @Test
     void isParentOfStudent_nullArgs_returnsFalse() {
         assertThat(adapter.isParentOfStudent(null, 11L)).isFalse();
+    }
+
+    @Test
+    void findChildStudentIdsWithValidatedEnrollment_excludesChildrenWithoutValidatedEnrollment() {
+        when(parentRepository.findByUserId(7L)).thenReturn(Optional.of(Parent.builder().id(3L).build()));
+        when(studentParentRepository.findStudentIdsByParentId(3L)).thenReturn(List.of(10L, 11L));
+        when(enrollmentRepository.findByStudentId(10L)).thenReturn(
+                List.of(Enrollment.builder().studentId(10L).status(EnrollmentStatus.VALIDATED).build()));
+        when(enrollmentRepository.findByStudentId(11L)).thenReturn(
+                List.of(Enrollment.builder().studentId(11L).status(EnrollmentStatus.ABANDONED).build()));
+
+        assertThat(adapter.findChildStudentIdsWithValidatedEnrollment(7L)).containsExactly(10L);
+    }
+
+    @Test
+    void findChildStudentIdsWithValidatedEnrollment_notAParent_returnsEmpty() {
+        when(parentRepository.findByUserId(7L)).thenReturn(Optional.empty());
+
+        assertThat(adapter.findChildStudentIdsWithValidatedEnrollment(7L)).isEmpty();
     }
 }

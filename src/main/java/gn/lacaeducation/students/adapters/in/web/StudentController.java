@@ -232,7 +232,7 @@ public class StudentController {
     @ResponseStatus(HttpStatus.CREATED)
     public Enrollment enroll(@PathVariable Long studentId, @Valid @RequestBody EnrollmentUseCase.EnrollCommand cmd) {
         return enrollmentUseCase.enroll(new EnrollmentUseCase.EnrollCommand(
-                studentId, cmd.classId(), cmd.academicYearId(), cmd.type(), cmd.platformAccessOptIn()));
+                studentId, cmd.classId(), cmd.academicYearId(), cmd.type(), cmd.platformAccessOptIn(), cmd.monthlyPaymentOptIn()));
     }
 
     @Operation(summary = "Get all enrollments for a student")

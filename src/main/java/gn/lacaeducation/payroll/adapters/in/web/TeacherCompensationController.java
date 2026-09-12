@@ -85,7 +85,7 @@ public class TeacherCompensationController {
         return service.computeTheoreticalMonthlyPay(teacherId, year, month);
     }
 
-    public record GenPayslipRequest(String teacherName, Long structureId) {}
+    public record GenPayslipRequest(String teacherName, Long structureId, String teacherPhone, String bankAccount) {}
 
     @Operation(summary = "Générer automatiquement la fiche de paie du mois (brut basé sur les heures réalisées)")
     @PreAuthorize("hasAuthority('paie:manage')")
@@ -93,7 +93,8 @@ public class TeacherCompensationController {
     public Payslip generatePayslip(@PathVariable Long teacherId, @RequestParam int year, @RequestParam int month,
                                    @RequestBody(required = false) GenPayslipRequest r) {
         return service.generateFromHours(TenantContext.get(), teacherId, r != null ? r.teacherName() : null,
-                year, month, r != null ? r.structureId() : null);
+                year, month, r != null ? r.structureId() : null,
+                r != null ? r.teacherPhone() : null, r != null ? r.bankAccount() : null);
     }
 
     @Operation(summary = "Générer automatiquement la fiche de paie du mois depuis l'emploi du temps validé (§6), sans saisie manuelle")
@@ -102,6 +103,7 @@ public class TeacherCompensationController {
     public Payslip generatePayslipFromTimetable(@PathVariable Long teacherId, @RequestParam int year, @RequestParam int month,
                                                 @RequestBody(required = false) GenPayslipRequest r) {
         return service.generateFromTimetable(TenantContext.get(), teacherId, r != null ? r.teacherName() : null,
-                year, month, r != null ? r.structureId() : null);
+                year, month, r != null ? r.structureId() : null,
+                r != null ? r.teacherPhone() : null, r != null ? r.bankAccount() : null);
     }
 }

@@ -221,6 +221,54 @@ class InvoiceServiceTest {
     }
 
     @Test
+    void applyPayment_withPaidMonths_mergesIntoInvoicePaidMonths() {
+        // Facture multi-mois (tranche) réglée en une fois : les mois cochés au guichet doivent se
+        // retrouver sur la facture, pas seulement le montant global.
+        Invoice existing = Invoice.builder().id(1L).tenantId(10L).studentId(7L)
+                .totalAmount(new BigDecimal("90.00")).paidAmount(BigDecimal.ZERO)
+                .remainingBalance(new BigDecimal("90.00")).status(InvoiceStatus.UNPAID).build();
+        when(repo.findById(1L)).thenReturn(Optional.of(existing));
+        when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Invoice inv = service().applyPayment(1L, new BigDecimal("60.00"), false, java.util.List.of("2026-03", "2026-04"));
+
+        assertThat(inv.getPaidMonths()).containsExactly("2026-03", "2026-04");
+        assertThat(inv.getStatus()).isEqualTo(InvoiceStatus.PARTIAL);
+    }
+
+    @Test
+    void applyPayment_withPaidMonths_accumulatesAcrossSuccessivePayments() {
+        // Un deuxième paiement partiel sur la même tranche (ex. le mois restant réglé plus tard) doit
+        // AJOUTER au mois déjà payé, jamais l'écraser.
+        Invoice existing = Invoice.builder().id(1L).tenantId(10L).studentId(7L)
+                .totalAmount(new BigDecimal("90.00")).paidAmount(new BigDecimal("60.00"))
+                .remainingBalance(new BigDecimal("30.00")).status(InvoiceStatus.PARTIAL)
+                .paidMonths(new java.util.ArrayList<>(java.util.List.of("2026-03", "2026-04")))
+                .build();
+        when(repo.findById(1L)).thenReturn(Optional.of(existing));
+        when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Invoice inv = service().applyPayment(1L, new BigDecimal("30.00"), false, java.util.List.of("2026-05"));
+
+        assertThat(inv.getPaidMonths()).containsExactly("2026-03", "2026-04", "2026-05");
+        assertThat(inv.getStatus()).isEqualTo(InvoiceStatus.PAID);
+    }
+
+    @Test
+    void applyPayment_withoutPaidMonths_leavesPaidMonthsUnchanged() {
+        // Facture d'un seul mois (pas de tranche) : paidMonths reste null, comme avant ce correctif.
+        Invoice existing = Invoice.builder().id(1L).tenantId(10L).studentId(7L)
+                .totalAmount(new BigDecimal("30.00")).paidAmount(BigDecimal.ZERO)
+                .remainingBalance(new BigDecimal("30.00")).status(InvoiceStatus.UNPAID).build();
+        when(repo.findById(1L)).thenReturn(Optional.of(existing));
+        when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Invoice inv = service().applyPayment(1L, new BigDecimal("30.00"));
+
+        assertThat(inv.getPaidMonths()).isNull();
+    }
+
+    @Test
     void generateMonthly_addsPlatformFee_whenFeeTypeIsMonthly() {
         when(enrollmentQueryPort.hasActiveEnrollment(7L)).thenReturn(true);
         when(enrollmentQueryPort.hasPlatformAccessOptIn(7L, 99L)).thenReturn(true);
@@ -244,6 +292,64 @@ class InvoiceServiceTest {
         assertThat(inv.getTotalAmount()).isEqualByComparingTo("600");
         assertThat(inv.getPlatformFeeAmount()).isEqualByComparingTo("500");
         assertThat(inv.getRemainingBalance()).isEqualByComparingTo("600");
+    }
+
+    @Test
+    void generateMonthly_monthlyPaymentOptIn_splitsMultiMonthInstallmentIntoOneInvoicePerMonth() {
+        // Ce parent règle mois par mois (§billing) : une tranche de 3 mois (300) doit produire 3
+        // factures de 100, une par mois, au lieu d'une seule facture groupée de 300.
+        when(enrollmentQueryPort.hasActiveEnrollment(7L)).thenReturn(true);
+        when(enrollmentQueryPort.hasPlatformAccessOptIn(7L, 99L)).thenReturn(false);
+        when(enrollmentQueryPort.hasMonthlyPaymentOptIn(7L, 99L)).thenReturn(true);
+        when(installmentRepository.findByFeeId(3L)).thenReturn(java.util.List.of(
+                gn.lacaeducation.billing.domain.Installment.builder()
+                        .id(1L).feeId(3L).label("Trimestre 1").amount(new BigDecimal("300"))
+                        .months(java.util.List.of("2026-09", "2026-10", "2026-11")).build()));
+        when(repo.existsByStudentIdAndInstallmentIdAndPeriodLabel(eq(7L), eq(1L), any())).thenReturn(false);
+        when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(
+                gn.lacaeducation.billing.domain.SchoolFee.builder().id(3L)
+                        .type(gn.lacaeducation.billing.domain.FeeType.MONTHLY).build()));
+        when(familyDiscountUseCase.computeApplicable(1L, 7L, gn.lacaeducation.billing.domain.FeeType.MONTHLY))
+                .thenReturn(new gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase.ApplicableDiscount(
+                        null, null));
+        when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
+
+        var invoices = service().generateMonthly(
+                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 3L, 99L));
+
+        assertThat(invoices).hasSize(3);
+        assertThat(invoices).extracting(Invoice::getTotalAmount)
+                .allSatisfy(a -> assertThat(a).isEqualByComparingTo("100.00"));
+        assertThat(invoices).extracting(Invoice::getPeriodLabel)
+                .containsExactly("Septembre 2026", "Octobre 2026", "Novembre 2026");
+        assertThat(invoices).allMatch(inv -> inv.getInstallmentId().equals(1L));
+    }
+
+    @Test
+    void generateMonthly_withoutMonthlyPaymentOptIn_keepsOneInvoicePerInstallment() {
+        // Comportement inchangé pour les autres familles de la classe (pas d'opt-in).
+        when(enrollmentQueryPort.hasActiveEnrollment(7L)).thenReturn(true);
+        when(enrollmentQueryPort.hasPlatformAccessOptIn(7L, 99L)).thenReturn(false);
+        when(enrollmentQueryPort.hasMonthlyPaymentOptIn(7L, 99L)).thenReturn(false);
+        when(installmentRepository.findByFeeId(3L)).thenReturn(java.util.List.of(
+                gn.lacaeducation.billing.domain.Installment.builder()
+                        .id(1L).feeId(3L).label("Trimestre 1").amount(new BigDecimal("300"))
+                        .months(java.util.List.of("2026-09", "2026-10", "2026-11")).build()));
+        when(repo.existsByStudentIdAndInstallmentId(7L, 1L)).thenReturn(false);
+        when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(
+                gn.lacaeducation.billing.domain.SchoolFee.builder().id(3L)
+                        .type(gn.lacaeducation.billing.domain.FeeType.MONTHLY).build()));
+        when(familyDiscountUseCase.computeApplicable(1L, 7L, gn.lacaeducation.billing.domain.FeeType.MONTHLY))
+                .thenReturn(new gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase.ApplicableDiscount(
+                        null, null));
+        when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
+
+        var invoices = service().generateMonthly(
+                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 3L, 99L));
+
+        assertThat(invoices).hasSize(1);
+        assertThat(invoices.get(0).getTotalAmount()).isEqualByComparingTo("300");
+        assertThat(invoices.get(0).getPeriodLabel()).isEqualTo("Trimestre 1");
     }
 
     @Test

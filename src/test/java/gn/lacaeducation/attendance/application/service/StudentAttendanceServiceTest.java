@@ -128,6 +128,7 @@ class StudentAttendanceServiceTest {
         when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
         when(checkinRepository.findByStudentIdAndDate(eq(10L), any())).thenReturn(List.of());
         when(repo.findByStudentIdAndClassIdAndDate(eq(10L), eq(20L), any())).thenReturn(Optional.empty());
+        when(repo.save(any())).thenAnswer(i -> { StudentAttendance a = i.getArgument(0); a.setId(1L); return a; });
 
         StudentCheckin result = service.recordEntry(10L, null);
 
@@ -176,6 +177,7 @@ class StudentAttendanceServiceTest {
         when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
         when(checkinRepository.findByStudentIdAndDate(eq(10L), any())).thenReturn(List.of());
         when(repo.findByStudentIdAndClassIdAndDate(eq(10L), eq(20L), any())).thenReturn(Optional.empty());
+        when(repo.save(any())).thenAnswer(i -> { StudentAttendance a = i.getArgument(0); a.setId(1L); return a; });
 
         StudentCheckin result = service.recordEntry(10L, 99L);
 
@@ -240,6 +242,7 @@ class StudentAttendanceServiceTest {
         when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
         when(checkinRepository.findByStudentIdAndDate(eq(10L), any())).thenReturn(List.of());
         when(repo.findByStudentIdAndClassIdAndDate(eq(10L), eq(20L), any())).thenReturn(Optional.empty());
+        when(repo.save(any())).thenAnswer(i -> { StudentAttendance a = i.getArgument(0); a.setId(1L); return a; });
 
         StudentCheckin result = service.recordManualEntry(10L, LocalDate.of(2026, 8, 26), java.time.LocalTime.of(8, 5));
 

@@ -134,7 +134,7 @@ class PaymentServiceTest {
 
     private GroupPaymentCommand groupCmd(String idempotencyKey) {
         return new GroupPaymentCommand(10L, 7L, PaymentChannel.CASH, null, "Tranche 1",
-                1, BigDecimal.ZERO, List.of(new InvoiceShare(3L, null, new BigDecimal("100.00"))),
+                1, BigDecimal.ZERO, List.of(new InvoiceShare(3L, null, new BigDecimal("100.00"), null)),
                 99L, 2026L, idempotencyKey);
     }
 

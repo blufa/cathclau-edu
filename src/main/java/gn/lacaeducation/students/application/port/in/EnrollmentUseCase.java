@@ -6,15 +6,19 @@ import java.util.List;
 
 public interface EnrollmentUseCase {
     /** platformAccessOptIn : le parent accepte-t-il que l'élève soit connecté à la plateforme (frais
-     * annexe ajouté aux mensualités si oui) ? Null/absent traité comme false. */
+     * annexe ajouté aux mensualités si oui) ? Null/absent traité comme false.
+     * monthlyPaymentOptIn : ce parent règle-t-il mois par mois plutôt que par tranche groupée (voir
+     * Enrollment#monthlyPaymentOptIn) ? Null/absent traité comme false. */
     record EnrollCommand(Long studentId, Long classId, Long academicYearId, EnrollmentType type,
-                         Boolean platformAccessOptIn) {}
+                         Boolean platformAccessOptIn, Boolean monthlyPaymentOptIn) {}
 
     Enrollment enroll(EnrollCommand command);
     Enrollment reenroll(EnrollCommand command);
     Enrollment update(Long id, EnrollCommand command);
     /** Modifie après coup le choix d'accès à la plateforme (le parent peut changer d'avis en cours d'année). */
     Enrollment updatePlatformAccessOptIn(Long id, boolean optIn);
+    /** Modifie après coup le choix de paiement mensuel (le parent peut changer d'avis en cours d'année). */
+    Enrollment updateMonthlyPaymentOptIn(Long id, boolean optIn);
     Enrollment validate(Long id);
     Enrollment cancel(Long id);
     /** Marque une inscription validée comme abandonnée (élève parti en cours d'année) — distinct de

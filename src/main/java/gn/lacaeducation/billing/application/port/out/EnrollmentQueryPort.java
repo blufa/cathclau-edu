@@ -20,6 +20,11 @@ public interface EnrollmentQueryPort {
      * année scolaire ? Conditionne l'ajout du frais d'usage plateforme aux mensualités (§billing). */
     boolean hasPlatformAccessOptIn(Long studentId, Long academicYearId);
 
+    /** Ce parent règle-t-il mois par mois plutôt que par tranche groupée pour cette inscription ?
+     * Conditionne, à la génération des mensualités, l'éclatement d'une tranche multi-mois en autant
+     * de factures séparées d'un mois pour cet élève précisément (§billing). */
+    boolean hasMonthlyPaymentOptIn(Long studentId, Long academicYearId);
+
     /** Année scolaire de l'inscription active (non annulée) la plus récente de cet élève, ou {@code
      * null} s'il n'en a aucune. Filet de sécurité utilisé quand un appelant de facturation omet de
      * préciser l'année scolaire — sans ça, la facture se retrouvait avec `academic_year_id = NULL`,

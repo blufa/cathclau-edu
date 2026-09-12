@@ -22,8 +22,10 @@ import java.util.List;
  * <p>Flux : Basic auth ({@code base64(service_id:secret_token)}) → POST {@code /v1/messages} en JSON
  * {@code {sender_name, to:[numéro...], message}} (confirmé sur developers.nimbasms.com : {@code to}
  * est un tableau de 1 à 30 numéros, {@code sender_name} 1-100 caractères, {@code message} ≤ 1071
- * caractères). NimbaSMS accepte les numéros sous 3 formats ({@code 623XXXXXX}, {@code 224623XXXXXX},
- * {@code +224623XXXXXX}) : pas besoin de forcer l'E.164.
+ * caractères). La documentation NimbaSMS liste 3 formats acceptés ({@code 623XXXXXX},
+ * {@code 224623XXXXXX}, {@code +224623XXXXXX}) — en pratique un SMS envoyé sans {@code +} a été
+ * accepté (HTTP 201) mais jamais livré, donc {@link #normalizeNumber} force systématiquement la forme
+ * la plus stricte ({@code +224623XXXXXX}).
  * Tant que les clés ne sont pas renseignées ({@code nimba.sms.enabled=false}), l'envoi se replie sur
  * la journalisation sans échouer (comportement dev, comme {@link OrangeSmsGateway}).</p>
  *
@@ -69,7 +71,7 @@ public class NimbaSmsGateway implements NotificationGateway, SmsBalancePort {
             return new DeliveryResult(true, "logged (nimba disabled)");
         }
         try {
-            MessageRequest body = new MessageRequest(props.senderName(), List.of(normalizeNumber(destination)), message, "sms");
+            MessageRequest body = new MessageRequest(props.senderName(), List.of(normalizeNumber(destination, props.defaultDialingCode())), message, "sms");
             MessageResponse response = http.post()
                     .uri("/v1/messages")
                     .header("Authorization", "Basic " + basicToken())
@@ -113,14 +115,18 @@ public class NimbaSmsGateway implements NotificationGateway, SmsBalancePort {
     }
 
     /**
-     * Nettoie un numéro pour NimbaSMS : NimbaSMS accepte {@code 623XXXXXX}, {@code 224623XXXXXX} et
-     * {@code +224623XXXXXX}, donc pas besoin de forcer un format unique — juste retirer les espaces,
-     * tirets et un éventuel préfixe international {@code 00}.
+     * Nettoie un numéro pour NimbaSMS et force le format E.164 complet ({@code +224623XXXXXX}) : même
+     * si la documentation NimbaSMS liste {@code 623XXXXXX}/{@code 224623XXXXXX} comme acceptés en plus
+     * du format {@code +224...}, un cas réel a montré un SMS accepté (HTTP 201) mais jamais livré alors
+     * que le numéro envoyé n'avait pas le {@code +} — toujours envoyer la forme la plus stricte plutôt
+     * que de deviner laquelle des 3 formes documentées est réellement fiable chez l'opérateur destinataire.
      */
-    static String normalizeNumber(String raw) {
+    static String normalizeNumber(String raw, String defaultDialingCode) {
         if (raw == null) return null;
         String digits = raw.trim().replaceAll("\\D", "");
-        return digits.startsWith("00") ? digits.substring(2) : digits;
+        if (digits.startsWith("00")) digits = digits.substring(2);
+        if (!digits.startsWith(defaultDialingCode)) digits = defaultDialingCode + digits;
+        return "+" + digits;
     }
 
     /**

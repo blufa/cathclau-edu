@@ -17,13 +17,16 @@ public interface TeacherUseCase {
                                 String email, String specialization, LocalDate hireDate,
                                 String employmentStatus, String diploma, String remunerationType,
                                 BigDecimal remunerationRate, String teachingAuthorizationNumber, String cnssNumber,
+                                /** Compte bancaire (RIB/IBAN) optionnel, pour le fichier bancaire de paie. */
+                                String bankAccount,
                                 /** Clé d'idempotence fournie par le client (mode hors-ligne) : rejouer avec la même
                                  *  clé après une coupure réseau renvoie l'enseignant déjà créé au lieu d'en créer un second. */
                                 String idempotencyKey) {}
     record UpdateTeacherCommand(String staffNumber, String firstName, String lastName,
                                 String phone, String email, String specialization, LocalDate hireDate,
                                 String employmentStatus, String diploma, String remunerationType,
-                                BigDecimal remunerationRate, String teachingAuthorizationNumber, String cnssNumber) {}
+                                BigDecimal remunerationRate, String teachingAuthorizationNumber, String cnssNumber,
+                                String bankAccount) {}
     /** Champs modifiables par l'enseignant lui-même — jamais matricule/spécialité/dossier professionnel. */
     record UpdateOwnProfileCommand(String phone, String email) {}
 

@@ -7,6 +7,7 @@ import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
 import gn.lacaeducation.billing.application.port.out.InvoicePdfGenerator;
 import gn.lacaeducation.billing.domain.Invoice;
+import gn.lacaeducation.billing.domain.MonthLabel;
 import gn.lacaeducation.common.TenantInfoProvider;
 import gn.lacaeducation.common.TenantPublicInfo;
 import gn.lacaeducation.common.pdf.SchoolPdfHeader;
@@ -60,6 +61,14 @@ class OpenPdfInvoiceGenerator implements InvoicePdfGenerator {
             row(studentBlock, "Élève", studentName(inv.getStudentId()));
             row(studentBlock, "Objet", inv.getPeriodLabel() != null && !inv.getPeriodLabel().isBlank()
                     ? inv.getPeriodLabel() : "Frais de scolarité");
+            // Facture multi-mois (tranche) réglée en plusieurs fois : préciser quels mois sont
+            // effectivement couverts par ce qui a été payé, plutôt qu'un solde global qui ne dit rien
+            // du détail (§Correction-hier.md).
+            if (inv.getPaidMonths() != null && !inv.getPaidMonths().isEmpty()) {
+                row(studentBlock, "Mois réglés", inv.getPaidMonths().stream()
+                        .sorted().map(MonthLabel::shortLabel)
+                        .collect(java.util.stream.Collectors.joining(", ")));
+            }
             doc.add(studentBlock);
 
             PdfPTable amounts = dataTable(new float[]{2f, 1.5f});

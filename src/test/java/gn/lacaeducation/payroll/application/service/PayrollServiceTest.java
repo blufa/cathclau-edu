@@ -50,6 +50,7 @@ class PayrollServiceTest {
     @Mock TeacherWorkProvider workProvider;
     @Mock SalaryFeeDeductionUseCase salaryFeeDeductionUseCase;
     @Mock AcademicsDataProvider academics;
+    @Mock org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     @InjectMocks PayrollService payrollService;
 
@@ -87,6 +88,34 @@ class PayrollServiceTest {
         assertThat(mass.teacherCount()).isZero();
         assertThat(mass.totalHourlyRateNormal()).isEqualByComparingTo("0");
         assertThat(mass.monthlyPayroll()).isEqualByComparingTo("0");
+    }
+
+    /** La durée choisie séance par séance dans le modal « Réaliser » (théorique OU réellement pointée)
+     * est la seule source de vérité pour la paie — le retard/départ anticipé cumulé du pointage reste
+     * calculé et affiché sur la fiche de paie (information), mais n'est plus déduit une seconde fois du
+     * temps réalisé : sans quoi choisir la durée RÉELLE pointée (qui exclut déjà le retard) pénalisait
+     * l'enseignant deux fois pour le même retard. */
+    @Test
+    void computeMonthlyPay_doesNotDeductLateOrEarlyFromRealizedMinutes() {
+        TeacherCompensation comp = TeacherCompensation.builder().teacherId(5L)
+                .payMode(PayMode.HOURLY).hourlyRateNormal(new BigDecimal("10000")).hourlyRateExam(BigDecimal.ZERO)
+                .fixedSalary(BigDecimal.ZERO).build();
+        when(compRepo.findByTeacherId(5L)).thenReturn(Optional.of(comp));
+        when(teachingProvider.realizedMinutesByClass(eq(5L), any(), any())).thenReturn(Map.of(20L, 120));
+        when(workProvider.monthlyLateEarlyByClass(5L, 2026, 9))
+                .thenReturn(Map.of(20L, new TeacherWorkProvider.ClassLateEarly(351, 40)));
+        when(academics.findClass(20L)).thenReturn(Optional.empty());
+
+        PayrollService.MonthlyPay pay = payrollService.computeMonthlyPay(5L, 2026, 9);
+
+        // 120 min réalisées (choisies dans le modal) = 2h x 10 000 GNF, sans déduction du retard/départ
+        // anticipé.
+        assertThat(pay.effectiveMinutes()).isEqualTo(120);
+        assertThat(pay.teachingPay()).isEqualByComparingTo("20000");
+        assertThat(pay.grossPay()).isEqualByComparingTo("20000");
+        // Retard/départ anticipé restent réellement calculés et exposés (affichage informatif seulement).
+        assertThat(pay.lateMinutes()).isEqualTo(351);
+        assertThat(pay.earlyMinutes()).isEqualTo(40);
     }
 
     /** Fiche combinée : personnel de direction (salaire fixe) qui enseigne aussi (heures réalisées) —
@@ -142,5 +171,56 @@ class PayrollServiceTest {
         assertThatThrownBy(() -> payrollService.generateCombinedPayslip(9L, 5L, "Mariam Bah",
                 EmployeeType.DIRECTION, new BigDecimal("2000000"), null, 2026, 3, null))
                 .isInstanceOf(gn.lacaeducation.common.BusinessRuleException.class);
+    }
+
+    /** Fait remonter la paie dans la trésorerie (§payroll ↔ accounting), jamais dans le budget annuel
+     * voté (masse salariale toujours puisée dans les recettes de l'école, pas dans ce budget) : au
+     * paiement d'une fiche, l'événement porte le net à virer. */
+    @Test
+    void markPaid_publishesPayslipPaidEventWithNetSalary() {
+        Payslip validated = Payslip.builder().id(1L).tenantId(9L).status(gn.lacaeducation.payroll.domain.PayslipStatus.VALIDATED)
+                .netSalary(new BigDecimal("850000")).build();
+        when(payslipRepo.findById(1L)).thenReturn(java.util.Optional.of(validated));
+        when(payslipRepo.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        payrollService.markPaid(1L, "BANK_TRANSFER");
+
+        org.mockito.Mockito.verify(eventPublisher).publishEvent(
+                new gn.lacaeducation.payroll.application.event.PayslipPaidEvent(9L, 1L, new BigDecimal("850000")));
+    }
+
+    /** Empêche un doublon silencieux (double-clic sur « Générer en lot »/« Générer une fiche ») : une
+     * fiche existe déjà pour ce salarié sur cette période exacte (même type d'employé). */
+    @Test
+    void generate_duplicateForSameTeacherAndPeriod_throwsConflict() {
+        when(payslipRepo.existsByTenantIdAndTeacherIdAndPeriodLabelAndEmployeeType(9L, 7L, "Mars 2026", EmployeeType.TEACHER))
+                .thenReturn(true);
+
+        assertThatThrownBy(() -> payrollService.generate(new PayrollService.GenerateCommand(
+                9L, null, 7L, "M. Diallo", "Mars 2026",
+                null, null, new BigDecimal("300000"), null, null,
+                null, null, null, null, null, null, null)))
+                .isInstanceOf(gn.lacaeducation.common.ConflictException.class);
+    }
+
+    /** Fichier bancaire (§payroll) : le téléphone (Mobile Money) est prioritaire sur le compte
+     * bancaire pour la colonne identifiant_virement ; les brouillons sont exclus. */
+    @Test
+    void bankFileCsv_prefersPhoneOverBankAccount_andSkipsDrafts() {
+        Payslip withPhone = Payslip.builder().teacherName("M. Diallo").teacherPhone("620000000")
+                .bankAccount("GN00-1234").periodLabel("Mars 2026").netSalary(new BigDecimal("850000"))
+                .status(gn.lacaeducation.payroll.domain.PayslipStatus.PAID).paymentMethod("BANK_TRANSFER").build();
+        Payslip bankOnly = Payslip.builder().teacherName("Mme Sow").teacherPhone(null)
+                .bankAccount("GN00-5678").periodLabel("Mars 2026").netSalary(new BigDecimal("600000"))
+                .status(gn.lacaeducation.payroll.domain.PayslipStatus.VALIDATED).build();
+        Payslip draft = Payslip.builder().teacherName("Ignoré (brouillon)").periodLabel("Mars 2026")
+                .netSalary(new BigDecimal("999999")).status(gn.lacaeducation.payroll.domain.PayslipStatus.DRAFT).build();
+        when(payslipRepo.findByTenantId(9L)).thenReturn(List.of(withPhone, bankOnly, draft));
+
+        String csv = payrollService.bankFileCsv(9L);
+
+        assertThat(csv).contains("M. Diallo;620000000;GN00-1234;620000000;Mars 2026;850000;BANK_TRANSFER");
+        assertThat(csv).contains("Mme Sow;;GN00-5678;GN00-5678;Mars 2026;600000;BANK_TRANSFER");
+        assertThat(csv).doesNotContain("Ignoré");
     }
 }

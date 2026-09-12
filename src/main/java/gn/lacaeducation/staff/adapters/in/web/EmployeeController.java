@@ -28,7 +28,8 @@ public class EmployeeController {
     public ResponseEntity<Employee> create(@RequestBody CreateEmployeeCommand cmd) {
         Employee e = useCase.create(new CreateEmployeeCommand(TenantContext.get(), cmd.userId(),
                 cmd.employeeNumber(), cmd.firstName(), cmd.lastName(), cmd.phone(), cmd.email(),
-                cmd.category(), cmd.jobTitle(), cmd.hireDate(), cmd.baseSalary(), cmd.cnssNumber()));
+                cmd.category(), cmd.jobTitle(), cmd.hireDate(), cmd.baseSalary(), cmd.cnssNumber(),
+                cmd.bankAccount()));
         return ResponseEntity.created(URI.create("/api/v1/staff/employees/" + e.getId())).body(e);
     }
 

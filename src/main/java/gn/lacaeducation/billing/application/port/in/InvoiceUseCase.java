@@ -34,6 +34,14 @@ public interface InvoiceUseCase {
      */
     Invoice applyPayment(Long invoiceId, BigDecimal amount, boolean notify);
     /**
+     * Variante qui précise en plus quels mois (parmi ceux de l'échéance liée, "YYYY-MM") ce règlement
+     * couvre — pour une facture multi-mois payée en plusieurs fois, accumulés dans
+     * {@link Invoice#getPaidMonths()} au fil des paiements successifs (jamais écrasés, jamais
+     * dupliqués). {@code null}/vide : facture d'un seul mois, ou mois non précisés — sans effet sur
+     * {@code paidMonths}.
+     */
+    Invoice applyPayment(Long invoiceId, BigDecimal amount, boolean notify, List<String> paidMonths);
+    /**
      * Répercute un remboursement de paiement sur la facture : réduit `paidAmount` (jamais en dessous
      * de zéro) et recalcule solde/statut. Distinct de {@link #applyPayment} — ne publie PAS
      * `InvoicePaymentAppliedEvent` (écouté côté communication pour notifier le parent d'un paiement

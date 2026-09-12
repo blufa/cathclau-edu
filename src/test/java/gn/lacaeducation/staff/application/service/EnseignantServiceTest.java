@@ -41,7 +41,7 @@ class EnseignantServiceTest {
         when(teacherRepository.save(any())).thenReturn(expected);
 
         Teacher result = service.create(new CreateTeacherCommand(10L, null, "T001", "John", "Doe",
-                "0600000000", "john@school.gn", "Mathematics", LocalDate.of(2024, 1, 15), null, null, null, null, null, null, null));
+                "0600000000", "john@school.gn", "Mathematics", LocalDate.of(2024, 1, 15), null, null, null, null, null, null, null, null));
 
         assertThat(result.getId()).isEqualTo(1L);
         verify(teacherRepository).save(any(Teacher.class));
@@ -53,7 +53,7 @@ class EnseignantServiceTest {
         when(teacherRepository.existsByTenantIdAndStaffNumber(10L, "T001")).thenReturn(true);
 
         assertThatThrownBy(() -> service.create(new CreateTeacherCommand(10L, null, "T001", "John", "Doe",
-                null, null, null, null, null, null, null, null, null, null, null)))
+                null, null, null, null, null, null, null, null, null, null, null, null)))
                 .isInstanceOf(ConflictException.class);
         verify(teacherRepository, never()).save(any());
     }
@@ -75,7 +75,7 @@ class EnseignantServiceTest {
         });
 
         CreateTeacherCommand cmd = new CreateTeacherCommand(10L, null, "T001", "John", "Doe",
-                null, null, null, null, null, null, null, null, null, null, "key-1");
+                null, null, null, null, null, null, null, null, null, null, null, "key-1");
 
         Teacher first = service.create(cmd);
         Teacher second = service.create(cmd);

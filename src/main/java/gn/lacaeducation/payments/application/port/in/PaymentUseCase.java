@@ -19,7 +19,9 @@ public interface PaymentUseCase {
      * propriétaire de la facture (fratrie, §payments) ; {@code null} retombe sur le
      * {@link GroupPaymentCommand#studentId()} de la commande (paiement mono-élève classique).
      */
-    record InvoiceShare(Long invoiceId, Long studentId, BigDecimal amount) {}
+    /** {@code paidMonths} : mois "YYYY-MM" couverts par cette part sur une facture multi-mois (tranche
+     * partiellement réglée), reportés sur {@code Invoice.paidMonths} — null/vide si non précisé. */
+    record InvoiceShare(Long invoiceId, Long studentId, BigDecimal amount, List<String> paidMonths) {}
     /**
      * Paiement groupé de plusieurs mois (ou de l'année) en une fois : un seul paiement, un seul reçu
      * listant les mois réglés et le reste à payer. Au guichet (canal manuel) la confirmation est

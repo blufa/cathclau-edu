@@ -1,4 +1,5 @@
 package gn.lacaeducation.communication.adapters.in.web;
+import gn.lacaeducation.common.TenantContext;
 import gn.lacaeducation.communication.application.port.in.CommunicationUseCase;
 import gn.lacaeducation.communication.domain.*;
 import io.swagger.v3.oas.annotations.Operation;
@@ -29,8 +30,13 @@ public class CommunicationController {
             r.recipientDestinations().stream().filter(d -> d != null && !d.isBlank())
                     .forEach(d -> targets.add(new CommunicationUseCase.RecipientTarget(null, d)));
         }
+        // Toujours résolu depuis le contexte tenant du serveur (jamais depuis le corps de la requête) :
+        // un appelant frontend qui oublie de renseigner tenantId provoquait une violation de contrainte
+        // NOT NULL en base au lieu d'un envoi normal — et faire confiance à un tenantId fourni par le
+        // client serait de toute façon un risque d'isolation multi-tenant.
+        Long tenantId = TenantContext.get();
         return ResponseEntity.ok(useCase.send(new CommunicationUseCase.SendCommunicationCommand(
-                r.tenantId(), r.senderId(), r.channel(), r.recipientType(), r.subject(),
+                tenantId, r.senderId(), r.channel(), r.recipientType(), r.subject(),
                 r.content(), r.reason(), targets)));
     }
     @Operation(summary = "Get a communication by ID")

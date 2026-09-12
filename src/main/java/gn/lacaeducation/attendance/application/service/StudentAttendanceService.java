@@ -246,15 +246,22 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
     }
 
     /** Statut du jour toujours PRESENT depuis un scan (le retard reste représenté par lateMinutes > 0 —
-     * un scan ne peut jamais produire ABSENT, voir {@link #markAbsent}). Notifie le parent en cas de
-     * retard, comme avant (déclenché par le calcul automatique plutôt que par un clic manuel). */
+     * un scan ne peut jamais produire ABSENT, voir {@link #markAbsent}). Notifie le parent par SMS à
+     * chaque premier scan du jour (arrivée confirmée), qu'il soit à l'heure ou en retard — un second
+     * scan le même jour (ex. retour après la pause) ne renvoie pas de notification. */
     private void upsertDailyAttendance(Long studentId, Long classId, LocalDate today) {
-        LocalTime firstCheckIn = checkinRepository.findByStudentIdAndDate(studentId, today).stream()
-                .map(StudentCheckin::getCheckInTime).filter(Objects::nonNull)
-                .min(Comparator.naturalOrder()).orElse(null);
-        int dayLate = checkinRepository.findByStudentIdAndDate(studentId, today).stream()
-                .mapToInt(c -> c.getLateMinutes() != null ? c.getLateMinutes() : 0).sum();
-        StudentAttendance saved = attendanceRepository.findByStudentIdAndClassIdAndDate(studentId, classId, today)
+        // Retard = celui du PREMIER pointage du jour uniquement (l'arrivée du matin) — jamais la somme
+        // des lateMinutes de chaque créneau/période scanné dans la journée : un élève pointant à
+        // plusieurs séances (matin, retour de pause…) voyait sinon son « retard » gonfler à chaque
+        // nouveau scan (ex. 351 min cumulées sur la journée pour un retard réel de 20 min le matin).
+        StudentCheckin firstCheckin = checkinRepository.findByStudentIdAndDate(studentId, today).stream()
+                .filter(c -> c.getCheckInTime() != null)
+                .min(Comparator.comparing(StudentCheckin::getCheckInTime)).orElse(null);
+        LocalTime firstCheckIn = firstCheckin != null ? firstCheckin.getCheckInTime() : null;
+        int dayLate = firstCheckin != null && firstCheckin.getLateMinutes() != null ? firstCheckin.getLateMinutes() : 0;
+        Optional<StudentAttendance> existing = attendanceRepository.findByStudentIdAndClassIdAndDate(studentId, classId, today);
+        boolean firstScanOfDay = existing.isEmpty();
+        StudentAttendance saved = existing
                 .map(a -> {
                     a.setStatus(AttendanceStatus.PRESENT);
                     a.setCheckInTime(firstCheckIn);
@@ -265,11 +272,12 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
                         .tenantId(TenantContext.get()).studentId(studentId).classId(classId).date(today)
                         .status(AttendanceStatus.PRESENT).reason("Scan carte scolaire").parentNotified(false)
                         .checkInTime(firstCheckIn).lateMinutes(dayLate).build()));
-        // Statut toujours PRESENT depuis un scan — le retard est signalé au parent via lateMinutes,
-        // pas via le statut (qui ne devient LATE que pour une saisie manuelle, cf. record()/recordBulk()).
-        if (dayLate > 0) {
-            eventPublisher.publishEvent(new StudentAbsentEvent(
-                    saved.getId(), saved.getTenantId(), saved.getStudentId(), saved.getClassId(), saved.getDate()));
+        // Notification uniquement au premier scan du jour — un scan suivant (retour de pause, autre
+        // période) ne doit jamais redéclencher un SMS au parent, déjà prévenu de l'arrivée.
+        if (firstScanOfDay) {
+            String status = dayLate > 0 ? AttendanceStatus.LATE.name() : AttendanceStatus.PRESENT.name();
+            eventPublisher.publishEvent(new StudentAbsentEvent(saved.getId(), saved.getTenantId(),
+                    saved.getStudentId(), saved.getClassId(), saved.getDate(), status, dayLate, firstCheckIn));
         }
     }
 
@@ -297,7 +305,8 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
     private void publishIfAbsent(StudentAttendance a) {
         if (a.getStatus() == AttendanceStatus.ABSENT || a.getStatus() == AttendanceStatus.LATE) {
             eventPublisher.publishEvent(new StudentAbsentEvent(
-                    a.getId(), a.getTenantId(), a.getStudentId(), a.getClassId(), a.getDate()));
+                    a.getId(), a.getTenantId(), a.getStudentId(), a.getClassId(), a.getDate(),
+                    a.getStatus().name(), a.getLateMinutes(), a.getCheckInTime()));
         }
     }
     @Override
@@ -389,7 +398,8 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
         // toute boucle : DomainEventListener (notification) appelle déjà markParentNotified() en retour
         // quand son propre envoi réussit ; réutiliser cette méthode republierait l'événement à l'infini.
         StudentAttendance a = load(id);
-        eventPublisher.publishEvent(new StudentAbsentEvent(a.getId(), a.getTenantId(), a.getStudentId(), a.getClassId(), a.getDate()));
+        eventPublisher.publishEvent(new StudentAbsentEvent(a.getId(), a.getTenantId(), a.getStudentId(), a.getClassId(),
+                a.getDate(), a.getStatus().name(), a.getLateMinutes(), a.getCheckInTime()));
         a.setParentNotified(true);
         attendanceRepository.save(a);
     }

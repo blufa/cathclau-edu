@@ -17,4 +17,10 @@ public interface InstallmentUseCase {
     Optional<Installment> findById(Long id);
     List<Installment> findByFeeId(Long feeId);
     void delete(Long id);
+    /**
+     * Déclenche immédiatement, pour le tenant courant, la vérification des échéances en retard (même
+     * traitement que le job planifié quotidien de 6h — utile pour tester une relance sans attendre le
+     * lendemain matin, ou si le serveur n'a pas tourné en continu depuis le dernier passage du job).
+     */
+    void checkOverdueNow();
 }

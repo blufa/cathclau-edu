@@ -7,6 +7,7 @@ import gn.lacaeducation.billing.domain.InstallmentStatus;
 import gn.lacaeducation.billing.domain.SchoolFee;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
+import gn.lacaeducation.common.TenantContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,6 +18,12 @@ import java.util.Optional;
 public class InstallmentService implements InstallmentUseCase {
     private final InstallmentRepository repo;
     private final SchoolFeeRepository schoolFeeRepository;
+    private final OverdueInstallmentProcessor overdueInstallmentProcessor;
+
+    @Override
+    public void checkOverdueNow() {
+        overdueInstallmentProcessor.checkOverdueDeadlinesForTenant(TenantContext.get(), java.time.LocalDate.now());
+    }
 
     @Override public Installment create(CreateInstallmentCommand c) {
         validateInstallmentSum(c.feeId(), null, c.amount());

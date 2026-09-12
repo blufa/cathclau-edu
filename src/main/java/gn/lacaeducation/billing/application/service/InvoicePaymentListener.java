@@ -79,7 +79,7 @@ public class InvoicePaymentListener {
                 log.warn("Paiement groupé {} : facture inconnue id={}, ignorée", event.paymentId(), share.invoiceId());
                 continue;
             }
-            invoiceUseCase.applyPayment(share.invoiceId(), share.amount(), false);
+            invoiceUseCase.applyPayment(share.invoiceId(), share.amount(), false, share.paidMonths());
             log.info("Paiement groupé {} : {} appliqué à la facture id={}",
                     event.paymentId(), share.amount(), share.invoiceId());
         }

@@ -11,6 +11,7 @@ interface InvoiceJpaRepository extends JpaRepository<InvoiceJpaEntity, Long> {
     List<InvoiceJpaEntity> findByTenantIdAndAcademicYearId(Long tenantId, Long academicYearId);
     boolean existsByStudentIdAndFeeId(Long studentId, Long feeId);
     boolean existsByStudentIdAndInstallmentId(Long studentId, Long installmentId);
+    boolean existsByStudentIdAndInstallmentIdAndPeriodLabel(Long studentId, Long installmentId, String periodLabel);
     List<InvoiceJpaEntity> findByFeeId(Long feeId);
     List<InvoiceJpaEntity> findByInstallmentId(Long installmentId);
 }

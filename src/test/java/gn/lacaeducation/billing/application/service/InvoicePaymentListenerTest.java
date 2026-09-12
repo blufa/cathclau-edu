@@ -84,11 +84,11 @@ class InvoicePaymentListenerTest {
         when(invoiceUseCase.existsById(4L)).thenReturn(true);
 
         listener.onGroupedSettlement(new GroupedInvoiceSettlementEvent(10L, 7L, 200L, List.of(
-                new GroupedInvoiceSettlementEvent.Share(3L, 7L, new BigDecimal("100.00")),
-                new GroupedInvoiceSettlementEvent.Share(4L, 7L, new BigDecimal("60.00")))));
+                new GroupedInvoiceSettlementEvent.Share(3L, 7L, new BigDecimal("100.00"), null),
+                new GroupedInvoiceSettlementEvent.Share(4L, 7L, new BigDecimal("60.00"), null))));
 
-        verify(invoiceUseCase).applyPayment(3L, new BigDecimal("100.00"), false);
-        verify(invoiceUseCase).applyPayment(4L, new BigDecimal("60.00"), false);
+        verify(invoiceUseCase).applyPayment(3L, new BigDecimal("100.00"), false, null);
+        verify(invoiceUseCase).applyPayment(4L, new BigDecimal("60.00"), false, null);
         verify(invoiceUseCase, never()).applyPayment(any(), any());
     }
 }

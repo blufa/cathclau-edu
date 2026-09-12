@@ -73,6 +73,16 @@ public class EnrollmentController {
 
     public record PlatformAccessRequest(Boolean optIn) {}
 
+    @Operation(summary = "Modifier le choix de paiement mensuel pour cet élève (opt-in du parent, modifiable "
+            + "en cours d'année) — les tranches multi-mois de sa classe sont alors facturées mois par mois")
+    @PatchMapping("/{id}/monthly-payment")
+    @PreAuthorize("hasAuthority('inscription:create')")
+    public Enrollment updateMonthlyPayment(@PathVariable Long id, @RequestBody MonthlyPaymentRequest r) {
+        return useCase.updateMonthlyPaymentOptIn(id, Boolean.TRUE.equals(r.optIn()));
+    }
+
+    public record MonthlyPaymentRequest(Boolean optIn) {}
+
     @Operation(summary = "Valider une inscription en attente (vérifie la capacité et l'unicité par année)")
     @PatchMapping("/{id}/validate")
     @PreAuthorize("hasAuthority('inscription:validate')")

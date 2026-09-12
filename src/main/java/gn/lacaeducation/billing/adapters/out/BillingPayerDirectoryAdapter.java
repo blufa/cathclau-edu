@@ -36,7 +36,8 @@ public class BillingPayerDirectoryAdapter implements PayerDirectory {
             FeeType.MONTHLY, "Mensualité",
             FeeType.TRANSPORT, "Transport",
             FeeType.CANTEEN, "Cantine",
-            FeeType.EXAM, "Examen");
+            FeeType.EXAM, "Examen",
+            FeeType.OTHER, "Autre");
 
     @Override
     public Optional<String> studentName(Long studentId) {

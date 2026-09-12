@@ -32,6 +32,11 @@ class EnrollmentQueryAdapter implements EnrollmentQueryPort {
     }
 
     @Override
+    public boolean hasMonthlyPaymentOptIn(Long studentId, Long academicYearId) {
+        return enrollmentJpaRepository.existsMonthlyPaymentOptInByStudentIdAndAcademicYearId(studentId, academicYearId);
+    }
+
+    @Override
     public Long findActiveAcademicYearId(Long studentId) {
         List<Long> ids = enrollmentJpaRepository.findActiveAcademicYearIdsMostRecentFirst(studentId);
         return ids.isEmpty() ? null : ids.get(0);

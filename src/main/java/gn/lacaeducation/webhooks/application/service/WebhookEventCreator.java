@@ -38,6 +38,9 @@ public class WebhookEventCreator {
 
     @EventListener
     public void onStudentAbsent(StudentAbsentEvent event) {
+        // StudentAbsentEvent couvre désormais aussi PRESENT (premier scan du jour, pour le SMS) — le
+        // webhook ABSENCE (§10.2) reste volontairement limité aux absences/retards, comme avant.
+        if ("PRESENT".equals(event.status())) return;
         createWebhookEvents(WebhookEventType.ABSENCE, event);
     }
 

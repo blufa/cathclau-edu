@@ -74,6 +74,7 @@ class OpenPdfPayslipGenerator implements PayslipPdfGenerator {
                 row(hoursBlock, "Heures non réalisées", hoursLabel(hours.missingMinutes()));
                 if (hours.lateMinutes() > 0) row(hoursBlock, "Retard cumulé", hours.lateMinutes() + " min");
                 if (hours.earlyMinutes() > 0) row(hoursBlock, "Départ anticipé cumulé", hours.earlyMinutes() + " min");
+                row(hoursBlock, "Heures effectives", hoursLabel(hours.effectiveMinutes()));
                 doc.add(hoursBlock);
             }
 

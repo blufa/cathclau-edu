@@ -1,5 +1,6 @@
 package gn.lacaeducation.expenses.application.service;
 
+import gn.lacaeducation.expenses.application.event.ExpensePaidEvent;
 import gn.lacaeducation.expenses.application.port.out.AnnualBudgetPdfGenerator;
 import gn.lacaeducation.expenses.application.port.out.AnnualBudgetRepository;
 import gn.lacaeducation.expenses.application.port.out.BudgetLineRepository;
@@ -95,6 +96,25 @@ class AnnualBudgetServiceTest {
 
         assertThat(url).isEqualTo("https://cdn.test/budget-1.pdf");
         assertThat(budget.getPdfFile()).isEqualTo("https://cdn.test/budget-1.pdf");
+    }
+
+    @Test
+    void onExpensePaid_incrementsLinkedLineActualAmount() {
+        BudgetLine line = BudgetLine.builder().id(5L).tenantId(1L).budgetId(1L)
+                .lineType(BudgetLineType.EXPENSE).category("Craie").actualAmount(BigDecimal.valueOf(20_000)).build();
+        when(lineRepo.findById(5L)).thenReturn(Optional.of(line));
+        when(lineRepo.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        service.onExpensePaid(new ExpensePaidEvent(1L, 42L, 3L, 5L, BigDecimal.valueOf(15_000)));
+
+        assertThat(line.getActualAmount()).isEqualByComparingTo("35000");
+    }
+
+    @Test
+    void onExpensePaid_withoutBudgetLineId_doesNothing() {
+        service.onExpensePaid(new ExpensePaidEvent(1L, 42L, 3L, null, BigDecimal.valueOf(15_000)));
+
+        org.mockito.Mockito.verifyNoInteractions(lineRepo);
     }
 
     @Test
