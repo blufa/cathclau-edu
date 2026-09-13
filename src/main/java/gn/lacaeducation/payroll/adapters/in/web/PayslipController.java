@@ -1,5 +1,6 @@
 package gn.lacaeducation.payroll.adapters.in.web;
 
+import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.TenantContext;
 import gn.lacaeducation.payroll.application.service.PayrollService;
 import gn.lacaeducation.payroll.application.service.PayrollService.GenerateCommand;
@@ -8,6 +9,7 @@ import gn.lacaeducation.payroll.domain.Payslip;
 import gn.lacaeducation.payroll.domain.PayslipLine;
 import gn.lacaeducation.payroll.domain.PayslipLineType;
 import gn.lacaeducation.payroll.domain.PayslipStatus;
+import gn.lacaeducation.staff.TeacherPublicInfoProvider;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +17,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -29,6 +33,7 @@ import java.util.List;
 public class PayslipController {
 
     private final PayrollService service;
+    private final TeacherPublicInfoProvider teacherPublicInfoProvider;
 
     public record GenerateRequest(gn.lacaeducation.payroll.domain.EmployeeType employeeType,
                                   Long teacherId, String teacherName, String periodLabel, LocalDate periodStart,
@@ -120,6 +125,54 @@ public class PayslipController {
                 .contentType(MediaType.APPLICATION_PDF)
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"fiche-paie-" + id + ".pdf\"")
                 .body(service.pdfBytes(id));
+    }
+
+    // ── Self-service enseignant (§Vision enseignant) ────────────────────────
+    // Ces trois endpoints court-circuitent le `@PreAuthorize("hasAuthority('paie:manage')")` de
+    // classe (une annotation de méthode a priorité sur celle de classe) : un enseignant n'a jamais
+    // cette permission, mais doit pouvoir consulter SES PROPRES fiches — jamais celles d'un collègue,
+    // d'où la vérification explicite teacherId == fiche du salarié connecté sur chaque accès.
+
+    @Operation(summary = "Mes fiches de paie (self-service enseignant)")
+    @PreAuthorize("hasRole('TEACHER')")
+    @GetMapping("/mine")
+    public List<Payslip> mine(@AuthenticationPrincipal Jwt jwt) {
+        return service.find(TenantContext.get(), myTeacherId(jwt), null);
+    }
+
+    @Operation(summary = "Détail d'une de mes fiches (self-service enseignant)")
+    @PreAuthorize("hasRole('TEACHER')")
+    @GetMapping("/mine/{id}")
+    public Payslip mineById(@AuthenticationPrincipal Jwt jwt, @PathVariable Long id) {
+        return requireOwn(jwt, id);
+    }
+
+    @Operation(summary = "Télécharger le PDF d'une de mes fiches (self-service enseignant)")
+    @PreAuthorize("hasRole('TEACHER')")
+    @GetMapping("/mine/{id}/pdf/download")
+    public ResponseEntity<byte[]> minePdfDownload(@AuthenticationPrincipal Jwt jwt, @PathVariable Long id) {
+        requireOwn(jwt, id);
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"fiche-paie-" + id + ".pdf\"")
+                .body(service.pdfBytes(id));
+    }
+
+    private Payslip requireOwn(Jwt jwt, Long payslipId) {
+        Payslip p = service.findById(payslipId);
+        if (!p.getTeacherId().equals(myTeacherId(jwt))) {
+            // 403 (autorisation), pas 422 (règle métier) : la ressource existe, elle n'appartient
+            // simplement pas à l'appelant — jamais confondre les deux (voir CLAUDE.md §codes HTTP).
+            throw new org.springframework.security.access.AccessDeniedException("Cette fiche de paie ne vous appartient pas");
+        }
+        return p;
+    }
+
+    private Long myTeacherId(Jwt jwt) {
+        Long userId;
+        try { userId = Long.parseLong(jwt.getSubject()); } catch (RuntimeException e) { userId = null; }
+        return teacherPublicInfoProvider.findTeacherIdByUserId(userId)
+                .orElseThrow(() -> new BusinessRuleException("Aucune fiche enseignant liée à votre compte"));
     }
 
     @Operation(summary = "Exporter le fichier bancaire (CSV des nets à virer)")

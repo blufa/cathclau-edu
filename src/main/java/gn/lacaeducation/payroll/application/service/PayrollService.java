@@ -629,7 +629,8 @@ public class PayrollService {
         // Fait remonter la paie dans la trésorerie (sortie de caisse "Salaires") — jamais dans le
         // budget annuel voté, qui couvre le fonctionnement courant (carburant, kermesse, événements),
         // financièrement distinct de la masse salariale (toujours puisée dans les recettes de l'école).
-        eventPublisher.publishEvent(new PayslipPaidEvent(saved.getTenantId(), saved.getId(), saved.getNetSalary()));
+        eventPublisher.publishEvent(new PayslipPaidEvent(saved.getTenantId(), saved.getId(), saved.getNetSalary(),
+                saved.getTeacherName(), saved.getTeacherPhone(), saved.getPeriodLabel()));
         return saved;
     }
 
