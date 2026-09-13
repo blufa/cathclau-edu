@@ -16,6 +16,7 @@ import gn.lacaeducation.iam.application.event.PasswordResetRequestedEvent;
 import gn.lacaeducation.iam.application.event.UserAccountCreatedEvent;
 import gn.lacaeducation.payments.PaymentDataProvider;
 import gn.lacaeducation.payments.application.event.PaymentSucceededEvent;
+import gn.lacaeducation.payroll.application.event.PayslipPaidEvent;
 import gn.lacaeducation.common.TenantInfoProvider;
 import gn.lacaeducation.common.TenantPublicInfo;
 import gn.lacaeducation.students.ParentPublicInfo;
@@ -214,6 +215,33 @@ public class CommunicationEventListener {
                 + ") n'a pas été réglée. Merci de régulariser rapidement.";
         dispatch(event.tenantId(), CommunicationReason.PAYMENT_DUE, "Échéance de paiement dépassée",
                 defaultBody, vars, event.studentId());
+    }
+
+    /**
+     * Notifie par SMS l'enseignant/personnel directement (pas via un parent) dès que sa fiche de paie
+     * est marquée payée (§9, workflow Valider → Payer). Le téléphone/nom sont portés par l'événement
+     * lui-même (figés sur la fiche à sa génération) plutôt que résolus ici, pour ne pas faire dépendre
+     * {@code communication} de l'API de requête de {@code payroll} ni du référentiel {@code staff}.
+     */
+    @TransactionalEventListener
+    @Async
+    public void onPayslipPaid(PayslipPaidEvent event) {
+        if (event.teacherPhone() == null || event.teacherPhone().isBlank()) {
+            log.info("Fiche de paie {} payée sans téléphone enregistré ; notification SMS ignorée", event.payslipId());
+            return;
+        }
+        String name = event.teacherName() != null ? event.teacherName() : "";
+        String amount = event.amount() + " GNF";
+        String period = event.periodLabel() != null ? event.periodLabel() : "";
+        Map<String, String> vars = Map.of(
+                "nom", name, "ecole", schoolName(event.tenantId()), "montant", amount, "periode", period);
+        String defaultBody = "Bonjour " + name + ", votre salaire net de " + amount
+                + (period.isBlank() ? "" : " pour la période " + period) + " a été payé.";
+        Resolved r = resolve(event.tenantId(), CommunicationReason.SALARY_PAID, "Salaire payé", defaultBody, vars);
+        communicationUseCase.send(new SendCommunicationCommand(event.tenantId(), null, r.channel(),
+                RecipientType.TEACHER, r.subject(), r.content(), CommunicationReason.SALARY_PAID,
+                List.of(new RecipientTarget(null, event.teacherPhone()))));
+        log.info("Notification SALARY_PAID envoyée pour la fiche de paie {} ({})", event.payslipId(), name);
     }
 
     /** Notify every (non-cancelled) student of the class on their own contact when an assessment is scheduled. */

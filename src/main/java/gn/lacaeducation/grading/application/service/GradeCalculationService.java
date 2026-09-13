@@ -210,7 +210,7 @@ public class GradeCalculationService {
             sumSubjectCoeffs = sumSubjectCoeffs.add(subjectCoeff);
         }
 
-        BigDecimal generalAverage = computeOverallAverage(lines, sumWeighted, sumSubjectCoeffs, calcSettings);
+        BigDecimal generalAverage = computeOverallAverage(sumWeighted, sumSubjectCoeffs);
 
         // Notes éliminatoires (§7) : une moyenne matière sous le seuil impose la décision de la règle.
         String decision = scale.decisionFor(generalAverage);
@@ -269,53 +269,23 @@ public class GradeCalculationService {
     }
 
     /**
-     * Moyenne générale de l'élève (toutes matières confondues). Méthode officielle confirmée : si
-     * <b>toutes</b> les lignes portent une moyenne de cours <b>et</b> une moyenne de composition
-     * (étapes de la formule active étiquetées {@code COURS}/{@code COMPOSITION}, §StepRole), la
-     * moyenne de cours générale est une moyenne simple entre matières (non pondérée par coefficient)
-     * tandis que la moyenne de composition générale est pondérée par coefficient — les deux étant
-     * ensuite combinées selon les poids de {@link gn.lacaeducation.grading.domain.GradingCalculationSettings}
-     * (composition double du cours, par défaut). Sinon (formule sans étapes étiquetées), retombe sur
-     * l'ancien calcul plat pondéré (Σ moyenne pondérée / Σ coefficient) — aucune régression pour les
-     * tenants qui n'utilisent pas ce modèle.
+     * Moyenne générale de l'élève (toutes matières confondues) — règle rigoureuse du système guinéen
+     * (confirmée avec exemples chiffrés) : {@code Moyenne_Generale_Eleve = Σ(Points_Matiere) /
+     * Σ(Coefficients_De_La_Classe)}, où {@code Points_Matiere = Moy_Matiere_Brute × coefficient de la
+     * matière} (déjà accumulé dans {@code sumWeighted}/{@code sumSubjectCoeffs} par l'appelant). Le
+     * coefficient n'intervient JAMAIS avant cette étape (ni dans Moy_Cours, ni dans Moy_Matiere_Brute).
+     * <p>
+     * Une version antérieure combinait séparément une « moyenne de cours générale » (simple entre
+     * matières) et une « moyenne de composition générale » (pondérée par coefficient) — ça ne
+     * correspondait pas à la règle confirmée (vérifié par calcul direct sur les exemples fournis : la
+     * moyenne blended donnait 13.25 au lieu de 13.17 attendu) et a été retiré. Les colonnes
+     * {@code coursAverage}/{@code compoAverage} par matière restent affichées sur le bulletin (détail
+     * informatif), simplement plus utilisées pour la moyenne générale.
      */
-    private BigDecimal computeOverallAverage(List<ReportCardLine> lines, BigDecimal sumWeighted,
-                                             BigDecimal sumSubjectCoeffs,
-                                             gn.lacaeducation.grading.domain.GradingCalculationSettings settings) {
-        List<ReportCardLine> coursLines = lines.stream().filter(l -> l.getCoursAverage() != null).toList();
-        List<ReportCardLine> compoLines = lines.stream().filter(l -> l.getCompoAverage() != null).toList();
-
-        if (coursLines.isEmpty() || compoLines.isEmpty()) {
-            return sumSubjectCoeffs.compareTo(BigDecimal.ZERO) == 0
-                    ? BigDecimal.ZERO
-                    : sumWeighted.divide(sumSubjectCoeffs, SCALE, RoundingMode.HALF_UP);
-        }
-
-        BigDecimal coursGeneral = coursLines.stream()
-                .map(ReportCardLine::getCoursAverage)
-                .reduce(BigDecimal.ZERO, BigDecimal::add)
-                .divide(BigDecimal.valueOf(coursLines.size()), MC);
-
-        BigDecimal compoNum = BigDecimal.ZERO;
-        BigDecimal compoDen = BigDecimal.ZERO;
-        for (ReportCardLine l : compoLines) {
-            BigDecimal coeff = l.getCoefficient() != null ? l.getCoefficient() : BigDecimal.ONE;
-            compoNum = compoNum.add(l.getCompoAverage().multiply(coeff, MC));
-            compoDen = compoDen.add(coeff);
-        }
-        BigDecimal compoGeneral = compoDen.compareTo(BigDecimal.ZERO) == 0
-                ? BigDecimal.ZERO : compoNum.divide(compoDen, MC);
-
-        BigDecimal coursWeight = settings.generalCoursWeightOrDefault();
-        BigDecimal compoWeight = settings.generalCompoWeightOrDefault();
-        BigDecimal totalWeight = coursWeight.add(compoWeight);
-        if (totalWeight.compareTo(BigDecimal.ZERO) == 0) {
-            return BigDecimal.ZERO;
-        }
-        BigDecimal blended = coursGeneral.multiply(coursWeight, MC)
-                .add(compoGeneral.multiply(compoWeight, MC))
-                .divide(totalWeight, MC);
-        return blended.setScale(SCALE, RoundingMode.HALF_UP);
+    private BigDecimal computeOverallAverage(BigDecimal sumWeighted, BigDecimal sumSubjectCoeffs) {
+        return sumSubjectCoeffs.compareTo(BigDecimal.ZERO) == 0
+                ? BigDecimal.ZERO
+                : sumWeighted.divide(sumSubjectCoeffs, SCALE, RoundingMode.HALF_UP);
     }
 
     /**
@@ -356,9 +326,21 @@ public class GradeCalculationService {
 
         int classSize = sorted.size();
 
+        // Ex æquo (§4, règle confirmée) : deux moyennes identiques partagent le même rang, et l'élève
+        // suivant reprend au rang correspondant à sa position réelle (ex. 3, 3, 5 — jamais 3, 4, 5).
+        // Un élève sans moyenne (aucune note) ne partage jamais son rang, y compris avec un autre élève
+        // sans moyenne — cas limite non couvert par la règle, tranché pour rester simple et prévisible.
         int rank = 1;
+        BigDecimal previousAverage = null;
+        int position = 0;
         for (ReportCard rc : sorted) {
-            rc.setRank(rank++);
+            position++;
+            BigDecimal current = rc.getOverallAverage();
+            if (previousAverage == null || current == null || previousAverage.compareTo(current) != 0) {
+                rank = position;
+            }
+            rc.setRank(rank);
+            previousAverage = current;
             rc.setClassAverage(classAvg);
             rc.setHighestAverage(highest);
             rc.setLowestAverage(lowest);
@@ -370,7 +352,8 @@ public class GradeCalculationService {
     }
 
     /**
-     * Calculates per-subject ranks across all students for the given report cards.
+     * Calculates per-subject ranks across all students for the given report cards — mêmes règles
+     * d'ex æquo que le rang général (voir {@link #updateRanksAndStats}).
      */
     private void updateSubjectRanks(List<ReportCard> reportCards) {
         Map<Long, List<ReportCardLine>> linesBySubject = reportCards.stream()
@@ -383,8 +366,16 @@ public class GradeCalculationService {
                             Comparator.nullsLast(Comparator.reverseOrder())))
                     .toList();
             int subjectRank = 1;
+            BigDecimal previousAverage = null;
+            int position = 0;
             for (ReportCardLine line : sortedLines) {
-                line.setSubjectRank(subjectRank++);
+                position++;
+                BigDecimal current = line.getSubjectAverage();
+                if (previousAverage == null || current == null || previousAverage.compareTo(current) != 0) {
+                    subjectRank = position;
+                }
+                line.setSubjectRank(subjectRank);
+                previousAverage = current;
                 reportCardRepository.saveLine(line);
             }
         }
