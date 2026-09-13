@@ -179,14 +179,16 @@ class PayrollServiceTest {
     @Test
     void markPaid_publishesPayslipPaidEventWithNetSalary() {
         Payslip validated = Payslip.builder().id(1L).tenantId(9L).status(gn.lacaeducation.payroll.domain.PayslipStatus.VALIDATED)
-                .netSalary(new BigDecimal("850000")).build();
+                .netSalary(new BigDecimal("850000")).teacherName("Mamadou Diallo").teacherPhone("622000000")
+                .periodLabel("Mars 2026").build();
         when(payslipRepo.findById(1L)).thenReturn(java.util.Optional.of(validated));
         when(payslipRepo.save(any())).thenAnswer(i -> i.getArgument(0));
 
         payrollService.markPaid(1L, "BANK_TRANSFER");
 
         org.mockito.Mockito.verify(eventPublisher).publishEvent(
-                new gn.lacaeducation.payroll.application.event.PayslipPaidEvent(9L, 1L, new BigDecimal("850000")));
+                new gn.lacaeducation.payroll.application.event.PayslipPaidEvent(9L, 1L, new BigDecimal("850000"),
+                        "Mamadou Diallo", "622000000", "Mars 2026"));
     }
 
     /** Empêche un doublon silencieux (double-clic sur « Générer en lot »/« Générer une fiche ») : une

@@ -35,7 +35,7 @@ class AccountingAutoFeedListenerTest {
      * trésorerie, contrairement aux dépenses classiques. */
     @Test
     void onPayslipPaid_recordsOutCashFlow_categorySalary() {
-        listener.onPayslipPaid(new PayslipPaidEvent(1L, 99L, BigDecimal.valueOf(850_000)));
+        listener.onPayslipPaid(new PayslipPaidEvent(1L, 99L, BigDecimal.valueOf(850_000), "Mamadou Diallo", "622000000", "Mars 2026"));
 
         verify(treasuryService).recordAuto(1L, CashFlowDirection.OUT, BigDecimal.valueOf(850_000),
                 CashFlowCategory.SALARY, CashFlowReferenceType.PAYSLIP, 99L, "Règlement fiche de paie #99");
