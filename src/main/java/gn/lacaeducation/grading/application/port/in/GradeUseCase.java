@@ -60,7 +60,8 @@ public interface GradeUseCase {
                               List<ReleveAssessment> assessments, List<ReleveRow> rows) {}
 
     SubjectGradeReport subjectGradeReport(Long classId, Long subjectId, Long periodId);
-    byte[] subjectGradeReportPdf(Long classId, Long subjectId, Long periodId);
+    /** @param month si non nul (1-12), limite le PDF aux évaluations de ce mois (relevé mensuel). */
+    byte[] subjectGradeReportPdf(Long classId, Long subjectId, Long periodId, Integer month);
 
     List<Grade> findByStudent(Long studentId);
     List<Grade> findByStudentAndPeriod(Long studentId, Long periodId);

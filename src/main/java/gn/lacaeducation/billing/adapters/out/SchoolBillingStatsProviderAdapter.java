@@ -2,11 +2,13 @@ package gn.lacaeducation.billing.adapters.out;
 
 import gn.lacaeducation.billing.SchoolBillingStatsProvider;
 import gn.lacaeducation.billing.application.port.out.ExemptionRepository;
+import gn.lacaeducation.billing.application.port.out.InstallmentRepository;
 import gn.lacaeducation.billing.application.port.out.InvoiceRepository;
 import gn.lacaeducation.billing.application.port.out.SchoolFeeRepository;
 import gn.lacaeducation.billing.domain.Exemption;
 import gn.lacaeducation.billing.domain.ExemptionType;
 import gn.lacaeducation.billing.domain.FeeType;
+import gn.lacaeducation.billing.domain.Installment;
 import gn.lacaeducation.billing.domain.Invoice;
 import gn.lacaeducation.billing.domain.InvoiceStatus;
 import gn.lacaeducation.billing.domain.SchoolFee;
@@ -16,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -34,6 +37,7 @@ class SchoolBillingStatsProviderAdapter implements SchoolBillingStatsProvider {
     private final InvoiceRepository invoiceRepository;
     private final SchoolFeeRepository schoolFeeRepository;
     private final ExemptionRepository exemptionRepository;
+    private final InstallmentRepository installmentRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -126,6 +130,18 @@ class SchoolBillingStatsProviderAdapter implements SchoolBillingStatsProvider {
 
         return new SubsidyStats(exemptions.size(), totalExemptions, partialExemptions, familyDiscountAmount,
                 fullySettled.size(), estimatedEarlyPaymentSavings);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<UpcomingInstallment> upcomingInstallments(Long tenantId, int daysAhead, int limit) {
+        LocalDate today = LocalDate.now();
+        List<Installment> installments = installmentRepository.findUpcomingByTenant(
+                tenantId, today, today.plusDays(Math.max(1, daysAhead)));
+        return installments.stream()
+                .limit(Math.max(1, limit))
+                .map(i -> new UpcomingInstallment(i.getId(), i.getFeeId(), i.getLabel(), i.getDueDate(), i.getAmount()))
+                .toList();
     }
 
     private Long studentClassId(List<Invoice> invoices, Long studentId, Map<Long, Long> feeIdToClassId) {

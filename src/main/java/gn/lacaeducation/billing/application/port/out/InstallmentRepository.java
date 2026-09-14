@@ -8,5 +8,7 @@ public interface InstallmentRepository {
     Optional<Installment> findById(Long id);
     List<Installment> findByFeeId(Long feeId);
     List<Installment> findOverdue(LocalDate today);
+    /** Échéances PENDING d'un tenant dont la date limite tombe dans [from, to], triées par date croissante. */
+    List<Installment> findUpcomingByTenant(Long tenantId, LocalDate from, LocalDate to);
     void deleteById(Long id);
 }

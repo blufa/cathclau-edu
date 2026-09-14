@@ -1,11 +1,13 @@
 package gn.lacaeducation.calendar.application.service;
 
+import gn.lacaeducation.calendar.application.event.AcademicEventCreatedEvent;
 import gn.lacaeducation.calendar.application.port.out.AcademicEventRepository;
 import gn.lacaeducation.calendar.domain.AcademicEvent;
 import gn.lacaeducation.calendar.domain.AcademicEventType;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,17 +26,23 @@ import java.util.List;
 public class AcademicEventService {
 
     private final AcademicEventRepository repo;
+    private final ApplicationEventPublisher eventPublisher;
 
     public record EventCommand(Long tenantId, Long academicYearId, String title, AcademicEventType eventType,
                                LocalDate startDate, LocalDate endDate, String description) {}
 
     public AcademicEvent create(EventCommand c) {
         validate(c);
-        return repo.save(AcademicEvent.builder()
+        AcademicEvent saved = repo.save(AcademicEvent.builder()
                 .tenantId(c.tenantId()).academicYearId(c.academicYearId()).title(c.title())
                 .eventType(c.eventType() != null ? c.eventType() : AcademicEventType.OTHER)
                 .startDate(c.startDate()).endDate(c.endDate()).description(c.description())
                 .createdAt(LocalDateTime.now()).build());
+        // Notifie tous les parents (diffusion de masse) uniquement à la création — pas à chaque
+        // modification mineure via update().
+        eventPublisher.publishEvent(new AcademicEventCreatedEvent(saved.getTenantId(), saved.getId(),
+                saved.getTitle(), saved.getEventType().name(), saved.getStartDate(), saved.getDescription()));
+        return saved;
     }
 
     public AcademicEvent update(Long id, EventCommand c) {

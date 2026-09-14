@@ -142,6 +142,16 @@ public class PaymentController {
     @GetMapping("/tenant/{tenantId}") public List<Payment> findByTenant(@PathVariable Long tenantId, @RequestParam(required = false) Long academicYearId) {
         return academicYearId != null ? useCase.findByTenantIdAndAcademicYearId(tenantId, academicYearId) : useCase.findByTenantId(tenantId);
     }
+    @Operation(summary = "Rapport « encaissements par comptable » : total et détail des paiements CASH "
+            + "enregistrés par un utilisateur (guichet) sur une plage de dates — rapprochement de caisse")
+    @PreAuthorize("hasAuthority('paiement:read')")
+    @GetMapping("/reports/by-cashier")
+    public PaymentUseCase.CashierCollectionsSummary cashierCollectionsSummary(
+            @RequestParam Long cashierId,
+            @RequestParam java.time.LocalDateTime from,
+            @RequestParam java.time.LocalDateTime to) {
+        return useCase.cashierCollectionsSummary(cashierId, from, to);
+    }
     @Operation(summary = "Delete a payment record")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
     @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id) { useCase.delete(id); return ResponseEntity.noContent().build(); }

@@ -1,6 +1,7 @@
 package gn.lacaeducation.billing;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -53,4 +54,11 @@ public interface SchoolBillingStatsProvider {
                         BigDecimal estimatedEarlyPaymentSavings) {}
 
     SubsidyStats subsidyStats(Long tenantId, Long academicYearId);
+
+    /** Une échéance de frais (installment) à venir, triée par date limite croissante. */
+    record UpcomingInstallment(Long installmentId, Long feeId, String label, LocalDate dueDate, BigDecimal amount) {}
+
+    /** Prochaines échéances de paiement du tenant (statut PENDING) dans les {@code daysAhead}
+     * prochains jours, limitées à {@code limit} résultats — pour le dashboard école. */
+    List<UpcomingInstallment> upcomingInstallments(Long tenantId, int daysAhead, int limit);
 }

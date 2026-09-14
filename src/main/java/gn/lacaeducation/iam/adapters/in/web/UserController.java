@@ -48,9 +48,13 @@ public class UserController {
     @Operation(summary = "List all users in the current tenant")
     @GetMapping
     @PreAuthorize("hasAuthority('user:read')")
-    public PageResponse<UserResponse> findAll(@AuthenticationPrincipal Jwt jwt,
-                                               @PageableDefault(size = 20) Pageable pageable) {
-        Long tenantId = jwt.getClaim("tenant_id") instanceof Number n ? n.longValue() : null;
+    public PageResponse<UserResponse> findAll(@PageableDefault(size = 20) Pageable pageable) {
+        // Bug corrigé : lisait le claim JWT "tenant_id" directement, qui n'existe jamais pour un
+        // SUPER_ADMIN (hors tenant) — même en impersonation via le header X-Tenant-Id (qui alimente
+        // TenantContext, pas le JWT), la requête tombait sur tenantId=null et ne retournait jamais
+        // aucun utilisateur. TenantContext.get() reflète correctement l'impersonation (voir
+        // TenantContextFilter) — même pattern que StudentController.findAll.
+        Long tenantId = TenantContext.get();
         List<UserResponse> list = userUseCase.findByTenantId(tenantId).stream().map(this::toResponse).toList();
         int start = (int) pageable.getOffset();
         int end = Math.min(start + pageable.getPageSize(), list.size());

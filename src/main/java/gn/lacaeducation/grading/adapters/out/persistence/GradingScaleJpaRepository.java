@@ -4,5 +4,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.Optional;
 
 interface GradingScaleJpaRepository extends JpaRepository<GradingScaleJpaEntity, Long> {
-    Optional<GradingScaleJpaEntity> findByTenantId(Long tenantId);
+    Optional<GradingScaleJpaEntity> findByTenantIdAndCycleGroup(Long tenantId, String cycleGroup);
 }

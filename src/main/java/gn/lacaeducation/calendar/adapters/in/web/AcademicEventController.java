@@ -37,17 +37,17 @@ public class AcademicEventController {
     public AcademicEvent get(@PathVariable Long id) { return service.findById(id); }
 
     @Operation(summary = "Créer un événement (férié, composition, échéance…)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','RESPONSABLE_PEDAGOGIQUE')")
     @PostMapping
     public AcademicEvent create(@RequestBody EventRequest r) { return service.create(toCommand(r)); }
 
     @Operation(summary = "Modifier un événement")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','RESPONSABLE_PEDAGOGIQUE')")
     @PutMapping("/{id}")
     public AcademicEvent update(@PathVariable Long id, @RequestBody EventRequest r) { return service.update(id, toCommand(r)); }
 
     @Operation(summary = "Supprimer un événement")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','RESPONSABLE_PEDAGOGIQUE')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) { service.delete(id); return ResponseEntity.noContent().build(); }
 

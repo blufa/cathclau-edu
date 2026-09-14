@@ -1,6 +1,7 @@
 package gn.lacaeducation.reporting.adapters.in.web;
 
 import gn.lacaeducation.academics.AcademicsDataProvider;
+import gn.lacaeducation.attendance.StudentAttendanceStatsProvider;
 import gn.lacaeducation.attendance.TeacherWorkProvider;
 import gn.lacaeducation.billing.SchoolBillingStatsProvider;
 import gn.lacaeducation.billing.SchoolBillingStatsProvider.BillingStats;
@@ -47,6 +48,7 @@ public class SchoolDashboardController {
     private final SchoolCollectionStatsProvider collectionStatsProvider;
     private final SchoolPayrollStatsProvider payrollStatsProvider;
     private final TeacherWorkProvider teacherWorkProvider;
+    private final StudentAttendanceStatsProvider studentAttendanceStatsProvider;
     private final TeacherPublicInfoProvider teacherPublicInfoProvider;
     private final AcademicsDataProvider academicsDataProvider;
     private final StudentDataProvider studentDataProvider;
@@ -92,6 +94,22 @@ public class SchoolDashboardController {
     public FinanceDashboard finance() {
         BillingStats s = billingStatsProvider.billingStats(TenantContext.get());
         return new FinanceDashboard(s.invoiced(), s.collected(), s.outstanding(), s.recoveryRate(), s.unpaidCount());
+    }
+
+    @Operation(summary = "Prochaines échéances de paiement des frais (statut PENDING), triées par date limite croissante")
+    @PreAuthorize("hasAuthority('dashboard:admin')")
+    @GetMapping("/finance/upcoming-installments")
+    public List<SchoolBillingStatsProvider.UpcomingInstallment> upcomingInstallments(
+            @RequestParam(defaultValue = "30") int daysAhead, @RequestParam(defaultValue = "5") int limit) {
+        return billingStatsProvider.upcomingInstallments(TenantContext.get(), daysAhead, limit);
+    }
+
+    // ── Présences élèves du jour ─────────────────────────────────────────────
+    @Operation(summary = "Taux de présence élèves du jour, toutes classes confondues")
+    @PreAuthorize("hasAuthority('dashboard:admin')")
+    @GetMapping("/attendance/today")
+    public StudentAttendanceStatsProvider.TodayAttendanceStats todayAttendance() {
+        return studentAttendanceStatsProvider.todayAttendanceStats(TenantContext.get());
     }
 
     // ── 10.2 Financier : prévisionnel de trésorerie ─────────────────────────

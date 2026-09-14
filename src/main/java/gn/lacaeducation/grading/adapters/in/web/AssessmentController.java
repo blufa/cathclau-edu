@@ -59,4 +59,15 @@ public class AssessmentController {
                         "inline; filename=\"fiche-notes-classe-" + classId + "-matiere-" + subjectId + ".pdf\"")
                 .body(useCase.planPdf(classId, subjectId, academicYearId));
     }
+
+    @Operation(summary = "PDF téléchargeable d'une évaluation précise (notes déjà saisies incluses)")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','RESPONSABLE_PEDAGOGIQUE','TEACHER','SECRETARY')")
+    @GetMapping("/{id}/pdf")
+    public ResponseEntity<byte[]> assessmentGradeSheetPdf(@PathVariable Long id) {
+        return ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"evaluation-" + id + ".pdf\"")
+                .body(useCase.assessmentGradeSheetPdf(id));
+    }
 }

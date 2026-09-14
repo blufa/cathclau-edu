@@ -65,7 +65,7 @@ class CommunicationEventListenerTest {
                 new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
         when(templateRepository.findByTenantIdAndReason(any(), any())).thenReturn(Optional.empty());
 
-        listener().onPaymentSucceeded(new PaymentSucceededEvent(10L, 7L, 1L, null, new BigDecimal("50000")));
+        listener().onPaymentSucceeded(new PaymentSucceededEvent(10L, 7L, 1L, null, new BigDecimal("50000"), null));
 
         ArgumentCaptor<SendCommunicationCommand> captor = ArgumentCaptor.forClass(SendCommunicationCommand.class);
         verify(communicationUseCase, times(2)).send(captor.capture());
@@ -92,7 +92,7 @@ class CommunicationEventListenerTest {
         when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.empty());
         when(templateRepository.findByTenantIdAndReason(any(), any())).thenReturn(Optional.empty());
 
-        listener().onPaymentSucceeded(new PaymentSucceededEvent(10L, 7L, 1L, null, new BigDecimal("50000")));
+        listener().onPaymentSucceeded(new PaymentSucceededEvent(10L, 7L, 1L, null, new BigDecimal("50000"), null));
 
         verify(communicationUseCase, times(0)).send(any());
     }

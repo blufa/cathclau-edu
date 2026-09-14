@@ -70,6 +70,14 @@ services:
       ORANGE_SMS_SENDER_ADDRESS: ${ORANGE_SMS_SENDER_ADDRESS:-}
       ORANGE_SMS_SENDER_NAME: ${ORANGE_SMS_SENDER_NAME:-}
       ORANGE_SMS_DEFAULT_DIALING: ${ORANGE_SMS_DEFAULT_DIALING:-224}
+      # SMS NimbaSMS (fournisseur guinéen, actif par défaut tant qu'ORANGE_SMS_ENABLED n'est pas
+      # explicitement à true). Vide/false = SMS seulement journalisés, jamais réellement envoyés.
+      NIMBA_SMS_ENABLED: ${NIMBA_SMS_ENABLED:-true}
+      NIMBA_SMS_SERVICE_ID: ${NIMBA_SMS_SERVICE_ID:-}
+      NIMBA_SMS_SECRET_TOKEN: ${NIMBA_SMS_SECRET_TOKEN:-}
+      NIMBA_SMS_BASE_URL: ${NIMBA_SMS_BASE_URL:-https://api.nimbasms.com}
+      NIMBA_SMS_SENDER_NAME: ${NIMBA_SMS_SENDER_NAME:-}
+      NIMBA_SMS_DEFAULT_DIALING: ${NIMBA_SMS_DEFAULT_DIALING:-224}
       # Paiements Djomy (frais scolaires + abonnements).
       DJOMY_CLIENT_ID: ${DJOMY_CLIENT_ID}
       DJOMY_CLIENT_SECRET: ${DJOMY_CLIENT_SECRET}

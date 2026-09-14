@@ -4,6 +4,7 @@ import gn.lacaeducation.payments.domain.Payment;
 import gn.lacaeducation.payments.domain.PaymentStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 @Component @RequiredArgsConstructor
@@ -34,5 +35,8 @@ class PaymentPersistenceAdapter implements PaymentRepository {
     @Override public List<Payment> findByTenantId(Long id) { return jpa.findByTenantId(id).stream().map(mapper::toDomain).toList(); }
     @Override public List<Payment> findByTenantIdAndStatus(Long t, PaymentStatus s) { return jpa.findByTenantIdAndStatus(t, s).stream().map(mapper::toDomain).toList(); }
     @Override public List<Payment> findByTenantIdAndAcademicYearId(Long t, Long y) { return jpa.findByTenantIdAndAcademicYearId(t, y).stream().map(mapper::toDomain).toList(); }
+    @Override public List<Payment> findByCollectedByUserIdAndPaidAtBetween(Long collectedByUserId, LocalDateTime from, LocalDateTime to) {
+        return jpa.findByCollectedByUserIdAndPaidAtBetween(collectedByUserId, from, to).stream().map(mapper::toDomain).toList();
+    }
     @Override public void deleteById(Long id) { jpa.deleteById(id); }
 }
