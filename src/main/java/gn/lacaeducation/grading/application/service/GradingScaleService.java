@@ -3,6 +3,7 @@ package gn.lacaeducation.grading.application.service;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.grading.application.port.in.GradingScaleUseCase;
 import gn.lacaeducation.grading.application.port.out.GradingScaleRepository;
+import gn.lacaeducation.grading.domain.CycleGroup;
 import gn.lacaeducation.grading.domain.GradingScale;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -19,14 +20,14 @@ public class GradingScaleService implements GradingScaleUseCase {
 
     @Override
     @Transactional(readOnly = true)
-    public GradingScale getForTenant(Long tenantId) {
-        GradingScale defaults = GradingScale.defaults();
+    public GradingScale getForTenant(Long tenantId, CycleGroup cycleGroup) {
+        GradingScale defaults = GradingScale.defaults(cycleGroup);
         defaults.setTenantId(tenantId);
-        return repo.findByTenantId(tenantId).orElse(defaults);
+        return repo.findByTenantIdAndCycleGroup(tenantId, cycleGroup).orElse(defaults);
     }
 
     @Override
-    public GradingScale update(Long tenantId, UpdateScaleCommand c) {
+    public GradingScale update(Long tenantId, CycleGroup cycleGroup, UpdateScaleCommand c) {
         // Bands must be strictly increasing and within [0, 20].
         BigDecimal[] bands = {c.passableMin(), c.assezBienMin(), c.bienMin(), c.tresBienMin()};
         for (int i = 1; i < bands.length; i++) {
@@ -49,6 +50,7 @@ public class GradingScaleService implements GradingScaleUseCase {
         }
         return repo.save(GradingScale.builder()
                 .tenantId(tenantId)
+                .cycleGroup(cycleGroup)
                 .passThreshold(c.passThreshold())
                 .passableMin(c.passableMin())
                 .assezBienMin(c.assezBienMin())

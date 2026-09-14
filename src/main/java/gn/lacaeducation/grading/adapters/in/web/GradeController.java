@@ -94,15 +94,17 @@ public class GradeController {
         return useCase.subjectGradeReport(classId, subjectId, periodId);
     }
 
-    @Operation(summary = "Relevé de notes d'une matière (PDF)")
+    @Operation(summary = "Relevé de notes d'une matière (PDF) — ?month=1-12 limite au relevé de ce mois")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','RESPONSABLE_PEDAGOGIQUE','TEACHER','SECRETARY')")
     @GetMapping("/classes/{classId}/subjects/{subjectId}/periods/{periodId}/releve/download")
-    public org.springframework.http.ResponseEntity<byte[]> subjectReleveDownload(@PathVariable Long classId, @PathVariable Long subjectId, @PathVariable Long periodId) {
+    public org.springframework.http.ResponseEntity<byte[]> subjectReleveDownload(@PathVariable Long classId, @PathVariable Long subjectId,
+            @PathVariable Long periodId, @RequestParam(required = false) Integer month) {
+        String suffix = month != null ? "-mois-" + month : "";
         return org.springframework.http.ResponseEntity.ok()
                 .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
                 .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
-                        "inline; filename=\"releve-classe-" + classId + "-matiere-" + subjectId + "-periode-" + periodId + ".pdf\"")
-                .body(useCase.subjectGradeReportPdf(classId, subjectId, periodId));
+                        "inline; filename=\"releve-classe-" + classId + "-matiere-" + subjectId + "-periode-" + periodId + suffix + ".pdf\"")
+                .body(useCase.subjectGradeReportPdf(classId, subjectId, periodId, month));
     }
 
     @Operation(summary = "List all grades for a student (optionally filtered by periodId)")

@@ -338,4 +338,42 @@ class GradeCalculationServiceTest {
         assertThat(rankByStudent.get(studentB)).isEqualTo(1);
         assertThat(rankByStudent.get(studentC)).isEqualTo(3);
     }
+
+    @Test
+    void generateForStudent_resolvesGradingScaleFromClassCycleGroup() {
+        Long tenantId = 7L, classId = 1L, periodId = 2L, studentId = 10L, subjectId = 100L;
+        Assessment a1 = Assessment.builder().id(1L).tenantId(tenantId).classId(classId).periodId(periodId)
+                .subjectId(subjectId).coefficient(BigDecimal.valueOf(1)).maxScore(BigDecimal.valueOf(20)).build();
+        when(assessmentRepository.findByClassIdAndPeriodId(classId, periodId)).thenReturn(List.of(a1));
+        when(classSubjectQueryPort.findByClassId(classId))
+                .thenReturn(List.of(new ClassSubjectInfo(subjectId, BigDecimal.valueOf(1), 5L)));
+        when(gradeRepository.findByAssessmentId(1L))
+                .thenReturn(List.of(Grade.builder().assessmentId(1L).studentId(studentId).value(BigDecimal.valueOf(13)).build()));
+        when(reportCardRepository.findByStudentIdAndPeriodId(studentId, periodId)).thenReturn(Optional.empty());
+        when(reportCardRepository.save(any())).thenAnswer(i -> { ReportCard r = i.getArgument(0); if (r.getId() == null) r.setId(99L); return r; });
+        when(reportCardRepository.saveLine(any())).thenAnswer(i -> i.getArgument(0));
+        when(reportCardRepository.findByClassIdAndPeriodId(classId, periodId)).thenReturn(List.of());
+        when(reportCardRepository.findById(any())).thenAnswer(i -> Optional.of(ReportCard.builder().id(99L).build()));
+
+        // Classe rattachée à un niveau du cycle primaire (ex. CM2) : le barème du primaire doit être
+        // résolu, distinct de celui du secondaire.
+        when(academicsDataProvider.findClass(classId)).thenReturn(Optional.of(
+                new gn.lacaeducation.academics.ClassPublicInfo(classId, "CM2 A", "CM2", "NORMALE", null, null, "PRIMAIRE")));
+        gn.lacaeducation.grading.domain.GradingScale primaryScale = gn.lacaeducation.grading.domain.GradingScale.builder()
+                .tenantId(tenantId).cycleGroup(gn.lacaeducation.grading.domain.CycleGroup.PRIMAIRE)
+                .passThreshold(BigDecimal.valueOf(5)).passableMin(BigDecimal.valueOf(5))
+                .assezBienMin(BigDecimal.valueOf(8)).bienMin(BigDecimal.valueOf(11)).tresBienMin(BigDecimal.valueOf(12))
+                .build();
+        when(gradingScaleRepository.findByTenantIdAndCycleGroup(tenantId, gn.lacaeducation.grading.domain.CycleGroup.PRIMAIRE))
+                .thenReturn(Optional.of(primaryScale));
+
+        service.generateForStudent(studentId, classId, periodId);
+
+        verify(gradingScaleRepository).findByTenantIdAndCycleGroup(tenantId, gn.lacaeducation.grading.domain.CycleGroup.PRIMAIRE);
+        ArgumentCaptor<ReportCard> rcCaptor = ArgumentCaptor.forClass(ReportCard.class);
+        verify(reportCardRepository, atLeastOnce()).save(rcCaptor.capture());
+        // Avec le barème primaire (Très Bien dès 12), une moyenne de 13 doit être "Très Bien" — le
+        // barème par défaut du secondaire (Très Bien dès 18) donnerait "Passable".
+        assertThat(rcCaptor.getAllValues().get(rcCaptor.getAllValues().size() - 1).getHonor()).isEqualTo("Très Bien");
+    }
 }

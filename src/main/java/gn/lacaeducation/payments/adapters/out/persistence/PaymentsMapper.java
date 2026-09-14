@@ -9,4 +9,6 @@ interface PaymentsMapper {
     PaymentTransactionJpaEntity toEntity(PaymentTransaction d);
     Receipt toDomain(ReceiptJpaEntity e);
     ReceiptJpaEntity toEntity(Receipt d);
+    CashierSession toDomain(CashierSessionJpaEntity e);
+    CashierSessionJpaEntity toEntity(CashierSession d);
 }

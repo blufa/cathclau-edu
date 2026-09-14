@@ -3,6 +3,7 @@ package gn.lacaeducation.grading.application.service;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.grading.application.port.in.GradingScaleUseCase.UpdateScaleCommand;
 import gn.lacaeducation.grading.application.port.out.GradingScaleRepository;
+import gn.lacaeducation.grading.domain.CycleGroup;
 import gn.lacaeducation.grading.domain.GradingScale;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,15 +27,15 @@ class GradingScaleServiceTest {
 
     @Test
     void getForTenant_returnsDefaultsWhenUnset() {
-        when(repo.findByTenantId(10L)).thenReturn(Optional.empty());
-        GradingScale scale = service.getForTenant(10L);
+        when(repo.findByTenantIdAndCycleGroup(10L, CycleGroup.SECONDAIRE)).thenReturn(Optional.empty());
+        GradingScale scale = service.getForTenant(10L, CycleGroup.SECONDAIRE);
         assertThat(scale.getPassThreshold()).isEqualByComparingTo("10");
         assertThat(scale.honorFor(BigDecimal.valueOf(17))).isEqualTo("Bien");
     }
 
     @Test
     void update_nonIncreasingBands_throws() {
-        assertThatThrownBy(() -> service.update(10L, new UpdateScaleCommand(
+        assertThatThrownBy(() -> service.update(10L, CycleGroup.SECONDAIRE, new UpdateScaleCommand(
                 BigDecimal.valueOf(10), BigDecimal.valueOf(10), BigDecimal.valueOf(10),
                 BigDecimal.valueOf(16), BigDecimal.valueOf(18), null, null, null)))
                 .isInstanceOf(BusinessRuleException.class);
@@ -43,7 +44,7 @@ class GradingScaleServiceTest {
     @Test
     void update_customScale_appliesToHonor() {
         when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
-        GradingScale saved = service.update(10L, new UpdateScaleCommand(
+        GradingScale saved = service.update(10L, CycleGroup.SECONDAIRE, new UpdateScaleCommand(
                 BigDecimal.valueOf(12), BigDecimal.valueOf(12), BigDecimal.valueOf(15),
                 BigDecimal.valueOf(17), BigDecimal.valueOf(19), null, null, null));
 
@@ -58,7 +59,7 @@ class GradingScaleServiceTest {
     @Test
     void update_customDistinctionThresholds_applied() {
         when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
-        GradingScale saved = service.update(10L, new UpdateScaleCommand(
+        GradingScale saved = service.update(10L, CycleGroup.SECONDAIRE, new UpdateScaleCommand(
                 BigDecimal.valueOf(10), BigDecimal.valueOf(10), BigDecimal.valueOf(14),
                 BigDecimal.valueOf(16), BigDecimal.valueOf(18),
                 BigDecimal.valueOf(17), BigDecimal.valueOf(14), BigDecimal.valueOf(9)));
@@ -75,7 +76,7 @@ class GradingScaleServiceTest {
 
     @Test
     void update_complimentsAboveFelicitations_throws() {
-        assertThatThrownBy(() -> service.update(10L, new UpdateScaleCommand(
+        assertThatThrownBy(() -> service.update(10L, CycleGroup.SECONDAIRE, new UpdateScaleCommand(
                 BigDecimal.valueOf(10), BigDecimal.valueOf(10), BigDecimal.valueOf(14),
                 BigDecimal.valueOf(16), BigDecimal.valueOf(18),
                 BigDecimal.valueOf(14), BigDecimal.valueOf(15), BigDecimal.TEN)))

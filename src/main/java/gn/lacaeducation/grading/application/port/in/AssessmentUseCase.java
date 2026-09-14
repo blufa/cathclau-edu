@@ -14,4 +14,6 @@ public interface AssessmentUseCase {
     void delete(Long id);
     /** Fiche de notes vierge (PDF) à imprimer et donner à l'enseignant : liste des élèves de la classe. */
     byte[] planPdf(Long classId, Long subjectId, Long academicYearId);
+    /** PDF téléchargeable d'UNE évaluation précise, avec les notes déjà saisies le cas échéant. */
+    byte[] assessmentGradeSheetPdf(Long assessmentId);
 }

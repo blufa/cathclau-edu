@@ -3,6 +3,7 @@ package gn.lacaeducation.grading.adapters.in.web;
 import gn.lacaeducation.common.TenantContext;
 import gn.lacaeducation.grading.application.port.in.GradingScaleUseCase;
 import gn.lacaeducation.grading.application.port.in.GradingScaleUseCase.UpdateScaleCommand;
+import gn.lacaeducation.grading.domain.CycleGroup;
 import gn.lacaeducation.grading.domain.GradingScale;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -10,7 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-@Tag(name = "Grading Scale", description = "Per-tenant honor/decision grading scale")
+@Tag(name = "Grading Scale", description = "Per-tenant honor/decision grading scale, one per cycle group (primaire/secondaire)")
 @RestController
 @RequestMapping("/api/v1/grading/scale")
 @RequiredArgsConstructor
@@ -18,16 +19,16 @@ public class GradingScaleController {
 
     private final GradingScaleUseCase useCase;
 
-    @Operation(summary = "Get the current tenant's grading scale (defaults if not configured)")
+    @Operation(summary = "Get the current tenant's grading scale for a cycle group (defaults if not configured)")
     @GetMapping
-    public GradingScale get() {
-        return useCase.getForTenant(TenantContext.get());
+    public GradingScale get(@RequestParam CycleGroup cycleGroup) {
+        return useCase.getForTenant(TenantContext.get(), cycleGroup);
     }
 
-    @Operation(summary = "Set the current tenant's grading scale (mention bands + pass threshold)")
+    @Operation(summary = "Set the current tenant's grading scale for a cycle group (mention bands + pass threshold)")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
     @PutMapping
-    public GradingScale update(@RequestBody UpdateScaleCommand command) {
-        return useCase.update(TenantContext.get(), command);
+    public GradingScale update(@RequestParam CycleGroup cycleGroup, @RequestBody UpdateScaleCommand command) {
+        return useCase.update(TenantContext.get(), cycleGroup, command);
     }
 }

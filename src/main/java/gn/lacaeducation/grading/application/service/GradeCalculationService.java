@@ -11,6 +11,7 @@ import gn.lacaeducation.grading.application.port.out.GradingFormulaRepository;
 import gn.lacaeducation.grading.application.port.out.GradingScaleRepository;
 import gn.lacaeducation.grading.application.port.out.ReportCardRepository;
 import gn.lacaeducation.grading.domain.Assessment;
+import gn.lacaeducation.grading.domain.CycleGroup;
 import gn.lacaeducation.grading.domain.GradingFormula;
 import gn.lacaeducation.grading.domain.GradingFormulaEngine;
 import gn.lacaeducation.grading.domain.GradingFormulaStep;
@@ -488,12 +489,28 @@ public class GradeCalculationService {
     // Static helpers (package-private for tests)
     // -------------------------------------------------------------------------
 
-    /** Resolves the tenant's grading scale from the assessments' tenant, falling back to defaults. */
+    /**
+     * Resolves the tenant's grading scale from the assessments' tenant and class, falling back to
+     * defaults. The scale depends on the class's cycle group (primaire/secondaire, §CycleGroup) since
+     * each tenant can configure a distinct mention scale per group.
+     */
     private GradingScale resolveScale(List<Assessment> assessments) {
         Long tenantId = assessments.stream()
                 .map(Assessment::getTenantId).filter(java.util.Objects::nonNull).findFirst().orElse(null);
-        if (tenantId == null) return GradingScale.defaults();
-        return gradingScaleRepository.findByTenantId(tenantId).orElseGet(GradingScale::defaults);
+        Long classId = assessments.stream()
+                .map(Assessment::getClassId).filter(java.util.Objects::nonNull).findFirst().orElse(null);
+        CycleGroup cycleGroup = resolveCycleGroup(classId);
+        if (tenantId == null) return GradingScale.defaults(cycleGroup);
+        return gradingScaleRepository.findByTenantIdAndCycleGroup(tenantId, cycleGroup)
+                .orElseGet(() -> GradingScale.defaults(cycleGroup));
+    }
+
+    /** Groupe de cycle (primaire/secondaire) de la classe, résolu via son niveau (module academics). */
+    private CycleGroup resolveCycleGroup(Long classId) {
+        if (classId == null) return CycleGroup.SECONDAIRE;
+        return academicsDataProvider.findClass(classId)
+                .map(c -> CycleGroup.fromSchoolCycle(c.schoolCycle()))
+                .orElse(CycleGroup.SECONDAIRE);
     }
 
     /** Plus faible moyenne de matière des lignes du bulletin, ou {@code null} si aucune. */

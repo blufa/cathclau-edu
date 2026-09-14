@@ -1,6 +1,7 @@
 package gn.lacaeducation.payments.adapters.out.persistence;
 import gn.lacaeducation.payments.domain.PaymentStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 interface PaymentJpaRepository extends JpaRepository<PaymentJpaEntity, Long> {
@@ -14,4 +15,5 @@ interface PaymentJpaRepository extends JpaRepository<PaymentJpaEntity, Long> {
     List<PaymentJpaEntity> findByTenantId(Long tenantId);
     List<PaymentJpaEntity> findByTenantIdAndStatus(Long tenantId, PaymentStatus status);
     List<PaymentJpaEntity> findByTenantIdAndAcademicYearId(Long tenantId, Long academicYearId);
+    List<PaymentJpaEntity> findByCollectedByUserIdAndPaidAtBetween(Long collectedByUserId, LocalDateTime from, LocalDateTime to);
 }

@@ -43,7 +43,7 @@ class AccountingAutoFeedListenerTest {
 
     @Test
     void onPaymentSucceeded_recordsInCashFlow_categoryTuition() {
-        listener.onPaymentSucceeded(new PaymentSucceededEvent(1L, 999L, 55L, 20L, BigDecimal.valueOf(100_000)));
+        listener.onPaymentSucceeded(new PaymentSucceededEvent(1L, 999L, 55L, 20L, BigDecimal.valueOf(100_000), null));
 
         verify(treasuryService).recordAuto(1L, CashFlowDirection.IN, BigDecimal.valueOf(100_000),
                 CashFlowCategory.TUITION, CashFlowReferenceType.PAYMENT, 55L, "Encaissement paiement #55");

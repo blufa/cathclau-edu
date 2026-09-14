@@ -102,7 +102,10 @@ public class AuditEventListener {
     @TransactionalEventListener
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onPaymentSucceeded(PaymentSucceededEvent event) {
-        save(event.tenantId(), null, "PAYMENT_SUCCEEDED", "Payment", event.paymentId(),
+        // collectedByUserId n'est renseigné que pour un encaissement CASH au guichet (null pour un
+        // paiement en ligne, qui n'a pas d'« opérateur » humain) — trace qui a enregistré l'encaissement
+        // dans le journal, condition nécessaire au rapprochement de caisse (§CashierSession).
+        save(event.tenantId(), event.collectedByUserId(), "PAYMENT_SUCCEEDED", "Payment", event.paymentId(),
                 "invoiceId=" + event.invoiceId() + ";amount=" + event.amount());
     }
 

@@ -86,13 +86,24 @@ class AuditEventListenerTest {
 
     @Test
     void onPaymentSucceeded_isTenantScoped() {
-        listener().onPaymentSucceeded(new PaymentSucceededEvent(10L, 7L, 100L, 55L, new BigDecimal("25000")));
+        listener().onPaymentSucceeded(new PaymentSucceededEvent(10L, 7L, 100L, 55L, new BigDecimal("25000"), null));
 
         ArgumentCaptor<RecordAuditCommand> captor = ArgumentCaptor.forClass(RecordAuditCommand.class);
         verify(auditLogUseCase).record(captor.capture());
         assertThat(captor.getValue().tenantId()).isEqualTo(10L);
         assertThat(captor.getValue().ressource()).isEqualTo("Payment");
         assertThat(captor.getValue().details()).contains("invoiceId=55").contains("25000");
+    }
+
+    @Test
+    void onPaymentSucceeded_cashCollectedByCashier_recordsOperatorIdentity() {
+        // Encaissement CASH au guichet : collectedByUserId non nul — doit se retrouver dans le journal
+        // d'audit (utilisateurId), condition nécessaire au rapprochement de caisse.
+        listener().onPaymentSucceeded(new PaymentSucceededEvent(10L, 7L, 100L, 55L, new BigDecimal("25000"), 42L));
+
+        ArgumentCaptor<RecordAuditCommand> captor = ArgumentCaptor.forClass(RecordAuditCommand.class);
+        verify(auditLogUseCase).record(captor.capture());
+        assertThat(captor.getValue().utilisateurId()).isEqualTo(42L);
     }
 
     @Test

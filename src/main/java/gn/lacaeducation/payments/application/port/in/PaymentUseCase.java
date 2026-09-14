@@ -2,6 +2,7 @@ package gn.lacaeducation.payments.application.port.in;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import gn.lacaeducation.payments.domain.*;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 public interface PaymentUseCase {
@@ -61,5 +62,9 @@ public interface PaymentUseCase {
     List<Payment> findByTenantId(Long tenantId);
     List<Payment> findByTenantIdAndStatus(Long tenantId, PaymentStatus status);
     List<Payment> findByTenantIdAndAcademicYearId(Long tenantId, Long academicYearId);
+    /** Encaissements CASH d'un comptable sur une plage de dates — rapport « par comptable » et
+     * rapprochement de caisse (§CashierSession). */
+    record CashierCollectionsSummary(Long cashierId, BigDecimal total, List<Payment> payments) {}
+    CashierCollectionsSummary cashierCollectionsSummary(Long cashierId, LocalDateTime from, LocalDateTime to);
     void delete(Long id);
 }

@@ -53,7 +53,7 @@ public class PaymentService implements PaymentUseCase {
             Payment saved = repo.save(payment);
             receiptUseCase.generate(payment.getId());
             eventPublisher.publishEvent(new PaymentSucceededEvent(payment.getTenantId(), payment.getStudentId(),
-                    payment.getId(), payment.getInvoiceId(), payment.getAmount()));
+                    payment.getId(), payment.getInvoiceId(), payment.getAmount(), payment.getCollectedByUserId()));
             return saved;
         }
 
@@ -147,7 +147,7 @@ public class PaymentService implements PaymentUseCase {
     private void settleGroup(Payment p) {
         receiptUseCase.generateGrouped(p.getId(), p.getCoveredMonths(), p.getMonthsCount(), p.getRemainingAfter());
         eventPublisher.publishEvent(new PaymentSucceededEvent(p.getTenantId(), p.getStudentId(),
-                p.getId(), null, p.getAmount()));
+                p.getId(), null, p.getAmount(), p.getCollectedByUserId()));
         eventPublisher.publishEvent(new GroupedInvoiceSettlementEvent(
                 p.getTenantId(), p.getStudentId(), p.getId(), deserializeShares(p.getGroupLines())));
     }
@@ -201,7 +201,7 @@ public class PaymentService implements PaymentUseCase {
         } else {
             // Reçu généré seulement sur un paiement réussi (§9.3), idempotent.
             receiptUseCase.generate(p.getId());
-            eventPublisher.publishEvent(new PaymentSucceededEvent(p.getTenantId(), p.getStudentId(), p.getId(), p.getInvoiceId(), p.getAmount()));
+            eventPublisher.publishEvent(new PaymentSucceededEvent(p.getTenantId(), p.getStudentId(), p.getId(), p.getInvoiceId(), p.getAmount(), p.getCollectedByUserId()));
         }
         return saved;
     }
@@ -250,6 +250,13 @@ public class PaymentService implements PaymentUseCase {
     @Override @Transactional(readOnly=true) public List<Payment> findByTenantId(Long t) { return repo.findByTenantId(t); }
     @Override @Transactional(readOnly=true) public List<Payment> findByTenantIdAndStatus(Long t, PaymentStatus s) { return repo.findByTenantIdAndStatus(t, s); }
     @Override @Transactional(readOnly=true) public List<Payment> findByTenantIdAndAcademicYearId(Long t, Long y) { return repo.findByTenantIdAndAcademicYearId(t, y); }
+    @Override @Transactional(readOnly = true)
+    public CashierCollectionsSummary cashierCollectionsSummary(Long cashierId, LocalDateTime from, LocalDateTime to) {
+        List<Payment> payments = repo.findByCollectedByUserIdAndPaidAtBetween(cashierId, from, to);
+        BigDecimal total = payments.stream().map(Payment::getAmount).filter(a -> a != null)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return new CashierCollectionsSummary(cashierId, total, payments);
+    }
     @Override public void delete(Long id) { repo.deleteById(id); }
 
     private PaymentProviderGateway resolveGateway(PaymentChannel channel) {

@@ -6,25 +6,31 @@ import gn.lacaeducation.billing.SchoolBillingStatsProvider.PeriodRecovery;
 import gn.lacaeducation.billing.SchoolBillingStatsProvider.RecoveryBreakdown;
 import gn.lacaeducation.billing.SchoolBillingStatsProvider.SubsidyStats;
 import gn.lacaeducation.billing.SchoolBillingStatsProvider.TopDebtor;
+import gn.lacaeducation.billing.SchoolBillingStatsProvider.UpcomingInstallment;
 import gn.lacaeducation.billing.application.port.out.ExemptionRepository;
+import gn.lacaeducation.billing.application.port.out.InstallmentRepository;
 import gn.lacaeducation.billing.application.port.out.InvoiceRepository;
 import gn.lacaeducation.billing.application.port.out.SchoolFeeRepository;
 import gn.lacaeducation.billing.domain.Exemption;
 import gn.lacaeducation.billing.domain.ExemptionType;
 import gn.lacaeducation.billing.domain.FeeType;
+import gn.lacaeducation.billing.domain.Installment;
 import gn.lacaeducation.billing.domain.Invoice;
 import gn.lacaeducation.billing.domain.InvoiceStatus;
 import gn.lacaeducation.billing.domain.SchoolFee;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -33,6 +39,7 @@ class SchoolBillingStatsProviderAdapterTest {
     @Mock InvoiceRepository invoiceRepository;
     @Mock SchoolFeeRepository schoolFeeRepository;
     @Mock ExemptionRepository exemptionRepository;
+    @Mock InstallmentRepository installmentRepository;
     @InjectMocks SchoolBillingStatsProviderAdapter adapter;
 
     private Invoice inv(String total, String paid, String remaining, InvoiceStatus status) {
@@ -138,5 +145,35 @@ class SchoolBillingStatsProviderAdapterTest {
         assertThat(stats.studentsFullySettledMonthlyFees()).isEqualTo(1);
         // 5% of (familyDiscounted 100000 + monthly1 50000) = 7500
         assertThat(stats.estimatedEarlyPaymentSavings()).isEqualByComparingTo("7500.00");
+    }
+
+    @Test
+    void upcomingInstallments_delegatesToRepositoryWithWindowAndLimit() {
+        // Le repository fait déjà le filtrage tenant/date/statut (jointure school_fees) — l'adapter
+        // ne fait que borner le nombre de résultats et mapper vers le DTO public.
+        when(installmentRepository.findUpcomingByTenant(any(), any(), any())).thenReturn(List.of(
+                Installment.builder().id(1L).feeId(100L).label("Mensualité Novembre")
+                        .dueDate(LocalDate.of(2026, 11, 5)).amount(new BigDecimal("50000")).build(),
+                Installment.builder().id(2L).feeId(100L).label("Mensualité Décembre")
+                        .dueDate(LocalDate.of(2026, 12, 5)).amount(new BigDecimal("50000")).build(),
+                Installment.builder().id(3L).feeId(200L).label("Mensualité Janvier")
+                        .dueDate(LocalDate.of(2027, 1, 5)).amount(new BigDecimal("50000")).build()));
+
+        List<UpcomingInstallment> result = adapter.upcomingInstallments(9L, 60, 2);
+
+        ArgumentCaptor<LocalDate> from = ArgumentCaptor.forClass(LocalDate.class);
+        ArgumentCaptor<LocalDate> to = ArgumentCaptor.forClass(LocalDate.class);
+        org.mockito.Mockito.verify(installmentRepository).findUpcomingByTenant(org.mockito.ArgumentMatchers.eq(9L), from.capture(), to.capture());
+        assertThat(to.getValue()).isEqualTo(from.getValue().plusDays(60));
+
+        assertThat(result).hasSize(2); // borné par limit=2 malgré 3 échéances retournées par le repo
+        assertThat(result.get(0).label()).isEqualTo("Mensualité Novembre");
+        assertThat(result.get(0).amount()).isEqualByComparingTo("50000");
+    }
+
+    @Test
+    void upcomingInstallments_none_returnsEmptyList() {
+        when(installmentRepository.findUpcomingByTenant(any(), any(), any())).thenReturn(List.of());
+        assertThat(adapter.upcomingInstallments(9L, 30, 5)).isEmpty();
     }
 }

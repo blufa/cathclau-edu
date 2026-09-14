@@ -13,5 +13,7 @@ public interface StudentAttendanceRepository {
     List<StudentAttendance> findByClassIdAndDateBetweenAndStatus(Long classId, LocalDate from, LocalDate to, AttendanceStatus status);
     long countByStudentIdAndDateBetweenAndStatus(Long studentId, LocalDate from, LocalDate to, AttendanceStatus status);
     long countByStudentIdAndDateBetween(Long studentId, LocalDate from, LocalDate to);
+    /** Toutes les présences élèves d'un tenant pour une date donnée, toutes classes confondues. */
+    List<StudentAttendance> findByTenantIdAndDate(Long tenantId, LocalDate date);
     void deleteById(Long id);
 }
