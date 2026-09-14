@@ -38,5 +38,8 @@ class PaymentPersistenceAdapter implements PaymentRepository {
     @Override public List<Payment> findByCollectedByUserIdAndPaidAtBetween(Long collectedByUserId, LocalDateTime from, LocalDateTime to) {
         return jpa.findByCollectedByUserIdAndPaidAtBetween(collectedByUserId, from, to).stream().map(mapper::toDomain).toList();
     }
+    @Override public List<Payment> findByPaidAtBetween(LocalDateTime from, LocalDateTime to) {
+        return jpa.findByPaidAtBetween(from, to).stream().map(mapper::toDomain).toList();
+    }
     @Override public void deleteById(Long id) { jpa.deleteById(id); }
 }

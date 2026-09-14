@@ -66,5 +66,14 @@ public interface PaymentUseCase {
      * rapprochement de caisse (§CashierSession). */
     record CashierCollectionsSummary(Long cashierId, BigDecimal total, List<Payment> payments) {}
     CashierCollectionsSummary cashierCollectionsSummary(Long cashierId, LocalDateTime from, LocalDateTime to);
+
+    /** Ligne du rapport « encaissements par jour » : total (tous canaux) et nombre de paiements réussis
+     * pour une journée donnée. */
+    record DailyCollectionsLine(java.time.LocalDate date, BigDecimal total, int count) {}
+    /** Rapport « encaissements par jour » (§angles morts comptables) : permet au fondateur de voir, jour
+     * par jour, ce qui a été encaissé — quel que soit le canal ou que les frais soient réglés par tranche
+     * ou en une fois — pour son contrôle mensuel. */
+    record DailyCollectionsReport(BigDecimal grandTotal, List<DailyCollectionsLine> days) {}
+    DailyCollectionsReport dailyCollectionsReport(LocalDateTime from, LocalDateTime to);
     void delete(Long id);
 }

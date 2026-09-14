@@ -183,4 +183,33 @@ class PaymentServiceTest {
         verify(repo, times(2)).save(any(Payment.class));
         verify(receiptUseCase, times(1)).generateGrouped(any(), any(), any(), any());
     }
+
+    @Test
+    void dailyCollectionsReport_groupsByDay_acrossChannels_ignoresNonSucceeded() {
+        // Deux paiements le même jour (canaux différents), un paiement un autre jour, un paiement FAILED
+        // (ne doit pas compter) — le fondateur doit voir un total par jour, tous canaux confondus.
+        LocalDateTime day1 = LocalDateTime.of(2026, 9, 1, 9, 0);
+        LocalDateTime day1Later = LocalDateTime.of(2026, 9, 1, 15, 30);
+        LocalDateTime day2 = LocalDateTime.of(2026, 9, 2, 10, 0);
+        Payment cashDay1 = Payment.builder().id(1L).tenantId(10L).studentId(7L).channel(PaymentChannel.CASH)
+                .amount(new BigDecimal("50000")).status(PaymentStatus.SUCCEEDED).paidAt(day1).build();
+        Payment mobileDay1 = Payment.builder().id(2L).tenantId(10L).studentId(8L).channel(PaymentChannel.ORANGE_MONEY)
+                .amount(new BigDecimal("30000")).status(PaymentStatus.SUCCEEDED).paidAt(day1Later).build();
+        Payment cashDay2 = Payment.builder().id(3L).tenantId(10L).studentId(9L).channel(PaymentChannel.CASH)
+                .amount(new BigDecimal("20000")).status(PaymentStatus.SUCCEEDED).paidAt(day2).build();
+        Payment failedDay1 = Payment.builder().id(4L).tenantId(10L).studentId(11L).channel(PaymentChannel.CASH)
+                .amount(new BigDecimal("99999")).status(PaymentStatus.FAILED).paidAt(day1).build();
+        when(repo.findByPaidAtBetween(any(), any()))
+                .thenReturn(List.of(cashDay1, mobileDay1, cashDay2, failedDay1));
+
+        var report = service().dailyCollectionsReport(day1.minusDays(1), day2.plusDays(1));
+
+        assertThat(report.grandTotal()).isEqualByComparingTo("100000");
+        assertThat(report.days()).hasSize(2);
+        assertThat(report.days().get(0).date()).isEqualTo(java.time.LocalDate.of(2026, 9, 1));
+        assertThat(report.days().get(0).total()).isEqualByComparingTo("80000");
+        assertThat(report.days().get(0).count()).isEqualTo(2);
+        assertThat(report.days().get(1).date()).isEqualTo(java.time.LocalDate.of(2026, 9, 2));
+        assertThat(report.days().get(1).total()).isEqualByComparingTo("20000");
+    }
 }

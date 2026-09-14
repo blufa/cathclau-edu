@@ -257,6 +257,23 @@ public class PaymentService implements PaymentUseCase {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         return new CashierCollectionsSummary(cashierId, total, payments);
     }
+    @Override @Transactional(readOnly = true)
+    public DailyCollectionsReport dailyCollectionsReport(LocalDateTime from, LocalDateTime to) {
+        List<Payment> payments = repo.findByPaidAtBetween(from, to).stream()
+                .filter(p -> p.getStatus() == PaymentStatus.SUCCEEDED)
+                .toList();
+        java.util.Map<java.time.LocalDate, List<Payment>> byDay = payments.stream()
+                .collect(java.util.stream.Collectors.groupingBy(p -> p.getPaidAt().toLocalDate()));
+        List<DailyCollectionsLine> days = byDay.entrySet().stream()
+                .map(e -> new DailyCollectionsLine(e.getKey(),
+                        e.getValue().stream().map(Payment::getAmount).filter(java.util.Objects::nonNull)
+                                .reduce(BigDecimal.ZERO, BigDecimal::add),
+                        e.getValue().size()))
+                .sorted(java.util.Comparator.comparing(DailyCollectionsLine::date))
+                .toList();
+        BigDecimal grandTotal = days.stream().map(DailyCollectionsLine::total).reduce(BigDecimal.ZERO, BigDecimal::add);
+        return new DailyCollectionsReport(grandTotal, days);
+    }
     @Override public void delete(Long id) { repo.deleteById(id); }
 
     private PaymentProviderGateway resolveGateway(PaymentChannel channel) {

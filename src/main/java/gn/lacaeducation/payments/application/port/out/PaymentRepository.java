@@ -17,5 +17,8 @@ public interface PaymentRepository {
     /** Paiements encaissés par un comptable précis (CASH uniquement — collectedByUserId n'est renseigné
      * que pour ce canal) sur une plage de dates — rapport par comptable + rapprochement de caisse. */
     List<Payment> findByCollectedByUserIdAndPaidAtBetween(Long collectedByUserId, LocalDateTime from, LocalDateTime to);
+    /** Tous les paiements du tenant (tous canaux) sur une plage de dates — rapport « encaissements par
+     * jour » du fondateur (contrôle mensuel), indépendant du canal ou de la structure de frais. */
+    List<Payment> findByPaidAtBetween(LocalDateTime from, LocalDateTime to);
     void deleteById(Long id);
 }
