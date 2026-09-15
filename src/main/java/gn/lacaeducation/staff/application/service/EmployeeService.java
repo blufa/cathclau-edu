@@ -52,6 +52,13 @@ public class EmployeeService implements EmployeeUseCase {
     }
 
     @Override
+    public Employee updatePhoto(Long id, String photoUrl) {
+        Employee e = load(id);
+        e.setPhoto(photoUrl);
+        return repo.save(e);
+    }
+
+    @Override
     public Employee setActive(Long id, boolean active) {
         Employee e = load(id);
         e.setActive(active);

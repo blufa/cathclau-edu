@@ -672,30 +672,6 @@ public class PayrollService {
         return pdfGenerator.generate(p, lineRepo.findByPayslipId(id), hours);
     }
 
-    /**
-     * Fichier bancaire (CSV) : une ligne par fiche payée/validée avec le net à virer, le nom, et les
-     * coordonnées de virement — téléphone Mobile Money en priorité, compte bancaire sinon (colonne
-     * {@code identifiant_virement}), les deux valeurs brutes restant disponibles pour vérification.
-     */
-    @Transactional(readOnly = true)
-    public String bankFileCsv(Long tenantId) {
-        StringBuilder sb = new StringBuilder("nom;telephone;compte_bancaire;identifiant_virement;periode;net;mode\n");
-        for (Payslip p : payslipRepo.findByTenantId(tenantId)) {
-            if (p.getStatus() == PayslipStatus.DRAFT) continue;
-            String phone = p.getTeacherPhone();
-            String bankAccount = p.getBankAccount();
-            String identifiant = (phone != null && !phone.isBlank()) ? phone
-                    : (bankAccount != null && !bankAccount.isBlank()) ? bankAccount : "";
-            sb.append(csv(p.getTeacherName())).append(';').append(csv(phone)).append(';').append(csv(bankAccount))
-              .append(';').append(csv(identifiant)).append(';').append(csv(p.getPeriodLabel())).append(';')
-              .append(p.getNetSalary() == null ? "0" : p.getNetSalary().toPlainString()).append(';')
-              .append(p.getPaymentMethod() == null ? "BANK_TRANSFER" : p.getPaymentMethod()).append('\n');
-        }
-        return sb.toString();
-    }
-
-    private static String csv(String value) { return value == null ? "" : value.replace(";", ","); }
-
     private Payslip mutable(Long id) {
         Payslip p = loadPayslip(id);
         if (p.getStatus() == PayslipStatus.PAID) throw new BusinessRuleException("Fiche payée : non modifiable");

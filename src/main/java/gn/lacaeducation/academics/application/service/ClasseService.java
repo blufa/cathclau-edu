@@ -226,7 +226,7 @@ public class ClasseService implements GererClasseUseCase {
         Classe classe = classeRepository.findById(classId)
                 .orElseThrow(() -> new ResourceNotFoundException("Class", classId));
         long current = enrollmentQueryPort.countValidatedByClassId(classId);
-        long available = classe.getMaxCapacity() != null ? classe.getMaxCapacity() - current : Long.MAX_VALUE;
+        Long available = classe.getMaxCapacity() != null ? classe.getMaxCapacity() - current : null;
         return new EnrollmentCountInfo(classId, current, classe.getMaxCapacity(), available);
     }
 }

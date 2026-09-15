@@ -113,6 +113,13 @@ public class EnseignantService implements TeacherUseCase {
         return teacherRepository.save(t);
     }
 
+    @Override
+    public Teacher updatePhoto(Long id, String photoUrl) {
+        Teacher t = load(id);
+        t.setPhoto(photoUrl);
+        return teacherRepository.save(t);
+    }
+
     private Teacher requireByUserId(Long userId) {
         return teacherRepository.findByUserId(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Teacher (compte)", userId));

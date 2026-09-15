@@ -16,4 +16,6 @@ public class CardTemplate {
     private String versoConfig;   // JSON (règlement, contacts)
     private Boolean isDefault;
     private Boolean active;
+    /** Type de badge concerné (élève/enseignant/personnel) — un défaut par type, pas un seul par tenant. */
+    private BadgeKind badgeKind;
 }

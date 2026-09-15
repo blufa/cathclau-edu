@@ -47,7 +47,6 @@ public class NimbaSmsGateway implements NotificationGateway, SmsBalancePort {
         // un appel réseau bloqué (DNS, tunnel, pare-feu) gèlerait indéfiniment le thread de la requête
         // HTTP entrante, le backend « ne répondant plus du tout » à l'utilisateur.
         this.http = builder.baseUrl(props.baseUrlOrDefault())
-                .requestInterceptor(new NimbaWireLoggingInterceptor())   // TEMP: remove after diagnostic
                 .build();
         logConfigurationStatus();
     }

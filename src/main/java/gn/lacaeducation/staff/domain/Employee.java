@@ -34,6 +34,8 @@ public class Employee {
      * ({@link #phone}) reste prioritaire pour le virement Mobile Money. */
     private String bankAccount;
     private Boolean active;
+    /** Photo pour le badge personnel (§cartes) — optionnelle, définie par un admin. */
+    private String photo;
     /** Fiche {@code Teacher} de la même personne, si elle enseigne aussi en plus de son poste
      * administratif/direction — lien manuel explicite (jamais déduit automatiquement), utilisé pour
      * générer une fiche de paie combinée (salaire fixe + heures d'enseignement). Null si la personne
