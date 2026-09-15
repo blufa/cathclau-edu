@@ -37,6 +37,8 @@ public interface TeacherUseCase {
     Teacher updateOwnProfile(Long userId, UpdateOwnProfileCommand command);
     /** Mise à jour self-service de la photo de l'enseignant identifié par son compte {@code userId}. */
     Teacher updateOwnPhoto(Long userId, String photoUrl);
+    /** Mise à jour de la photo d'un enseignant par un admin (badge), identifié par son id. */
+    Teacher updatePhoto(Long id, String photoUrl);
     Optional<Teacher> findById(Long id);
     Optional<Teacher> findByUserId(Long userId);
     List<Teacher> findByTenantId(Long tenantId);

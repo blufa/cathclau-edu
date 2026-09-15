@@ -27,5 +27,8 @@ public interface GererClasseUseCase {
     record CreateClassCommand(Long tenantId, Long levelId, Long academicYearId,
                                Long headTeacherId, Long roomId, String label, Integer maxCapacity,
                                ClassType classType) {}
-    record EnrollmentCountInfo(Long classId, long currentCount, Integer maxCapacity, long available) {}
+    /** {@code available} est {@code null} quand la classe n'a pas de capacité maximale définie (pas de
+     * limite), plutôt qu'un entier sentinelle (ex. {@code Long.MAX_VALUE}) qui s'afficherait tel quel,
+     * de façon absurde, côté frontend. */
+    record EnrollmentCountInfo(Long classId, long currentCount, Integer maxCapacity, Long available) {}
 }

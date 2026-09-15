@@ -11,8 +11,8 @@ import java.util.List;
  * Études : une école peut importer ces matières/coefficients pour un cycle (et une série au
  * lycée) plutôt que de les ressaisir manuellement.
  *
- * <p>Au lycée, la série "SCIENCES" / "SOCIALES" correspond au tronc commun de la 11ème année ;
- * "SM" / "SE" / "SS" correspondent aux séries du Baccalauréat unique (12ème et Terminale).
+ * <p>Au lycée, la série "LITTERAIRE" ou "SCIENTIFIQUE" détermine le programme (11ème à Terminale) —
+ * les coefficients par matière restent modifiables ensuite par l'école (Référentiels → Matières).
  */
 public final class CatalogueMepua {
 
@@ -33,11 +33,8 @@ public final class CatalogueMepua {
     private static List<MatiereModele> lycee(String serie) {
         if (serie == null || serie.isBlank()) return List.of();
         return switch (serie.trim().toUpperCase()) {
-            case "SCIENCES" -> ONZIEME_SCIENCES;
-            case "SOCIALES" -> ONZIEME_SOCIALES;
-            case "SM" -> TERMINALE_SM;
-            case "SE" -> TERMINALE_SE;
-            case "SS" -> TERMINALE_SS;
+            case "LITTERAIRE" -> LITTERAIRE;
+            case "SCIENTIFIQUE" -> SCIENTIFIQUE;
             default -> List.of();
         };
     }
@@ -48,8 +45,8 @@ public final class CatalogueMepua {
 
     /** Primaire (CP1 → CM2) : tronc commun, coefficient uniforme (1). */
     public static final List<MatiereModele> PRIMAIRE = List.of(
-            new MatiereModele("REDAC", "Rédaction / Composition", c(1)),
-            new MatiereModele("DICT_Q", "Dictée - Questions", c(1)),
+            new MatiereModele("REDAC", "Français (Rédaction / Composition)", c(1)),
+            new MatiereModele("DICT_Q", "Français (Dictée - Questions)", c(1)),
             new MatiereModele("CALC_E", "Calcul Écrit", c(1)),
             new MatiereModele("CALC_M", "Calcul Mental", c(1)),
             new MatiereModele("HIST", "Histoire", c(1)),
@@ -60,13 +57,16 @@ public final class CatalogueMepua {
             new MatiereModele("EPS", "Éducation Physique et Sportive", c(1))
     );
 
-    /** Collège (7ème → 10ème) : coefficients officiels BEPC / moyennes. */
+    /** Collège (7ème → 10ème) : Mathématiques, Physique, Chimie, Biologie, Français (Dictée-Questions
+     * + Rédaction, deux matières notées séparément pour le même cours), Histoire, Géographie, ECM,
+     * EPS, Anglais. */
     public static final List<MatiereModele> COLLEGE = List.of(
-            new MatiereModele("REDAC", "Rédaction", c(2)),
-            new MatiereModele("DICT_Q", "Dictée - Questions", c(2)),
+            new MatiereModele("REDAC", "Français (Rédaction)", c(2)),
+            new MatiereModele("DICT_Q", "Français (Dictée - Questions)", c(2)),
             new MatiereModele("MATH", "Mathématiques", c(4)),
-            new MatiereModele("PHYS", "Sciences Physique", c(2)),
-            new MatiereModele("SVT", "Sciences de la Vie et de la Terre", c(2)),
+            new MatiereModele("PHYS", "Physique", c(1)),
+            new MatiereModele("CHIM", "Chimie", c(1)),
+            new MatiereModele("BIO", "Biologie", c(2)),
             new MatiereModele("HIST", "Histoire", c(1)),
             new MatiereModele("GEO", "Géographie", c(1)),
             new MatiereModele("ECM", "Éducation Civique et Morale", c(1)),
@@ -74,60 +74,32 @@ public final class CatalogueMepua {
             new MatiereModele("EPS", "Éducation Physique et Sportive", c(1))
     );
 
-    /** 11ème année, profil Sciences (futurs SM / SE) : tronc commun de transition. */
-    public static final List<MatiereModele> ONZIEME_SCIENCES = List.of(
+    /** Lycée, Série Littéraire (11ème à Terminale) : Français, Géographie, Histoire, Philosophie,
+     * Économie, Mathématiques, Physique, Chimie, Anglais. */
+    public static final List<MatiereModele> LITTERAIRE = List.of(
+            new MatiereModele("FRAN", "Français", c(4)),
+            new MatiereModele("PHILO", "Philosophie", c(3)),
+            new MatiereModele("HIST", "Histoire", c(2)),
+            new MatiereModele("GEO", "Géographie", c(2)),
+            new MatiereModele("ECON", "Économie", c(2)),
+            new MatiereModele("ANG", "Anglais", c(2)),
+            new MatiereModele("MATH", "Mathématiques", c(1)),
+            new MatiereModele("PHYS", "Physique", c(1)),
+            new MatiereModele("CHIM", "Chimie", c(1))
+    );
+
+    /** Lycée, Série Scientifique (11ème à Terminale) : Mathématiques, Physique, Chimie, Français,
+     * Anglais, Économie-Politique, Biologie, Géologie, Histoire, Géographie. */
+    public static final List<MatiereModele> SCIENTIFIQUE = List.of(
             new MatiereModele("MATH", "Mathématiques", c(4)),
             new MatiereModele("PHYS", "Physique", c(3)),
-            new MatiereModele("CHIM", "Chimie", c(2)),
-            new MatiereModele("SVT", "Sciences de la Vie et de la Terre", c(2)),
+            new MatiereModele("CHIM", "Chimie", c(3)),
+            new MatiereModele("BIO", "Biologie", c(2)),
+            new MatiereModele("GEOL", "Géologie", c(1)),
             new MatiereModele("FRAN", "Français", c(2)),
             new MatiereModele("ANG", "Anglais", c(2)),
-            new MatiereModele("HIST_GEO", "Histoire-Géographie", c(1)),
-            new MatiereModele("EPS", "Éducation Physique et Sportive", c(1))
-    );
-
-    /** 11ème année, profil Sciences Sociales (futurs SS) : tronc commun de transition. */
-    public static final List<MatiereModele> ONZIEME_SOCIALES = List.of(
-            new MatiereModele("HIST", "Histoire", c(3)),
-            new MatiereModele("GEO", "Géographie", c(3)),
-            new MatiereModele("FRAN_LITT", "Français / Littérature", c(3)),
-            new MatiereModele("ECM", "Éducation Civique et Morale", c(2)),
-            new MatiereModele("ANG", "Anglais", c(2)),
-            new MatiereModele("MATH_APP", "Mathématiques Appliquées", c(2)),
-            new MatiereModele("PHILO", "Philosophie (Intro)", c(1)),
-            new MatiereModele("EPS", "Éducation Physique et Sportive", c(1))
-    );
-
-    /** 12ème / Terminale, série Sciences Mathématiques (SM). */
-    public static final List<MatiereModele> TERMINALE_SM = List.of(
-            new MatiereModele("MATH", "Mathématiques", c(5)),
-            new MatiereModele("PHYS", "Physique", c(4)),
-            new MatiereModele("CHIM", "Chimie", c(3)),
-            new MatiereModele("SVT", "SVT (Biologie)", c(1)),
-            new MatiereModele("FRAN", "Français / Littérature", c(2)),
-            new MatiereModele("PHILO", "Philosophie", c(2)),
-            new MatiereModele("ANG", "Anglais", c(2))
-    );
-
-    /** 12ème / Terminale, série Sciences Expérimentales (SE). */
-    public static final List<MatiereModele> TERMINALE_SE = List.of(
-            new MatiereModele("MATH", "Mathématiques", c(3)),
-            new MatiereModele("PHYS", "Physique", c(3)),
-            new MatiereModele("CHIM", "Chimie", c(3)),
-            new MatiereModele("SVT", "SVT (Biologie)", c(5)),
-            new MatiereModele("FRAN", "Français / Littérature", c(2)),
-            new MatiereModele("PHILO", "Philosophie", c(2)),
-            new MatiereModele("ANG", "Anglais", c(2))
-    );
-
-    /** 12ème / Terminale, série Sciences Sociales (SS). */
-    public static final List<MatiereModele> TERMINALE_SS = List.of(
-            new MatiereModele("MATH", "Mathématiques", c(2)),
-            new MatiereModele("FRAN", "Français / Littérature", c(3)),
-            new MatiereModele("PHILO", "Philosophie", c(4)),
-            new MatiereModele("HIST", "Histoire", c(3)),
-            new MatiereModele("GEO", "Géographie", c(3)),
-            new MatiereModele("ECON_ECM", "Économie / ECM", c(2)),
-            new MatiereModele("ANG", "Anglais", c(2))
+            new MatiereModele("ECON_POL", "Économie-Politique", c(1)),
+            new MatiereModele("HIST", "Histoire", c(1)),
+            new MatiereModele("GEO", "Géographie", c(1))
     );
 }

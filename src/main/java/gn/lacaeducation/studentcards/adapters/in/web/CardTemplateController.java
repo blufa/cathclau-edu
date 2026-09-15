@@ -2,6 +2,7 @@ package gn.lacaeducation.studentcards.adapters.in.web;
 
 import gn.lacaeducation.common.TenantContext;
 import gn.lacaeducation.studentcards.application.service.CardTemplateService;
+import gn.lacaeducation.studentcards.domain.BadgeKind;
 import gn.lacaeducation.studentcards.domain.CardOrientation;
 import gn.lacaeducation.studentcards.domain.CardTemplate;
 import io.swagger.v3.oas.annotations.Operation;
@@ -23,11 +24,14 @@ public class CardTemplateController {
 
     public record TemplateRequest(String name, String logoUrl, String primaryColor, String secondaryColor,
                                   String backgroundUrl, CardOrientation orientation, String rectoConfig,
-                                  String versoConfig, Boolean active) {}
+                                  String versoConfig, Boolean active, BadgeKind badgeKind) {}
 
-    @Operation(summary = "List card templates")
+    @Operation(summary = "List card templates (optionally filtered by badge kind)")
     @GetMapping
-    public List<CardTemplate> list() { return service.findByTenant(TenantContext.get()); }
+    public List<CardTemplate> list(@RequestParam(required = false) BadgeKind badgeKind) {
+        List<CardTemplate> all = service.findByTenant(TenantContext.get());
+        return badgeKind == null ? all : all.stream().filter(t -> t.getBadgeKind() == badgeKind).toList();
+    }
 
     @Operation(summary = "Create a card template")
     @PreAuthorize("hasAuthority('carte:manage')")
@@ -36,7 +40,8 @@ public class CardTemplateController {
         return service.save(CardTemplate.builder().tenantId(TenantContext.get())
                 .name(r.name()).logoUrl(r.logoUrl()).primaryColor(r.primaryColor()).secondaryColor(r.secondaryColor())
                 .backgroundUrl(r.backgroundUrl()).orientation(r.orientation()).rectoConfig(r.rectoConfig())
-                .versoConfig(r.versoConfig()).active(r.active()).build());
+                .versoConfig(r.versoConfig()).active(r.active())
+                .badgeKind(r.badgeKind() == null ? BadgeKind.STUDENT : r.badgeKind()).build());
     }
 
     @Operation(summary = "Update a card template")
@@ -46,7 +51,8 @@ public class CardTemplateController {
         return service.update(id, CardTemplate.builder()
                 .name(r.name()).logoUrl(r.logoUrl()).primaryColor(r.primaryColor()).secondaryColor(r.secondaryColor())
                 .backgroundUrl(r.backgroundUrl()).orientation(r.orientation()).rectoConfig(r.rectoConfig())
-                .versoConfig(r.versoConfig()).active(r.active()).build());
+                .versoConfig(r.versoConfig()).active(r.active())
+                .badgeKind(r.badgeKind() == null ? BadgeKind.STUDENT : r.badgeKind()).build());
     }
 
     @Operation(summary = "Set a template as default")

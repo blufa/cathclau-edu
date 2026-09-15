@@ -22,6 +22,7 @@ public interface EmployeeUseCase {
 
     Employee create(CreateEmployeeCommand command);
     Employee update(Long id, UpdateEmployeeCommand command);
+    Employee updatePhoto(Long id, String photoUrl);
     Employee setActive(Long id, boolean active);
     Optional<Employee> findById(Long id);
     List<Employee> findByTenant(Long tenantId);

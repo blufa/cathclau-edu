@@ -205,24 +205,4 @@ class PayrollServiceTest {
                 .isInstanceOf(gn.lacaeducation.common.ConflictException.class);
     }
 
-    /** Fichier bancaire (§payroll) : le téléphone (Mobile Money) est prioritaire sur le compte
-     * bancaire pour la colonne identifiant_virement ; les brouillons sont exclus. */
-    @Test
-    void bankFileCsv_prefersPhoneOverBankAccount_andSkipsDrafts() {
-        Payslip withPhone = Payslip.builder().teacherName("M. Diallo").teacherPhone("620000000")
-                .bankAccount("GN00-1234").periodLabel("Mars 2026").netSalary(new BigDecimal("850000"))
-                .status(gn.lacaeducation.payroll.domain.PayslipStatus.PAID).paymentMethod("BANK_TRANSFER").build();
-        Payslip bankOnly = Payslip.builder().teacherName("Mme Sow").teacherPhone(null)
-                .bankAccount("GN00-5678").periodLabel("Mars 2026").netSalary(new BigDecimal("600000"))
-                .status(gn.lacaeducation.payroll.domain.PayslipStatus.VALIDATED).build();
-        Payslip draft = Payslip.builder().teacherName("Ignoré (brouillon)").periodLabel("Mars 2026")
-                .netSalary(new BigDecimal("999999")).status(gn.lacaeducation.payroll.domain.PayslipStatus.DRAFT).build();
-        when(payslipRepo.findByTenantId(9L)).thenReturn(List.of(withPhone, bankOnly, draft));
-
-        String csv = payrollService.bankFileCsv(9L);
-
-        assertThat(csv).contains("M. Diallo;620000000;GN00-1234;620000000;Mars 2026;850000;BANK_TRANSFER");
-        assertThat(csv).contains("Mme Sow;;GN00-5678;GN00-5678;Mars 2026;600000;BANK_TRANSFER");
-        assertThat(csv).doesNotContain("Ignoré");
-    }
 }

@@ -1,4 +1,5 @@
 package gn.lacaeducation.studentcards.adapters.out.persistence;
+import gn.lacaeducation.studentcards.domain.BadgeKind;
 import gn.lacaeducation.studentcards.domain.CardOrientation;
 import jakarta.persistence.*;
 import lombok.Getter; import lombok.Setter;
@@ -17,4 +18,5 @@ public class CardTemplateJpaEntity {
     @Column(name = "verso_config", columnDefinition = "text") private String versoConfig;
     @Column(name = "is_default") private Boolean isDefault;
     private Boolean active;
+    @Enumerated(EnumType.STRING) @Column(name = "badge_kind", nullable = false, length = 10) private BadgeKind badgeKind;
 }

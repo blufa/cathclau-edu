@@ -134,7 +134,7 @@ public class ReferentielController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteSubject(@PathVariable Long id) { useCase.deleteSubject(id); }
 
-    @Operation(summary = "Get the official MEPUA subject/coefficient catalog for a cycle (série required for LYCEE: SCIENCES/SOCIALES for 11ème, SM/SE/SS for 12ème-Terminale)")
+    @Operation(summary = "Get the official MEPUA subject/coefficient catalog for a cycle (série required for LYCEE: LITTERAIRE or SCIENTIFIQUE)")
     @GetMapping("/subjects/catalogue-mepua")
     public List<MatiereModele> catalogueMepua(@RequestParam SchoolCycle cycle, @RequestParam(required = false) String serie) {
         return useCase.catalogueMepua(cycle, serie);

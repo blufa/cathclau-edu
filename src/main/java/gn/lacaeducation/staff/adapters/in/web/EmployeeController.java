@@ -56,6 +56,13 @@ public class EmployeeController {
         return useCase.update(id, cmd);
     }
 
+    @Operation(summary = "Définir la photo d'un employé (badge personnel)")
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PatchMapping("/{id}/photo")
+    public Employee updatePhoto(@PathVariable Long id, @RequestParam String photoUrl) {
+        return useCase.updatePhoto(id, photoUrl);
+    }
+
     @Operation(summary = "Activer un employé")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
     @PatchMapping("/{id}/activate")

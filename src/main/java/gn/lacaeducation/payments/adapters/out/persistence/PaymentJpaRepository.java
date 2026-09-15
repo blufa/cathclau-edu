@@ -16,4 +16,5 @@ interface PaymentJpaRepository extends JpaRepository<PaymentJpaEntity, Long> {
     List<PaymentJpaEntity> findByTenantIdAndStatus(Long tenantId, PaymentStatus status);
     List<PaymentJpaEntity> findByTenantIdAndAcademicYearId(Long tenantId, Long academicYearId);
     List<PaymentJpaEntity> findByCollectedByUserIdAndPaidAtBetween(Long collectedByUserId, LocalDateTime from, LocalDateTime to);
+    List<PaymentJpaEntity> findByPaidAtBetween(LocalDateTime from, LocalDateTime to);
 }

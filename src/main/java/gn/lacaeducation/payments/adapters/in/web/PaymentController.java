@@ -152,6 +152,16 @@ public class PaymentController {
             @RequestParam java.time.LocalDateTime to) {
         return useCase.cashierCollectionsSummary(cashierId, from, to);
     }
+    @Operation(summary = "Rapport « encaissements par jour » : total et nombre de paiements réussis, "
+            + "regroupés par jour, tous canaux confondus — vue du fondateur pour son contrôle mensuel "
+            + "(indépendante du fait que les frais soient réglés par tranche ou en une fois)")
+    @PreAuthorize("hasAuthority('paiement:read')")
+    @GetMapping("/reports/daily")
+    public PaymentUseCase.DailyCollectionsReport dailyCollectionsReport(
+            @RequestParam java.time.LocalDateTime from,
+            @RequestParam java.time.LocalDateTime to) {
+        return useCase.dailyCollectionsReport(from, to);
+    }
     @Operation(summary = "Delete a payment record")
     @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
     @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id) { useCase.delete(id); return ResponseEntity.noContent().build(); }

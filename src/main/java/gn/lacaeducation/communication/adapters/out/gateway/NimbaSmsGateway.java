@@ -47,8 +47,27 @@ public class NimbaSmsGateway implements NotificationGateway, SmsBalancePort {
         // un appel réseau bloqué (DNS, tunnel, pare-feu) gèlerait indéfiniment le thread de la requête
         // HTTP entrante, le backend « ne répondant plus du tout » à l'utilisateur.
         this.http = builder.baseUrl(props.baseUrlOrDefault())
-                .requestInterceptor(new NimbaWireLoggingInterceptor())   // TEMP: remove after diagnostic
                 .build();
+        logConfigurationStatus();
+    }
+
+    /**
+     * Diagnostic visible au DÉMARRAGE (pas seulement au premier SMS envoyé) : permet de vérifier en un
+     * coup d'œil dans les logs de déploiement si les variables NIMBA_SMS_* sont bien arrivées jusqu'au
+     * conteneur, sans avoir à déclencher un envoi réel ni à exposer les secrets eux-mêmes.
+     */
+    private void logConfigurationStatus() {
+        if (props.isConfigured()) {
+            log.info("[SMS] Nimba CONFIGURÉ — sender=\"{}\", base_url={}", props.senderName(), props.baseUrlOrDefault());
+            return;
+        }
+        java.util.List<String> missing = new java.util.ArrayList<>();
+        if (!props.enabled()) missing.add("NIMBA_SMS_ENABLED=false (ou absent)");
+        if (props.serviceId() == null || props.serviceId().isBlank()) missing.add("NIMBA_SMS_SERVICE_ID manquant");
+        if (props.secretToken() == null || props.secretToken().isBlank()) missing.add("NIMBA_SMS_SECRET_TOKEN manquant");
+        if (props.senderName() == null || props.senderName().isBlank()) missing.add("NIMBA_SMS_SENDER_NAME manquant");
+        log.warn("[SMS] Nimba NON CONFIGURÉ au démarrage — les SMS seront seulement journalisés, jamais "
+                + "envoyés, tant que ceci n'est pas corrigé : {}", String.join(" ; ", missing));
     }
 
     @Override

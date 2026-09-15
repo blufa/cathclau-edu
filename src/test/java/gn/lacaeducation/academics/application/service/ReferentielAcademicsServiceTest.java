@@ -39,14 +39,14 @@ class ReferentielAcademicsServiceTest {
     }
 
     @Test
-    void catalogueMepua_lyceeTerminale_variesCoefficientBySerie() {
-        BigDecimal mathSm = service.catalogueMepua(SchoolCycle.LYCEE, "SM").stream()
+    void catalogueMepua_lycee_variesCoefficientBySerie() {
+        BigDecimal mathScientifique = service.catalogueMepua(SchoolCycle.LYCEE, "SCIENTIFIQUE").stream()
                 .filter(m -> m.libelle().equals("Mathématiques")).findFirst().orElseThrow().coefficient();
-        BigDecimal mathSs = service.catalogueMepua(SchoolCycle.LYCEE, "SS").stream()
+        BigDecimal mathLitteraire = service.catalogueMepua(SchoolCycle.LYCEE, "LITTERAIRE").stream()
                 .filter(m -> m.libelle().equals("Mathématiques")).findFirst().orElseThrow().coefficient();
 
-        assertThat(mathSm).isEqualByComparingTo("5");
-        assertThat(mathSs).isEqualByComparingTo("2");
+        assertThat(mathScientifique).isEqualByComparingTo("4");
+        assertThat(mathLitteraire).isEqualByComparingTo("1");
     }
 
     @Test
@@ -64,7 +64,7 @@ class ReferentielAcademicsServiceTest {
         List<Matiere> created = service.importerMatieresMepua(10L, SchoolCycle.COLLEGE, null);
 
         assertThat(created).extracting(Matiere::getLabel).doesNotContain("Mathématiques");
-        assertThat(created).hasSize(9); // 10 matières du catalogue Collège - 1 déjà existante
+        assertThat(created).hasSize(10); // 11 matières du catalogue Collège (Physique/Chimie séparées) - 1 déjà existante
     }
 
     @Test

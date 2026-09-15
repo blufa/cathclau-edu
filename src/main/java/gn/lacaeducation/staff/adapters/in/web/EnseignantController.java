@@ -66,6 +66,13 @@ public class EnseignantController {
         try { return Long.parseLong(jwt.getSubject()); } catch (RuntimeException e) { return null; }
     }
 
+    @Operation(summary = "Définir la photo d'un enseignant (admin, badge)")
+    @PreAuthorize("hasAuthority('enseignant:update')")
+    @PatchMapping("/{id}/photo")
+    public Teacher updatePhoto(@PathVariable Long id, @RequestParam String photoUrl) {
+        return teacherUseCase.updatePhoto(id, photoUrl);
+    }
+
     @Operation(summary = "Get a teacher by ID")
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('enseignant:read')")

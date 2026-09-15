@@ -175,13 +175,4 @@ public class PayslipController {
                 .orElseThrow(() -> new BusinessRuleException("Aucune fiche enseignant liée à votre compte"));
     }
 
-    @Operation(summary = "Exporter le fichier bancaire (CSV des nets à virer)")
-    @GetMapping("/bank-file")
-    public ResponseEntity<byte[]> bankFile() {
-        byte[] csv = service.bankFileCsv(TenantContext.get()).getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        return ResponseEntity.ok()
-                .contentType(MediaType.parseMediaType("text/csv"))
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"virements-paie.csv\"")
-                .body(csv);
-    }
 }
