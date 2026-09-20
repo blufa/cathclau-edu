@@ -159,12 +159,18 @@ public class CommunicationEventListener {
         studentDataProvider.findStudent(event.studentId()).ifPresentOrElse(student ->
             paymentDataProvider.findPayment(event.paymentId()).ifPresentOrElse(payment -> {
                 String amount = payment.amount() + " GNF";
+                String coverage = briefCoverage(payment.coveredMonths());
                 Map<String, String> vars = Map.of(
                         "nom_eleve", fullName(student), "ecole", schoolName(event.tenantId()),
                         "montant", amount, "canal", payment.channel() == null ? "" : payment.channel(),
-                        "reference", payment.reference() == null ? "" : payment.reference());
-                String defaultBody = "Paiement de " + amount + " reçu pour " + fullName(student)
-                        + ". Connectez-vous à la plateforme pour voir la facture payée.";
+                        "reference", payment.reference() == null ? "" : payment.reference(),
+                        "couverture", coverage);
+                // Paiement groupé (§billing) : mentionner brièvement ce qui a été réglé (ex. "Octobre,
+                // Novembre") pour que le parent comprenne le SMS sans se connecter — sans dépasser la
+                // limite d'un SMS (voir briefCoverage, qui tronque si besoin).
+                String defaultBody = coverage.isEmpty()
+                        ? "Paiement de " + amount + " reçu pour " + fullName(student) + ". Facture(s) réglée(s)."
+                        : "Paiement de " + amount + " reçu pour " + fullName(student) + " (" + coverage + ").";
                 dispatch(event.tenantId(), CommunicationReason.GENERAL, "Paiement reçu", defaultBody, vars, event.studentId());
                 notifyFounder(event.tenantId(), fullName(student), amount);
             }, () -> log.warn("PaymentSucceededEvent paymentId={} introuvable ; notification paiement ignorée", event.paymentId())),
@@ -277,13 +283,16 @@ public class CommunicationEventListener {
     }
 
     /**
-     * Envoie ses identifiants de connexion par SMS à tout compte créé (personnel ou parent) muni d'un
-     * numéro de téléphone (§2.2) — pas de filtrage par accès plateforme : ce n'est pas une notification
-     * au sujet d'un élève, mais l'accès du compte lui-même.
+     * Envoie ses identifiants de connexion à tout compte créé (personnel ou parent) — par email s'il
+     * en a un (message plus complet, sans limite de caractères), sinon par SMS (§2.2). La connexion
+     * elle-même reste toujours possible par numéro de téléphone, quel que soit le canal choisi ici
+     * pour communiquer le mot de passe. Pas de filtrage par accès plateforme : ce n'est pas une
+     * notification au sujet d'un élève, mais l'accès du compte lui-même.
      */
     @TransactionalEventListener
     @Async
     public void onUserAccountCreated(UserAccountCreatedEvent event) {
+        boolean hasEmail = event.email() != null && !event.email().isBlank();
         String fullName = ((event.firstName() != null ? event.firstName() : "") + " "
                 + (event.lastName() != null ? event.lastName() : "")).trim();
         Map<String, String> vars = Map.of(
@@ -293,10 +302,11 @@ public class CommunicationEventListener {
         String defaultBody = "Bienvenue " + fullName + ". Identifiant : " + event.username()
                 + " — Mot de passe : " + event.plainPassword() + ". Connectez-vous pour le modifier.";
         Resolved r = resolve(event.tenantId(), CommunicationReason.ACCOUNT_CREATED, "Votre compte a été créé", defaultBody, vars);
-        // les identifiants doivent partir par SMS et par email
-        communicationUseCase.send(new SendCommunicationCommand(event.tenantId(), null, CommunicationChannel.SMS,
+        CommunicationChannel channel = hasEmail ? CommunicationChannel.EMAIL : CommunicationChannel.SMS;
+        String destination = hasEmail ? event.email() : event.phone();
+        communicationUseCase.send(new SendCommunicationCommand(event.tenantId(), null, channel,
                 RecipientType.GROUP, r.subject(), r.content(), CommunicationReason.ACCOUNT_CREATED,
-                List.of(new RecipientTarget(event.userId(), event.phone()))));
+                List.of(new RecipientTarget(event.userId(), destination))));
     }
 
     /**
@@ -317,6 +327,24 @@ public class CommunicationEventListener {
         communicationUseCase.send(new SendCommunicationCommand(event.tenantId(), null, CommunicationChannel.EMAIL,
                 RecipientType.GROUP, r.subject(), r.content(), CommunicationReason.PASSWORD_RESET,
                 List.of(new RecipientTarget(event.userId(), event.email()))));
+    }
+
+    /**
+     * Envoie le code OTP de réinitialisation de mot de passe par SMS — alternative au lien email
+     * ci-dessus pour un utilisateur sans email (la majorité : connexion par numéro de téléphone).
+     */
+    @TransactionalEventListener
+    @Async
+    public void onPasswordResetOtpRequested(gn.lacaeducation.iam.application.event.PasswordResetOtpRequestedEvent event) {
+        if (event.phone() == null || event.phone().isBlank()) return;
+        Map<String, String> vars = Map.of("ecole", schoolName(event.tenantId()), "code", event.code());
+        String defaultBody = "Code de réinitialisation : " + event.code() + " (valable 10 min). "
+                + "Ne le partagez avec personne.";
+        Resolved r = resolve(event.tenantId(), CommunicationReason.PASSWORD_RESET,
+                "Code de réinitialisation", defaultBody, vars);
+        communicationUseCase.send(new SendCommunicationCommand(event.tenantId(), null, CommunicationChannel.SMS,
+                RecipientType.GROUP, r.subject(), r.content(), CommunicationReason.PASSWORD_RESET,
+                List.of(new RecipientTarget(event.userId(), event.phone()))));
     }
 
     // ── dispatch ───────────────────────────────────────────────────────────────
@@ -402,5 +430,14 @@ public class CommunicationEventListener {
 
     private String fullName(StudentPublicInfo s) {
         return ((s.firstName() != null ? s.firstName() : "") + " " + (s.lastName() != null ? s.lastName() : "")).trim();
+    }
+
+    /** Version courte de {@code coveredMonths} (ex. "Octobre, Novembre, Décembre, Janvier" → "Octobre,
+     * Novembre, …") pour ne jamais faire gonfler le SMS à plusieurs segments sur une grosse fratrie/
+     * tranche multi-mois. Vide (jamais null) si rien à afficher. */
+    private static String briefCoverage(String coveredMonths) {
+        if (coveredMonths == null || coveredMonths.isBlank()) return "";
+        String trimmed = coveredMonths.trim();
+        return trimmed.length() > 40 ? trimmed.substring(0, 37) + "…" : trimmed;
     }
 }

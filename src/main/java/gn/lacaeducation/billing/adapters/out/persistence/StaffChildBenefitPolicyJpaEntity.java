@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Entity
 @Table(name = "staff_child_benefit_policies")
@@ -18,6 +19,6 @@ class StaffChildBenefitPolicyJpaEntity {
     @Column(nullable = false) private String label;
     @Column(name = "covered_children_count", nullable = false) private Integer coveredChildrenCount;
     @Column(name = "coverage_percent", nullable = false, precision = 5, scale = 2) private BigDecimal coveragePercent;
-    @Enumerated(EnumType.STRING) @Column(name = "fee_type", length = 20) private FeeType feeType;
+    @Convert(converter = FeeTypeListConverter.class) @Column(name = "fee_types") private List<FeeType> feeTypes;
     @Column(nullable = false) private boolean active;
 }

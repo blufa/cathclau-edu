@@ -8,6 +8,11 @@ public interface AuthUseCase {
     void logout(String refreshToken);
     void forgotPassword(String email);
     void resetPassword(ResetPasswordCommand command);
+    /** Génère et envoie par SMS un code OTP pour réinitialiser le mot de passe — {@code identifier}
+     * peut être un username, un email ou un numéro de téléphone (mêmes formats que la connexion).
+     * Ne renvoie jamais d'erreur si l'identifiant est introuvable (anti-énumération). */
+    void requestPasswordResetOtp(String identifier);
+    void resetPasswordWithOtp(ResetWithOtpCommand command);
     void changePassword(ChangePasswordCommand command);
     MeResult me(Long userId);
 
@@ -37,6 +42,8 @@ public interface AuthUseCase {
     ) {}
 
     record ResetPasswordCommand(String token, String newPassword) {}
+
+    record ResetWithOtpCommand(String identifier, String code, String newPassword) {}
 
     record ChangePasswordCommand(Long userId, String currentPassword, String newPassword) {}
 }

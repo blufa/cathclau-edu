@@ -38,7 +38,7 @@ public class FamilyDiscountController {
     }
 
     @Operation(summary = "Lister les règles de réduction familiale du tenant")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT','SECRETARY')")
+    @PreAuthorize("hasAuthority('frais:manage')")
     @GetMapping
     public List<FamilyDiscountRule> list() {
         return useCase.findByTenant(TenantContext.get());
@@ -52,7 +52,7 @@ public class FamilyDiscountController {
     }
 
     @Operation(summary = "Supprimer une règle")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('frais:manage')")
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {
@@ -60,9 +60,16 @@ public class FamilyDiscountController {
     }
 
     @Operation(summary = "Réduction familiale applicable à un élève pour un frais donné")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT','SECRETARY')")
+    @PreAuthorize("hasAuthority('frais:manage')")
     @GetMapping("/applicable")
     public ApplicableDiscount applicable(@RequestParam Long studentId, @RequestParam FeeType feeType) {
         return useCase.computeApplicable(TenantContext.get(), studentId, feeType);
+    }
+
+    @Operation(summary = "Parmi une liste d'élèves, ceux qui sont le cadet exonéré d'une fratrie nombreuse (pour badge dans la liste des élèves)")
+    @PreAuthorize("hasAuthority('frais:manage')")
+    @GetMapping("/eligible-youngest")
+    public List<Long> eligibleYoungest(@RequestParam List<Long> studentIds) {
+        return useCase.eligibleYoungest(TenantContext.get(), studentIds);
     }
 }

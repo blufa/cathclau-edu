@@ -37,7 +37,7 @@ public class EarlyPaymentDiscountController {
     }
 
     @Operation(summary = "Lister les règles de remise pour paiement annuel complet du tenant")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT','SECRETARY')")
+    @PreAuthorize("hasAuthority('frais:manage')")
     @GetMapping
     public List<EarlyPaymentDiscountRule> list() {
         return useCase.findByTenant(TenantContext.get());
@@ -51,7 +51,7 @@ public class EarlyPaymentDiscountController {
     }
 
     @Operation(summary = "Supprimer une règle")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('frais:manage')")
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {

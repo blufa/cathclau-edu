@@ -24,6 +24,7 @@ class EmployeePersistenceAdapter implements EmployeeRepository {
     @Override public boolean existsByTenantIdAndEmployeeNumber(Long t, String n) {
         return repo.existsByTenantIdAndEmployeeNumber(t, n);
     }
+    @Override public Optional<Employee> findByUserId(Long userId) { return repo.findByUserId(userId).map(this::toDomain); }
 
     private Employee toDomain(EmployeeJpaEntity e) {
         return Employee.builder()

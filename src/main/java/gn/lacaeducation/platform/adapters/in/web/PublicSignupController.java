@@ -29,7 +29,7 @@ import java.net.URI;
  * Public, unauthenticated endpoints for self-service school onboarding (features/01-platform.md §1):
  * signup, email verification, resend, and branding by slug.
  */
-@Tag(name = "Public Signup", description = "Self-service school registration & email verification")
+@Tag(name = "Public Signup", description = "Inscription autonome d'école et vérification d'email")
 @RestController
 @RequestMapping("/api/v1/public")
 @RequiredArgsConstructor
@@ -41,7 +41,7 @@ public class PublicSignupController {
     @Value("${app.frontend-url:http://localhost:3000}")
     private String frontendUrl;
 
-    @Operation(summary = "Register a new school (PENDING_VERIFICATION) and email a verification link")
+    @Operation(summary = "Inscrire une nouvelle école (PENDING_VERIFICATION) et envoyer un lien de vérification par email")
     @PostMapping("/signup")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public SignupResponse signup(@Valid @RequestBody SignupRequest req) {
@@ -52,7 +52,7 @@ public class PublicSignupController {
                 req.numeroMarchand(), req.operateurMarchand())));
     }
 
-    @Operation(summary = "Verify the director's email (PENDING_VERIFICATION → TRIAL). Idempotent.")
+    @Operation(summary = "Vérifier l'email du directeur (PENDING_VERIFICATION → TRIAL). Idempotent.")
     @PostMapping("/verify-email")
     @ResponseStatus(HttpStatus.OK)
     public ResponseEntity<Void> verifyEmail(@Valid @RequestBody VerifyEmailRequest req) {
@@ -65,7 +65,7 @@ public class PublicSignupController {
      * (PENDING_VERIFICATION → TRIAL), then redirects the browser to the SPA so the director lands on
      * the login screen with a success flag and can reach their dashboard. Idempotent.
      */
-    @Operation(summary = "Clickable email-activation link (GET): verifies then redirects to the app")
+    @Operation(summary = "Lien d'activation cliquable dans l'email (GET) : vérifie puis redirige vers l'application")
     @GetMapping("/verify-email")
     public ResponseEntity<Void> verifyEmailViaLink(@RequestParam String token) {
         boolean ok = true;
@@ -78,14 +78,14 @@ public class PublicSignupController {
         return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(target)).build();
     }
 
-    @Operation(summary = "Resend the verification email for a school still pending verification")
+    @Operation(summary = "Renvoyer l'email de vérification pour une école en attente de vérification")
     @PostMapping("/resend-verification")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public void resendVerification(@Valid @RequestBody ResendVerificationRequest req) {
         signupUseCase.resendVerification(req.email());
     }
 
-    @Operation(summary = "Public branding of a school's login page (by slug), without auth")
+    @Operation(summary = "Branding public de la page de connexion d'une école (par slug), sans authentification")
     @GetMapping("/ecoles/{slug}/branding")
     public SchoolBrandingResponse branding(@PathVariable String slug) {
         return SchoolBrandingResponse.from(signupUseCase.getBranding(slug));

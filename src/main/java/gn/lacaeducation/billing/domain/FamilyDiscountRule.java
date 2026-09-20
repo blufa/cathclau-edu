@@ -3,10 +3,11 @@ package gn.lacaeducation.billing.domain;
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * Règle de réduction familiale paramétrable (§5) : « si une famille a entre {@code minChildren} et
- * {@code maxChildren} enfants inscrits, appliquer {@code percentage} % sur le frais {@code feeType} ».
+ * {@code maxChildren} enfants inscrits, appliquer {@code percentage} % sur les frais {@code feeTypes} ».
  * Aucun montant/seuil codé en dur : tout est configuré par l'établissement.
  */
 @Getter @Setter @Builder @NoArgsConstructor @AllArgsConstructor
@@ -20,8 +21,8 @@ public class FamilyDiscountRule {
     private Integer maxChildren;
     /** Pourcentage de réduction [0, 100] (100 = exonération totale). */
     private BigDecimal percentage;
-    /** Frais concerné (null = tous les frais). */
-    private FeeType feeType;
+    /** Frais concernés — un seul, plusieurs, ou vide/null = tous les frais. */
+    private List<FeeType> feeTypes;
     /** true = ne s'applique qu'au plus jeune enfant de la famille ; false = à tous les enfants éligibles. */
     private boolean appliesToYoungest;
     private boolean active;

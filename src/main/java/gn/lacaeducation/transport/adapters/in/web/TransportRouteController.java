@@ -47,7 +47,7 @@ public class TransportRouteController {
     public TransportRoute update(@PathVariable Long id, @RequestBody RouteRequest r) { return service.updateRoute(id, toCommand(r)); }
 
     @Operation(summary = "Supprimer une ligne")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('transport:manage')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) { service.deleteRoute(id); return ResponseEntity.noContent().build(); }
 

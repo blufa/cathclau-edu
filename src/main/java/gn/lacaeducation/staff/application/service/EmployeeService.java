@@ -1,6 +1,7 @@
 package gn.lacaeducation.staff.application.service;
 
 import gn.lacaeducation.common.ConflictException;
+import gn.lacaeducation.common.PersonName;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.staff.application.port.in.EmployeeUseCase;
 import gn.lacaeducation.staff.application.port.out.EmployeeRepository;
@@ -27,7 +28,8 @@ public class EmployeeService implements EmployeeUseCase {
         }
         return repo.save(Employee.builder()
                 .tenantId(c.tenantId()).userId(c.userId()).employeeNumber(c.employeeNumber())
-                .firstName(c.firstName()).lastName(c.lastName()).phone(c.phone()).email(c.email())
+                .firstName(PersonName.capitalizeFirstName(c.firstName()))
+                .lastName(PersonName.upperCaseLastName(c.lastName())).phone(c.phone()).email(c.email())
                 .category(c.category()).jobTitle(c.jobTitle()).hireDate(c.hireDate())
                 .baseSalary(c.baseSalary()).cnssNumber(c.cnssNumber()).bankAccount(c.bankAccount()).active(true)
                 .build());
@@ -37,8 +39,8 @@ public class EmployeeService implements EmployeeUseCase {
     public Employee update(Long id, UpdateEmployeeCommand c) {
         Employee e = load(id);
         e.setEmployeeNumber(c.employeeNumber());
-        e.setFirstName(c.firstName());
-        e.setLastName(c.lastName());
+        e.setFirstName(PersonName.capitalizeFirstName(c.firstName()));
+        e.setLastName(PersonName.upperCaseLastName(c.lastName()));
         e.setPhone(c.phone());
         e.setEmail(c.email());
         e.setCategory(c.category());

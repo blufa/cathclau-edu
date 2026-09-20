@@ -8,27 +8,12 @@ import java.util.Map;
 public class NotificationService {
     private final EmailService emailService;
 
-    public void sendEnrollmentConfirmation(String to, String schoolName, String studentName, String className, String year) {
-        emailService.send(to, "Confirmation d'inscription – " + schoolName,
-                "email/enrollment-confirmation",
-                Map.of("schoolName", schoolName, "studentName", studentName,
-                       "className", className, "academicYear", year));
-    }
-
     public void sendInvoiceNotification(String to, String schoolName, String studentName,
                                          String ref, String amount, String dueDate) {
         emailService.send(to, "Nouvelle facture – " + schoolName,
                 "email/invoice-generated",
                 Map.of("schoolName", schoolName, "studentName", studentName,
                        "invoiceRef", ref, "amount", amount, "dueDate", dueDate));
-    }
-
-    public void sendPaymentReceipt(String to, String schoolName, String studentName,
-                                    String receiptRef, String amount, String date, String channel) {
-        emailService.send(to, "Reçu de paiement – " + schoolName,
-                "email/payment-receipt",
-                Map.of("schoolName", schoolName, "studentName", studentName,
-                       "receiptRef", receiptRef, "amount", amount, "paymentDate", date, "channel", channel));
     }
 
     public void sendAbsenceNotification(String to, String schoolName, String studentName,

@@ -38,7 +38,7 @@ class FamilyDiscountRulePersistenceAdapter implements FamilyDiscountRuleReposito
         return FamilyDiscountRule.builder()
                 .id(e.getId()).tenantId(e.getTenantId()).label(e.getLabel())
                 .minChildren(e.getMinChildren()).maxChildren(e.getMaxChildren())
-                .percentage(e.getPercentage()).feeType(e.getFeeType())
+                .percentage(e.getPercentage()).feeTypes(e.getFeeTypes())
                 .appliesToYoungest(e.isAppliesToYoungest()).active(e.isActive())
                 .build();
     }
@@ -47,7 +47,7 @@ class FamilyDiscountRulePersistenceAdapter implements FamilyDiscountRuleReposito
         FamilyDiscountRuleJpaEntity e = new FamilyDiscountRuleJpaEntity();
         e.setId(d.getId()); e.setTenantId(d.getTenantId()); e.setLabel(d.getLabel());
         e.setMinChildren(d.getMinChildren()); e.setMaxChildren(d.getMaxChildren());
-        e.setPercentage(d.getPercentage()); e.setFeeType(d.getFeeType());
+        e.setPercentage(d.getPercentage()); e.setFeeTypes(d.getFeeTypes());
         e.setAppliesToYoungest(d.isAppliesToYoungest()); e.setActive(d.isActive());
         return e;
     }

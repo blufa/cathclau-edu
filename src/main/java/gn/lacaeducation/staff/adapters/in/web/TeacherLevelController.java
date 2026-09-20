@@ -19,19 +19,19 @@ public class TeacherLevelController {
 
     public record AssignLevelsRequest(List<Long> levelIds) {}
 
-    @Operation(summary = "List the level ids a teacher is assigned to")
+    @Operation(summary = "Lister les identifiants de niveaux affectés à un enseignant")
     @GetMapping("/{teacherId}/assigned-levels")
     public List<Long> list(@PathVariable Long teacherId) {
         return service.findLevelIds(teacherId);
     }
 
-    @Operation(summary = "List the teacher ids assigned to a given level")
+    @Operation(summary = "Lister les identifiants d'enseignants affectés à un niveau donné")
     @GetMapping("/by-level/{levelId}")
     public List<Long> byLevel(@PathVariable Long levelId) {
         return service.findTeacherIdsByLevel(levelId);
     }
 
-    @Operation(summary = "Replace the set of levels a teacher is assigned to")
+    @Operation(summary = "Remplacer l'ensemble des niveaux affectés à un enseignant")
     @PreAuthorize("hasAuthority('niveau:manage')")
     @PutMapping("/{teacherId}/assigned-levels")
     public List<Long> set(@PathVariable Long teacherId, @RequestBody AssignLevelsRequest r) {

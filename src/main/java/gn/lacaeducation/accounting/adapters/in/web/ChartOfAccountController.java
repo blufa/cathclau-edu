@@ -24,20 +24,20 @@ public class ChartOfAccountController {
 
     @GetMapping public List<ChartOfAccount> list() { return service.accounts(TenantContext.get()); }
 
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('comptabilite:manage')")
     @PostMapping public ChartOfAccount create(@RequestBody AccountRequest r) {
         return service.saveAccount(ChartOfAccount.builder().tenantId(TenantContext.get())
                 .accountNumber(r.accountNumber()).label(r.label()).accountClass(r.accountClass())
                 .type(r.type()).parentId(r.parentId()).lettrable(r.lettrable()).active(r.active()).build());
     }
 
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('comptabilite:manage')")
     @PutMapping("/{id}") public ChartOfAccount update(@PathVariable Long id, @RequestBody AccountRequest r) {
         return service.updateAccount(id, ChartOfAccount.builder()
                 .accountNumber(r.accountNumber()).label(r.label()).accountClass(r.accountClass())
                 .type(r.type()).parentId(r.parentId()).lettrable(r.lettrable()).active(r.active()).build());
     }
 
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('comptabilite:approve')")
     @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id) { service.deleteAccount(id); return ResponseEntity.noContent().build(); }
 }

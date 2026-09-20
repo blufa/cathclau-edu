@@ -26,7 +26,7 @@ public class AssessmentSessionSettingsController {
     }
 
     @Operation(summary = "Configurer les durées de séance par type d'évaluation pour le tenant courant")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('parametrage_notes:manage')")
     @PutMapping
     public AssessmentSessionSettings update(@RequestBody UpdateSettingsCommand command) {
         return useCase.update(TenantContext.get(), command);

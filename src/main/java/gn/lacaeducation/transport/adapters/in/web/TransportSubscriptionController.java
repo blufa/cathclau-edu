@@ -48,7 +48,7 @@ public class TransportSubscriptionController {
     public TransportSubscription cancel(@PathVariable Long id) { return service.cancel(id); }
 
     @Operation(summary = "Supprimer un abonnement")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('transport:manage')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) { service.deleteSubscription(id); return ResponseEntity.noContent().build(); }
 }

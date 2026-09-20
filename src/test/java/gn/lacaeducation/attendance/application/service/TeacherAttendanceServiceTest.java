@@ -2,8 +2,10 @@ package gn.lacaeducation.attendance.application.service;
 
 import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.academics.ScheduleSlotPublicInfo;
+import gn.lacaeducation.attendance.application.port.in.TeacherAttendanceUseCase.LatenessDetailRow;
 import gn.lacaeducation.attendance.application.port.in.TeacherAttendanceUseCase.RecordTeacherAttendanceCommand;
 import gn.lacaeducation.attendance.application.port.in.TeacherAttendanceUseCase.TeacherAttendanceStatsResponse;
+import gn.lacaeducation.attendance.application.port.out.AttendanceReportPdfGenerator;
 import gn.lacaeducation.attendance.application.port.out.AttendanceSettingsRepository;
 import gn.lacaeducation.attendance.application.port.out.RecessWindowRepository;
 import gn.lacaeducation.attendance.application.port.out.TeacherAttendanceRepository;
@@ -12,6 +14,7 @@ import gn.lacaeducation.attendance.domain.TeacherAttendance;
 import gn.lacaeducation.attendance.domain.TeacherAttendanceStatus;
 import gn.lacaeducation.attendance.domain.TeacherCheckin;
 import gn.lacaeducation.common.BusinessRuleException;
+import gn.lacaeducation.staff.TeacherPublicInfoProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -43,10 +46,16 @@ class TeacherAttendanceServiceTest {
     @Mock SessionResolver sessionResolver;
     @Mock AttendanceSettingsRepository settingsRepository;
     @Mock RecessWindowRepository recessWindowRepository;
+    @Mock AttendanceReportPdfGenerator pdfGenerator;
+    @Mock TeacherPublicInfoProvider teacherPublicInfoProvider;
     @InjectMocks TeacherAttendanceService service;
 
     private static ScheduleSlotPublicInfo slot(String start, String end) {
         return new ScheduleSlotPublicInfo(1L, 5L, 7L, 3L, 2L, "LUNDI", start, end, null);
+    }
+
+    private static SessionResolver.Block block(String start, String end) {
+        return new SessionResolver.Block(List.of(slot(start, end)));
     }
 
     @Test
@@ -86,7 +95,7 @@ class TeacherAttendanceServiceTest {
     @Test
     void recordEntry_noScheduleToday_throws() {
         when(academics.findScheduleByTeacher(5L)).thenReturn(List.of());
-        when(sessionResolver.currentSession(any(), any(), any())).thenReturn(null);
+        when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(null);
 
         assertThatThrownBy(() -> service.recordEntry(5L)).isInstanceOf(BusinessRuleException.class);
         verify(checkinRepository, never()).save(any());
@@ -95,7 +104,7 @@ class TeacherAttendanceServiceTest {
     @Test
     void recordEntry_afterSessionStart_computesLateMinutes() {
         when(academics.findScheduleByTeacher(5L)).thenReturn(List.of());
-        when(sessionResolver.currentSession(any(), any(), any())).thenReturn(slot("00:00", "23:59"));
+        when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("00:00", "23:59"));
         when(sessionResolver.graceDeadline(any(), anyInt(), any())).thenReturn(java.time.LocalTime.of(0, 0));
         when(checkinRepository.findByTeacherIdAndDateAndSlot(eq(5L), any(), eq(1L))).thenReturn(Optional.empty());
         when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
@@ -111,7 +120,7 @@ class TeacherAttendanceServiceTest {
     @Test
     void recordEntry_beforeSessionStart_zeroLateAndUpsertsPresent() {
         when(academics.findScheduleByTeacher(5L)).thenReturn(List.of());
-        when(sessionResolver.currentSession(any(), any(), any())).thenReturn(slot("23:59", "23:59"));
+        when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("23:59", "23:59"));
         when(sessionResolver.graceDeadline(any(), anyInt(), any())).thenReturn(java.time.LocalTime.of(23, 59));
         when(checkinRepository.findByTeacherIdAndDateAndSlot(eq(5L), any(), eq(1L))).thenReturn(Optional.empty());
         when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
@@ -132,7 +141,7 @@ class TeacherAttendanceServiceTest {
     void recordEntry_idempotent_secondScanSameSessionReturnsExisting() {
         TeacherCheckin existing = TeacherCheckin.builder().id(9L).teacherId(5L).scheduleSlotId(1L).lateMinutes(3).build();
         when(academics.findScheduleByTeacher(5L)).thenReturn(List.of());
-        when(sessionResolver.currentSession(any(), any(), any())).thenReturn(slot("00:00", "23:59"));
+        when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("00:00", "23:59"));
         when(checkinRepository.findByTeacherIdAndDateAndSlot(eq(5L), any(), eq(1L))).thenReturn(Optional.of(existing));
         when(checkinRepository.findByTeacherIdAndDate(eq(5L), any())).thenReturn(List.of(existing));
         when(repo.findByTeacherIdAndDateBetween(eq(5L), any(), any())).thenReturn(List.of());
@@ -146,7 +155,7 @@ class TeacherAttendanceServiceTest {
     @Test
     void recordExit_withoutPriorEntry_throws() {
         when(academics.findScheduleByTeacher(5L)).thenReturn(List.of());
-        when(sessionResolver.currentSession(any(), any(), any())).thenReturn(slot("08:00", "10:00"));
+        when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("08:00", "10:00"));
         when(checkinRepository.findByTeacherIdAndDateAndSlot(eq(5L), any(), eq(1L))).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.recordExit(5L)).isInstanceOf(BusinessRuleException.class);
@@ -157,7 +166,7 @@ class TeacherAttendanceServiceTest {
         TeacherCheckin existing = TeacherCheckin.builder().id(9L).teacherId(5L).scheduleSlotId(1L)
                 .checkInTime(java.time.LocalTime.of(8, 5)).lateMinutes(5).createdAt(LocalDateTime.now()).build();
         when(academics.findScheduleByTeacher(5L)).thenReturn(List.of());
-        when(sessionResolver.currentSession(any(), any(), any())).thenReturn(slot("08:00", "10:00"));
+        when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("08:00", "10:00"));
         when(checkinRepository.findByTeacherIdAndDateAndSlot(eq(5L), any(), eq(1L))).thenReturn(Optional.of(existing));
         when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
@@ -172,7 +181,7 @@ class TeacherAttendanceServiceTest {
         TeacherCheckin existing = TeacherCheckin.builder().id(9L).teacherId(5L).scheduleSlotId(1L)
                 .checkInTime(java.time.LocalTime.of(8, 0)).lateMinutes(0).build();
         when(academics.findScheduleByTeacher(5L)).thenReturn(List.of());
-        when(sessionResolver.currentSession(any(), any(), any())).thenReturn(slot("08:00", "10:00"));
+        when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("08:00", "10:00"));
         when(sessionResolver.graceDeadline(any(), anyInt(), any())).thenReturn(java.time.LocalTime.of(8, 5));
         when(checkinRepository.findByTeacherIdAndDateAndSlot(eq(5L), any(), eq(1L))).thenReturn(Optional.of(existing));
         when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
@@ -192,7 +201,7 @@ class TeacherAttendanceServiceTest {
         // le cas concret signalé : un enseignant pointant à 14h05 pour un cours à 14h00 avec 5 min de
         // marge configurée ne doit jamais être compté en retard.
         when(academics.findScheduleByTeacher(5L)).thenReturn(List.of());
-        when(sessionResolver.currentSession(any(), any(), any())).thenReturn(slot("08:00", "10:00"));
+        when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("08:00", "10:00"));
         when(sessionResolver.graceDeadline(any(), anyInt(), any())).thenReturn(java.time.LocalTime.of(8, 5));
         when(checkinRepository.findByTeacherIdAndDateAndSlot(eq(5L), any(), eq(1L))).thenReturn(Optional.empty());
         when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
@@ -207,7 +216,7 @@ class TeacherAttendanceServiceTest {
     @Test
     void recordManualEntry_noScheduleThatDay_throws() {
         when(academics.findScheduleByTeacher(5L)).thenReturn(List.of());
-        when(sessionResolver.currentSession(any(), any(), any())).thenReturn(null);
+        when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(null);
 
         assertThatThrownBy(() -> service.recordManualEntry(5L, LocalDate.of(2026, 8, 26), java.time.LocalTime.of(8, 20)))
                 .isInstanceOf(BusinessRuleException.class);
@@ -235,5 +244,60 @@ class TeacherAttendanceServiceTest {
 
         assertThat(result.getStatus()).isEqualTo(TeacherAttendanceStatus.ABSENT);
         assertThat(result.getReason()).isEqualTo("Absence signalée");
+    }
+
+    @Test
+    void latenessDetail_keepsOnlySessionsWithLateOrEarlyMinutes_resolvedToClassAndSubject() {
+        when(academics.findScheduleByTeacher(5L)).thenReturn(List.of(
+                new ScheduleSlotPublicInfo(1L, 20L, 30L, 5L, 2L, "LUNDI", "08:00", "10:00", null),
+                new ScheduleSlotPublicInfo(2L, 21L, 31L, 5L, 2L, "MARDI", "08:00", "10:00", null)));
+        TeacherCheckin onTime = TeacherCheckin.builder().teacherId(5L).checkinDate(LocalDate.of(2026, 9, 7))
+                .scheduleSlotId(1L).lateMinutes(0).earlyMinutes(0).build();
+        TeacherCheckin late = TeacherCheckin.builder().teacherId(5L).checkinDate(LocalDate.of(2026, 9, 8))
+                .scheduleSlotId(2L).lateMinutes(12).earlyMinutes(0).build();
+        when(checkinRepository.findByTeacherIdAndDateBetween(eq(5L), any(), any())).thenReturn(List.of(onTime, late));
+
+        List<LatenessDetailRow> result = service.latenessDetail(5L, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).date()).isEqualTo(LocalDate.of(2026, 9, 8));
+        assertThat(result.get(0).classId()).isEqualTo(21L);
+        assertThat(result.get(0).subjectId()).isEqualTo(31L);
+        assertThat(result.get(0).lateMinutes()).isEqualTo(12);
+    }
+
+    @Test
+    void latenessReportPdf_combinesLatenessAndAbsenceRowsChronologically_resolvesTeacherName() {
+        when(academics.findScheduleByTeacher(5L)).thenReturn(List.of(
+                new ScheduleSlotPublicInfo(1L, 20L, 30L, 5L, 2L, "LUNDI", "08:00", "10:00", null)));
+        TeacherCheckin late = TeacherCheckin.builder().teacherId(5L).checkinDate(LocalDate.of(2026, 9, 14))
+                .scheduleSlotId(1L).lateMinutes(15).earlyMinutes(0).build();
+        when(checkinRepository.findByTeacherIdAndDateBetween(eq(5L), any(), any())).thenReturn(List.of(late));
+        when(academics.subjectLabels(any())).thenReturn(java.util.Map.of(30L, "Mathématiques"));
+        when(academics.findClass(20L)).thenReturn(Optional.empty());
+        TeacherAttendance absent = TeacherAttendance.builder().teacherId(5L)
+                .date(LocalDate.of(2026, 9, 10)).status(TeacherAttendanceStatus.ABSENT).reason("Grippe").build();
+        when(repo.findByTeacherIdAndDateBetween(eq(5L), any(), any())).thenReturn(List.of(absent));
+        when(teacherPublicInfoProvider.findTeacher(5L)).thenReturn(Optional.of(
+                new TeacherPublicInfoProvider.TeacherInfo(5L, "Aboubacar", "Diallo", "M001", null, null, null)));
+        ArgumentCaptor<AttendanceReportPdfGenerator.TeacherLatenessReport> captor =
+                ArgumentCaptor.forClass(AttendanceReportPdfGenerator.TeacherLatenessReport.class);
+        when(pdfGenerator.teacherLatenessReport(any())).thenReturn(new byte[]{1, 2, 3});
+
+        byte[] pdf = service.latenessReportPdf(5L, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30));
+
+        assertThat(pdf).containsExactly(1, 2, 3);
+        verify(pdfGenerator).teacherLatenessReport(captor.capture());
+        AttendanceReportPdfGenerator.TeacherLatenessReport report = captor.getValue();
+        assertThat(report.teacherName()).isEqualTo("Aboubacar Diallo");
+        assertThat(report.rows()).hasSize(2);
+        // Chronologique : l'absence du 10 avant le retard du 14.
+        assertThat(report.rows().get(0).date()).isEqualTo(LocalDate.of(2026, 9, 10));
+        assertThat(report.rows().get(0).absent()).isTrue();
+        assertThat(report.rows().get(0).absenceReason()).isEqualTo("Grippe");
+        assertThat(report.rows().get(1).date()).isEqualTo(LocalDate.of(2026, 9, 14));
+        assertThat(report.rows().get(1).absent()).isFalse();
+        assertThat(report.rows().get(1).subjectLabel()).isEqualTo("Mathématiques");
+        assertThat(report.rows().get(1).lateMinutes()).isEqualTo(15);
     }
 }

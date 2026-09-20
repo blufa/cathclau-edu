@@ -56,6 +56,10 @@ class StudentAttendanceServiceTest {
         return new ScheduleSlotPublicInfo(1L, 20L, 7L, 3L, 2L, "LUNDI", start, end, null);
     }
 
+    private static SessionResolver.Block block(String start, String end) {
+        return new SessionResolver.Block(List.of(slot(start, end)));
+    }
+
     private RecordAttendanceCommand cmd(AttendanceStatus status) {
         return new RecordAttendanceCommand(10L, 20L, LocalDate.of(2026, 1, 15), status, "sick");
     }
@@ -105,7 +109,7 @@ class StudentAttendanceServiceTest {
     void recordEntry_noScheduleToday_throws() {
         when(studentDataProvider.findCurrentClassId(10L)).thenReturn(Optional.of(20L));
         when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
-        when(sessionResolver.currentSession(any(), any(), any())).thenReturn(null);
+        when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(null);
 
         assertThatThrownBy(() -> service.recordEntry(10L, null)).isInstanceOf(BusinessRuleException.class);
         verify(checkinRepository, never()).save(any());
@@ -122,7 +126,7 @@ class StudentAttendanceServiceTest {
     void recordEntry_afterSessionStart_computesLateMinutes() {
         when(studentDataProvider.findCurrentClassId(10L)).thenReturn(Optional.of(20L));
         when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
-        when(sessionResolver.currentSession(any(), any(), any())).thenReturn(slot("00:00", "23:59"));
+        when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("00:00", "23:59"));
         when(sessionResolver.graceDeadline(any(), anyInt(), any())).thenReturn(java.time.LocalTime.of(0, 0));
         when(checkinRepository.findByStudentIdAndDateAndSlot(eq(10L), any(), eq(1L))).thenReturn(Optional.empty());
         when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
@@ -141,7 +145,7 @@ class StudentAttendanceServiceTest {
         StudentCheckin existing = StudentCheckin.builder().id(9L).studentId(10L).classId(20L).scheduleSlotId(1L).lateMinutes(3).build();
         when(studentDataProvider.findCurrentClassId(10L)).thenReturn(Optional.of(20L));
         when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
-        when(sessionResolver.currentSession(any(), any(), any())).thenReturn(slot("00:00", "23:59"));
+        when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("00:00", "23:59"));
         when(checkinRepository.findByStudentIdAndDateAndSlot(eq(10L), any(), eq(1L))).thenReturn(Optional.of(existing));
         when(checkinRepository.findByStudentIdAndDate(eq(10L), any())).thenReturn(List.of(existing));
         when(repo.findByStudentIdAndClassIdAndDate(eq(10L), eq(20L), any())).thenReturn(Optional.empty());
@@ -171,7 +175,7 @@ class StudentAttendanceServiceTest {
         when(academicsProvider.findClass(20L)).thenReturn(Optional.of(
                 new ClassPublicInfo(20L, "6e A", null, "NORMALE", 12L, null, null)));
         when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
-        when(sessionResolver.currentSession(any(), any(), any())).thenReturn(slot("00:00", "23:59"));
+        when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("00:00", "23:59"));
         when(sessionResolver.graceDeadline(any(), anyInt(), any())).thenReturn(java.time.LocalTime.of(0, 0));
         when(checkinRepository.findByStudentIdAndDateAndSlot(eq(10L), any(), eq(1L))).thenReturn(Optional.empty());
         when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
@@ -188,7 +192,7 @@ class StudentAttendanceServiceTest {
     void recordExit_withoutPriorEntry_throws() {
         when(studentDataProvider.findCurrentClassId(10L)).thenReturn(Optional.of(20L));
         when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
-        when(sessionResolver.currentSession(any(), any(), any())).thenReturn(slot("08:00", "10:00"));
+        when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("08:00", "10:00"));
         when(checkinRepository.findByStudentIdAndDateAndSlot(eq(10L), any(), eq(1L))).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.recordExit(10L, null)).isInstanceOf(BusinessRuleException.class);
@@ -200,7 +204,7 @@ class StudentAttendanceServiceTest {
                 .checkInTime(java.time.LocalTime.of(8, 5)).lateMinutes(5).build();
         when(studentDataProvider.findCurrentClassId(10L)).thenReturn(Optional.of(20L));
         when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
-        when(sessionResolver.currentSession(any(), any(), any())).thenReturn(slot("08:00", "10:00"));
+        when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("08:00", "10:00"));
         when(checkinRepository.findByStudentIdAndDateAndSlot(eq(10L), any(), eq(1L))).thenReturn(Optional.of(existing));
         when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
@@ -216,7 +220,7 @@ class StudentAttendanceServiceTest {
                 .checkInTime(java.time.LocalTime.of(8, 0)).lateMinutes(0).build();
         when(studentDataProvider.findCurrentClassId(10L)).thenReturn(Optional.of(20L));
         when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
-        when(sessionResolver.currentSession(any(), any(), any())).thenReturn(slot("08:00", "10:00"));
+        when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("08:00", "10:00"));
         when(sessionResolver.graceDeadline(any(), anyInt(), any())).thenReturn(java.time.LocalTime.of(8, 5));
         when(checkinRepository.findByStudentIdAndDateAndSlot(eq(10L), any(), eq(1L))).thenReturn(Optional.of(existing));
         when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
@@ -236,7 +240,7 @@ class StudentAttendanceServiceTest {
         // Entrée à 8h05 pour un cours à 8h00 avec la marge de tolérance de 5 min : pas de retard.
         when(studentDataProvider.findCurrentClassId(10L)).thenReturn(Optional.of(20L));
         when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
-        when(sessionResolver.currentSession(any(), any(), any())).thenReturn(slot("08:00", "10:00"));
+        when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("08:00", "10:00"));
         when(sessionResolver.graceDeadline(any(), anyInt(), any())).thenReturn(java.time.LocalTime.of(8, 5));
         when(checkinRepository.findByStudentIdAndDateAndSlot(eq(10L), any(), eq(1L))).thenReturn(Optional.empty());
         when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
@@ -253,7 +257,7 @@ class StudentAttendanceServiceTest {
     void recordManualEntry_noScheduleThatDay_throws() {
         when(studentDataProvider.findCurrentClassId(10L)).thenReturn(Optional.of(20L));
         when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
-        when(sessionResolver.currentSession(any(), any(), any())).thenReturn(null);
+        when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(null);
 
         assertThatThrownBy(() -> service.recordManualEntry(10L, LocalDate.of(2026, 8, 26), java.time.LocalTime.of(8, 20)))
                 .isInstanceOf(BusinessRuleException.class);

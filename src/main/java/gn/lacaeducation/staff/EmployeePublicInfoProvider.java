@@ -15,4 +15,8 @@ public interface EmployeePublicInfoProvider {
 
     /** Une fiche personnel par id (pour le pointage de présence : nom affiché, existence vérifiée). */
     Optional<EmployeeInfo> findEmployee(Long id);
+
+    /** Résout la fiche personnel liée à un compte utilisateur (pour reconnaître un enfant de membre du
+     * personnel non-enseignant — §billing, avantage personnel — au même titre qu'un enfant d'enseignant). */
+    Optional<Long> findEmployeeIdByUserId(Long userId);
 }

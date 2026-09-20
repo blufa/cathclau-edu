@@ -29,7 +29,7 @@ public class ExemptionController {
     private final ExemptionUseCase useCase;
 
     @Operation(summary = "Accorder une exonération à un élève (direction uniquement)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('frais:manage')")
     @PostMapping
     public ResponseEntity<Exemption> grant(@RequestBody GrantExemptionCommand cmd, @AuthenticationPrincipal Jwt jwt) {
         Exemption e = useCase.grant(TenantContext.get(), cmd, currentUserId(jwt));
@@ -44,14 +44,14 @@ public class ExemptionController {
     }
 
     @Operation(summary = "Historique des exonérations d'un élève")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT','SECRETARY')")
+    @PreAuthorize("hasAuthority('frais:manage')")
     @GetMapping("/student/{studentId}")
     public List<Exemption> byStudent(@PathVariable Long studentId) {
         return useCase.findByStudent(studentId);
     }
 
     @Operation(summary = "Révoquer une exonération (archivée, jamais supprimée)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('frais:manage')")
     @PatchMapping("/{id}/revoquer")
     public Exemption revoke(@PathVariable Long id) {
         return useCase.revoke(id);

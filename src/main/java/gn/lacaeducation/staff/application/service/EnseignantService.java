@@ -5,6 +5,7 @@ import gn.lacaeducation.academics.ClassPublicInfo;
 import gn.lacaeducation.academics.ClassSubjectPublicInfo;
 import gn.lacaeducation.academics.ScheduleSlotPublicInfo;
 import gn.lacaeducation.common.ConflictException;
+import gn.lacaeducation.common.PersonName;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.common.SchoolCode;
 import gn.lacaeducation.common.TenantInfoProvider;
@@ -45,7 +46,8 @@ public class EnseignantService implements TeacherUseCase {
         String matricule = resolveStaffNumber(cmd.tenantId(), cmd.staffNumber());
         Teacher saved = teacherRepository.save(Teacher.builder()
                 .tenantId(cmd.tenantId()).userId(cmd.userId()).staffNumber(matricule)
-                .firstName(cmd.firstName()).lastName(cmd.lastName()).phone(cmd.phone())
+                .firstName(PersonName.capitalizeFirstName(cmd.firstName()))
+                .lastName(PersonName.upperCaseLastName(cmd.lastName())).phone(cmd.phone())
                 .email(cmd.email()).specialization(cmd.specialization()).hireDate(cmd.hireDate())
                 .employmentStatus(cmd.employmentStatus()).diploma(cmd.diploma())
                 .remunerationType(cmd.remunerationType()).remunerationRate(cmd.remunerationRate())
@@ -81,7 +83,9 @@ public class EnseignantService implements TeacherUseCase {
     @Override
     public Teacher update(Long id, UpdateTeacherCommand cmd) {
         Teacher t = load(id);
-        t.setStaffNumber(cmd.staffNumber()); t.setFirstName(cmd.firstName()); t.setLastName(cmd.lastName());
+        t.setStaffNumber(cmd.staffNumber());
+        t.setFirstName(PersonName.capitalizeFirstName(cmd.firstName()));
+        t.setLastName(PersonName.upperCaseLastName(cmd.lastName()));
         t.setPhone(cmd.phone()); t.setEmail(cmd.email()); t.setSpecialization(cmd.specialization()); t.setHireDate(cmd.hireDate());
         t.setEmploymentStatus(cmd.employmentStatus()); t.setDiploma(cmd.diploma());
         t.setRemunerationType(cmd.remunerationType()); t.setRemunerationRate(cmd.remunerationRate());
@@ -117,6 +121,13 @@ public class EnseignantService implements TeacherUseCase {
     public Teacher updatePhoto(Long id, String photoUrl) {
         Teacher t = load(id);
         t.setPhoto(photoUrl);
+        return teacherRepository.save(t);
+    }
+
+    @Override
+    public Teacher updateAllowsConcurrentClasses(Long id, boolean allowsConcurrentClasses) {
+        Teacher t = load(id);
+        t.setAllowsConcurrentClasses(allowsConcurrentClasses);
         return teacherRepository.save(t);
     }
 

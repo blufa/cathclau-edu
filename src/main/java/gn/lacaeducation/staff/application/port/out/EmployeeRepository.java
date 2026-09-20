@@ -13,4 +13,5 @@ public interface EmployeeRepository {
     void deleteById(Long id);
     boolean existsById(Long id);
     boolean existsByTenantIdAndEmployeeNumber(Long tenantId, String employeeNumber);
+    Optional<Employee> findByUserId(Long userId);
 }

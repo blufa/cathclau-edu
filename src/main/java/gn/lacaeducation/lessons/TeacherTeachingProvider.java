@@ -14,4 +14,9 @@ public interface TeacherTeachingProvider {
     /** Comme {@link #realizedMinutes}, mais regroupé par classe (clé = classId) — permet à la paie
      * d'appliquer le tarif horaire correspondant à la typologie de chaque classe (normal/examen). */
     Map<Long, Integer> realizedMinutesByClass(Long teacherId, LocalDate from, LocalDate to);
+
+    /** Comme {@link #realizedMinutesByClass}, mais aussi regroupé par date — permet à la paie de
+     * dédupliquer les blocs de classes couvertes simultanément par un enseignant "exceptionnel"
+     * (§5.6, ex. EPS) plutôt que d'additionner leurs durées. */
+    Map<LocalDate, Map<Long, Integer>> realizedMinutesByClassAndDate(Long teacherId, LocalDate from, LocalDate to);
 }

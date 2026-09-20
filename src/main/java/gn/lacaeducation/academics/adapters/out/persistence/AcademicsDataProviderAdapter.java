@@ -23,6 +23,7 @@ public class AcademicsDataProviderAdapter implements AcademicsDataProvider {
     private final EmploiDuTempsJpaRepository emploiDuTempsRepo;
     private final AnneeScolaireJpaRepository anneeRepo;
     private final NiveauJpaRepository niveauRepo;
+    private final SchoolEventJpaRepository schoolEventRepo;
     @Override
     public Optional<ClassPublicInfo> findClass(Long classId) {
         return classeRepo.findById(classId).map(this::toClassPublicInfo);
@@ -76,7 +77,7 @@ public class AcademicsDataProviderAdapter implements AcademicsDataProvider {
         Set<Long> subjectIds = assignments.stream()
                 .map(ClasseMatiereJpaEntity::getSubjectId)
                 .collect(Collectors.toSet());
-        Map<Long, BigDecimal> coeffBySubject = matiereRepo.findAllById(subjectIds).stream()
+        Map<Long, BigDecimal> defaultCoeffBySubject = matiereRepo.findAllById(subjectIds).stream()
                 .collect(Collectors.toMap(
                         MatiereJpaEntity::getId,
                         s -> s.getCoefficient() != null ? s.getCoefficient() : BigDecimal.ONE));
@@ -84,7 +85,13 @@ public class AcademicsDataProviderAdapter implements AcademicsDataProvider {
                 .map(a -> new ClassSubjectPublicInfo(
                         a.getSchoolClassId(),
                         a.getSubjectId(),
-                        coeffBySubject.getOrDefault(a.getSubjectId(), BigDecimal.ONE),
+                        // Le coefficient propre à cette affectation classe/matière (ex. spécialité de
+                        // série au lycée) prime toujours sur le coefficient générique de la matière —
+                        // voir ClasseMatiere#coefficient. Sans ce repli explicite, le calcul des
+                        // moyennes (GradeCalculationService) ignorait silencieusement toute
+                        // surcharge par classe.
+                        a.getCoefficient() != null ? a.getCoefficient()
+                                : defaultCoeffBySubject.getOrDefault(a.getSubjectId(), BigDecimal.ONE),
                         a.getTeacherId(),
                         a.getCode()))
                 .toList();
@@ -106,7 +113,7 @@ public class AcademicsDataProviderAdapter implements AcademicsDataProvider {
         Set<Long> subjectIds = assignments.stream()
                 .map(ClasseMatiereJpaEntity::getSubjectId)
                 .collect(Collectors.toSet());
-        Map<Long, BigDecimal> coeffBySubject = matiereRepo.findAllById(subjectIds).stream()
+        Map<Long, BigDecimal> defaultCoeffBySubject = matiereRepo.findAllById(subjectIds).stream()
                 .collect(Collectors.toMap(
                         MatiereJpaEntity::getId,
                         s -> s.getCoefficient() != null ? s.getCoefficient() : BigDecimal.ONE));
@@ -114,7 +121,9 @@ public class AcademicsDataProviderAdapter implements AcademicsDataProvider {
                 .map(a -> new ClassSubjectPublicInfo(
                         a.getSchoolClassId(),
                         a.getSubjectId(),
-                        coeffBySubject.getOrDefault(a.getSubjectId(), BigDecimal.ONE),
+                        // Voir findClassSubjects : la surcharge par classe prime toujours.
+                        a.getCoefficient() != null ? a.getCoefficient()
+                                : defaultCoeffBySubject.getOrDefault(a.getSubjectId(), BigDecimal.ONE),
                         a.getTeacherId(),
                         a.getCode()))
                 .toList();
@@ -157,6 +166,15 @@ public class AcademicsDataProviderAdapter implements AcademicsDataProvider {
     public Optional<AcademicYearPublicInfo> findAcademicYear(Long academicYearId) {
         return anneeRepo.findById(academicYearId)
                 .map(y -> new AcademicYearPublicInfo(y.getId(), y.getLabel(), y.getStartDate(), y.getEndDate()));
+    }
+
+    @Override
+    public List<gn.lacaeducation.academics.SchoolEventPublicInfo> findSchoolEvents(
+            Long tenantId, java.time.LocalDate from, java.time.LocalDate to) {
+        return schoolEventRepo.findByTenantIdAndDateRangeOverlap(tenantId, from, to).stream()
+                .map(e -> new gn.lacaeducation.academics.SchoolEventPublicInfo(
+                        e.getId(), e.getLabel(), e.getStartDate(), e.getEndDate(), e.getStartTime(), e.getEndTime()))
+                .toList();
     }
 
     private ScheduleSlotPublicInfo toSlot(EmploiDuTempsJpaEntity e) {

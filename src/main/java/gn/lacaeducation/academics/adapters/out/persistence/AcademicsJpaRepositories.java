@@ -103,3 +103,15 @@ interface ScheduleExceptionJpaRepository extends JpaRepository<ScheduleException
     Optional<ScheduleExceptionJpaEntity> findByOriginalScheduleIdAndWeekStartDate(Long originalScheduleId, LocalDate weekStartDate);
     void deleteByOriginalScheduleIdAndWeekStartDate(Long originalScheduleId, LocalDate weekStartDate);
 }
+
+interface TeacherFlagJpaRepository extends JpaRepository<TeacherFlagJpaEntity, Long> {
+}
+
+interface SchoolEventJpaRepository extends JpaRepository<SchoolEventJpaEntity, Long> {
+    List<SchoolEventJpaEntity> findByTenantIdOrderByStartDateDesc(Long tenantId);
+
+    @Query("SELECT e FROM SchoolEventJpaEntity e WHERE e.tenantId = :tenantId "
+            + "AND e.startDate <= :to AND e.endDate >= :from")
+    List<SchoolEventJpaEntity> findByTenantIdAndDateRangeOverlap(
+            @Param("tenantId") Long tenantId, @Param("from") LocalDate from, @Param("to") LocalDate to);
+}

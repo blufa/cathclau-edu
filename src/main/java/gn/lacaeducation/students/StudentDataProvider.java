@@ -22,4 +22,7 @@ public interface StudentDataProvider {
     /** Comme {@link #findAllParents(Long)}, mais restreint aux parents ayant au moins un enfant avec
      * l'accès plateforme accepté — pour la diffusion de masse « tous les parents » (§communication). */
     List<ParentPublicInfo> findAllParentsWithPlatformAccess(Long tenantId);
+    /** Élèves dont l'inscription est ABANDONED sur cette année scolaire (départ en cours d'année),
+     * avec leur classe — Vision Fondateur (§14). */
+    List<AbandonedStudentInfo> findAbandonedStudents(Long academicYearId);
 }

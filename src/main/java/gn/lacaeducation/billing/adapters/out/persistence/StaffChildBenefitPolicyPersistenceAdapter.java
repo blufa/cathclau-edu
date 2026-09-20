@@ -38,7 +38,7 @@ class StaffChildBenefitPolicyPersistenceAdapter implements StaffChildBenefitPoli
         return StaffChildBenefitPolicy.builder()
                 .id(e.getId()).tenantId(e.getTenantId()).label(e.getLabel())
                 .coveredChildrenCount(e.getCoveredChildrenCount()).coveragePercent(e.getCoveragePercent())
-                .feeType(e.getFeeType()).active(e.isActive())
+                .feeTypes(e.getFeeTypes()).active(e.isActive())
                 .build();
     }
 
@@ -46,7 +46,7 @@ class StaffChildBenefitPolicyPersistenceAdapter implements StaffChildBenefitPoli
         StaffChildBenefitPolicyJpaEntity e = new StaffChildBenefitPolicyJpaEntity();
         e.setId(d.getId()); e.setTenantId(d.getTenantId()); e.setLabel(d.getLabel());
         e.setCoveredChildrenCount(d.getCoveredChildrenCount()); e.setCoveragePercent(d.getCoveragePercent());
-        e.setFeeType(d.getFeeType()); e.setActive(d.isActive());
+        e.setFeeTypes(d.getFeeTypes()); e.setActive(d.isActive());
         return e;
     }
 }

@@ -1,6 +1,7 @@
 package gn.lacaeducation.iam.application.service;
 
 import gn.lacaeducation.common.ConflictException;
+import gn.lacaeducation.common.PersonName;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.iam.application.event.RoleAssignedEvent;
 import gn.lacaeducation.iam.application.event.UserAccountCreatedEvent;
@@ -33,7 +34,13 @@ public class UserService implements UserUseCase {
 
     @Override
     public User create(CreateUserCommand command) {
-        if (command.email() != null && userRepository.existsByTenantIdAndEmail(command.tenantId(), command.email())) {
+        boolean commandHasPhone = command.phone() != null && !command.phone().isBlank();
+        boolean commandHasEmail = command.email() != null && !command.email().isBlank();
+        if (!commandHasPhone && !commandHasEmail) {
+            throw new gn.lacaeducation.common.BusinessRuleException(
+                    "Un numéro de téléphone ou un email est requis pour créer un compte.");
+        }
+        if (commandHasEmail && userRepository.existsByTenantIdAndEmail(command.tenantId(), command.email())) {
             throw new ConflictException("A user with this email already exists in this tenant");
         }
         // Identifiant de connexion généré (prenom.nom, unique PAR TENANT) — la même personne peut
@@ -45,8 +52,8 @@ public class UserService implements UserUseCase {
         String rawPassword = generated ? TemporaryPassword.generate() : command.password();
         User user = User.builder()
                 .tenantId(command.tenantId())
-                .firstName(command.firstName())
-                .lastName(command.lastName())
+                .firstName(PersonName.capitalizeFirstName(command.firstName()))
+                .lastName(PersonName.upperCaseLastName(command.lastName()))
                 .username(username)
                 .email(command.email())
                 .passwordHash(passwordHasher.hash(rawPassword))
@@ -58,11 +65,14 @@ public class UserService implements UserUseCase {
         User saved = userRepository.save(user);
         // On restitue le mot de passe uniquement quand il a été généré (jamais persisté en clair).
         if (generated) saved.setPlainTemporaryPassword(rawPassword);
-        // Envoi des identifiants par SMS (§2.2) : rawPassword n'existe qu'en mémoire à cet instant,
-        // jamais persisté en clair — d'où la publication immédiate, avant qu'il ne soit plus disponible.
-        if (command.phone() != null && !command.phone().isBlank()) {
+        // Envoi des identifiants (email de préférence, sinon SMS — §2.2) : rawPassword n'existe qu'en
+        // mémoire à cet instant, jamais persisté en clair — d'où la publication immédiate, avant qu'il
+        // ne soit plus disponible.
+        boolean hasPhone = command.phone() != null && !command.phone().isBlank();
+        boolean hasEmail = command.email() != null && !command.email().isBlank();
+        if (hasPhone || hasEmail) {
             eventPublisher.publishEvent(new UserAccountCreatedEvent(saved.getTenantId(), saved.getId(),
-                    command.phone(), saved.getFirstName(), saved.getLastName(), username, rawPassword));
+                    command.phone(), command.email(), saved.getFirstName(), saved.getLastName(), username, rawPassword));
         }
         return saved;
     }
@@ -106,8 +116,8 @@ public class UserService implements UserUseCase {
                 .orElseThrow(() -> new ResourceNotFoundException("User", id));
         // Partial update: only overwrite fields explicitly provided, so PATCH activate/deactivate
         // (which carries only the active flag) does not wipe the user's name/phone.
-        if (command.firstName() != null) user.setFirstName(command.firstName());
-        if (command.lastName() != null) user.setLastName(command.lastName());
+        if (command.firstName() != null) user.setFirstName(PersonName.capitalizeFirstName(command.firstName()));
+        if (command.lastName() != null) user.setLastName(PersonName.upperCaseLastName(command.lastName()));
         if (command.phone() != null) user.setPhone(command.phone());
         if (command.photo() != null) user.setPhoto(command.photo());
         if (command.active() != null) {

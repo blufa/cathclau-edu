@@ -1,7 +1,11 @@
 package gn.lacaeducation.billing.application.service;
 import gn.lacaeducation.billing.application.port.in.SchoolFeeUseCase;
+import gn.lacaeducation.billing.application.port.out.InstallmentRepository;
+import gn.lacaeducation.billing.application.port.out.InvoiceRepository;
 import gn.lacaeducation.billing.application.port.out.SchoolFeeRepository;
+import gn.lacaeducation.billing.domain.Installment;
 import gn.lacaeducation.billing.domain.SchoolFee;
+import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -11,6 +15,8 @@ import java.util.Optional;
 @Service @Transactional @RequiredArgsConstructor
 public class SchoolFeeService implements SchoolFeeUseCase {
     private final SchoolFeeRepository repo;
+    private final InstallmentRepository installmentRepo;
+    private final InvoiceRepository invoiceRepo;
     @Override public SchoolFee create(CreateFeeCommand c) {
         return repo.save(SchoolFee.builder().tenantId(c.tenantId()).classId(c.classId()).routeId(c.routeId())
                 .type(c.type()).amount(c.amount()).academicYear(c.academicYear()).label(c.label()).build());
@@ -52,6 +58,19 @@ public class SchoolFeeService implements SchoolFeeUseCase {
 
     @Override
     public void delete(Long id) {
+        load(id); // 404 si le frais n'existe pas
+        // Un frais déjà facturé à des élèves ne doit jamais être supprimé (données financières réelles) —
+        // message métier clair plutôt que de laisser remonter la violation de contrainte SQL brute.
+        if (!invoiceRepo.findByFeeId(id).isEmpty()) {
+            throw new BusinessRuleException(
+                    "Impossible de supprimer ce frais : des factures ont déjà été émises pour ce frais. "
+                            + "Modifiez son montant/libellé si besoin, ou contactez le support pour un cas particulier.");
+        }
+        // Aucune facture : l'échéancier (installments) n'est qu'une définition, pas des données
+        // financières réelles — supprimable sans risque avec le frais.
+        for (Installment i : installmentRepo.findByFeeId(id)) {
+            installmentRepo.deleteById(i.getId());
+        }
         repo.deleteById(id);
     }
 

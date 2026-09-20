@@ -47,6 +47,6 @@ public class PaymentWebhookController {
     @GetMapping("/unprocessed") public List<PaymentWebhook> findUnprocessed() { return useCase.findUnprocessed(); }
 
     @Operation(summary = "Mark a payment webhook as processed")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('transaction:read')")
     @PutMapping("/{id}/process") public ResponseEntity<PaymentWebhook> process(@PathVariable Long id) { return ResponseEntity.ok(useCase.markProcessed(id)); }
 }

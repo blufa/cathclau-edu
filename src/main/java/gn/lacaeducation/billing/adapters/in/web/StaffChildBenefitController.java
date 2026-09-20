@@ -3,6 +3,7 @@ package gn.lacaeducation.billing.adapters.in.web;
 import gn.lacaeducation.billing.application.port.in.StaffChildBenefitUseCase;
 import gn.lacaeducation.billing.application.port.in.StaffChildBenefitUseCase.PolicyCommand;
 import gn.lacaeducation.billing.application.port.in.StaffChildBenefitUseCase.StaffCoverage;
+import gn.lacaeducation.billing.application.port.in.StaffChildBenefitUseCase.StudentCoverage;
 import gn.lacaeducation.billing.domain.FeeType;
 import gn.lacaeducation.billing.domain.StaffChildBenefitPolicy;
 import gn.lacaeducation.common.TenantContext;
@@ -30,7 +31,7 @@ public class StaffChildBenefitController {
     private final StaffChildBenefitUseCase useCase;
 
     @Operation(summary = "Créer une politique de prise en charge des enfants du personnel")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('frais:manage')")
     @PostMapping
     public ResponseEntity<StaffChildBenefitPolicy> create(@RequestBody PolicyCommand cmd) {
         StaffChildBenefitPolicy p = useCase.create(TenantContext.get(), cmd);
@@ -38,21 +39,21 @@ public class StaffChildBenefitController {
     }
 
     @Operation(summary = "Lister les politiques du tenant")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('frais:manage')")
     @GetMapping
     public List<StaffChildBenefitPolicy> list() {
         return useCase.findByTenant(TenantContext.get());
     }
 
     @Operation(summary = "Modifier une politique")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('frais:manage')")
     @PutMapping("/{id}")
     public StaffChildBenefitPolicy update(@PathVariable Long id, @RequestBody PolicyCommand cmd) {
         return useCase.update(id, cmd);
     }
 
     @Operation(summary = "Supprimer une politique")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('frais:manage')")
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {
@@ -60,9 +61,16 @@ public class StaffChildBenefitController {
     }
 
     @Operation(summary = "Prise en charge école applicable à un élève (enfant d'employé) pour un frais")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT','SECRETARY')")
+    @PreAuthorize("hasAuthority('frais:manage')")
     @GetMapping("/coverage")
     public StaffCoverage coverage(@RequestParam Long studentId, @RequestParam FeeType feeType) {
         return useCase.computeCoverage(TenantContext.get(), studentId, feeType);
+    }
+
+    @Operation(summary = "Parmi une liste d'élèves, ceux pris en charge (enfants de personnel) pour un frais (pour badge dans la liste des élèves)")
+    @PreAuthorize("hasAuthority('frais:manage')")
+    @GetMapping("/coverage-batch")
+    public List<StudentCoverage> coverageBatch(@RequestParam List<Long> studentIds, @RequestParam FeeType feeType) {
+        return useCase.computeCoverageBatch(TenantContext.get(), studentIds, feeType);
     }
 }

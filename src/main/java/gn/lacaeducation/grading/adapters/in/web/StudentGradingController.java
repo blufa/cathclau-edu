@@ -20,7 +20,7 @@ import java.util.List;
  * Exposes grade and report-card queries under /api/v1/students/{id}/...
  * so that student and parent portals get a clean, resource-oriented URL.
  */
-@Tag(name = "Student Grading", description = "Student-centric views of grades and report cards")
+@Tag(name = "Student Grading", description = "Vue des notes et bulletins centrée sur l'élève")
 @RestController
 @RequestMapping("/api/v1/students/{studentId}")
 @RequiredArgsConstructor
@@ -30,7 +30,7 @@ public class StudentGradingController {
     private final ReportCardUseCase reportCardUseCase;
     private final ParentAccessProvider parentAccessProvider;
 
-    @Operation(summary = "List all grades for a student, optionally filtered by periodId")
+    @Operation(summary = "Lister toutes les notes d'un élève, filtrable par periodId")
     @GetMapping("/grades")
     public List<Grade> getGrades(@PathVariable Long studentId,
                                   @RequestParam(required = false) Long periodId,
@@ -42,7 +42,7 @@ public class StudentGradingController {
         return gradeUseCase.findByStudent(studentId);
     }
 
-    @Operation(summary = "List published report cards for a student across all periods")
+    @Operation(summary = "Lister les bulletins publiés d'un élève, toutes périodes confondues")
     @GetMapping("/report-cards")
     public List<ReportCard> getReportCards(@PathVariable Long studentId, @AuthenticationPrincipal Jwt jwt) {
         assertParentScope(jwt, studentId);

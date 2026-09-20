@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-@Tag(name = "Card Templates", description = "Student-card templates")
+@Tag(name = "Card Templates", description = "Modèles de cartes scolaires")
 @RestController
 @RequestMapping("/api/v1/cartes/modeles")
 @RequiredArgsConstructor
@@ -26,14 +26,14 @@ public class CardTemplateController {
                                   String backgroundUrl, CardOrientation orientation, String rectoConfig,
                                   String versoConfig, Boolean active, BadgeKind badgeKind) {}
 
-    @Operation(summary = "List card templates (optionally filtered by badge kind)")
+    @Operation(summary = "Lister les modèles de cartes (filtrage possible par type de badge)")
     @GetMapping
     public List<CardTemplate> list(@RequestParam(required = false) BadgeKind badgeKind) {
         List<CardTemplate> all = service.findByTenant(TenantContext.get());
         return badgeKind == null ? all : all.stream().filter(t -> t.getBadgeKind() == badgeKind).toList();
     }
 
-    @Operation(summary = "Create a card template")
+    @Operation(summary = "Créer un modèle de carte")
     @PreAuthorize("hasAuthority('carte:manage')")
     @PostMapping
     public CardTemplate create(@RequestBody TemplateRequest r) {
@@ -44,7 +44,7 @@ public class CardTemplateController {
                 .badgeKind(r.badgeKind() == null ? BadgeKind.STUDENT : r.badgeKind()).build());
     }
 
-    @Operation(summary = "Update a card template")
+    @Operation(summary = "Modifier un modèle de carte")
     @PreAuthorize("hasAuthority('carte:manage')")
     @PutMapping("/{id}")
     public CardTemplate update(@PathVariable Long id, @RequestBody TemplateRequest r) {
@@ -55,13 +55,13 @@ public class CardTemplateController {
                 .badgeKind(r.badgeKind() == null ? BadgeKind.STUDENT : r.badgeKind()).build());
     }
 
-    @Operation(summary = "Set a template as default")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR')")
+    @Operation(summary = "Définir un modèle comme modèle par défaut")
+    @PreAuthorize("hasAuthority('carte:manage')")
     @PatchMapping("/{id}/definir-defaut")
     public CardTemplate setDefault(@PathVariable Long id) { return service.setDefault(TenantContext.get(), id); }
 
-    @Operation(summary = "Delete a card template")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR')")
+    @Operation(summary = "Supprimer un modèle de carte")
+    @PreAuthorize("hasAuthority('carte:manage')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) { service.delete(id); return ResponseEntity.noContent().build(); }
 }

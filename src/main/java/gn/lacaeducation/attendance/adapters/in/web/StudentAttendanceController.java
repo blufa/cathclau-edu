@@ -25,7 +25,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
-@Tag(name = "Student Attendance", description = "Record and query student attendance per class and date")
+@Tag(name = "Student Attendance", description = "Enregistrer et consulter la présence des élèves par classe et par date")
 @RestController @RequestMapping("/api/v1/attendance/students") @RequiredArgsConstructor
 public class StudentAttendanceController {
     private final StudentAttendanceUseCase useCase;
@@ -49,7 +49,7 @@ public class StudentAttendanceController {
             @NotNull AttendanceStatus status,
             String reason) {}
 
-    @Operation(summary = "Record a student attendance entry")
+    @Operation(summary = "Enregistrer une présence d'élève")
     @PreAuthorize("hasAuthority('presence:create')")
     @PostMapping
     public StudentAttendance record(@RequestBody RecordAttendanceCommand cmd) { return useCase.record(cmd); }
@@ -111,7 +111,7 @@ public class StudentAttendanceController {
         return useCase.findPickups(studentId, date);
     }
 
-    @Operation(summary = "Record attendance for an entire class at once")
+    @Operation(summary = "Enregistrer la présence de toute une classe en une seule fois")
     @PreAuthorize("hasAuthority('presence:create')")
     @PostMapping("/bulk")
     public ResponseEntity<List<StudentAttendance>> recordBulk(@Valid @RequestBody BulkAttendanceRequest req) {
@@ -122,7 +122,7 @@ public class StudentAttendanceController {
         return ResponseEntity.ok(result);
     }
 
-    @Operation(summary = "Get attendance statistics for a student")
+    @Operation(summary = "Consulter les statistiques de présence d'un élève")
     @GetMapping("/{studentId}/stats")
     public AttendanceStatsResponse getStats(
             @PathVariable Long studentId,
@@ -133,7 +133,7 @@ public class StudentAttendanceController {
         return useCase.getStats(studentId, from.orElse(null), to.orElse(null));
     }
 
-    @Operation(summary = "Get attendance records for a class on a given date")
+    @Operation(summary = "Consulter les présences d'une classe pour une date donnée")
     @GetMapping("/class/{classId}")
     public List<StudentAttendance> findByClass(@PathVariable Long classId, @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) { return useCase.findByClass(classId, date); }
 
@@ -145,7 +145,7 @@ public class StudentAttendanceController {
         return useCase.findCheckinsByClass(classId, date);
     }
 
-    @Operation(summary = "Get attendance records for a student over a date range")
+    @Operation(summary = "Consulter les présences d'un élève sur une période")
     @GetMapping("/student/{studentId}")
     public List<StudentAttendance> findByStudent(@PathVariable Long studentId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
@@ -177,7 +177,7 @@ public class StudentAttendanceController {
                 .body(useCase.latenessReportPdf(classId, from, to));
     }
 
-    @Operation(summary = "Update the status of an attendance record")
+    @Operation(summary = "Modifier le statut d'une fiche de présence")
     @PreAuthorize("hasAuthority('presence:update')")
     @PutMapping("/{id}")
     public StudentAttendance update(@PathVariable Long id, @RequestParam AttendanceStatus status, @RequestParam(required=false) String reason) { return useCase.update(id, status, reason); }
@@ -206,13 +206,13 @@ public class StudentAttendanceController {
     // StudentAttendanceUseCase#notifyParentNow. Rôles alignés sur `canWrite` côté frontend (le bouton
     // est visible aux mêmes rôles que la saisie de présence, dont TEACHER) ; sans ça, un enseignant
     // voyait le bouton mais recevait un 403 silencieux en cliquant.
-    @Operation(summary = "Resend the absence/lateness notification to the parent and mark it as handled")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','TEACHER')")
+    @Operation(summary = "Renvoyer la notification d'absence/retard au parent et la marquer comme traitée")
+    @PreAuthorize("hasAuthority('presence:update')")
     @PutMapping("/{id}/notify-parent")
     public ResponseEntity<Void> notifyParent(@PathVariable Long id) { useCase.notifyParentNow(id); return ResponseEntity.ok().build(); }
 
-    @Operation(summary = "Delete an attendance record")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @Operation(summary = "Supprimer une fiche de présence")
+    @PreAuthorize("hasAuthority('presence:delete')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) { useCase.delete(id); return ResponseEntity.noContent().build(); }
 }

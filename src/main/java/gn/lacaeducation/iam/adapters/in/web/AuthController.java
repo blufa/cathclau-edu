@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 
-@Tag(name = "Authentication", description = "Login, token refresh, password management")
+@Tag(name = "Authentication", description = "Connexion, renouvellement de token, gestion du mot de passe")
 @RestController
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
@@ -27,42 +27,56 @@ public class AuthController {
 
     private final AuthUseCase authUseCase;
 
-    @Operation(summary = "Authenticate with username or email + password, returns access and refresh tokens")
+    @Operation(summary = "S'authentifier avec identifiant ou e-mail + mot de passe, retourne l'access token et le refresh token")
     @PostMapping("/login")
     public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest req) {
         var result = authUseCase.authenticate(new AuthUseCase.LoginCommand(req.identifier(), req.password()));
         return ResponseEntity.ok(toResponse(result));
     }
 
-    @Operation(summary = "Obtain a new access token using a refresh token")
+    @Operation(summary = "Obtenir un nouvel access token à partir d'un refresh token")
     @PostMapping("/refresh")
     public ResponseEntity<LoginResponse> refresh(@Valid @RequestBody RefreshTokenRequest req) {
         var result = authUseCase.refreshToken(req.refreshToken());
         return ResponseEntity.ok(toResponse(result));
     }
 
-    @Operation(summary = "Logout: revoke the refresh token")
+    @Operation(summary = "Déconnexion : révoquer le refresh token")
     @PostMapping("/logout")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void logout(@Valid @RequestBody RefreshTokenRequest req) {
         authUseCase.logout(req.refreshToken());
     }
 
-    @Operation(summary = "Request a password reset link (sent by email)")
+    @Operation(summary = "Demander un lien de réinitialisation de mot de passe (envoyé par e-mail)")
     @PostMapping("/password/forgot")
     public ResponseEntity<Map<String, String>> forgotPassword(@Valid @RequestBody ForgotPasswordRequest req) {
         authUseCase.forgotPassword(req.email());
         return ResponseEntity.ok(Map.of("message", "Reset link sent if the account exists"));
     }
 
-    @Operation(summary = "Reset password using a valid reset token")
+    @Operation(summary = "Réinitialiser le mot de passe avec un token de réinitialisation valide")
     @PostMapping("/password/reset")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void resetPassword(@Valid @RequestBody ResetPasswordRequest req) {
         authUseCase.resetPassword(new AuthUseCase.ResetPasswordCommand(req.token(), req.newPassword()));
     }
 
-    @Operation(summary = "Change password for the authenticated user")
+    @Operation(summary = "Demander un code OTP de réinitialisation du mot de passe par SMS — identifiant : nom d'utilisateur, e-mail ou téléphone")
+    @PostMapping("/password/otp/request")
+    public ResponseEntity<Map<String, String>> requestPasswordResetOtp(@Valid @RequestBody OtpRequestRequest req) {
+        authUseCase.requestPasswordResetOtp(req.identifier());
+        return ResponseEntity.ok(Map.of("message", "Code envoyé par SMS si le compte existe"));
+    }
+
+    @Operation(summary = "Réinitialiser le mot de passe avec un code OTP valide reçu par SMS")
+    @PostMapping("/password/otp/reset")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void resetPasswordWithOtp(@Valid @RequestBody OtpResetRequest req) {
+        authUseCase.resetPasswordWithOtp(new AuthUseCase.ResetWithOtpCommand(req.identifier(), req.code(), req.newPassword()));
+    }
+
+    @Operation(summary = "Changer le mot de passe de l'utilisateur connecté")
     @PostMapping("/password/change")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void changePassword(@AuthenticationPrincipal Jwt jwt,
@@ -72,7 +86,7 @@ public class AuthController {
                 req.currentPassword(), req.newPassword()));
     }
 
-    @Operation(summary = "Profile of the authenticated user: roles, permissions and tenant")
+    @Operation(summary = "Profil de l'utilisateur connecté : rôles, permissions et tenant")
     @GetMapping("/me")
     public MeResponse me(@AuthenticationPrincipal Jwt jwt) {
         Long userId = Long.parseLong(jwt.getSubject());
@@ -88,6 +102,14 @@ public class AuthController {
 
     record ResetPasswordRequest(
             @NotBlank String token,
+            @NotBlank @Size(min = 8) String newPassword
+    ) {}
+
+    record OtpRequestRequest(@NotBlank String identifier) {}
+
+    record OtpResetRequest(
+            @NotBlank String identifier,
+            @NotBlank String code,
             @NotBlank @Size(min = 8) String newPassword
     ) {}
 

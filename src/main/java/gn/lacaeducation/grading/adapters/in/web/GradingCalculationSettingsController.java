@@ -26,7 +26,7 @@ public class GradingCalculationSettingsController {
     }
 
     @Operation(summary = "Configurer la méthode de calcul, les décimales et l'arrondi des moyennes")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','RESPONSABLE_PEDAGOGIQUE')")
+    @PreAuthorize("hasAuthority('parametrage_notes:manage')")
     @PutMapping
     public GradingCalculationSettings update(@RequestBody UpdateCommand command) {
         return useCase.update(TenantContext.get(), command);

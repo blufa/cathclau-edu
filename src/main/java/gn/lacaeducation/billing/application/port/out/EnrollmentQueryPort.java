@@ -30,4 +30,15 @@ public interface EnrollmentQueryPort {
      * préciser l'année scolaire — sans ça, la facture se retrouvait avec `academic_year_id = NULL`,
      * invisible des tableaux de bord qui filtrent strictement par année (ex. Vision Fondateur). */
     Long findActiveAcademicYearId(Long studentId);
+
+    /** Cycle, libellé et sort_order du niveau de l'inscription active la plus récente de l'élève, ou
+     * {@code null} s'il n'en a aucune. Utilisé pour déterminer le cadet d'une fratrie par niveau plutôt
+     * que par date de naissance (§5, plus fiable : le niveau est toujours renseigné, l'état civil
+     * parfois approximatif) — {@code cycle}/{@code label} permettent un classement selon la
+     * progression pédagogique officielle (garderie → petite/moyenne/grande section → CP1…CM2 →
+     * 7e…10e → 11e…terminale), plus fiable que le seul {@code sortOrder} que chaque école saisit
+     * elle-même à la main et peut mal ordonner (ex. grande section avant moyenne section). */
+    record ActiveLevel(String cycle, String label, Integer sortOrder) {}
+
+    ActiveLevel findActiveLevel(Long studentId);
 }

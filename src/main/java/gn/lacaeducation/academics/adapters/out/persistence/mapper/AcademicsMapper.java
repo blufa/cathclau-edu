@@ -9,6 +9,7 @@ import gn.lacaeducation.academics.adapters.out.persistence.NiveauJpaEntity;
 import gn.lacaeducation.academics.adapters.out.persistence.PeriodeJpaEntity;
 import gn.lacaeducation.academics.adapters.out.persistence.SalleJpaEntity;
 import gn.lacaeducation.academics.adapters.out.persistence.ScheduleExceptionJpaEntity;
+import gn.lacaeducation.academics.adapters.out.persistence.SchoolEventJpaEntity;
 import gn.lacaeducation.academics.domain.AnneeScolaire;
 import gn.lacaeducation.academics.domain.Classe;
 import gn.lacaeducation.academics.domain.ClasseMatiere;
@@ -18,6 +19,7 @@ import gn.lacaeducation.academics.domain.Niveau;
 import gn.lacaeducation.academics.domain.Periode;
 import gn.lacaeducation.academics.domain.Salle;
 import gn.lacaeducation.academics.domain.ScheduleException;
+import gn.lacaeducation.academics.domain.SchoolEvent;
 import org.mapstruct.Mapper;
 
 @Mapper(componentModel = "spring")
@@ -58,4 +60,8 @@ public interface AcademicsMapper {
     ScheduleException toDomain(ScheduleExceptionJpaEntity entity);
 
     ScheduleExceptionJpaEntity toEntity(ScheduleException domain);
+
+    SchoolEvent toDomain(SchoolEventJpaEntity entity);
+
+    SchoolEventJpaEntity toEntity(SchoolEvent domain);
 }

@@ -1,5 +1,6 @@
 package gn.lacaeducation.students.application.service;
 
+import gn.lacaeducation.common.PersonName;
 import gn.lacaeducation.students.application.port.in.ParentUseCase;
 import gn.lacaeducation.students.application.port.out.ParentRepository;
 import gn.lacaeducation.students.application.port.out.StudentParentRepository;
@@ -32,8 +33,10 @@ public class ParentService implements ParentUseCase {
             }
         }
         return parentRepository.save(Parent.builder()
-                .tenantId(cmd.tenantId()).userId(cmd.userId()).firstName(cmd.firstName())
-                .lastName(cmd.lastName()).phone(cmd.phone()).email(cmd.email())
+                .tenantId(cmd.tenantId()).userId(cmd.userId())
+                .firstName(PersonName.capitalizeFirstName(cmd.firstName()))
+                .lastName(PersonName.upperCaseLastName(cmd.lastName()))
+                .phone(cmd.phone()).email(cmd.email())
                 .occupation(cmd.occupation()).address(cmd.address()).idempotencyKey(cmd.idempotencyKey()).build());
     }
 
@@ -41,7 +44,9 @@ public class ParentService implements ParentUseCase {
     public Parent update(Long id, UpdateParentCommand cmd) {
         Parent p = parentRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Parent not found: " + id));
-        p.setFirstName(cmd.firstName()); p.setLastName(cmd.lastName()); p.setPhone(cmd.phone());
+        p.setFirstName(PersonName.capitalizeFirstName(cmd.firstName()));
+        p.setLastName(PersonName.upperCaseLastName(cmd.lastName()));
+        p.setPhone(cmd.phone());
         p.setEmail(cmd.email()); p.setOccupation(cmd.occupation()); p.setAddress(cmd.address());
         return parentRepository.save(p);
     }

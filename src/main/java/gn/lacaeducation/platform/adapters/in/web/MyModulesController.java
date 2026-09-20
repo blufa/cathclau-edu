@@ -17,7 +17,7 @@ import java.util.List;
  * menus. During an active free trial every module is returned; once the trial ends only the modules
  * granted by the paid plan remain. SUPER_ADMIN (no tenant) gets the full catalogue.
  */
-@Tag(name = "My Modules", description = "Active modules of the current tenant")
+@Tag(name = "My Modules", description = "Modules actifs de l'établissement courant")
 @RestController
 @RequestMapping("/api/v1/modules")
 @RequiredArgsConstructor
@@ -25,7 +25,7 @@ public class MyModulesController {
 
     private final ModuleAccessProvider moduleAccessProvider;
 
-    @Operation(summary = "List the active module codes for the current tenant")
+    @Operation(summary = "Lister les codes des modules actifs de l'établissement courant")
     @GetMapping("/active")
     public List<String> activeModules() {
         return moduleAccessProvider.getActiveModules(TenantContext.get()).stream().map(ModuleCode::name).toList();

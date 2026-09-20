@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 
-@Tag(name = "Report Cards", description = "Generate, publish, and query student report cards per period")
+@Tag(name = "Report Cards", description = "Générer, publier et consulter les bulletins des élèves par période")
 @RestController
 @RequestMapping("/api/v1/grading/report-cards")
 @RequiredArgsConstructor
@@ -55,18 +55,18 @@ public class ReportCardController {
 
     // ── Generate ─────────────────────────────────────────────────────────────
 
-    @Operation(summary = "Generate a report card for a single student in a given class + period. "
-            + "Triggers full grade calculation including ranks.")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @Operation(summary = "Générer le bulletin d'un seul élève pour une classe et une période données. "
+            + "Déclenche le calcul complet des notes, y compris les rangs.")
+    @PreAuthorize("hasAuthority('bulletin:generate')")
     @PostMapping("/generate")
     public ResponseEntity<ReportCard> generate(@RequestBody GenerateRequest r) {
         return ResponseEntity.ok(useCase.generate(
                 new ReportCardUseCase.GenerateReportCardCommand(r.studentId(), r.classId(), r.periodId())));
     }
 
-    @Operation(summary = "Generate report cards for ALL students in a class + period (bulk). "
-            + "Replaces any existing report cards for that combination.")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @Operation(summary = "Générer les bulletins de TOUS les élèves d'une classe pour une période (en masse). "
+            + "Remplace les bulletins existants pour cette combinaison.")
+    @PreAuthorize("hasAuthority('bulletin:generate')")
     @PostMapping("/generate-bulk")
     public ResponseEntity<List<ReportCard>> generateBulk(@RequestBody GenerateBulkRequest r) {
         return ResponseEntity.ok(useCase.generateBulk(
@@ -75,7 +75,7 @@ public class ReportCardController {
 
     // ── Publish ───────────────────────────────────────────────────────────────
 
-    @Operation(summary = "Publish a report card to make it visible to parents and students")
+    @Operation(summary = "Publier un bulletin pour le rendre visible aux parents et aux élèves")
     @PreAuthorize("hasAuthority('bulletin:publish')")
     @PatchMapping("/{id}/publish")
     public ResponseEntity<ReportCard> publish(@PathVariable Long id) {
@@ -83,7 +83,7 @@ public class ReportCardController {
     }
 
     @Operation(summary = "Ajuster l'appréciation du conseil de classe (Félicitations, Encouragements, Mise en garde…)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
+    @PreAuthorize("hasAuthority('bulletin:generate')")
     @PatchMapping("/{id}/distinction")
     public ResponseEntity<ReportCard> setDistinction(@PathVariable Long id, @RequestParam gn.lacaeducation.grading.domain.Distinction distinction) {
         return ResponseEntity.ok(useCase.setDistinction(id, distinction));
@@ -91,13 +91,13 @@ public class ReportCardController {
 
     // ── Query ─────────────────────────────────────────────────────────────────
 
-    @Operation(summary = "Get a report card by ID (includes status, averages, rank, honor, decision)")
+    @Operation(summary = "Consulter un bulletin par son identifiant (statut, moyennes, rang, mention, décision)")
     @GetMapping("/{id}")
     public ResponseEntity<ReportCard> findById(@PathVariable Long id) {
         return useCase.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
-    @Operation(summary = "List report cards with optional filters: classId, periodId, studentId")
+    @Operation(summary = "Lister les bulletins avec filtres optionnels : classId, periodId, studentId")
     @GetMapping
     public List<ReportCard> findAll(@RequestParam(required = false) Long classId,
                                     @RequestParam(required = false) Long periodId,
@@ -114,14 +114,14 @@ public class ReportCardController {
         return List.of();
     }
 
-    @Operation(summary = "List all report cards for a class in a given period")
+    @Operation(summary = "Lister tous les bulletins d'une classe pour une période donnée")
     @GetMapping("/class/{classId}/period/{periodId}")
     public List<ReportCard> findByClass(@PathVariable Long classId, @PathVariable Long periodId) {
         return useCase.findByClass(classId, periodId);
     }
 
     @Operation(summary = "Palmarès / tableau d'honneur d'une classe (PDF) : élèves classés par rang avec mention")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','RESPONSABLE_PEDAGOGIQUE','TEACHER','SECRETARY')")
+    @PreAuthorize("hasAuthority('bulletin:read')")
     @GetMapping("/class/{classId}/period/{periodId}/palmares/download")
     public ResponseEntity<byte[]> honorRollDownload(@PathVariable Long classId, @PathVariable Long periodId) {
         return ResponseEntity.ok()
@@ -132,7 +132,7 @@ public class ReportCardController {
     }
 
     @Operation(summary = "Centralisateur de classe (PDF) : une ligne par élève, colonnes Cours/Composition par matière")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','RESPONSABLE_PEDAGOGIQUE','TEACHER','SECRETARY')")
+    @PreAuthorize("hasAuthority('bulletin:read')")
     @GetMapping("/class/{classId}/period/{periodId}/centralisateur/download")
     public ResponseEntity<byte[]> centralizerDownload(@PathVariable Long classId, @PathVariable Long periodId) {
         return ResponseEntity.ok()
@@ -142,7 +142,7 @@ public class ReportCardController {
                 .body(useCase.classCentralizerPdf(classId, periodId));
     }
 
-    @Operation(summary = "Get the report card for a student in a given period")
+    @Operation(summary = "Consulter le bulletin d'un élève pour une période donnée")
     @GetMapping("/student/{studentId}/period/{periodId}")
     public ResponseEntity<ReportCard> findByStudent(@PathVariable Long studentId, @PathVariable Long periodId,
                                                     @AuthenticationPrincipal Jwt jwt) {
@@ -160,7 +160,7 @@ public class ReportCardController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    @Operation(summary = "Get the report card PDF URL (triggers async generation if not yet available)")
+    @Operation(summary = "Obtenir l'URL du PDF du bulletin (déclenche la génération asynchrone si absent)")
     @GetMapping("/{id}/pdf")
     public ResponseEntity<Map<String, String>> pdf(@PathVariable Long id, @AuthenticationPrincipal Jwt jwt) {
         assertParentCanAccessReportCard(jwt, id);
@@ -169,7 +169,7 @@ public class ReportCardController {
                 .orElseGet(() -> { useCase.generatePdfAsync(id); return ResponseEntity.accepted().body(Map.of("status", "GENERATING")); });
     }
 
-    @Operation(summary = "Stream the report card PDF bytes (inline) — independent of Cloudinary delivery")
+    @Operation(summary = "Flux des octets du PDF du bulletin (aperçu direct) — indépendant de la diffusion Cloudinary")
     @GetMapping("/{id}/pdf/download")
     public ResponseEntity<byte[]> pdfDownload(@PathVariable Long id, @AuthenticationPrincipal Jwt jwt) {
         assertParentCanAccessReportCard(jwt, id);
@@ -179,14 +179,14 @@ public class ReportCardController {
                 .body(useCase.pdfBytes(id));
     }
 
-    @Operation(summary = "Get the subject-by-subject detail lines of a report card")
+    @Operation(summary = "Consulter le détail par matière d'un bulletin")
     @GetMapping("/{id}/lines")
     public List<ReportCardLine> findLines(@PathVariable Long id) {
         return useCase.findLines(id);
     }
 
-    @Operation(summary = "Delete a report card")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @Operation(summary = "Supprimer un bulletin")
+    @PreAuthorize("hasAuthority('bulletin:delete')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         useCase.delete(id);

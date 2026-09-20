@@ -30,4 +30,7 @@ public interface AcademicsDataProvider {
     /** Année scolaire par id (pas forcément la courante) — ex. pour dériver sa durée réelle
      * (projection de paie sur ce qu'il reste de l'année, plutôt qu'un nombre de mois fixe). */
     Optional<AcademicYearPublicInfo> findAcademicYear(Long academicYearId);
+    /** Événements école (kermesse, match, entraînement...) du tenant dont la période chevauche
+     * [from, to] — pour que la paie garde payées les heures des enseignants concernés (§payroll). */
+    java.util.List<SchoolEventPublicInfo> findSchoolEvents(Long tenantId, java.time.LocalDate from, java.time.LocalDate to);
 }

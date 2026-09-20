@@ -3,6 +3,7 @@ package gn.lacaeducation.payroll.application.service;
 import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.attendance.TeacherWorkProvider;
 import gn.lacaeducation.lessons.TeacherTeachingProvider;
+import gn.lacaeducation.payroll.application.port.in.SalaryAdvanceUseCase;
 import gn.lacaeducation.payroll.application.port.in.SalaryFeeDeductionUseCase;
 import gn.lacaeducation.payroll.application.port.out.PayslipLineRepository;
 import gn.lacaeducation.payroll.application.port.out.PayslipPdfGenerator;
@@ -16,6 +17,7 @@ import gn.lacaeducation.payroll.domain.Payslip;
 import gn.lacaeducation.payroll.domain.PayslipLine;
 import gn.lacaeducation.payroll.domain.PayslipLineType;
 import gn.lacaeducation.payroll.domain.TeacherCompensation;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -34,6 +36,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -49,10 +52,19 @@ class PayrollServiceTest {
     @Mock TeacherTeachingProvider teachingProvider;
     @Mock TeacherWorkProvider workProvider;
     @Mock SalaryFeeDeductionUseCase salaryFeeDeductionUseCase;
+    @Mock SalaryAdvanceUseCase salaryAdvanceUseCase;
     @Mock AcademicsDataProvider academics;
     @Mock org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     @InjectMocks PayrollService payrollService;
+
+    @BeforeEach
+    void defaultNoStaffBenefitRemainder() {
+        // La plupart des tests n'atteignent jamais ce calcul (ex. teacherPayrollMass) — lenient pour
+        // éviter une erreur "unnecessary stubbing" sur ces tests-là.
+        lenient().when(salaryFeeDeductionUseCase.computeStaffBenefitRemainder(any(), any()))
+                .thenReturn(new SalaryFeeDeductionUseCase.StaffBenefitRemainderDeduction(BigDecimal.ZERO, 0));
+    }
 
     @Test
     void teacherPayrollMass_sumsFixedSalaryDirectlyAndHourlyViaTheoreticalPay() {
@@ -118,6 +130,134 @@ class PayrollServiceTest {
         assertThat(pay.earlyMinutes()).isEqualTo(40);
     }
 
+    /** Un événement école (kermesse, match...) qui couvre un créneau récurrent doit garder ces heures
+     * payées, même si aucune séance n'a été marquée réalisée pour cette date (les élèves étant rentrés
+     * à la maison) — voir eventCoveredMinutesByClass, jamais retirées des heures. */
+    @Test
+    void computeMonthlyPay_slotCoveredBySchoolEvent_countsAsRealizedEvenWithoutLessonEntry() {
+        TeacherCompensation comp = TeacherCompensation.builder().teacherId(5L).tenantId(1L)
+                .payMode(PayMode.HOURLY).hourlyRateNormal(new BigDecimal("10000")).hourlyRateExam(BigDecimal.ZERO)
+                .fixedSalary(BigDecimal.ZERO).build();
+        when(compRepo.findByTeacherId(5L)).thenReturn(Optional.of(comp));
+        when(teachingProvider.realizedMinutesByClass(eq(5L), any(), any())).thenReturn(Map.of()); // rien réalisé au cahier de textes
+        when(workProvider.monthlyLateEarlyByClass(5L, 2026, 9)).thenReturn(Map.of());
+        when(academics.findClass(20L)).thenReturn(Optional.empty());
+        // Créneau récurrent : samedi 8h-10h (120 min), classe 20 — ex. le professeur d'EPS.
+        when(academics.findScheduleByTeacher(5L)).thenReturn(List.of(
+                new gn.lacaeducation.academics.ScheduleSlotPublicInfo(1L, 20L, 3L, 5L, null, "SAMEDI", "08:00", "10:00", null)));
+        // Événement école couvrant le samedi 5 septembre 2026 (journée entière, pas d'heure précisée).
+        when(academics.findSchoolEvents(eq(1L), any(), any())).thenReturn(List.of(
+                new gn.lacaeducation.academics.SchoolEventPublicInfo(1L, "Kermesse",
+                        java.time.LocalDate.of(2026, 9, 5), java.time.LocalDate.of(2026, 9, 5), null, null)));
+
+        PayrollService.MonthlyPay pay = payrollService.computeMonthlyPay(5L, 2026, 9);
+
+        assertThat(pay.effectiveMinutes()).isEqualTo(120);
+        assertThat(pay.grossPay()).isEqualByComparingTo("20000");
+    }
+
+    @Test
+    void computeMonthlyPay_slotOutsideEventTimeWindow_doesNotCount() {
+        TeacherCompensation comp = TeacherCompensation.builder().teacherId(5L).tenantId(1L)
+                .payMode(PayMode.HOURLY).hourlyRateNormal(new BigDecimal("10000")).hourlyRateExam(BigDecimal.ZERO)
+                .fixedSalary(BigDecimal.ZERO).build();
+        when(compRepo.findByTeacherId(5L)).thenReturn(Optional.of(comp));
+        when(teachingProvider.realizedMinutesByClass(eq(5L), any(), any())).thenReturn(Map.of());
+        when(workProvider.monthlyLateEarlyByClass(5L, 2026, 9)).thenReturn(Map.of());
+        // Créneau samedi 8h-10h, mais l'événement ne couvre que 14h-18h ce jour-là : pas de chevauchement.
+        when(academics.findScheduleByTeacher(5L)).thenReturn(List.of(
+                new gn.lacaeducation.academics.ScheduleSlotPublicInfo(1L, 20L, 3L, 5L, null, "SAMEDI", "08:00", "10:00", null)));
+        when(academics.findSchoolEvents(eq(1L), any(), any())).thenReturn(List.of(
+                new gn.lacaeducation.academics.SchoolEventPublicInfo(1L, "Kermesse",
+                        java.time.LocalDate.of(2026, 9, 5), java.time.LocalDate.of(2026, 9, 5),
+                        java.time.LocalTime.of(14, 0), java.time.LocalTime.of(18, 0))));
+
+        PayrollService.MonthlyPay pay = payrollService.computeMonthlyPay(5L, 2026, 9);
+
+        assertThat(pay.effectiveMinutes()).isEqualTo(0);
+        assertThat(pay.grossPay()).isEqualByComparingTo("0");
+    }
+
+    /** Enseignant "exceptionnel" (§5.6, ex. professeur d'EPS) qui rassemble plusieurs classes au même
+     * horaire (samedi 8h-12h, classes 20/21/22) : ses heures sont FIXÉES par le créneau, jamais
+     * multipliées par le nombre de classes couvertes en même temps — 4h (240 min) payées une seule
+     * fois, même si les 3 classes ont chacune une séance marquée réalisée ce jour-là. */
+    @Test
+    void computeMonthlyPay_concurrentClassesSameSlot_countsHoursOnceNotPerClass() {
+        TeacherCompensation comp = TeacherCompensation.builder().teacherId(5L).tenantId(1L)
+                .payMode(PayMode.HOURLY).hourlyRateNormal(new BigDecimal("10000")).hourlyRateExam(BigDecimal.ZERO)
+                .fixedSalary(BigDecimal.ZERO).build();
+        when(compRepo.findByTeacherId(5L)).thenReturn(Optional.of(comp));
+        when(workProvider.monthlyLateEarlyByClass(5L, 2026, 9)).thenReturn(Map.of());
+        when(academics.findClass(20L)).thenReturn(Optional.empty());
+        when(academics.findScheduleByTeacher(5L)).thenReturn(List.of(
+                new gn.lacaeducation.academics.ScheduleSlotPublicInfo(1L, 20L, 3L, 5L, null, "SAMEDI", "08:00", "12:00", null),
+                new gn.lacaeducation.academics.ScheduleSlotPublicInfo(2L, 21L, 3L, 5L, null, "SAMEDI", "08:00", "12:00", null),
+                new gn.lacaeducation.academics.ScheduleSlotPublicInfo(3L, 22L, 3L, 5L, null, "SAMEDI", "08:00", "12:00", null)));
+        when(academics.findSchoolEvents(eq(1L), any(), any())).thenReturn(List.of());
+        // Les 3 classes ont chacune une séance marquée réalisée le samedi 5 septembre 2026 (240 min).
+        when(teachingProvider.realizedMinutesByClassAndDate(eq(5L), any(), any())).thenReturn(Map.of(
+                java.time.LocalDate.of(2026, 9, 5), Map.of(20L, 240, 21L, 240, 22L, 240)));
+
+        PayrollService.MonthlyPay pay = payrollService.computeMonthlyPay(5L, 2026, 9);
+
+        // 4h payées une seule fois (240 min), jamais 12h (720 min = 3 x 240) : pas de comptage par classe.
+        assertThat(pay.effectiveMinutes()).isEqualTo(240);
+        assertThat(pay.grossPay()).isEqualByComparingTo("40000");
+    }
+
+    /** Même principe qu'au-dessus, mais côté événement école (§5.6 + événement) : le bloc concurrent
+     * couvert par un événement (élèves rentrés à la maison) reste payé une seule fois. */
+    @Test
+    void computeMonthlyPay_schoolEventCoversConcurrentBlock_countsBlockOnceNotPerClass() {
+        TeacherCompensation comp = TeacherCompensation.builder().teacherId(5L).tenantId(1L)
+                .payMode(PayMode.HOURLY).hourlyRateNormal(new BigDecimal("10000")).hourlyRateExam(BigDecimal.ZERO)
+                .fixedSalary(BigDecimal.ZERO).build();
+        when(compRepo.findByTeacherId(5L)).thenReturn(Optional.of(comp));
+        when(teachingProvider.realizedMinutesByClassAndDate(eq(5L), any(), any())).thenReturn(Map.of());
+        when(workProvider.monthlyLateEarlyByClass(5L, 2026, 9)).thenReturn(Map.of());
+        when(academics.findClass(20L)).thenReturn(Optional.empty());
+        when(academics.findScheduleByTeacher(5L)).thenReturn(List.of(
+                new gn.lacaeducation.academics.ScheduleSlotPublicInfo(1L, 20L, 3L, 5L, null, "SAMEDI", "08:00", "12:00", null),
+                new gn.lacaeducation.academics.ScheduleSlotPublicInfo(2L, 21L, 3L, 5L, null, "SAMEDI", "08:00", "12:00", null)));
+        when(academics.findSchoolEvents(eq(1L), any(), any())).thenReturn(List.of(
+                new gn.lacaeducation.academics.SchoolEventPublicInfo(1L, "Kermesse",
+                        java.time.LocalDate.of(2026, 9, 5), java.time.LocalDate.of(2026, 9, 5), null, null)));
+
+        PayrollService.MonthlyPay pay = payrollService.computeMonthlyPay(5L, 2026, 9);
+
+        assertThat(pay.effectiveMinutes()).isEqualTo(240);
+        assertThat(pay.grossPay()).isEqualByComparingTo("40000");
+    }
+
+    /** Régression : deux créneaux simplement CONSÉCUTIFS (ex. 8h-9h puis 9h-10h, deux classes
+     * différentes à la suite — cas normal très courant, pas un enseignant exceptionnel) ne doivent
+     * jamais être traités comme un bloc "concurrent". Si le fusionnement se déclenchait à tort sur des
+     * créneaux qui se touchent sans se chevaucher, les heures réalisées des deux classes seraient
+     * dédupliquées et sous-payées, y compris pour un enseignant normal sans aucun chevauchement réel. */
+    @Test
+    void computeMonthlyPay_backToBackSlotsDifferentClasses_notTreatedAsConcurrent_sumsNormally() {
+        TeacherCompensation comp = TeacherCompensation.builder().teacherId(5L).tenantId(1L)
+                .payMode(PayMode.HOURLY).hourlyRateNormal(new BigDecimal("10000")).hourlyRateExam(BigDecimal.ZERO)
+                .fixedSalary(BigDecimal.ZERO).build();
+        when(compRepo.findByTeacherId(5L)).thenReturn(Optional.of(comp));
+        when(workProvider.monthlyLateEarlyByClass(5L, 2026, 9)).thenReturn(Map.of());
+        when(academics.findClass(20L)).thenReturn(Optional.empty());
+        when(academics.findClass(21L)).thenReturn(Optional.empty());
+        // Lundi 8h-9h classe 20, puis 9h-10h classe 21 : consécutifs, jamais simultanés.
+        when(academics.findScheduleByTeacher(5L)).thenReturn(List.of(
+                new gn.lacaeducation.academics.ScheduleSlotPublicInfo(1L, 20L, 3L, 5L, null, "LUNDI", "08:00", "09:00", null),
+                new gn.lacaeducation.academics.ScheduleSlotPublicInfo(2L, 21L, 3L, 5L, null, "LUNDI", "09:00", "10:00", null)));
+        when(academics.findSchoolEvents(eq(1L), any(), any())).thenReturn(List.of());
+        when(teachingProvider.realizedMinutesByClass(eq(5L), any(), any())).thenReturn(Map.of(20L, 60, 21L, 60));
+
+        PayrollService.MonthlyPay pay = payrollService.computeMonthlyPay(5L, 2026, 9);
+
+        // 1h + 1h = 2h, chacune payée séparément — pas de déduplication entre créneaux consécutifs.
+        assertThat(pay.effectiveMinutes()).isEqualTo(120);
+        assertThat(pay.grossPay()).isEqualByComparingTo("20000");
+    }
+
     /** Fiche combinée : personnel de direction (salaire fixe) qui enseigne aussi (heures réalisées) —
      * une seule fiche, salaire de base + une ligne EARNING pour les heures d'enseignement. */
     @Test
@@ -128,6 +268,8 @@ class PayrollServiceTest {
 
         when(salaryFeeDeductionUseCase.computeFeeDeduction(anyLong(), eq(employeeId)))
                 .thenReturn(new SalaryFeeDeductionUseCase.FeeDeduction(BigDecimal.ZERO, null, 0));
+        when(salaryAdvanceUseCase.applyDeduction(anyLong(), eq(employeeId), any(), any()))
+                .thenReturn(new SalaryAdvanceUseCase.AdvanceDeductionResult(BigDecimal.ZERO, null));
 
         AtomicReference<Payslip> saved = new AtomicReference<>();
         when(payslipRepo.save(any())).thenAnswer(i -> {
@@ -178,7 +320,8 @@ class PayrollServiceTest {
      * paiement d'une fiche, l'événement porte le net à virer. */
     @Test
     void markPaid_publishesPayslipPaidEventWithNetSalary() {
-        Payslip validated = Payslip.builder().id(1L).tenantId(9L).status(gn.lacaeducation.payroll.domain.PayslipStatus.VALIDATED)
+        Payslip validated = Payslip.builder().id(1L).tenantId(9L).teacherId(7L)
+                .status(gn.lacaeducation.payroll.domain.PayslipStatus.VALIDATED)
                 .netSalary(new BigDecimal("850000")).teacherName("Mamadou Diallo").teacherPhone("622000000")
                 .periodLabel("Mars 2026").build();
         when(payslipRepo.findById(1L)).thenReturn(java.util.Optional.of(validated));
@@ -189,6 +332,29 @@ class PayrollServiceTest {
         org.mockito.Mockito.verify(eventPublisher).publishEvent(
                 new gn.lacaeducation.payroll.application.event.PayslipPaidEvent(9L, 1L, new BigDecimal("850000"),
                         "Mamadou Diallo", "622000000", "Mars 2026"));
+        // Répercute la retenue scolarité (si applicable) sur les factures des enfants du salarié,
+        // maintenant que la fiche est réellement payée (§payroll ↔ billing).
+        org.mockito.Mockito.verify(salaryFeeDeductionUseCase).applyDeductionAsInvoicePayment(9L, 7L);
+        // Idem pour le reste non couvert par un avantage personnel partiel.
+        org.mockito.Mockito.verify(salaryFeeDeductionUseCase).applyStaffBenefitRemainderAsInvoicePayment(9L, 7L);
+    }
+
+    /** Empêche un double-clic/rejeu de repayer une fiche déjà payée — sans ce garde-fou, la retenue
+     * scolarité serait répercutée deux fois sur les factures des enfants (voir markPaid). */
+    @Test
+    void markPaid_alreadyPaid_throwsAndDoesNotReapplyDeduction() {
+        Payslip paid = Payslip.builder().id(1L).tenantId(9L).teacherId(7L)
+                .status(gn.lacaeducation.payroll.domain.PayslipStatus.PAID)
+                .netSalary(new BigDecimal("850000")).build();
+        when(payslipRepo.findById(1L)).thenReturn(java.util.Optional.of(paid));
+
+        assertThatThrownBy(() -> payrollService.markPaid(1L, "BANK_TRANSFER"))
+                .isInstanceOf(gn.lacaeducation.common.BusinessRuleException.class);
+        org.mockito.Mockito.verify(salaryFeeDeductionUseCase, org.mockito.Mockito.never())
+                .applyDeductionAsInvoicePayment(any(), any());
+        org.mockito.Mockito.verify(salaryFeeDeductionUseCase, org.mockito.Mockito.never())
+                .applyStaffBenefitRemainderAsInvoicePayment(any(), any());
+        org.mockito.Mockito.verify(payslipRepo, org.mockito.Mockito.never()).save(any());
     }
 
     /** Empêche un doublon silencieux (double-clic sur « Générer en lot »/« Générer une fiche ») : une
@@ -203,6 +369,91 @@ class PayrollServiceTest {
                 null, null, new BigDecimal("300000"), null, null,
                 null, null, null, null, null, null, null)))
                 .isInstanceOf(gn.lacaeducation.common.ConflictException.class);
+    }
+
+    /** Le remboursement d'une avance sur salaire en cours (§payroll) est appliqué automatiquement à
+     * chaque génération de fiche, comme la retenue de frais scolaires — voir
+     * {@code SalaryAdvanceService#applyDeduction}, ici simulée par le mock. */
+    @Test
+    void generate_appliesSalaryAdvanceDeductionAsLine() {
+        Long teacherId = 7L;
+        when(payslipRepo.existsByTenantIdAndTeacherIdAndPeriodLabelAndEmployeeType(9L, teacherId, "Mars 2026", EmployeeType.TEACHER))
+                .thenReturn(false);
+        when(salaryFeeDeductionUseCase.computeFeeDeduction(9L, teacherId))
+                .thenReturn(new SalaryFeeDeductionUseCase.FeeDeduction(BigDecimal.ZERO, null, 0));
+        when(salaryAdvanceUseCase.applyDeduction(eq(9L), eq(teacherId), eq(EmployeeType.TEACHER), any()))
+                .thenReturn(new SalaryAdvanceUseCase.AdvanceDeductionResult(new BigDecimal("50000"), "Avance sur salaire"));
+
+        AtomicReference<Payslip> saved = new AtomicReference<>();
+        when(payslipRepo.save(any())).thenAnswer(i -> {
+            Payslip p = i.getArgument(0);
+            if (p.getId() == null) p.setId(200L);
+            saved.set(p);
+            return p;
+        });
+        when(payslipRepo.findById(200L)).thenAnswer(i -> Optional.of(saved.get()));
+
+        List<PayslipLine> lines = new ArrayList<>();
+        when(lineRepo.save(any())).thenAnswer(i -> {
+            PayslipLine l = i.getArgument(0);
+            lines.add(l);
+            return l;
+        });
+        when(lineRepo.findByPayslipId(200L)).thenAnswer(i -> lines);
+
+        Payslip result = payrollService.generate(new PayrollService.GenerateCommand(
+                9L, EmployeeType.TEACHER, teacherId, "M. Diallo", "Mars 2026",
+                null, null, new BigDecimal("300000"), null, null,
+                null, null, null, null, null, null, null));
+
+        assertThat(lines).hasSize(1);
+        assertThat(lines.get(0).getLineType()).isEqualTo(PayslipLineType.DEDUCTION);
+        assertThat(lines.get(0).getLabel()).isEqualTo("Avance sur salaire");
+        assertThat(lines.get(0).getAmount()).isEqualByComparingTo("50000");
+        assertThat(result.getNetSalary()).isEqualByComparingTo("250000");
+    }
+
+    /** Reste non couvert par un avantage personnel PARTIEL (§billing) : ajouté comme ligne de retenue
+     * distincte de la déduction scolarité à montant fixe (§payroll), voir applyStaffBenefitRemainderDeduction. */
+    @Test
+    void generate_appliesStaffBenefitRemainderDeductionAsLine() {
+        Long teacherId = 7L;
+        when(payslipRepo.existsByTenantIdAndTeacherIdAndPeriodLabelAndEmployeeType(9L, teacherId, "Mars 2026", EmployeeType.TEACHER))
+                .thenReturn(false);
+        when(salaryFeeDeductionUseCase.computeFeeDeduction(9L, teacherId))
+                .thenReturn(new SalaryFeeDeductionUseCase.FeeDeduction(BigDecimal.ZERO, null, 0));
+        when(salaryFeeDeductionUseCase.computeStaffBenefitRemainder(9L, teacherId))
+                .thenReturn(new SalaryFeeDeductionUseCase.StaffBenefitRemainderDeduction(new BigDecimal("20000"), 1));
+        when(salaryAdvanceUseCase.applyDeduction(eq(9L), eq(teacherId), eq(EmployeeType.TEACHER), any()))
+                .thenReturn(new SalaryAdvanceUseCase.AdvanceDeductionResult(BigDecimal.ZERO, null));
+
+        AtomicReference<Payslip> saved = new AtomicReference<>();
+        when(payslipRepo.save(any())).thenAnswer(i -> {
+            Payslip p = i.getArgument(0);
+            if (p.getId() == null) p.setId(201L);
+            saved.set(p);
+            return p;
+        });
+        when(payslipRepo.findById(201L)).thenAnswer(i -> Optional.of(saved.get()));
+
+        List<PayslipLine> lines = new ArrayList<>();
+        when(lineRepo.save(any())).thenAnswer(i -> {
+            PayslipLine l = i.getArgument(0);
+            lines.add(l);
+            return l;
+        });
+        when(lineRepo.findByPayslipId(201L)).thenAnswer(i -> lines);
+
+        Payslip result = payrollService.generate(new PayrollService.GenerateCommand(
+                9L, EmployeeType.TEACHER, teacherId, "M. Diallo", "Mars 2026",
+                null, null, new BigDecimal("300000"), null, null,
+                null, null, null, null, null, null, null));
+
+        assertThat(lines).hasSize(1);
+        assertThat(lines.get(0).getLineType()).isEqualTo(PayslipLineType.DEDUCTION);
+        assertThat(lines.get(0).getLabel()).isEqualTo("Reste avantage personnel (1 enfant(s))");
+        assertThat(lines.get(0).getAmount()).isEqualByComparingTo("20000");
+        assertThat(result.getNetSalary()).isEqualByComparingTo("280000");
     }
 
 }

@@ -287,6 +287,26 @@ public class SchoolDashboardController {
         return new FounderDashboard(academicYearId, recovery, payroll, realPayroll, teacherHours, payrollProjection, teacherSalaries, subsidy, alerts, comparison);
     }
 
+    // ── Élèves abandonnés (§14) : justifie la disparition d'anciennes factures impayées ────────
+    public record AbandonedStudentRow(Long studentId, String studentName, Long classId, String className,
+                                      java.math.BigDecimal writtenOffAmount) {}
+
+    @Operation(summary = "Élèves partis en cours d'année (abandon) sur une année scolaire, avec le montant "
+            + "de factures autrefois impayées désormais annulées — pour justifier ces écarts au comptable")
+    @PreAuthorize("hasAuthority('dashboard:direction')")
+    @GetMapping("/founder/abandoned-students")
+    public List<AbandonedStudentRow> abandonedStudents(@RequestParam Long academicYearId) {
+        Long tenantId = TenantContext.get();
+        List<gn.lacaeducation.students.AbandonedStudentInfo> students =
+                studentDataProvider.findAbandonedStudents(academicYearId);
+        java.util.Map<Long, BigDecimal> writtenOff = billingStatsProvider.writtenOffAmountByStudent(
+                tenantId, academicYearId, students.stream().map(gn.lacaeducation.students.AbandonedStudentInfo::studentId).toList());
+        return students.stream()
+                .map(s -> new AbandonedStudentRow(s.studentId(), s.studentName(), s.classId(), className(s.classId()),
+                        writtenOff.getOrDefault(s.studentId(), BigDecimal.ZERO)))
+                .toList();
+    }
+
     // ── 10.3 RH ─────────────────────────────────────────────────────────────
     public record TeacherHrRow(Long teacherId, String teacherName, long presentDays, long absentDays,
                                int effectiveHours, BigDecimal attendanceRate) {}

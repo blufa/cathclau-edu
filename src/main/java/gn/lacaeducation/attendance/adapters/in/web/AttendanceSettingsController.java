@@ -39,21 +39,21 @@ public class AttendanceSettingsController {
     }
 
     @Operation(summary = "Configurer la marge de transition entre deux séances consécutives (enseignants/personnel)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('presence:update')")
     @PutMapping
     public AttendanceSettings update(@RequestBody UpdateMarginRequest r) {
         return useCase.updateTransitionMargin(TenantContext.get(), r.transitionMarginMinutes());
     }
 
     @Operation(summary = "Configurer la marge de tolérance des élèves (distincte de celle des enseignants/personnel)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('presence:update')")
     @PutMapping("/student-margin")
     public AttendanceSettings updateStudentMargin(@RequestBody UpdateStudentMarginRequest r) {
         return useCase.updateStudentTransitionMargin(TenantContext.get(), r.studentTransitionMarginMinutes());
     }
 
     @Operation(summary = "Configurer l'horaire de référence du personnel non-enseignant (entrée/sortie)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('presence:update')")
     @PutMapping("/employee-hours")
     public AttendanceSettings updateEmployeeHours(@RequestBody UpdateEmployeeHoursRequest r) {
         return useCase.updateEmployeeHours(TenantContext.get(), r.checkInTime(), r.checkOutTime());
@@ -66,7 +66,7 @@ public class AttendanceSettingsController {
     }
 
     @Operation(summary = "Ajouter une fenêtre de récréation (ex. 10h00-10h15)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('presence:update')")
     @PostMapping("/recess-windows")
     @ResponseStatus(HttpStatus.CREATED)
     public RecessWindow addRecessWindow(@RequestBody RecessWindowRequest r) {
@@ -74,7 +74,7 @@ public class AttendanceSettingsController {
     }
 
     @Operation(summary = "Supprimer une fenêtre de récréation")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('presence:update')")
     @DeleteMapping("/recess-windows/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteRecessWindow(@PathVariable Long id) {
