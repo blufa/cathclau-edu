@@ -22,4 +22,7 @@ public class ClasseMatiere {
      * matière (ex. "CH1", "CH2" pour le 1er/2e professeur de chimie) — utilisé dans la grille
      * d'emploi du temps pour affecter/réaffecter rapidement un professeur par matière. */
     private String code;
+    /** Matière de spécialité de la série (lycée) — ex. Mathématiques en série Scientifique — par
+     * opposition à une matière générale du tronc commun. Purement informatif/déclaratif. */
+    private boolean specialty;
 }

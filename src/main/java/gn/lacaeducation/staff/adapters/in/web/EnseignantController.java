@@ -20,13 +20,13 @@ import org.springframework.web.bind.annotation.*;
 import java.net.URI;
 import java.util.List;
 
-@Tag(name = "Teachers", description = "Manage teaching staff members within the school")
+@Tag(name = "Teachers", description = "Gérer le personnel enseignant de l'établissement")
 @RestController @RequestMapping("/api/v1/staff/teachers") @RequiredArgsConstructor
 public class EnseignantController {
 
     private final TeacherUseCase teacherUseCase;
 
-    @Operation(summary = "Create a new teacher")
+    @Operation(summary = "Créer un nouvel enseignant")
     @PreAuthorize("hasAuthority('enseignant:create')")
     @PostMapping
     public ResponseEntity<Teacher> create(@RequestBody CreateTeacherCommand cmd) {
@@ -39,7 +39,7 @@ public class EnseignantController {
         return ResponseEntity.created(URI.create("/api/staff/teachers/" + t.getId())).body(t);
     }
 
-    @Operation(summary = "Get the teacher record of the currently authenticated user")
+    @Operation(summary = "Consulter la fiche de l'enseignant connecté")
     @GetMapping("/me")
     public ResponseEntity<Teacher> me(@AuthenticationPrincipal Jwt jwt) {
         Long userId;
@@ -73,26 +73,33 @@ public class EnseignantController {
         return teacherUseCase.updatePhoto(id, photoUrl);
     }
 
-    @Operation(summary = "Get a teacher by ID")
+    @Operation(summary = "Marquer (ou retirer) un enseignant comme pouvant couvrir plusieurs classes en même temps (ex. EPS)")
+    @PreAuthorize("hasAuthority('enseignant:update')")
+    @PatchMapping("/{id}/allows-concurrent-classes")
+    public Teacher updateAllowsConcurrentClasses(@PathVariable Long id, @RequestParam boolean allowsConcurrentClasses) {
+        return teacherUseCase.updateAllowsConcurrentClasses(id, allowsConcurrentClasses);
+    }
+
+    @Operation(summary = "Consulter un enseignant par son ID")
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('enseignant:read')")
     public ResponseEntity<Teacher> findById(@PathVariable Long id) {
         return teacherUseCase.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
-    @Operation(summary = "List all teachers for the current tenant")
+    @Operation(summary = "Lister tous les enseignants de l'établissement")
     @GetMapping
     @PreAuthorize("hasAuthority('enseignant:read')")
     public List<Teacher> findAll() { return teacherUseCase.findByTenantId(TenantContext.get()); }
 
-    @Operation(summary = "Update an existing teacher")
+    @Operation(summary = "Modifier un enseignant existant")
     @PreAuthorize("hasAuthority('enseignant:update')")
     @PutMapping("/{id}")
     public Teacher update(@PathVariable Long id, @RequestBody TeacherUseCase.UpdateTeacherCommand cmd) {
         return teacherUseCase.update(id, cmd);
     }
 
-    @Operation(summary = "Delete a teacher (forbidden if linked to evaluations — deactivate instead)")
+    @Operation(summary = "Supprimer un enseignant (interdit s'il est lié à des évaluations — désactiver à la place)")
     @PreAuthorize("hasAuthority('enseignant:delete')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
@@ -100,25 +107,25 @@ public class EnseignantController {
         return ResponseEntity.noContent().build();
     }
 
-    @Operation(summary = "Deactivate a teacher")
+    @Operation(summary = "Désactiver un enseignant")
     @PreAuthorize("hasAuthority('enseignant:update')")
     @PatchMapping("/{id}/deactivate")
     public Teacher deactivate(@PathVariable Long id) { return teacherUseCase.setActive(id, false); }
 
-    @Operation(summary = "Reactivate a teacher")
+    @Operation(summary = "Réactiver un enseignant")
     @PreAuthorize("hasAuthority('enseignant:update')")
     @PatchMapping("/{id}/activate")
     public Teacher activate(@PathVariable Long id) { return teacherUseCase.setActive(id, true); }
 
-    @Operation(summary = "Classes for which the teacher is the head teacher")
+    @Operation(summary = "Classes dont l'enseignant est le professeur principal")
     @GetMapping("/{id}/classes")
     public List<ClassPublicInfo> classes(@PathVariable Long id) { return teacherUseCase.findClasses(id); }
 
-    @Operation(summary = "Subject assignments (ClasseMatiere) of the teacher")
+    @Operation(summary = "Affectations de matières (ClasseMatiere) de l'enseignant")
     @GetMapping("/{id}/subjects")
     public List<ClassSubjectPublicInfo> subjects(@PathVariable Long id) { return teacherUseCase.findSubjects(id); }
 
-    @Operation(summary = "Consolidated timetable of the teacher")
+    @Operation(summary = "Emploi du temps consolidé de l'enseignant")
     @GetMapping("/{id}/schedule")
     public List<ScheduleSlotPublicInfo> schedule(@PathVariable Long id) { return teacherUseCase.findSchedule(id); }
 

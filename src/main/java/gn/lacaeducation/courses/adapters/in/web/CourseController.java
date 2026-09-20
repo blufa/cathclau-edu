@@ -92,7 +92,7 @@ public class CourseController {
     }
 
     @Operation(summary = "Supprimer un cours (impossible s'il a déjà été acheté)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','RESPONSABLE_PEDAGOGIQUE')")
+    @PreAuthorize("hasAuthority('cours:delete')")
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {

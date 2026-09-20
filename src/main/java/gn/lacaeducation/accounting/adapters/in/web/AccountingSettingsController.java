@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 
-@Tag(name = "Accounting Settings", description = "Per-tenant accounting configuration")
+@Tag(name = "Accounting Settings", description = "Configuration comptable propre à l'établissement")
 @RestController
 @RequestMapping("/api/v1/accounting/settings")
 @RequiredArgsConstructor
@@ -24,12 +24,12 @@ public class AccountingSettingsController {
                                   Integer fiscalYearStartMonth, Boolean vatApplicable, BigDecimal defaultVatRate,
                                   Boolean autoNumbering, Boolean active) {}
 
-    @Operation(summary = "Get accounting settings for the current tenant")
+    @Operation(summary = "Consulter la configuration comptable de l'établissement")
     @GetMapping
     public AccountingSettings get() { return service.getOrDefault(TenantContext.get()); }
 
-    @Operation(summary = "Update accounting settings")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @Operation(summary = "Modifier la configuration comptable")
+    @PreAuthorize("hasAuthority('comptabilite:manage')")
     @PutMapping
     public AccountingSettings update(@RequestBody SettingsRequest r) {
         return service.update(TenantContext.get(), AccountingSettings.builder()

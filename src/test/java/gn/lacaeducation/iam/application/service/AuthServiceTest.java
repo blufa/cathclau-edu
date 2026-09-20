@@ -5,6 +5,7 @@ import gn.lacaeducation.iam.application.event.PasswordResetEvent;
 import gn.lacaeducation.iam.application.event.UserLoggedInEvent;
 import gn.lacaeducation.iam.application.port.in.AuthUseCase;
 import gn.lacaeducation.iam.application.port.out.PasswordHasher;
+import gn.lacaeducation.iam.application.port.out.PasswordResetOtpRepository;
 import gn.lacaeducation.iam.application.port.out.PasswordResetTokenRepository;
 import gn.lacaeducation.iam.application.port.out.PermissionRepository;
 import gn.lacaeducation.iam.application.port.out.RefreshTokenRepository;
@@ -55,6 +56,7 @@ class AuthServiceTest {
     @Mock private PasswordHasher passwordHasher;
     @Mock private RefreshTokenRepository refreshTokenRepository;
     @Mock private PasswordResetTokenRepository passwordResetTokenRepository;
+    @Mock private PasswordResetOtpRepository passwordResetOtpRepository;
     @Mock private TenantInfoProvider tenantInfoProvider;
     @Mock private ApplicationEventPublisher eventPublisher;
 
@@ -74,6 +76,7 @@ class AuthServiceTest {
                 .lastName("Diallo")
                 .firstName("Mamadou")
                 .email("mamadou@ecole.gn")
+                .phone("620000000")
                 .passwordHash("$2a$10$hashedpassword")
                 .active(true)
                 .failedAttempts(0)
@@ -302,5 +305,75 @@ class AuthServiceTest {
         authService.forgotPassword("mamadou@ecole.gn");
 
         verify(passwordResetTokenRepository, times(1)).save(any(PasswordResetToken.class));
+    }
+
+    @Test
+    void requestPasswordResetOtp_knownPhone_savesOtpAndPublishesEvent() {
+        when(userRepository.findByUsername("620000000")).thenReturn(Optional.empty());
+        when(userRepository.findByEmail("620000000")).thenReturn(Optional.empty());
+        when(userRepository.findByPhone(any())).thenReturn(Optional.of(activeUser));
+
+        authService.requestPasswordResetOtp("620000000");
+
+        verify(passwordResetOtpRepository, times(1)).save(any(gn.lacaeducation.iam.domain.PasswordResetOtp.class));
+        verify(eventPublisher).publishEvent(any(gn.lacaeducation.iam.application.event.PasswordResetOtpRequestedEvent.class));
+    }
+
+    @Test
+    void requestPasswordResetOtp_unknownIdentifier_doesNotLeakAndSavesNothing() {
+        when(userRepository.findByUsername("620099999")).thenReturn(Optional.empty());
+        when(userRepository.findByEmail("620099999")).thenReturn(Optional.empty());
+        when(userRepository.findByPhone(any())).thenReturn(Optional.empty());
+
+        authService.requestPasswordResetOtp("620099999");
+
+        verify(passwordResetOtpRepository, never()).save(any());
+    }
+
+    @Test
+    void resetPasswordWithOtp_validCode_updatesPasswordRevokesSessionsAndPublishesEvent() {
+        gn.lacaeducation.iam.domain.PasswordResetOtp otp = gn.lacaeducation.iam.domain.PasswordResetOtp.builder()
+                .userId(1L).code("123456").expiresAt(LocalDateTime.now().plusMinutes(5)).used(false).build();
+        when(userRepository.findByUsername("620000000")).thenReturn(Optional.empty());
+        when(userRepository.findByEmail("620000000")).thenReturn(Optional.empty());
+        when(userRepository.findByPhone(any())).thenReturn(Optional.of(activeUser));
+        when(passwordResetOtpRepository.findByUserIdAndCode(1L, "123456")).thenReturn(Optional.of(otp));
+        when(passwordHasher.hash("newpass123")).thenReturn("$2a$10$new");
+
+        authService.resetPasswordWithOtp(new AuthUseCase.ResetWithOtpCommand("620000000", "123456", "newpass123"));
+
+        assertThat(activeUser.getPasswordHash()).isEqualTo("$2a$10$new");
+        assertThat(otp.isUsed()).isTrue();
+        verify(refreshTokenRepository).revokeAllByUserId(1L);
+        verify(eventPublisher).publishEvent(any(PasswordResetEvent.class));
+    }
+
+    @Test
+    void resetPasswordWithOtp_expiredCode_throws() {
+        gn.lacaeducation.iam.domain.PasswordResetOtp expired = gn.lacaeducation.iam.domain.PasswordResetOtp.builder()
+                .userId(1L).code("123456").expiresAt(LocalDateTime.now().minusMinutes(1)).used(false).build();
+        when(userRepository.findByUsername("620000000")).thenReturn(Optional.empty());
+        when(userRepository.findByEmail("620000000")).thenReturn(Optional.empty());
+        when(userRepository.findByPhone(any())).thenReturn(Optional.of(activeUser));
+        when(passwordResetOtpRepository.findByUserIdAndCode(1L, "123456")).thenReturn(Optional.of(expired));
+
+        assertThatThrownBy(() -> authService.resetPasswordWithOtp(
+                new AuthUseCase.ResetWithOtpCommand("620000000", "123456", "newpass123")))
+                .isInstanceOf(BusinessRuleException.class);
+        verify(refreshTokenRepository, never()).revokeAllByUserId(any());
+    }
+
+    @Test
+    void resetPasswordWithOtp_usedCode_throws() {
+        gn.lacaeducation.iam.domain.PasswordResetOtp used = gn.lacaeducation.iam.domain.PasswordResetOtp.builder()
+                .userId(1L).code("123456").expiresAt(LocalDateTime.now().plusMinutes(5)).used(true).build();
+        when(userRepository.findByUsername("620000000")).thenReturn(Optional.empty());
+        when(userRepository.findByEmail("620000000")).thenReturn(Optional.empty());
+        when(userRepository.findByPhone(any())).thenReturn(Optional.of(activeUser));
+        when(passwordResetOtpRepository.findByUserIdAndCode(1L, "123456")).thenReturn(Optional.of(used));
+
+        assertThatThrownBy(() -> authService.resetPasswordWithOtp(
+                new AuthUseCase.ResetWithOtpCommand("620000000", "123456", "newpass123")))
+                .isInstanceOf(BusinessRuleException.class);
     }
 }

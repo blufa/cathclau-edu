@@ -31,4 +31,9 @@ public class Teacher {
     /** Clé d'idempotence fournie par le client (mode hors-ligne) : rejouer avec la même clé après une
      *  coupure réseau renvoie cet enseignant au lieu d'en créer un second. Null pour une création en ligne. */
     private String idempotencyKey;
+    /** Enseignant exceptionnel pouvant couvrir plusieurs classes en même temps (ex. professeur d'EPS
+     * qui rassemble plusieurs classes ensemble le même créneau) — désactive la détection de conflit
+     * d'emploi du temps sur cet enseignant précis (§5.6), sans jamais désactiver les conflits de salle
+     * ou de classe, qui restent toujours vérifiés. */
+    private boolean allowsConcurrentClasses;
 }

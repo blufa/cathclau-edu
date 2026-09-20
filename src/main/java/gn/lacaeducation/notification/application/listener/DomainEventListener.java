@@ -7,14 +7,11 @@ import gn.lacaeducation.billing.InvoicePublicInfo;
 import gn.lacaeducation.common.TenantInfoProvider;
 import gn.lacaeducation.common.TenantPublicInfo;
 import gn.lacaeducation.notification.application.service.NotificationService;
-import gn.lacaeducation.payments.PaymentDataProvider;
 import gn.lacaeducation.students.StudentDataProvider;
 import gn.lacaeducation.students.StudentPublicInfo;
 import gn.lacaeducation.attendance.application.event.StudentAbsentEvent;
 import gn.lacaeducation.billing.application.event.InvoiceGeneratedEvent;
 import gn.lacaeducation.grading.application.event.ReportCardPublishedEvent;
-import gn.lacaeducation.payments.application.event.PaymentSucceededEvent;
-import gn.lacaeducation.students.application.event.EnrollmentValidatedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -35,31 +32,11 @@ public class DomainEventListener {
     private final NotificationService notificationService;
     private final StudentDataProvider studentDataProvider;
     private final InvoiceDataProvider invoiceDataProvider;
-    private final PaymentDataProvider paymentDataProvider;
     private final AcademicsDataProvider academicsDataProvider;
     private final TenantInfoProvider tenantInfoProvider;
     private final StudentAttendanceNotifier studentAttendanceNotifier;
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
-
-    @org.springframework.transaction.event.TransactionalEventListener
-    @Async
-    public void onEnrollmentValidated(EnrollmentValidatedEvent event) {
-        studentDataProvider.findStudent(event.studentId()).ifPresent(student -> {
-            String schoolName = schoolName(event.tenantId());
-            String className = academicsDataProvider.findClass(event.classId())
-                    .map(c -> c.label()).orElse("N/A");
-            // notify student
-            if (hasEmail(student)) {
-                notificationService.sendEnrollmentConfirmation(student.email(), schoolName,
-                        fullName(student), className, String.valueOf(event.academicYearId()));
-            }
-            // notify parents
-            sendToParents(event.studentId(), email ->
-                    notificationService.sendEnrollmentConfirmation(email, schoolName,
-                            fullName(student), className, String.valueOf(event.academicYearId())));
-        });
-    }
 
     @org.springframework.transaction.event.TransactionalEventListener
     @Async
@@ -75,26 +52,6 @@ public class DomainEventListener {
                 if (hasEmail(student)) {
                     notificationService.sendInvoiceNotification(student.email(), schoolName,
                             fullName(student), invoice.reference(), amount, dueDate);
-                }
-            });
-        });
-    }
-
-    @org.springframework.transaction.event.TransactionalEventListener
-    @Async
-    public void onPaymentSucceeded(PaymentSucceededEvent event) {
-        studentDataProvider.findStudent(event.studentId()).ifPresent(student -> {
-            paymentDataProvider.findPayment(event.paymentId()).ifPresent(payment -> {
-                String schoolName = schoolName(event.tenantId());
-                String date = payment.paidAt() != null ? payment.paidAt().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) : "N/A";
-                String receiptRef = "REC-" + payment.id();
-                String amount = payment.amount() + " GNF";
-                sendToParents(event.studentId(), email ->
-                        notificationService.sendPaymentReceipt(email, schoolName,
-                                fullName(student), receiptRef, amount, date, payment.channel()));
-                if (hasEmail(student)) {
-                    notificationService.sendPaymentReceipt(student.email(), schoolName,
-                            fullName(student), receiptRef, amount, date, payment.channel());
                 }
             });
         });

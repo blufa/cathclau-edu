@@ -2,6 +2,7 @@ package gn.lacaeducation.academics.application.service;
 
 import gn.lacaeducation.academics.application.port.in.GererEmploiDuTempsUseCase;
 import gn.lacaeducation.academics.application.port.out.EmploiDuTempsRepository;
+import gn.lacaeducation.academics.application.port.out.TeacherScheduleFlagPort;
 import gn.lacaeducation.academics.domain.EmploiDuTemps;
 import gn.lacaeducation.academics.domain.valueobject.JourSemaine;
 import gn.lacaeducation.common.BusinessRuleException;
@@ -21,6 +22,7 @@ import java.util.Optional;
 public class EmploiDuTempsService implements GererEmploiDuTempsUseCase {
 
     private final EmploiDuTempsRepository edtRepository;
+    private final TeacherScheduleFlagPort teacherFlagPort;
 
     @Override
     public EmploiDuTemps create(CreateScheduleCommand command) {
@@ -87,7 +89,10 @@ public class EmploiDuTempsService implements GererEmploiDuTempsUseCase {
                     + " de " + hhmm(startTime) + " à " + hhmm(endTime) + " par un autre cours.");
         }
 
-        if (teacherId != null) {
+        // Un enseignant exceptionnel (ex. EPS) peut couvrir plusieurs classes en même temps — voir
+        // Teacher#allowsConcurrentClasses (§5.6) : le conflit de salle/classe reste toujours vérifié
+        // ci-dessus/ci-dessous, seul le conflit propre à l'enseignant est ignoré pour lui.
+        if (teacherId != null && !teacherFlagPort.allowsConcurrentClasses(teacherId)) {
             boolean teacherConflict = excludeId == null
                     ? edtRepository.existsTeacherConflict(teacherId, day, startTime, endTime)
                     : edtRepository.existsTeacherConflictExcluding(teacherId, day, startTime, endTime, excludeId);

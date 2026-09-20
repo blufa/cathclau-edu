@@ -29,7 +29,7 @@ public class GradingFormulaController {
     private final GradingFormulaUseCase useCase;
 
     @Operation(summary = "Créer une formule de calcul de moyenne")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','RESPONSABLE_PEDAGOGIQUE')")
+    @PreAuthorize("hasAuthority('parametrage_notes:manage')")
     @PostMapping
     public ResponseEntity<GradingFormula> create(@RequestBody FormulaCommand cmd) {
         GradingFormula f = useCase.create(TenantContext.get(), cmd);
@@ -43,14 +43,14 @@ public class GradingFormulaController {
     }
 
     @Operation(summary = "Modifier une formule de calcul")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','RESPONSABLE_PEDAGOGIQUE')")
+    @PreAuthorize("hasAuthority('parametrage_notes:manage')")
     @PutMapping("/{id}")
     public GradingFormula update(@PathVariable Long id, @RequestBody FormulaCommand cmd) {
         return useCase.update(id, cmd);
     }
 
     @Operation(summary = "Supprimer une formule de calcul")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('parametrage_notes:manage')")
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {

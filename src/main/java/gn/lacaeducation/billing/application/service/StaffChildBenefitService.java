@@ -5,6 +5,7 @@ import gn.lacaeducation.billing.application.port.out.StaffChildBenefitPolicyRepo
 import gn.lacaeducation.billing.domain.StaffChildBenefitPolicy;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
+import gn.lacaeducation.staff.EmployeePublicInfoProvider;
 import gn.lacaeducation.staff.TeacherPublicInfoProvider;
 import gn.lacaeducation.students.FamilyProvider;
 import gn.lacaeducation.students.FamilyProvider.ChildInfo;
@@ -26,6 +27,7 @@ public class StaffChildBenefitService implements StaffChildBenefitUseCase {
     private final StaffChildBenefitPolicyRepository repo;
     private final ParentAccessProvider parentAccessProvider;
     private final TeacherPublicInfoProvider teacherProvider;
+    private final EmployeePublicInfoProvider employeeProvider;
     private final FamilyProvider familyProvider;
 
     @Override
@@ -33,7 +35,7 @@ public class StaffChildBenefitService implements StaffChildBenefitUseCase {
         validate(c);
         return repo.save(StaffChildBenefitPolicy.builder()
                 .tenantId(tenantId).label(c.label()).coveredChildrenCount(c.coveredChildrenCount())
-                .coveragePercent(c.coveragePercent()).feeType(c.feeType())
+                .coveragePercent(c.coveragePercent()).feeTypes(c.feeTypes())
                 .active(c.active() == null || c.active())
                 .build());
     }
@@ -44,7 +46,7 @@ public class StaffChildBenefitService implements StaffChildBenefitUseCase {
         StaffChildBenefitPolicy p = repo.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("StaffChildBenefitPolicy", id));
         p.setLabel(c.label()); p.setCoveredChildrenCount(c.coveredChildrenCount());
-        p.setCoveragePercent(c.coveragePercent()); p.setFeeType(c.feeType());
+        p.setCoveragePercent(c.coveragePercent()); p.setFeeTypes(c.feeTypes());
         if (c.active() != null) p.setActive(c.active());
         return repo.save(p);
     }
@@ -62,16 +64,30 @@ public class StaffChildBenefitService implements StaffChildBenefitUseCase {
 
     @Override
     @Transactional(readOnly = true)
+    public List<StudentCoverage> computeCoverageBatch(Long tenantId, List<Long> studentIds, gn.lacaeducation.billing.domain.FeeType feeType) {
+        return studentIds.stream()
+                .map(id -> {
+                    StaffCoverage c = computeCoverage(tenantId, id, feeType);
+                    return new StudentCoverage(id, c.coveragePercent(), c.policyLabel());
+                })
+                .filter(c -> c.coveragePercent() != null && c.coveragePercent().signum() > 0)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public StaffCoverage computeCoverage(Long tenantId, Long studentId, gn.lacaeducation.billing.domain.FeeType feeType) {
-        // L'un des parents est-il un membre du personnel (fiche enseignant liée au compte) ?
+        // L'un des parents est-il un membre du personnel — enseignant OU personnel non-enseignant
+        // (fiche liée au même compte utilisateur que le parent) ?
         boolean staffChild = parentAccessProvider.findParentUserIdsByStudent(studentId).stream()
-                .anyMatch(uid -> teacherProvider.findTeacherIdByUserId(uid).isPresent());
+                .anyMatch(uid -> teacherProvider.findTeacherIdByUserId(uid).isPresent()
+                        || employeeProvider.findEmployeeIdByUserId(uid).isPresent());
         if (!staffChild) {
             return new StaffCoverage(BigDecimal.ZERO, null);
         }
         StaffChildBenefitPolicy policy = repo.findByTenantId(tenantId).stream()
                 .filter(StaffChildBenefitPolicy::isActive)
-                .filter(p -> p.getFeeType() == null || p.getFeeType() == feeType)
+                .filter(p -> p.getFeeTypes() == null || p.getFeeTypes().isEmpty() || p.getFeeTypes().contains(feeType))
                 .findFirst()
                 .orElse(null);
         if (policy == null) {

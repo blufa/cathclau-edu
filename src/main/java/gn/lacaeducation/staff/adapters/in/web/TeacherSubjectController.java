@@ -19,19 +19,19 @@ public class TeacherSubjectController {
 
     public record AssignSubjectsRequest(List<Long> subjectIds) {}
 
-    @Operation(summary = "List the subject ids a teacher is assigned to")
+    @Operation(summary = "Lister les identifiants de matières affectées à un enseignant")
     @GetMapping("/{teacherId}/assigned-subjects")
     public List<Long> list(@PathVariable Long teacherId) {
         return service.findSubjectIds(teacherId);
     }
 
-    @Operation(summary = "List the teacher ids assigned to a given subject")
+    @Operation(summary = "Lister les identifiants d'enseignants affectés à une matière donnée")
     @GetMapping("/by-subject/{subjectId}")
     public List<Long> bySubject(@PathVariable Long subjectId) {
         return service.findTeacherIdsBySubject(subjectId);
     }
 
-    @Operation(summary = "Replace the set of subjects a teacher is assigned to")
+    @Operation(summary = "Remplacer l'ensemble des matières affectées à un enseignant")
     @PreAuthorize("hasAuthority('matiere:manage')")
     @PutMapping("/{teacherId}/assigned-subjects")
     public List<Long> set(@PathVariable Long teacherId, @RequestBody AssignSubjectsRequest r) {

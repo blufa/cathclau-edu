@@ -62,6 +62,7 @@ class SchoolBillingStatsProviderAdapterTest {
         // 140000 / 250000 = 56.00 %
         assertThat(s.recoveryRate()).isEqualByComparingTo("56.00");
         assertThat(s.unpaidCount()).isEqualTo(2); // PARTIAL + UNPAID
+        assertThat(s.paidCount()).isEqualTo(1);
     }
 
     @Test
@@ -71,6 +72,7 @@ class SchoolBillingStatsProviderAdapterTest {
         assertThat(s.invoiced()).isEqualByComparingTo("0");
         assertThat(s.recoveryRate()).isEqualByComparingTo("0");
         assertThat(s.unpaidCount()).isZero();
+        assertThat(s.paidCount()).isZero();
     }
 
     @Test
@@ -142,9 +144,31 @@ class SchoolBillingStatsProviderAdapterTest {
         assertThat(stats.totalExemptions()).isEqualTo(1);
         assertThat(stats.partialExemptions()).isEqualTo(1);
         assertThat(stats.familyDiscountAmount()).isEqualByComparingTo("10000");
+        assertThat(stats.familyDiscountInvoiceCount()).isEqualTo(1);
+        assertThat(stats.familyDiscountInvoicePaidCount()).isEqualTo(1);
         assertThat(stats.studentsFullySettledMonthlyFees()).isEqualTo(1);
         // 5% of (familyDiscounted 100000 + monthly1 50000) = 7500
         assertThat(stats.estimatedEarlyPaymentSavings()).isEqualByComparingTo("7500.00");
+    }
+
+    @Test
+    void subsidyStats_familyDiscountInvoiceCount_distinguishesPaidFromUnpaid() {
+        when(exemptionRepository.findByTenantId(9L)).thenReturn(List.of());
+        Invoice paidDiscounted = Invoice.builder().studentId(1L).feeId(300L)
+                .totalAmount(new BigDecimal("100000")).discountAmount(new BigDecimal("10000"))
+                .discountReason("Réduction familiale : 3e enfant").status(InvoiceStatus.PAID).build();
+        Invoice unpaidDiscounted = Invoice.builder().studentId(1L).feeId(300L)
+                .totalAmount(new BigDecimal("100000")).discountAmount(new BigDecimal("10000"))
+                .discountReason("Réduction familiale : 3e enfant").status(InvoiceStatus.UNPAID).build();
+        when(invoiceRepository.findByTenantIdAndAcademicYearId(9L, 1L))
+                .thenReturn(List.of(paidDiscounted, unpaidDiscounted));
+        when(schoolFeeRepository.findByTenantId(9L)).thenReturn(List.of(
+                SchoolFee.builder().id(300L).type(FeeType.MONTHLY).build()));
+
+        SubsidyStats stats = adapter.subsidyStats(9L, 1L);
+
+        assertThat(stats.familyDiscountInvoiceCount()).isEqualTo(2);
+        assertThat(stats.familyDiscountInvoicePaidCount()).isEqualTo(1);
     }
 
     @Test
@@ -175,5 +199,36 @@ class SchoolBillingStatsProviderAdapterTest {
     void upcomingInstallments_none_returnsEmptyList() {
         when(installmentRepository.findUpcomingByTenant(any(), any(), any())).thenReturn(List.of());
         assertThat(adapter.upcomingInstallments(9L, 30, 5)).isEmpty();
+    }
+
+    @Test
+    void writtenOffAmountByStudent_sumsCancelledInvoicesRemainderOnly_ignoresPaidAndOtherStudents() {
+        Invoice cancelledPartial = Invoice.builder().studentId(1L)
+                .totalAmount(new BigDecimal("100000")).paidAmount(new BigDecimal("20000"))
+                .status(InvoiceStatus.CANCELLED).build();
+        Invoice cancelledUnpaid = Invoice.builder().studentId(1L)
+                .totalAmount(new BigDecimal("50000")).paidAmount(BigDecimal.ZERO)
+                .status(InvoiceStatus.CANCELLED).build();
+        // Not touched: still PAID, and a different (non-requested) student's cancelled invoice.
+        Invoice stillPaid = Invoice.builder().studentId(1L)
+                .totalAmount(new BigDecimal("30000")).paidAmount(new BigDecimal("30000"))
+                .status(InvoiceStatus.PAID).build();
+        Invoice otherStudentCancelled = Invoice.builder().studentId(2L)
+                .totalAmount(new BigDecimal("40000")).paidAmount(BigDecimal.ZERO)
+                .status(InvoiceStatus.CANCELLED).build();
+
+        when(invoiceRepository.findByTenantIdAndAcademicYearId(9L, 1L))
+                .thenReturn(List.of(cancelledPartial, cancelledUnpaid, stillPaid, otherStudentCancelled));
+
+        var result = adapter.writtenOffAmountByStudent(9L, 1L, List.of(1L));
+
+        // (100000-20000) + (50000-0) = 130000 ; student 2 excluded (not requested).
+        assertThat(result).containsOnlyKeys(1L);
+        assertThat(result.get(1L)).isEqualByComparingTo("130000");
+    }
+
+    @Test
+    void writtenOffAmountByStudent_emptyStudentIds_returnsEmptyMap() {
+        assertThat(adapter.writtenOffAmountByStudent(9L, 1L, List.of())).isEmpty();
     }
 }

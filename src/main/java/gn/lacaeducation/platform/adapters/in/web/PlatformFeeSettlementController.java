@@ -49,14 +49,14 @@ public class PlatformFeeSettlementController {
     @Operation(summary = "Initie le règlement du solde dû (redirection Djomy) — 422 si rien n'est dû")
     @PostMapping("/settlements")
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('abonnement:manage')")
     public PlatformFeeSettlementResponse initiate(@RequestBody InitiateRequest req) throws JsonProcessingException {
         return PlatformFeeSettlementResponse.from(useCase.initiate(req.payerNumber()));
     }
 
     @Operation(summary = "Vérifie le statut Djomy à la demande et confirme si SUCCESS (idempotent)")
     @PostMapping("/settlements/{id}/confirm-djomy")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('abonnement:manage')")
     public PlatformFeeSettlementResponse confirmViaDjomy(@PathVariable Long id) throws JsonProcessingException {
         return PlatformFeeSettlementResponse.from(useCase.confirmViaDjomy(id));
     }

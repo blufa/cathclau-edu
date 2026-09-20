@@ -23,21 +23,21 @@ public class TeacherAvailabilityController {
     public record AvailabilityRequest(String day, LocalTime startTime, LocalTime endTime,
                                        Long schoolClassId, Long subjectId) {}
 
-    @Operation(summary = "List a teacher's availability slots")
+    @Operation(summary = "Lister les plages de disponibilité d'un enseignant")
     @GetMapping("/{teacherId}/availability")
     public List<TeacherAvailability> list(@PathVariable Long teacherId) {
         return service.findByTeacher(teacherId);
     }
 
-    @Operation(summary = "Add an availability slot for a teacher")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
+    @Operation(summary = "Ajouter une plage de disponibilité pour un enseignant")
+    @PreAuthorize("hasAuthority('disponibilite:manage')")
     @PostMapping("/{teacherId}/availability")
     public TeacherAvailability add(@PathVariable Long teacherId, @RequestBody AvailabilityRequest r) {
         return service.add(teacherId, r.day(), r.startTime(), r.endTime(), r.schoolClassId(), r.subjectId());
     }
 
-    @Operation(summary = "Delete an availability slot")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','TEACHER')")
+    @Operation(summary = "Supprimer une plage de disponibilité")
+    @PreAuthorize("hasAuthority('disponibilite:manage')")
     @DeleteMapping("/availability/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         service.delete(id);

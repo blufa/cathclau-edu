@@ -38,7 +38,7 @@ public class BroadcastService implements BroadcastUseCase {
 
         RecipientType recipientType = switch (c.audience()) {
             case ALL_TEACHERS -> RecipientType.TEACHER;
-            case ALL_STAFF -> RecipientType.GROUP;
+            case ALL_STAFF, ALL -> RecipientType.GROUP;
             default -> RecipientType.PARENT;
         };
 

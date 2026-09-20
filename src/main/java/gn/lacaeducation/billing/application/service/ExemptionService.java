@@ -4,6 +4,7 @@ import gn.lacaeducation.billing.application.port.in.ExemptionUseCase;
 import gn.lacaeducation.billing.application.port.out.ExemptionRepository;
 import gn.lacaeducation.billing.domain.Exemption;
 import gn.lacaeducation.billing.domain.ExemptionType;
+import gn.lacaeducation.billing.domain.FeeType;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -48,7 +50,7 @@ public class ExemptionService implements ExemptionUseCase {
         }
         return repo.save(Exemption.builder()
                 .tenantId(tenantId).studentId(c.studentId()).type(c.type())
-                .percentage(percentage).amount(amount).feeType(c.feeType()).reason(c.reason())
+                .percentage(percentage).amount(amount).feeTypes(c.feeTypes()).reason(c.reason())
                 .startDate(c.startDate()).endDate(c.endDate()).validatedBy(validatedBy)
                 .active(true).createdAt(LocalDateTime.now())
                 .build());
@@ -71,5 +73,37 @@ public class ExemptionService implements ExemptionUseCase {
     @Transactional(readOnly = true)
     public List<Exemption> findByStudent(Long studentId) {
         return repo.findByStudentId(studentId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ApplicableExemption computeApplicable(Long studentId, FeeType feeType) {
+        LocalDate today = LocalDate.now();
+        List<Exemption> active = repo.findByStudentId(studentId).stream()
+                .filter(Exemption::isActive)
+                .filter(e -> e.getFeeTypes() == null || e.getFeeTypes().isEmpty() || e.getFeeTypes().contains(feeType))
+                .filter(e -> e.getStartDate() == null || !today.isBefore(e.getStartDate()))
+                .filter(e -> e.getEndDate() == null || !today.isAfter(e.getEndDate()))
+                .toList();
+
+        BigDecimal bestPercentage = BigDecimal.ZERO;
+        String percentageReason = null;
+        BigDecimal exceptionalTotal = BigDecimal.ZERO;
+        List<String> exceptionalReasons = new java.util.ArrayList<>();
+        for (Exemption e : active) {
+            if (e.getType() == ExemptionType.EXCEPTIONAL) {
+                // Décisions ponctuelles documentées : chacune s'ajoute aux autres (pas de "meilleure"
+                // à choisir, ce sont des remises distinctes accordées pour des motifs distincts).
+                if (e.getAmount() != null) {
+                    exceptionalTotal = exceptionalTotal.add(e.getAmount());
+                    exceptionalReasons.add(e.getReason());
+                }
+            } else if (e.getPercentage() != null && e.getPercentage().compareTo(bestPercentage) > 0) {
+                bestPercentage = e.getPercentage();
+                percentageReason = e.getReason();
+            }
+        }
+        return new ApplicableExemption(bestPercentage, percentageReason,
+                exceptionalTotal, exceptionalReasons.isEmpty() ? null : String.join(", ", exceptionalReasons));
     }
 }

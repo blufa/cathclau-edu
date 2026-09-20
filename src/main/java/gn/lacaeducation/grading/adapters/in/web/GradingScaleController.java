@@ -11,7 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-@Tag(name = "Grading Scale", description = "Per-tenant honor/decision grading scale, one per cycle group (primaire/secondaire)")
+@Tag(name = "Grading Scale", description = "Barème de mentions/décisions par tenant, un par groupe de cycle (primaire/secondaire)")
 @RestController
 @RequestMapping("/api/v1/grading/scale")
 @RequiredArgsConstructor
@@ -19,14 +19,14 @@ public class GradingScaleController {
 
     private final GradingScaleUseCase useCase;
 
-    @Operation(summary = "Get the current tenant's grading scale for a cycle group (defaults if not configured)")
+    @Operation(summary = "Consulter le barème de mentions du tenant courant pour un groupe de cycle (défauts si non configuré)")
     @GetMapping
     public GradingScale get(@RequestParam CycleGroup cycleGroup) {
         return useCase.getForTenant(TenantContext.get(), cycleGroup);
     }
 
-    @Operation(summary = "Set the current tenant's grading scale for a cycle group (mention bands + pass threshold)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @Operation(summary = "Définir le barème de mentions du tenant courant pour un groupe de cycle (tranches de mentions + seuil de réussite)")
+    @PreAuthorize("hasAuthority('parametrage_notes:manage')")
     @PutMapping
     public GradingScale update(@RequestParam CycleGroup cycleGroup, @RequestBody UpdateScaleCommand command) {
         return useCase.update(TenantContext.get(), cycleGroup, command);

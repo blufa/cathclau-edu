@@ -48,7 +48,7 @@ public class BankReconciliationController {
     public BankReconciliationService.ReconciliationSummary summary(@PathVariable Long id) { return service.summary(id); }
 
     @Operation(summary = "Démarrer un rapprochement (capture le solde du livre)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('comptabilite:manage')")
     @PostMapping
     public BankReconciliation create(@RequestBody ReconciliationRequest r) {
         return service.create(new ReconciliationCommand(TenantContext.get(), r.treasuryAccountId(),
@@ -56,31 +56,31 @@ public class BankReconciliationController {
     }
 
     @Operation(summary = "Clôturer un rapprochement (écart nul requis)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('comptabilite:manage')")
     @PatchMapping("/{id}/complete")
     public BankReconciliation complete(@PathVariable Long id, @AuthenticationPrincipal Jwt jwt) {
         return service.complete(id, currentUserId(jwt));
     }
 
     @Operation(summary = "Rouvrir un rapprochement")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('comptabilite:manage')")
     @PatchMapping("/{id}/reopen")
     public BankReconciliation reopen(@PathVariable Long id) { return service.reopen(id); }
 
     @Operation(summary = "Supprimer un rapprochement")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('comptabilite:approve')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) { service.delete(id); return ResponseEntity.noContent().build(); }
 
     @Operation(summary = "Ajouter un élément en suspens")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('comptabilite:manage')")
     @PostMapping("/{id}/items")
     public ReconciliationItem addItem(@PathVariable Long id, @RequestBody ItemRequest r) {
         return service.addItem(id, new ItemCommand(r.itemType(), r.description(), r.amount()));
     }
 
     @Operation(summary = "Supprimer un élément en suspens")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('comptabilite:manage')")
     @DeleteMapping("/items/{itemId}")
     public ResponseEntity<Void> deleteItem(@PathVariable Long itemId) { service.deleteItem(itemId); return ResponseEntity.noContent().build(); }
 

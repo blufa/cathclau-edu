@@ -143,12 +143,14 @@ public class LessonService {
     public void delete(Long id) { repo.deleteById(id); }
 
     @Transactional(readOnly = true)
-    public List<LessonEntry> find(Long tenantId, Long classId, Long subjectId) {
-        if (classId != null && subjectId != null) return repo.findByTenantIdAndClassIdAndSubjectId(tenantId, classId, subjectId);
-        if (classId != null) return repo.findByTenantIdAndClassId(tenantId, classId);
-        List<LessonEntry> all = repo.findByTenantId(tenantId);
-        if (subjectId == null) return all;
-        return all.stream().filter(l -> subjectId.equals(l.getSubjectId())).toList();
+    public List<LessonEntry> find(Long tenantId, Long classId, Long subjectId, Long teacherId) {
+        List<LessonEntry> base;
+        if (classId != null && subjectId != null) base = repo.findByTenantIdAndClassIdAndSubjectId(tenantId, classId, subjectId);
+        else if (classId != null) base = repo.findByTenantIdAndClassId(tenantId, classId);
+        else base = repo.findByTenantId(tenantId);
+        if (subjectId != null && classId == null) base = base.stream().filter(l -> subjectId.equals(l.getSubjectId())).toList();
+        if (teacherId != null) base = base.stream().filter(l -> teacherId.equals(l.getTeacherId())).toList();
+        return base;
     }
 
     /** Cahier de textes de la classe courante d'un élève — pour les portails élève et parent. */

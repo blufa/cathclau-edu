@@ -28,7 +28,7 @@ public class DecisionRuleController {
     private final DecisionRuleUseCase useCase;
 
     @Operation(summary = "Créer une règle de décision (SI condition ALORS décision)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','RESPONSABLE_PEDAGOGIQUE')")
+    @PreAuthorize("hasAuthority('parametrage_notes:manage')")
     @PostMapping
     public ResponseEntity<DecisionRule> create(@RequestBody RuleCommand cmd) {
         DecisionRule r = useCase.create(TenantContext.get(), cmd);
@@ -42,14 +42,14 @@ public class DecisionRuleController {
     }
 
     @Operation(summary = "Modifier une règle de décision")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','RESPONSABLE_PEDAGOGIQUE')")
+    @PreAuthorize("hasAuthority('parametrage_notes:manage')")
     @PutMapping("/{id}")
     public DecisionRule update(@PathVariable Long id, @RequestBody RuleCommand cmd) {
         return useCase.update(id, cmd);
     }
 
     @Operation(summary = "Supprimer une règle de décision")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('parametrage_notes:manage')")
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {

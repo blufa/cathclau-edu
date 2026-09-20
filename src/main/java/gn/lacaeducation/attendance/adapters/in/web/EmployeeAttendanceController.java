@@ -20,13 +20,13 @@ import java.util.Optional;
 public class EmployeeAttendanceController {
     private final EmployeeAttendanceUseCase useCase;
 
-    @Operation(summary = "Record an employee attendance entry")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @Operation(summary = "Enregistrer une présence du personnel")
+    @PreAuthorize("hasAuthority('presence:create')")
     @PostMapping
     public EmployeeAttendance record(@RequestBody RecordEmployeeAttendanceCommand cmd) { return useCase.record(cmd); }
 
     @Operation(summary = "Marquer un membre du personnel absent aujourd'hui (un scan ne peut jamais produire ce statut)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @PreAuthorize("hasAuthority('presence:create')")
     @PostMapping("/{employeeId}/mark-absent")
     public EmployeeAttendance markAbsent(@PathVariable Long employeeId, @RequestParam(required = false) String reason) {
         return useCase.markAbsent(employeeId, reason);
@@ -34,7 +34,7 @@ public class EmployeeAttendanceController {
 
     @Operation(summary = "Correction manuelle : saisir l'heure d'entrée pour une date donnée (le "
             + "retard est calculé automatiquement vs l'horaire configuré, comme pour un scan)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @PreAuthorize("hasAuthority('presence:create')")
     @PostMapping("/{employeeId}/manual-entry")
     public EmployeeAttendance manualEntry(@PathVariable Long employeeId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
@@ -44,7 +44,7 @@ public class EmployeeAttendanceController {
 
     @Operation(summary = "Correction manuelle : saisir l'heure de sortie pour une date donnée — utile "
             + "quand le badge a été oublié pour toute la journée")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @PreAuthorize("hasAuthority('presence:create')")
     @PostMapping("/{employeeId}/manual-exit")
     public EmployeeAttendance manualExit(@PathVariable Long employeeId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
@@ -52,19 +52,19 @@ public class EmployeeAttendanceController {
         return useCase.recordManualExit(employeeId, date, checkOutTime);
     }
 
-    @Operation(summary = "Update an employee attendance record")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @Operation(summary = "Modifier une fiche de présence du personnel")
+    @PreAuthorize("hasAuthority('presence:update')")
     @PutMapping("/{id}")
     public EmployeeAttendance update(@PathVariable Long id, @RequestParam EmployeeAttendanceStatus status,
                                      @RequestParam(required = false) String reason) {
         return useCase.update(id, status, reason);
     }
 
-    @Operation(summary = "Get an employee attendance record by ID")
+    @Operation(summary = "Consulter une fiche de présence du personnel par son identifiant")
     @GetMapping("/{id}")
     public EmployeeAttendance findById(@PathVariable Long id) { return useCase.findById(id); }
 
-    @Operation(summary = "Get attendance statistics for an employee")
+    @Operation(summary = "Consulter les statistiques de présence d'un membre du personnel")
     @GetMapping("/{employeeId}/stats")
     public EmployeeAttendanceStatsResponse getStats(
             @PathVariable Long employeeId,
@@ -80,14 +80,14 @@ public class EmployeeAttendanceController {
         return useCase.monthlySummary(employeeId, year, month);
     }
 
-    @Operation(summary = "Get attendance records for an employee over a date range")
+    @Operation(summary = "Consulter les fiches de présence d'un membre du personnel sur une période")
     @GetMapping("/employee/{employeeId}")
     public List<EmployeeAttendance> findByEmployee(@PathVariable Long employeeId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) { return useCase.findByEmployee(employeeId, from, to); }
 
-    @Operation(summary = "Delete an employee attendance record")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @Operation(summary = "Supprimer une fiche de présence du personnel")
+    @PreAuthorize("hasAuthority('presence:delete')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) { useCase.delete(id); return ResponseEntity.noContent().build(); }
 }

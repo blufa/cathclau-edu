@@ -10,33 +10,33 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 import java.util.List;
-@Tag(name = "School Fees", description = "Configure school fee schedules by class and fee type")
+@Tag(name = "School Fees", description = "Configurer les frais scolaires par classe et type de frais")
 @RestController @RequestMapping("/api/v1/billing/fees") @RequiredArgsConstructor
 public class SchoolFeeController {
     private final SchoolFeeUseCase useCase;
     public record CreateRequest(Long tenantId, Long classId, Long routeId, FeeType type, BigDecimal amount, String academicYear, String label) {}
     public record UpdateRequest(Long classId, Long routeId, FeeType type, BigDecimal amount, String academicYear, String label) {}
-    @Operation(summary = "Create a new school fee configuration")
+    @Operation(summary = "Créer une nouvelle configuration de frais scolaire")
     @PreAuthorize("hasAuthority('frais:manage')")
     @PostMapping public ResponseEntity<SchoolFee> create(@RequestBody CreateRequest r) {
         return ResponseEntity.ok(useCase.create(new SchoolFeeUseCase.CreateFeeCommand(r.tenantId(), r.classId(), r.routeId(), r.type(), r.amount(), r.academicYear(), r.label())));
     }
-    @Operation(summary = "Update an existing school fee configuration")
+    @Operation(summary = "Modifier une configuration de frais scolaire existante")
     @PreAuthorize("hasAuthority('frais:manage')")
     @PutMapping("/{id}") public ResponseEntity<SchoolFee> update(@PathVariable Long id, @RequestBody UpdateRequest r) {
         return ResponseEntity.ok(useCase.update(id, new SchoolFeeUseCase.UpdateFeeCommand(r.classId(), r.routeId(), r.type(), r.amount(), r.academicYear(), r.label())));
     }
-    @Operation(summary = "Get a school fee configuration by ID")
+    @Operation(summary = "Consulter une configuration de frais scolaire par son ID")
     @GetMapping("/{id}") public ResponseEntity<SchoolFee> findById(@PathVariable Long id) {
         return useCase.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
-    @Operation(summary = "List all school fee configurations for a tenant")
+    @Operation(summary = "Lister les configurations de frais scolaires d'un établissement")
     @GetMapping("/tenant/{tenantId}") public List<SchoolFee> findByTenant(@PathVariable Long tenantId) { return useCase.findByTenantId(tenantId); }
-    @Operation(summary = "List all school fee configurations for a class")
+    @Operation(summary = "Lister les configurations de frais scolaires d'une classe")
     @GetMapping("/class/{classId}") public List<SchoolFee> findByClass(@PathVariable Long classId) { return useCase.findByClassId(classId); }
-    @Operation(summary = "List all TRANSPORT fee configurations for a route")
+    @Operation(summary = "Lister les configurations de frais de TRANSPORT d'un itinéraire")
     @GetMapping("/route/{routeId}") public List<SchoolFee> findByRoute(@PathVariable Long routeId) { return useCase.findByRouteId(routeId); }
-    @Operation(summary = "Delete a school fee configuration")
+    @Operation(summary = "Supprimer une configuration de frais scolaire")
     @PreAuthorize("hasAuthority('frais:manage')")
     @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id) { useCase.delete(id); return ResponseEntity.noContent().build(); }
 }

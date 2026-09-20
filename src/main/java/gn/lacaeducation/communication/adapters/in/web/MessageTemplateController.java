@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import java.net.URI;
 import java.util.List;
 
-@Tag(name = "Message templates", description = "Per-tenant message templates with {{variable}} placeholders (§11.2)")
+@Tag(name = "Message templates", description = "Modèles de message par établissement avec variables {{variable}} (§11.2)")
 @RestController @RequestMapping("/api/v1/templates-message") @RequiredArgsConstructor
 public class MessageTemplateController {
     private final MessageTemplateUseCase useCase;
@@ -21,30 +21,30 @@ public class MessageTemplateController {
     public record TemplateRequest(Long tenantId, CommunicationReason reason, CommunicationChannel channel,
                                   String subject, String body) {}
 
-    @Operation(summary = "Create a message template for a given reason")
+    @Operation(summary = "Créer un modèle de message pour un motif donné")
     @PreAuthorize("hasAuthority('modele:manage')")
     @PostMapping public ResponseEntity<MessageTemplate> create(@RequestBody TemplateRequest r) {
         MessageTemplate t = useCase.create(new SaveTemplateCommand(r.tenantId(), r.reason(), r.channel(), r.subject(), r.body()));
         return ResponseEntity.created(URI.create("/api/v1/templates-message/" + t.getId())).body(t);
     }
 
-    @Operation(summary = "List message templates for a tenant")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @Operation(summary = "Lister les modèles de message d'un établissement")
+    @PreAuthorize("hasAuthority('modele:manage')")
     @GetMapping public List<MessageTemplate> findByTenant(@RequestParam Long tenantId) { return useCase.findByTenantId(tenantId); }
 
-    @Operation(summary = "Get a message template by ID")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @Operation(summary = "Consulter un modèle de message par son ID")
+    @PreAuthorize("hasAuthority('modele:manage')")
     @GetMapping("/{id}") public ResponseEntity<MessageTemplate> findById(@PathVariable Long id) {
         return useCase.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
-    @Operation(summary = "Update a message template")
+    @Operation(summary = "Modifier un modèle de message")
     @PreAuthorize("hasAuthority('modele:manage')")
     @PutMapping("/{id}") public ResponseEntity<MessageTemplate> update(@PathVariable Long id, @RequestBody TemplateRequest r) {
         return ResponseEntity.ok(useCase.update(id, new SaveTemplateCommand(r.tenantId(), r.reason(), r.channel(), r.subject(), r.body())));
     }
 
-    @Operation(summary = "Delete a message template")
+    @Operation(summary = "Supprimer un modèle de message")
     @PreAuthorize("hasAuthority('modele:manage')")
     @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id) { useCase.delete(id); return ResponseEntity.noContent().build(); }
 }

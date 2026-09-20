@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Entity
 @Table(name = "family_discount_rules")
@@ -19,7 +20,7 @@ class FamilyDiscountRuleJpaEntity {
     @Column(name = "min_children", nullable = false) private Integer minChildren;
     @Column(name = "max_children") private Integer maxChildren;
     @Column(nullable = false, precision = 5, scale = 2) private BigDecimal percentage;
-    @Enumerated(EnumType.STRING) @Column(name = "fee_type", length = 20) private FeeType feeType;
+    @Convert(converter = FeeTypeListConverter.class) @Column(name = "fee_types") private List<FeeType> feeTypes;
     @Column(name = "applies_to_youngest", nullable = false) private boolean appliesToYoungest;
     @Column(nullable = false) private boolean active;
 }

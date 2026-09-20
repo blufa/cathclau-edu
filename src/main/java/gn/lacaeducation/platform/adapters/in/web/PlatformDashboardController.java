@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-@Tag(name = "Platform Dashboard", description = "Editor KPIs: tenants, MRR/ARR, churn (SUPER_ADMIN)")
+@Tag(name = "Platform Dashboard", description = "Indicateurs éditeur : établissements, MRR/ARR, churn (SUPER_ADMIN)")
 @RestController
 @RequestMapping("/api/v1/platform/dashboard")
 @RequiredArgsConstructor
@@ -18,7 +18,7 @@ public class PlatformDashboardController {
 
     private final PlatformDashboardUseCase dashboardUseCase;
 
-    @Operation(summary = "Platform-wide KPIs: tenant counts, MRR/ARR, plan mix, churn, monthly revenue")
+    @Operation(summary = "Indicateurs globaux de la plateforme : nombre d'établissements, MRR/ARR, répartition par plan, churn, revenu mensuel")
     @GetMapping
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public PlatformDashboard dashboard() {

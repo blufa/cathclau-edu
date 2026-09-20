@@ -28,21 +28,21 @@ public class JournalEntryController {
         return service.entries(TenantContext.get(), fiscalYearId);
     }
 
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('comptabilite:manage')")
     @PostMapping public JournalEntry create(@RequestBody EntryRequest r) {
         return service.createEntry(JournalEntry.builder().tenantId(TenantContext.get())
                 .fiscalYearId(r.fiscalYearId()).journalId(r.journalId()).date(r.date()).label(r.label())
                 .referenceType(r.referenceType()).referenceId(r.referenceId()).lines(r.lines()).build());
     }
 
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('comptabilite:manage')")
     @PutMapping("/{id}") public JournalEntry update(@PathVariable Long id, @RequestBody EntryRequest r) {
         return service.updateEntry(id, JournalEntry.builder().date(r.date()).label(r.label()).lines(r.lines()).build());
     }
 
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('comptabilite:manage')")
     @PatchMapping("/{id}/valider") public JournalEntry validate(@PathVariable Long id) { return service.validate(id); }
 
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('comptabilite:manage')")
     @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id) { service.deleteEntry(id); return ResponseEntity.noContent().build(); }
 }

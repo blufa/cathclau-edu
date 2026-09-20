@@ -92,7 +92,7 @@ public class HealthController {
     public InfirmaryVisit notifyParent(@PathVariable Long id) { return service.markParentNotified(id); }
 
     @Operation(summary = "Supprimer un passage")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('sante:delete')")
     @DeleteMapping("/visits/{id}")
     public ResponseEntity<Void> deleteVisit(@PathVariable Long id) { service.deleteVisit(id); return ResponseEntity.noContent().build(); }
 

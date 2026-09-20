@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.*;
  * on official documents. The tenant is resolved from {@link TenantContext} — an admin can only edit
  * their own school, never another tenant's.
  */
-@Tag(name = "School Profile", description = "Self-service edition of the school's own information")
+@Tag(name = "School Profile", description = "Édition autonome des informations de l'école par son administrateur")
 @RestController
 @RequestMapping("/api/v1/school/profile")
 @RequiredArgsConstructor
@@ -26,16 +26,16 @@ public class SchoolProfileController {
 
     private final CreateTenantUseCase tenantUseCase;
 
-    @Operation(summary = "Get the current school's profile")
+    @Operation(summary = "Consulter le profil de l'école courante")
     @GetMapping
-    @PreAuthorize("hasRole('SCHOOL_ADMIN')")
+    @PreAuthorize("hasAuthority('ecole:profil')")
     public TenantResponse current() {
         return TenantResponse.from(tenantUseCase.findById(requireTenant()));
     }
 
-    @Operation(summary = "Update the current school's profile")
+    @Operation(summary = "Modifier le profil de l'école courante")
     @PutMapping
-    @PreAuthorize("hasRole('SCHOOL_ADMIN')")
+    @PreAuthorize("hasAuthority('ecole:profil')")
     public TenantResponse update(@Valid @RequestBody UpdateTenantRequest req) {
         return TenantResponse.from(tenantUseCase.update(requireTenant(), new CreateTenantUseCase.UpdateTenantCommand(
                 req.schoolName(), req.logo(), req.brandColor(), req.address(), req.city(),

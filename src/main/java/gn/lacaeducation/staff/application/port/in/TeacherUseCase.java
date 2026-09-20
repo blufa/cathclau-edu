@@ -39,6 +39,9 @@ public interface TeacherUseCase {
     Teacher updateOwnPhoto(Long userId, String photoUrl);
     /** Mise à jour de la photo d'un enseignant par un admin (badge), identifié par son id. */
     Teacher updatePhoto(Long id, String photoUrl);
+    /** Marque (ou retire) un enseignant comme pouvant couvrir plusieurs classes en même temps (ex.
+     * professeur d'EPS, §5.6) — désactive la détection de conflit d'emploi du temps sur lui précisément. */
+    Teacher updateAllowsConcurrentClasses(Long id, boolean allowsConcurrentClasses);
     Optional<Teacher> findById(Long id);
     Optional<Teacher> findByUserId(Long userId);
     List<Teacher> findByTenantId(Long tenantId);

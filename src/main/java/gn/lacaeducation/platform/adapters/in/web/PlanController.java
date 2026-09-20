@@ -21,7 +21,7 @@ import java.math.BigDecimal;
 import java.net.URI;
 import java.util.List;
 
-@Tag(name = "Plans", description = "Subscription plan catalog")
+@Tag(name = "Plans", description = "Catalogue des plans d'abonnement")
 @RestController
 @RequestMapping("/api/v1/platform/plans")
 @RequiredArgsConstructor
@@ -30,19 +30,19 @@ public class PlanController {
     private final PlanQueryUseCase planQueryUseCase;
     private final PlanManagementUseCase planManagementUseCase;
 
-    @Operation(summary = "List all plans (public)")
+    @Operation(summary = "Lister tous les plans (public)")
     @GetMapping
     public List<PlanResponse> findAll() {
         return planQueryUseCase.findAll().stream().map(PlanResponse::from).toList();
     }
 
-    @Operation(summary = "Get plan by ID")
+    @Operation(summary = "Consulter un plan par son identifiant")
     @GetMapping("/{id}")
     public PlanResponse findById(@PathVariable Long id) {
         return PlanResponse.from(planQueryUseCase.findById(id));
     }
 
-    @Operation(summary = "Get plan by code (STARTER/STANDARD/PREMIUM)")
+    @Operation(summary = "Consulter un plan par son code (STARTER/STANDARD/PREMIUM)")
     @GetMapping("/code/{code}")
     public ResponseEntity<PlanResponse> findByCode(@PathVariable PlanCode code) {
         return planManagementUseCase.findByCode(code)
@@ -50,7 +50,7 @@ public class PlanController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    @Operation(summary = "Create a new plan")
+    @Operation(summary = "Créer un nouveau plan")
     @PostMapping
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     @ResponseStatus(HttpStatus.CREATED)
@@ -63,7 +63,7 @@ public class PlanController {
                         req.trial(), req.trialDays())));
     }
 
-    @Operation(summary = "Update an existing plan")
+    @Operation(summary = "Modifier un plan existant")
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public PlanResponse update(@PathVariable Long id, @Valid @RequestBody UpdatePlanRequest req) {
@@ -74,21 +74,21 @@ public class PlanController {
                         req.publicVisible(), req.displayOrder(), req.highlighted())));
     }
 
-    @Operation(summary = "Archive a plan (no longer subscribable; existing subscriptions unaffected)")
+    @Operation(summary = "Archiver un plan (n'est plus souscriptible ; abonnements existants non affectés)")
     @PatchMapping("/{id}/archive")
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public PlanResponse archive(@PathVariable Long id) {
         return PlanResponse.from(planManagementUseCase.archive(id));
     }
 
-    @Operation(summary = "Designate this plan as the default trial (price 0 + trialDays)")
+    @Operation(summary = "Définir ce plan comme essai gratuit par défaut (prix 0 + trialDays)")
     @PatchMapping("/{id}/definir-trial-defaut")
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public PlanResponse setDefaultTrial(@PathVariable Long id) {
         return PlanResponse.from(planManagementUseCase.setDefaultTrial(id));
     }
 
-    @Operation(summary = "Delete a plan")
+    @Operation(summary = "Supprimer un plan")
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     @ResponseStatus(HttpStatus.NO_CONTENT)

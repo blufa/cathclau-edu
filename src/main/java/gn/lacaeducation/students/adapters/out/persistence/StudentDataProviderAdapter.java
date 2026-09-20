@@ -1,4 +1,5 @@
 package gn.lacaeducation.students.adapters.out.persistence;
+import gn.lacaeducation.students.AbandonedStudentInfo;
 import gn.lacaeducation.students.StudentDataProvider;
 import gn.lacaeducation.students.ParentPublicInfo;
 import gn.lacaeducation.students.StudentPublicInfo;
@@ -94,6 +95,20 @@ public class StudentDataProviderAdapter implements StudentDataProvider {
                 .filter(p -> eleveParentRepo.findByParentId(p.getId()).stream()
                         .anyMatch(link -> hasPlatformAccessOptIn(link.getStudentId())))
                 .map(p -> new ParentPublicInfo(p.getId(), p.getFirstName(), p.getLastName(), p.getEmail(), p.getPhone()))
+                .toList();
+    }
+
+    @Override
+    public List<AbandonedStudentInfo> findAbandonedStudents(Long academicYearId) {
+        return enrollmentRepository.findByAcademicYearId(academicYearId).stream()
+                .filter(e -> e.getStatus() == EnrollmentStatus.ABANDONED)
+                .map(e -> findStudent(e.getStudentId())
+                        .map(s -> new AbandonedStudentInfo(s.id(),
+                                ((s.firstName() != null ? s.firstName() : "") + " "
+                                        + (s.lastName() != null ? s.lastName() : "")).trim(),
+                                e.getClassId()))
+                        .orElse(null))
+                .filter(s -> s != null)
                 .toList();
     }
 }

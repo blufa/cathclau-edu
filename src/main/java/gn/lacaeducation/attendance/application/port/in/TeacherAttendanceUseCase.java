@@ -52,4 +52,15 @@ public interface TeacherAttendanceUseCase {
      * pour retrouver à quelle heure il a pointé pour une séance précise (ex. cahier de textes). */
     List<TeacherCheckin> findCheckins(Long teacherId, LocalDate date);
     void delete(Long id);
+
+    /** Une séance pointée en retard et/ou avec un départ anticipé, sur une période — pour le
+     * récapitulatif par matière/classe/jour de la fiche enseignant (l'enseignant peut contester son
+     * salaire, ce détail permet de vérifier précisément chaque déduction). */
+    record LatenessDetailRow(LocalDate date, Long classId, Long subjectId, int lateMinutes, int earlyMinutes) {}
+    /** Comme {@link #findCheckins}, mais sur toute une période et filtré aux séances avec un retard ou
+     * un départ anticipé (les séances ponctuelles à l'heure ne sont pas listées, seulement les écarts). */
+    List<LatenessDetailRow> latenessDetail(Long teacherId, LocalDate from, LocalDate to);
+    /** Export PDF du récapitulatif retards/absences (voir {@link #latenessDetail}) + jours ABSENT sur
+     * la même période — document remis à l'enseignant en cas de contestation de salaire. */
+    byte[] latenessReportPdf(Long teacherId, LocalDate from, LocalDate to);
 }

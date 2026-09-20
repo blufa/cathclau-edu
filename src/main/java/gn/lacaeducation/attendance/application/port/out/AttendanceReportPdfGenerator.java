@@ -19,4 +19,17 @@ public interface AttendanceReportPdfGenerator {
     record LatenessReport(Long tenantId, String className, LocalDate from, LocalDate to, List<LatenessRow> rows) {}
 
     record LatenessRow(String studentName, int count, String dates) {}
+
+    byte[] teacherLatenessReport(TeacherLatenessReport data);
+
+    /** Une ligne chronologique du récapitulatif enseignant : soit un écart de ponctualité sur une
+     * séance précise (matière/classe renseignées, retard et/ou départ anticipé &gt; 0), soit un jour
+     * ABSENT (matière/classe/minutes non applicables, {@code absenceReason} renseigné). */
+    record TeacherReportRow(LocalDate date, String subjectLabel, String className,
+                            int lateMinutes, int earlyMinutes, boolean absent, String absenceReason) {}
+
+    /** Récapitulatif retards/absences d'un enseignant sur une période — remis en cas de contestation
+     * de salaire (justifie chaque minute déduite, matière et classe par matière et par classe). */
+    record TeacherLatenessReport(Long tenantId, String teacherName, LocalDate from, LocalDate to,
+                                 List<TeacherReportRow> rows) {}
 }

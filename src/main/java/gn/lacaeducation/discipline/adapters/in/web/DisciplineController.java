@@ -67,12 +67,12 @@ public class DisciplineController {
     }
 
     @Operation(summary = "Marquer l'incident comme résolu")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @PreAuthorize("hasAuthority('discipline:manage')")
     @PatchMapping("/{id}/resolve")
     public DisciplineIncident resolve(@PathVariable Long id) { return service.resolve(id); }
 
     @Operation(summary = "Classer l'incident sans suite")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @PreAuthorize("hasAuthority('discipline:manage')")
     @PatchMapping("/{id}/dismiss")
     public DisciplineIncident dismiss(@PathVariable Long id) { return service.dismiss(id); }
 
@@ -82,7 +82,7 @@ public class DisciplineController {
     public DisciplineIncident markNotified(@PathVariable Long id) { return service.markParentNotified(id); }
 
     @Operation(summary = "Supprimer un incident")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('discipline:delete')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) { service.delete(id); return ResponseEntity.noContent().build(); }
 

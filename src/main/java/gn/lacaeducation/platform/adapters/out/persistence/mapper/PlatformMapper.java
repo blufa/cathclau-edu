@@ -8,7 +8,6 @@ import gn.lacaeducation.platform.adapters.out.persistence.SubscriptionPaymentJpa
 import gn.lacaeducation.platform.adapters.out.persistence.SubscriptionReceiptJpaEntity;
 import gn.lacaeducation.platform.adapters.out.persistence.EmailVerificationTokenJpaEntity;
 import gn.lacaeducation.platform.adapters.out.persistence.PlatformFeeLedgerEntryJpaEntity;
-import gn.lacaeducation.platform.adapters.out.persistence.PlatformFeeSettingJpaEntity;
 import gn.lacaeducation.platform.adapters.out.persistence.PlatformFeeSettlementJpaEntity;
 import gn.lacaeducation.platform.adapters.out.persistence.PrefectureJpaEntity;
 import gn.lacaeducation.platform.adapters.out.persistence.TenantJpaEntity;
@@ -16,7 +15,6 @@ import gn.lacaeducation.platform.domain.EmailVerificationToken;
 import gn.lacaeducation.platform.domain.Plan;
 import gn.lacaeducation.platform.domain.PlanChange;
 import gn.lacaeducation.platform.domain.PlatformFeeLedgerEntry;
-import gn.lacaeducation.platform.domain.PlatformFeeSetting;
 import gn.lacaeducation.platform.domain.PlatformFeeSettlement;
 import gn.lacaeducation.platform.domain.Prefecture;
 import gn.lacaeducation.platform.domain.Subscription;
@@ -60,10 +58,6 @@ public interface PlatformMapper {
     EmailVerificationToken toDomain(EmailVerificationTokenJpaEntity entity);
 
     EmailVerificationTokenJpaEntity toEntity(EmailVerificationToken domain);
-
-    PlatformFeeSetting toDomain(PlatformFeeSettingJpaEntity entity);
-
-    PlatformFeeSettingJpaEntity toEntity(PlatformFeeSetting domain);
 
     PlatformFeeLedgerEntry toDomain(PlatformFeeLedgerEntryJpaEntity entity);
 

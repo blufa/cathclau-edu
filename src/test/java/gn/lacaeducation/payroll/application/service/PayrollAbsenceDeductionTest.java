@@ -2,6 +2,7 @@ package gn.lacaeducation.payroll.application.service;
 
 import gn.lacaeducation.attendance.TeacherWorkProvider;
 import gn.lacaeducation.attendance.TeacherWorkProvider.MonthlyWork;
+import gn.lacaeducation.payroll.application.port.in.SalaryAdvanceUseCase;
 import gn.lacaeducation.payroll.application.port.in.SalaryFeeDeductionUseCase;
 import gn.lacaeducation.payroll.application.port.in.SalaryFeeDeductionUseCase.FeeDeduction;
 import gn.lacaeducation.payroll.application.port.out.PayslipLineRepository;
@@ -43,6 +44,7 @@ class PayrollAbsenceDeductionTest {
     @Mock gn.lacaeducation.lessons.TeacherTeachingProvider teachingProvider;
     @Mock TeacherWorkProvider workProvider;
     @Mock SalaryFeeDeductionUseCase salaryFeeDeductionUseCase;
+    @Mock SalaryAdvanceUseCase salaryAdvanceUseCase;
     @Mock gn.lacaeducation.academics.AcademicsDataProvider academics;
     @Mock gn.lacaeducation.calendar.CalendarDataProvider calendar;
     @Mock org.springframework.context.ApplicationEventPublisher eventPublisher;
@@ -53,9 +55,13 @@ class PayrollAbsenceDeductionTest {
     @BeforeEach
     void setUp() {
         service = new PayrollService(payslipRepo, lineRepo, structureRepo, ruleRepo, pdfGenerator,
-                compRepo, vacationPayRepo, teachingProvider, workProvider, salaryFeeDeductionUseCase, academics, calendar,
-                eventPublisher);
+                compRepo, vacationPayRepo, teachingProvider, workProvider, salaryFeeDeductionUseCase,
+                salaryAdvanceUseCase, academics, calendar, eventPublisher);
         savedLines = new ArrayList<>();
+        when(salaryAdvanceUseCase.applyDeduction(any(), any(), any(), any()))
+                .thenReturn(new SalaryAdvanceUseCase.AdvanceDeductionResult(BigDecimal.ZERO, null));
+        when(salaryFeeDeductionUseCase.computeStaffBenefitRemainder(any(), any()))
+                .thenReturn(new SalaryFeeDeductionUseCase.StaffBenefitRemainderDeduction(BigDecimal.ZERO, 0));
 
         // payslipRepo.save : assigne un id au premier passage, renvoie l'entité.
         when(payslipRepo.save(any())).thenAnswer(i -> {

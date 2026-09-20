@@ -12,52 +12,52 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
-@Tag(name = "Exams", description = "Schedule and manage formal examinations (mock, semester, annual, national)")
+@Tag(name = "Exams", description = "Planifier et gérer les examens officiels (blanc, semestriel, annuel, national)")
 @RestController @RequestMapping("/api/v1/grading/exams") @RequiredArgsConstructor
 public class ExamController {
     private final ExamUseCase useCase;
     public record CreateRequest(Long tenantId, Long classId, Long periodId, ExamType type, String label, LocalDate scheduledDate) {}
-    @Operation(summary = "Schedule a new exam")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @Operation(summary = "Planifier un examen")
+    @PreAuthorize("hasAuthority('examen:manage')")
     @PostMapping public ResponseEntity<Exam> create(@RequestBody CreateRequest r) {
         return ResponseEntity.ok(useCase.create(new ExamUseCase.CreateExamCommand(r.tenantId(), r.classId(), r.periodId(), r.type(), r.label(), r.scheduledDate())));
     }
-    @Operation(summary = "Get an exam by ID")
+    @Operation(summary = "Consulter un examen par son identifiant")
     @GetMapping("/{id}") public ResponseEntity<Exam> findById(@PathVariable Long id) {
         return useCase.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
-    @Operation(summary = "List all exams for a class")
+    @Operation(summary = "Lister tous les examens d'une classe")
     @GetMapping("/class/{classId}") public List<Exam> findByClass(@PathVariable Long classId) { return useCase.findByClass(classId); }
-    @Operation(summary = "List all exams for a period")
+    @Operation(summary = "Lister tous les examens d'une période")
     @GetMapping("/period/{periodId}") public List<Exam> findByPeriod(@PathVariable Long periodId) { return useCase.findByPeriod(periodId); }
-    @Operation(summary = "Mark an exam as started")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @Operation(summary = "Marquer un examen comme démarré")
+    @PreAuthorize("hasAuthority('examen:manage')")
     @PutMapping("/{id}/start") public ResponseEntity<Exam> start(@PathVariable Long id) { return ResponseEntity.ok(useCase.start(id)); }
-    @Operation(summary = "Mark an exam as completed")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @Operation(summary = "Marquer un examen comme terminé")
+    @PreAuthorize("hasAuthority('examen:manage')")
     @PutMapping("/{id}/complete") public ResponseEntity<Exam> complete(@PathVariable Long id) { return ResponseEntity.ok(useCase.complete(id)); }
-    @Operation(summary = "Get the exam convocation PDF URL (triggers async generation if not yet available)")
+    @Operation(summary = "Obtenir l'URL du PDF de convocation à l'examen (déclenche la génération asynchrone si absent)")
     @GetMapping("/{id}/convocation") public ResponseEntity<Map<String, String>> convocation(@PathVariable Long id) {
         return useCase.getConvocation(id)
                 .map(url -> ResponseEntity.ok(Map.of("url", url)))
                 .orElseGet(() -> { useCase.generateConvocationAsync(id); return ResponseEntity.accepted().body(Map.of("status", "GENERATING")); });
     }
-    @Operation(summary = "Stream the exam convocation PDF bytes (inline) — independent of Cloudinary")
+    @Operation(summary = "Flux des octets du PDF de convocation (aperçu direct) — indépendant de Cloudinary")
     @GetMapping("/{id}/convocation/download") public ResponseEntity<byte[]> convocationDownload(@PathVariable Long id) {
         return ResponseEntity.ok()
                 .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
                 .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"convocation-" + id + ".pdf\"")
                 .body(useCase.convocationBytes(id));
     }
-    @Operation(summary = "Delete an exam")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @Operation(summary = "Supprimer un examen")
+    @PreAuthorize("hasAuthority('examen:manage')")
     @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id) { useCase.delete(id); return ResponseEntity.noContent().build(); }
 
     // ── Surveillance (composition : surveillants par salle) ──────────────────────
     public record SupervisionRequest(Long roomId, Long teacherId) {}
 
     @Operation(summary = "Affecter un enseignant surveillant à une salle pour l'examen (conflit refusé en 422)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @PreAuthorize("hasAuthority('examen:manage')")
     @PostMapping("/{id}/supervisions")
     public ResponseEntity<ExamSupervision> assignSupervisor(@PathVariable Long id, @RequestBody SupervisionRequest r) {
         return ResponseEntity.ok(useCase.assignSupervisor(id, r.roomId(), r.teacherId()));
@@ -68,7 +68,7 @@ public class ExamController {
     public List<ExamSupervision> supervisions(@PathVariable Long id) { return useCase.supervisions(id); }
 
     @Operation(summary = "Retirer un surveillant")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @PreAuthorize("hasAuthority('examen:manage')")
     @DeleteMapping("/{id}/supervisions/{supervisionId}")
     public ResponseEntity<Void> removeSupervision(@PathVariable Long id, @PathVariable Long supervisionId) {
         useCase.removeSupervision(supervisionId);

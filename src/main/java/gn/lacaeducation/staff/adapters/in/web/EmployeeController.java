@@ -23,7 +23,7 @@ public class EmployeeController {
     private final EmployeeUseCase useCase;
 
     @Operation(summary = "Créer un employé non-enseignant")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('personnel:manage')")
     @PostMapping
     public ResponseEntity<Employee> create(@RequestBody CreateEmployeeCommand cmd) {
         Employee e = useCase.create(new CreateEmployeeCommand(TenantContext.get(), cmd.userId(),
@@ -34,7 +34,7 @@ public class EmployeeController {
     }
 
     @Operation(summary = "Lister le personnel non-enseignant (filtre catégorie optionnel)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('personnel:read')")
     @GetMapping
     public List<Employee> list(@RequestParam(required = false) EmployeeCategory category) {
         return category != null
@@ -43,38 +43,38 @@ public class EmployeeController {
     }
 
     @Operation(summary = "Détail d'un employé")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('personnel:read')")
     @GetMapping("/{id}")
     public Employee findById(@PathVariable Long id) {
         return useCase.findById(id).orElseThrow(() -> new ResourceNotFoundException("Employee", id));
     }
 
     @Operation(summary = "Modifier un employé")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('personnel:manage')")
     @PutMapping("/{id}")
     public Employee update(@PathVariable Long id, @RequestBody UpdateEmployeeCommand cmd) {
         return useCase.update(id, cmd);
     }
 
     @Operation(summary = "Définir la photo d'un employé (badge personnel)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('personnel:manage')")
     @PatchMapping("/{id}/photo")
     public Employee updatePhoto(@PathVariable Long id, @RequestParam String photoUrl) {
         return useCase.updatePhoto(id, photoUrl);
     }
 
     @Operation(summary = "Activer un employé")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('personnel:manage')")
     @PatchMapping("/{id}/activate")
     public Employee activate(@PathVariable Long id) { return useCase.setActive(id, true); }
 
     @Operation(summary = "Désactiver un employé")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('personnel:manage')")
     @PatchMapping("/{id}/deactivate")
     public Employee deactivate(@PathVariable Long id) { return useCase.setActive(id, false); }
 
     @Operation(summary = "Supprimer un employé")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('personnel:manage')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         useCase.delete(id);

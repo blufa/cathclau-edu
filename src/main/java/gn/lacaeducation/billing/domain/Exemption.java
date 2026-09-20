@@ -5,6 +5,7 @@ import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * Exonération / réduction exceptionnelle accordée à un élève (§8). Traçable et archivée : motif,
@@ -21,8 +22,8 @@ public class Exemption {
     private BigDecimal percentage;
     /** Montant fixe pour une remise EXCEPTIONAL. */
     private BigDecimal amount;
-    /** Frais concerné (null = tous les frais). */
-    private FeeType feeType;
+    /** Frais concernés — un seul, plusieurs, ou vide/null = tous les frais. */
+    private List<FeeType> feeTypes;
     private String reason;
     private LocalDate startDate;
     private LocalDate endDate;

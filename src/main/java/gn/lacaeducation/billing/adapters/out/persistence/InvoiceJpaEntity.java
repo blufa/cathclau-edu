@@ -25,6 +25,8 @@ public class InvoiceJpaEntity {
     @Column(name = "period_label", length = 60) private String periodLabel;
     @Column(name = "discount_amount", precision = 15, scale = 2) private BigDecimal discountAmount;
     @Column(name = "discount_reason", length = 255) private String discountReason;
+    @Enumerated(EnumType.STRING) @Column(name = "discount_source", length = 20)
+    private gn.lacaeducation.billing.domain.DiscountSource discountSource;
     @Enumerated(EnumType.STRING) @Column(name = "recovery_stage", length = 16) private gn.lacaeducation.billing.domain.RecoveryStage recoveryStage;
     @Column(name = "last_reminder_at") private java.time.LocalDate lastReminderAt;
     @Column(name = "platform_fee_amount", precision = 15, scale = 2) private BigDecimal platformFeeAmount;

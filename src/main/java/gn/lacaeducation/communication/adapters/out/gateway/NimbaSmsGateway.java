@@ -10,6 +10,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -37,6 +38,8 @@ import java.util.List;
 @ConditionalOnProperty(prefix = "orange.sms", name = "enabled", havingValue = "false", matchIfMissing = true)
 @Slf4j
 public class NimbaSmsGateway implements NotificationGateway, SmsBalancePort {
+
+    private static final JsonMapper JSON = JsonMapper.builder().build();
 
     private final NimbaSmsProperties props;
     private final RestClient http;
@@ -90,14 +93,28 @@ public class NimbaSmsGateway implements NotificationGateway, SmsBalancePort {
             return new DeliveryResult(true, "logged (nimba disabled)");
         }
         try {
-            MessageRequest body = new MessageRequest(props.senderName(), List.of(normalizeNumber(destination, props.defaultDialingCode())), message, "sms");
-            MessageResponse response = http.post()
+            MessageRequest body = new MessageRequest(props.senderName(), List.of(normalizeNumber(destination, props.defaultDialingCode())), message);
+            // Sérialisé nous-mêmes (au lieu de laisser RestClient choisir/instancier son propre
+            // convertisseur JSON) : après un premier correctif (retrait du champ `channel`) qui n'a PAS
+            // suffi à faire disparaître l'erreur 400 "sender_name/to obligatoires" malgré un JSON
+            // vérifié correct (voir commentaire de MessageRequest), on élimine ici toute incertitude
+            // sur ce qui part réellement sur le fil : on construit la chaîne JSON nous-mêmes avec un
+            // JsonMapper neutre (mêmes réglages que le test qui a confirmé le format attendu), on la
+            // journalise telle quelle, puis on l'envoie comme corps brut — impossible qu'un réglage
+            // Jackson auto-configuré par Spring (naming strategy, feature désactivée...) altère le
+            // résultat en cours de route.
+            String rawJson = JSON.writeValueAsString(body);
+            log.info("[SMS] Nimba -> corps envoyé : {}", rawJson);
+            String rawResponse = http.post()
                     .uri("/v1/messages")
                     .header("Authorization", "Basic " + basicToken())
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(body)
+                    .body(rawJson)
                     .retrieve()
-                    .body(MessageResponse.class);
+                    .body(String.class);
+            log.info("[SMS] Nimba -> réponse brute : {}", rawResponse);
+            MessageResponse response = rawResponse != null && !rawResponse.isBlank()
+                    ? JSON.readValue(rawResponse, MessageResponse.class) : null;
             boolean ok = response != null && response.messageId() != null && !response.messageId().isBlank();
             log.info("[SMS] Nimba -> {} : {}", destination, ok ? response.messageId() : "réponse invalide");
             return new DeliveryResult(ok, ok ? "nimba " + response.messageId() : "nimba: réponse invalide",
@@ -149,18 +166,18 @@ public class NimbaSmsGateway implements NotificationGateway, SmsBalancePort {
     }
 
     /**
-     * Corps de la requête POST /v1/messages (developers.nimbasms.com) : {@code sender_name} [1-100
-     * caractères], {@code to} tableau de 1 à 30 numéros [1-17 caractères chacun], {@code message}
-     * ≤ 1071 caractères, {@code channel} explicite ("sms" — l'API accepte aussi "whatsapp"/"email",
-     * ne pas laisser au défaut implicite). {@code template_name}/{@code template_variables} ne
-     * s'appliquent qu'au canal WhatsApp, non utilisés ici.
+     * Corps de la requête POST /v1/messages : {@code sender_name}, {@code to} (tableau de numéros),
+     * {@code message} — vérifié contre le node n8n officiel nimbasms/n8n-nodes-nimbasms (à jour,
+     * dépôt actif) qui envoie exactement ces 3 champs, SANS {@code channel}. Un champ {@code channel}
+     * envoyé en plus faisait échouer l'appel en 400 ("sender_name"/"to" obligatoires) : l'API rejette
+     * apparemment tout le corps dès qu'un champ inconnu est présent, plutôt que de l'ignorer — ne pas
+     * réintroduire {@code channel} sans revérifier d'abord contre l'implémentation de référence.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     record MessageRequest(
             @JsonProperty("sender_name") String senderName,
             List<String> to,
-            String message,
-            String channel) {}
+            String message) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     record MessageResponse(

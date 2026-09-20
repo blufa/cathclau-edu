@@ -121,6 +121,24 @@ class RecipientResolverServiceTest {
     }
 
     @Test
+    void all_combinesParentsTeachersAndStaff_dedupedByDestination() {
+        when(studentDataProvider.findAllParentsWithPlatformAccess(1L)).thenReturn(List.of(
+                new ParentPublicInfo(10L, "Awa", "Diallo", null, "623000001")));
+        when(teacherPublicInfoProvider.listTeachers(1L)).thenReturn(List.of(
+                new TeacherInfo(20L, "Mariam", "Camara", "ENS-1", "Maths", "mariam@ecole.gn", "623000099"),
+                // Un enseignant qui a aussi le même numéro qu'un parent (ex. l'un des deux) ne doit
+                // apparaître qu'une seule fois dans le résultat final.
+                new TeacherInfo(21L, "Doublon", "Numero", "ENS-2", "Français", null, "623000001")));
+        when(employeePublicInfoProvider.listEmployees(1L)).thenReturn(List.of(
+                new EmployeeInfo(30L, "Aissatou Bah", "COMPTABLE", BigDecimal.TEN, true, "623000088", null)));
+
+        List<RecipientTarget> targets = resolver.resolve(1L, BroadcastAudience.ALL, null, null, CommunicationChannel.SMS);
+
+        assertThat(targets).extracting(RecipientTarget::destination)
+                .containsExactlyInAnyOrder("623000001", "623000099", "623000088");
+    }
+
+    @Test
     void emailChannel_usesEmailInsteadOfPhone() {
         when(studentDataProvider.findAllParentsWithPlatformAccess(1L)).thenReturn(List.of(
                 new ParentPublicInfo(10L, "Awa", "Diallo", "awa@ecole.gn", "623000001")));

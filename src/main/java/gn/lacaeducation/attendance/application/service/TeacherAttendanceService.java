@@ -2,6 +2,7 @@ package gn.lacaeducation.attendance.application.service;
 import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.academics.ScheduleSlotPublicInfo;
 import gn.lacaeducation.attendance.application.port.in.TeacherAttendanceUseCase;
+import gn.lacaeducation.attendance.application.port.out.AttendanceReportPdfGenerator;
 import gn.lacaeducation.attendance.application.port.out.AttendanceSettingsRepository;
 import gn.lacaeducation.attendance.application.port.out.RecessWindowRepository;
 import gn.lacaeducation.attendance.application.port.out.TeacherAttendanceRepository;
@@ -12,6 +13,7 @@ import gn.lacaeducation.attendance.domain.TeacherAttendanceStatus;
 import gn.lacaeducation.attendance.domain.TeacherCheckin;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.common.TenantContext;
+import gn.lacaeducation.staff.TeacherPublicInfoProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +36,8 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
     private final SessionResolver sessionResolver;
     private final AttendanceSettingsRepository settingsRepository;
     private final RecessWindowRepository recessWindowRepository;
+    private final AttendanceReportPdfGenerator pdfGenerator;
+    private final TeacherPublicInfoProvider teacherPublicInfoProvider;
 
     /**
      * Heure à partir de laquelle un retard commence à être compté pour cette séance : l'heure de
@@ -42,12 +46,14 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
      * signifie qu'une entrée à l'heure + 5 min n'est jamais comptée en retard, quelle qu'en soit la
      * raison) et/ou par une fenêtre de récréation (temps non imputable à l'enseignant).
      */
-    private LocalTime graceDeadline(ScheduleSlotPublicInfo session) {
-        LocalTime start = LocalTime.parse(session.startTime());
-        int margin = settingsRepository.findByTenantId(TenantContext.get())
+    private LocalTime graceDeadline(LocalTime sessionStart) {
+        return sessionResolver.graceDeadline(sessionStart, transitionMargin(), recessWindowRepository.findByTenantId(TenantContext.get()));
+    }
+
+    private int transitionMargin() {
+        return settingsRepository.findByTenantId(TenantContext.get())
                 .map(AttendanceSettings::transitionMarginMinutesOrDefault)
                 .orElseGet(() -> AttendanceSettings.defaults().transitionMarginMinutesOrDefault());
-        return sessionResolver.graceDeadline(start, margin, recessWindowRepository.findByTenantId(TenantContext.get()));
     }
     @Override
     public TeacherAttendance record(RecordTeacherAttendanceCommand cmd) {
@@ -60,19 +66,19 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
     public TeacherCheckin recordEntry(Long teacherId) {
         LocalDate today = LocalDate.now();
         LocalTime now = LocalTime.now();
-        ScheduleSlotPublicInfo session = sessionResolver.currentSession(academics.findScheduleByTeacher(teacherId), today, now);
-        if (session == null) {
+        SessionResolver.Block block = sessionResolver.currentBlock(academics.findScheduleByTeacher(teacherId), today, now, transitionMargin());
+        if (block == null) {
             throw new gn.lacaeducation.common.BusinessRuleException("Aucune séance programmée aujourd'hui pour cet enseignant.");
         }
-        TeacherCheckin checkin = checkinRepository.findByTeacherIdAndDateAndSlot(teacherId, today, session.id())
+        TeacherCheckin checkin = checkinRepository.findByTeacherIdAndDateAndSlot(teacherId, today, block.firstSlotId())
                 .orElseGet(() -> {
-                    LocalTime start = LocalTime.parse(session.startTime());
-                    LocalTime end = LocalTime.parse(session.endTime());
-                    LocalTime deadline = graceDeadline(session);
+                    LocalTime start = block.start();
+                    LocalTime end = block.end();
+                    LocalTime deadline = graceDeadline(start);
                     int late = (int) Math.max(0, Duration.between(deadline, now).toMinutes());
                     return checkinRepository.save(TeacherCheckin.builder()
                             .tenantId(TenantContext.get()).teacherId(teacherId).checkinDate(today)
-                            .scheduleSlotId(session.id()).sessionStart(start).sessionEnd(end)
+                            .scheduleSlotId(block.firstSlotId()).sessionStart(start).sessionEnd(end)
                             .checkInTime(now).lateMinutes(late).earlyMinutes(0).createdAt(LocalDateTime.now()).build());
                 });
         upsertDailyAttendance(teacherId, today);
@@ -83,15 +89,15 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
     public TeacherCheckin recordExit(Long teacherId) {
         LocalDate today = LocalDate.now();
         LocalTime now = LocalTime.now();
-        ScheduleSlotPublicInfo session = sessionResolver.currentSession(academics.findScheduleByTeacher(teacherId), today, now);
-        if (session == null) {
+        SessionResolver.Block block = sessionResolver.currentBlock(academics.findScheduleByTeacher(teacherId), today, now, transitionMargin());
+        if (block == null) {
             throw new gn.lacaeducation.common.BusinessRuleException("Aucune séance programmée aujourd'hui pour cet enseignant.");
         }
-        TeacherCheckin checkin = checkinRepository.findByTeacherIdAndDateAndSlot(teacherId, today, session.id())
+        TeacherCheckin checkin = checkinRepository.findByTeacherIdAndDateAndSlot(teacherId, today, block.firstSlotId())
                 .orElseThrow(() -> new gn.lacaeducation.common.BusinessRuleException(
                         "Aucun pointage d'entrée trouvé pour cette séance : scannez d'abord l'entrée."));
         checkin.setCheckOutTime(now);
-        if (checkin.getSessionEnd() == null) checkin.setSessionEnd(LocalTime.parse(session.endTime()));
+        if (checkin.getSessionEnd() == null) checkin.setSessionEnd(block.end());
         // Départ anticipé : sortie pointée avant la fin prévue de la séance (symétrique du retard
         // à l'entrée). Un pointage de sortie existe forcément ici (on vient de le fixer ci-dessus).
         int early = (int) Math.max(0, Duration.between(now, checkin.getSessionEnd()).toMinutes());
@@ -104,18 +110,18 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
         // Correction manuelle (saisie a posteriori) : contrairement au scan (recordEntry, idempotent —
         // le 1er scan fait foi), ici on écrase l'heure d'entrée existante par la valeur saisie, pour
         // permettre de corriger un pointage déjà enregistré.
-        ScheduleSlotPublicInfo session = sessionResolver.currentSession(academics.findScheduleByTeacher(teacherId), date, checkInTime);
-        if (session == null) {
+        SessionResolver.Block block = sessionResolver.currentBlock(academics.findScheduleByTeacher(teacherId), date, checkInTime, transitionMargin());
+        if (block == null) {
             throw new gn.lacaeducation.common.BusinessRuleException("Aucune séance programmée ce jour-là pour cet enseignant.");
         }
-        LocalTime start = LocalTime.parse(session.startTime());
-        LocalTime end = LocalTime.parse(session.endTime());
-        LocalTime deadline = graceDeadline(session);
+        LocalTime start = block.start();
+        LocalTime end = block.end();
+        LocalTime deadline = graceDeadline(start);
         int late = (int) Math.max(0, Duration.between(deadline, checkInTime).toMinutes());
-        TeacherCheckin checkin = checkinRepository.findByTeacherIdAndDateAndSlot(teacherId, date, session.id())
+        TeacherCheckin checkin = checkinRepository.findByTeacherIdAndDateAndSlot(teacherId, date, block.firstSlotId())
                 .orElseGet(() -> TeacherCheckin.builder()
                         .tenantId(TenantContext.get()).teacherId(teacherId).checkinDate(date)
-                        .scheduleSlotId(session.id()).createdAt(LocalDateTime.now()).build());
+                        .scheduleSlotId(block.firstSlotId()).createdAt(LocalDateTime.now()).build());
         checkin.setSessionStart(start);
         checkin.setSessionEnd(end);
         checkin.setCheckInTime(checkInTime);
@@ -129,16 +135,16 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
     public TeacherCheckin recordManualExit(Long teacherId, LocalDate date, LocalTime checkOutTime) {
         // Symétrique de recordManualEntry : crée le pointage si absent (badge oublié toute la séance),
         // sinon complète le pointage d'entrée déjà existant avec l'heure de sortie saisie.
-        ScheduleSlotPublicInfo session = sessionResolver.currentSession(academics.findScheduleByTeacher(teacherId), date, checkOutTime);
-        if (session == null) {
+        SessionResolver.Block block = sessionResolver.currentBlock(academics.findScheduleByTeacher(teacherId), date, checkOutTime, transitionMargin());
+        if (block == null) {
             throw new gn.lacaeducation.common.BusinessRuleException("Aucune séance programmée ce jour-là pour cet enseignant.");
         }
-        LocalTime start = LocalTime.parse(session.startTime());
-        LocalTime end = LocalTime.parse(session.endTime());
-        TeacherCheckin checkin = checkinRepository.findByTeacherIdAndDateAndSlot(teacherId, date, session.id())
+        LocalTime start = block.start();
+        LocalTime end = block.end();
+        TeacherCheckin checkin = checkinRepository.findByTeacherIdAndDateAndSlot(teacherId, date, block.firstSlotId())
                 .orElseGet(() -> TeacherCheckin.builder()
                         .tenantId(TenantContext.get()).teacherId(teacherId).checkinDate(date)
-                        .scheduleSlotId(session.id()).sessionStart(start).lateMinutes(0).createdAt(LocalDateTime.now()).build());
+                        .scheduleSlotId(block.firstSlotId()).sessionStart(start).lateMinutes(0).createdAt(LocalDateTime.now()).build());
         checkin.setSessionEnd(end);
         checkin.setCheckOutTime(checkOutTime);
         int early = (int) Math.max(0, Duration.between(checkOutTime, end).toMinutes());
@@ -279,4 +285,56 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
     }
 
     @Override public void delete(Long id) { attendanceRepository.deleteById(id); }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<LatenessDetailRow> latenessDetail(Long teacherId, LocalDate from, LocalDate to) {
+        Map<Long, ScheduleSlotPublicInfo> slotById = new HashMap<>();
+        for (ScheduleSlotPublicInfo s : academics.findScheduleByTeacher(teacherId)) {
+            if (s.id() != null) slotById.put(s.id(), s);
+        }
+        return checkinRepository.findByTeacherIdAndDateBetween(teacherId, from, to).stream()
+                .filter(c -> (c.getLateMinutes() != null && c.getLateMinutes() > 0)
+                        || (c.getEarlyMinutes() != null && c.getEarlyMinutes() > 0))
+                .map(c -> {
+                    ScheduleSlotPublicInfo slot = c.getScheduleSlotId() != null ? slotById.get(c.getScheduleSlotId()) : null;
+                    return new LatenessDetailRow(c.getCheckinDate(),
+                            slot != null ? slot.classId() : null, slot != null ? slot.subjectId() : null,
+                            c.getLateMinutes() != null ? c.getLateMinutes() : 0,
+                            c.getEarlyMinutes() != null ? c.getEarlyMinutes() : 0);
+                })
+                .sorted(Comparator.comparing(LatenessDetailRow::date))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] latenessReportPdf(Long teacherId, LocalDate from, LocalDate to) {
+        List<LatenessDetailRow> detail = latenessDetail(teacherId, from, to);
+        java.util.Set<Long> subjectIds = detail.stream().map(LatenessDetailRow::subjectId)
+                .filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+        Map<Long, String> subjectLabels = academics.subjectLabels(subjectIds);
+        Map<Long, String> classLabels = new HashMap<>();
+        for (Long classId : detail.stream().map(LatenessDetailRow::classId).filter(java.util.Objects::nonNull).toList()) {
+            classLabels.computeIfAbsent(classId, id -> academics.findClass(id).map(c -> c.label()).orElse("Classe #" + id));
+        }
+        List<AttendanceReportPdfGenerator.TeacherReportRow> rows = new java.util.ArrayList<>();
+        for (LatenessDetailRow r : detail) {
+            rows.add(new AttendanceReportPdfGenerator.TeacherReportRow(r.date(),
+                    r.subjectId() != null ? subjectLabels.getOrDefault(r.subjectId(), "Matière #" + r.subjectId()) : null,
+                    r.classId() != null ? classLabels.get(r.classId()) : null,
+                    r.lateMinutes(), r.earlyMinutes(), false, null));
+        }
+        for (TeacherAttendance a : attendanceRepository.findByTeacherIdAndDateBetween(teacherId, from, to)) {
+            if (a.getStatus() == TeacherAttendanceStatus.ABSENT) {
+                rows.add(new AttendanceReportPdfGenerator.TeacherReportRow(a.getDate(), null, null, 0, 0, true, a.getReason()));
+            }
+        }
+        rows.sort(Comparator.comparing(AttendanceReportPdfGenerator.TeacherReportRow::date));
+        String teacherName = teacherPublicInfoProvider.findTeacher(teacherId)
+                .map(t -> (t.firstName() + " " + t.lastName()).trim())
+                .orElse("Enseignant #" + teacherId);
+        return pdfGenerator.teacherLatenessReport(new AttendanceReportPdfGenerator.TeacherLatenessReport(
+                TenantContext.get(), teacherName, from, to, rows));
+    }
 }

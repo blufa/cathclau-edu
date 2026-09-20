@@ -101,11 +101,16 @@ class SchoolBillingStatsProviderAdapter implements SchoolBillingStatsProvider {
 
         List<Invoice> yearInvoices = excludeCancelled(invoiceRepository.findByTenantIdAndAcademicYearId(tenantId, academicYearId));
 
-        BigDecimal familyDiscountAmount = yearInvoices.stream()
+        List<Invoice> familyDiscountInvoices = yearInvoices.stream()
                 .filter(i -> i.getDiscountReason() != null && i.getDiscountReason().startsWith(FAMILY_DISCOUNT_REASON_PREFIX))
+                .toList();
+        BigDecimal familyDiscountAmount = familyDiscountInvoices.stream()
                 .map(Invoice::getDiscountAmount)
                 .filter(a -> a != null)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+        long familyDiscountInvoicePaidCount = familyDiscountInvoices.stream()
+                .filter(i -> i.getStatus() == InvoiceStatus.PAID)
+                .count();
 
         Map<Long, FeeType> feeIdToType = schoolFeeRepository.findByTenantId(tenantId).stream()
                 .collect(Collectors.toMap(SchoolFee::getId, SchoolFee::getType, (a, b) -> a));
@@ -129,6 +134,7 @@ class SchoolBillingStatsProviderAdapter implements SchoolBillingStatsProvider {
                 .setScale(2, RoundingMode.HALF_UP);
 
         return new SubsidyStats(exemptions.size(), totalExemptions, partialExemptions, familyDiscountAmount,
+                familyDiscountInvoices.size(), familyDiscountInvoicePaidCount,
                 fullySettled.size(), estimatedEarlyPaymentSavings);
     }
 
@@ -142,6 +148,20 @@ class SchoolBillingStatsProviderAdapter implements SchoolBillingStatsProvider {
                 .limit(Math.max(1, limit))
                 .map(i -> new UpcomingInstallment(i.getId(), i.getFeeId(), i.getLabel(), i.getDueDate(), i.getAmount()))
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<Long, BigDecimal> writtenOffAmountByStudent(Long tenantId, Long academicYearId, List<Long> studentIds) {
+        if (studentIds == null || studentIds.isEmpty()) return Map.of();
+        java.util.Set<Long> ids = new java.util.HashSet<>(studentIds);
+        return invoiceRepository.findByTenantIdAndAcademicYearId(tenantId, academicYearId).stream()
+                .filter(i -> i.getStatus() == InvoiceStatus.CANCELLED && ids.contains(i.getStudentId()))
+                .collect(Collectors.groupingBy(Invoice::getStudentId,
+                        Collectors.reducing(BigDecimal.ZERO,
+                                i -> (i.getTotalAmount() != null ? i.getTotalAmount() : BigDecimal.ZERO)
+                                        .subtract(i.getPaidAmount() != null ? i.getPaidAmount() : BigDecimal.ZERO),
+                                BigDecimal::add)));
     }
 
     private Long studentClassId(List<Invoice> invoices, Long studentId, Map<Long, Long> feeIdToClassId) {
@@ -162,7 +182,8 @@ class SchoolBillingStatsProviderAdapter implements SchoolBillingStatsProvider {
         long unpaidCount = invoices.stream()
                 .filter(i -> i.getStatus() == InvoiceStatus.UNPAID || i.getStatus() == InvoiceStatus.PARTIAL)
                 .count();
-        return new BillingStats(invoiced, collected, outstanding, recoveryRate, unpaidCount);
+        long paidCount = invoices.stream().filter(i -> i.getStatus() == InvoiceStatus.PAID).count();
+        return new BillingStats(invoiced, collected, outstanding, recoveryRate, unpaidCount, paidCount);
     }
 
     private List<Invoice> excludeCancelled(List<Invoice> invoices) {

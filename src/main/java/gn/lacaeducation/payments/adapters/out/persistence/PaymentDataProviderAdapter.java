@@ -10,6 +10,7 @@ public class PaymentDataProviderAdapter implements PaymentDataProvider {
     @Override
     public Optional<PaymentPublicInfo> findPayment(Long paymentId) {
         return jpa.findById(paymentId).map(e ->
-                new PaymentPublicInfo(e.getId(), e.getReference(), e.getAmount(), e.getChannel().name(), e.getPaidAt()));
+                new PaymentPublicInfo(e.getId(), e.getReference(), e.getAmount(), e.getChannel().name(),
+                        e.getPaidAt(), e.getCoveredMonths()));
     }
 }

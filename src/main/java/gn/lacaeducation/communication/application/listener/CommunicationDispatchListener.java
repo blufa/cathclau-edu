@@ -1,8 +1,11 @@
 package gn.lacaeducation.communication.application.listener;
 
 import gn.lacaeducation.communication.application.event.CommunicationRecipientsPendingEvent;
+import gn.lacaeducation.communication.application.port.in.SmsRetryQueueUseCase;
+import gn.lacaeducation.communication.application.port.out.CommunicationRepository;
 import gn.lacaeducation.communication.application.port.out.MessageRecipientRepository;
 import gn.lacaeducation.communication.application.port.out.NotificationGateway;
+import gn.lacaeducation.communication.domain.CommunicationChannel;
 import gn.lacaeducation.communication.domain.DeliveryStatus;
 import gn.lacaeducation.communication.domain.MessageRecipient;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +36,8 @@ public class CommunicationDispatchListener {
 
     private final List<NotificationGateway> gateways;
     private final MessageRecipientRepository recipientRepo;
+    private final CommunicationRepository communicationRepo;
+    private final SmsRetryQueueUseCase smsRetryQueueUseCase;
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Async
@@ -47,14 +52,29 @@ public class CommunicationDispatchListener {
 
     private void dispatchOne(NotificationGateway gateway, MessageRecipient recipient, CommunicationRecipientsPendingEvent event) {
         if (recipient.getDestination() == null || recipient.getDestination().isBlank()) return;
+        boolean delivered;
+        NotificationGateway.DeliveryResult res = null;
         try {
-            NotificationGateway.DeliveryResult res = gateway.send(recipient.getDestination(), event.subject(), event.content());
-            recipient.setDeliveryStatus(res.delivered() ? DeliveryStatus.DELIVERED : DeliveryStatus.FAILED);
-            recipient.setDeliveredAt(res.delivered() ? LocalDateTime.now() : null);
+            res = gateway.send(recipient.getDestination(), event.subject(), event.content());
+            delivered = res.delivered();
+            recipient.setDeliveryStatus(delivered ? DeliveryStatus.DELIVERED : DeliveryStatus.FAILED);
+            recipient.setDeliveredAt(delivered ? LocalDateTime.now() : null);
             recipient.setProviderMessageId(res.providerMessageId());
         } catch (RuntimeException e) {
             log.error("Échec envoi communication id={} vers {} : {}", event.communicationId(), recipient.getDestination(), e.getMessage());
             recipient.setDeliveryStatus(DeliveryStatus.FAILED);
+            delivered = false;
+        }
+        // Échec SMS (connexion serveur↔fournisseur instable, §retour direction) : mis en file pour
+        // renvoi automatique au lieu d'être simplement perdu — le statut du destinataire reste PENDING
+        // (pas encore FAILED, un renvoi est en cours) tant que la file n'a pas définitivement abandonné.
+        if (!delivered && event.channel() == CommunicationChannel.SMS) {
+            recipient.setDeliveryStatus(DeliveryStatus.PENDING);
+            Long tenantId = communicationRepo.findById(event.communicationId())
+                    .map(gn.lacaeducation.communication.domain.Communication::getTenantId).orElse(null);
+            smsRetryQueueUseCase.enqueue(new SmsRetryQueueUseCase.EnqueueCommand(
+                    tenantId, recipient.getId(), recipient.getDestination(), event.subject(), event.content(),
+                    res != null ? res.detail() : "exception à l'envoi"));
         }
         recipientRepo.save(recipient);
     }

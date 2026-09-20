@@ -19,13 +19,13 @@ public class TeacherClassController {
 
     public record AssignClassesRequest(List<Long> classIds) {}
 
-    @Operation(summary = "List the class ids a teacher is assigned to")
+    @Operation(summary = "Lister les identifiants de classes affectées à un enseignant")
     @GetMapping("/{teacherId}/assigned-classes")
     public List<Long> list(@PathVariable Long teacherId) {
         return service.findClassIds(teacherId);
     }
 
-    @Operation(summary = "Replace the set of classes a teacher is assigned to")
+    @Operation(summary = "Remplacer l'ensemble des classes affectées à un enseignant")
     @PreAuthorize("hasAuthority('classe:manage')")
     @PutMapping("/{teacherId}/assigned-classes")
     public List<Long> set(@PathVariable Long teacherId, @RequestBody AssignClassesRequest r) {

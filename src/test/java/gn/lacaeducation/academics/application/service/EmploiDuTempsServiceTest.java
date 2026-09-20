@@ -6,6 +6,8 @@ import gn.lacaeducation.academics.domain.EmploiDuTemps;
 import gn.lacaeducation.academics.domain.valueobject.JourSemaine;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ConflictException;
+import gn.lacaeducation.academics.application.port.out.TeacherScheduleFlagPort;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -16,6 +18,7 @@ import java.time.LocalTime;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -24,7 +27,13 @@ import static org.mockito.Mockito.when;
 class EmploiDuTempsServiceTest {
 
     @Mock EmploiDuTempsRepository repo;
+    @Mock TeacherScheduleFlagPort teacherProvider;
     @InjectMocks EmploiDuTempsService service;
+
+    @BeforeEach
+    void defaultTeacherDoesNotAllowConcurrentClasses() {
+        lenient().when(teacherProvider.allowsConcurrentClasses(any())).thenReturn(false);
+    }
 
     private CreateScheduleCommand cmd() {
         return new CreateScheduleCommand(10L, 1L, 2L, 3L, 4L,
@@ -86,5 +95,34 @@ class EmploiDuTempsServiceTest {
 
         verify(repo).save(any(EmploiDuTemps.class));
         org.assertj.core.api.Assertions.assertThat(result.getDay()).isEqualTo(JourSemaine.LUNDI);
+    }
+
+    /** Enseignant exceptionnel (ex. EPS) pouvant couvrir plusieurs classes en même temps (§5.6) : le
+     * conflit d'enseignant est ignoré pour lui précisément, sans jamais désactiver les conflits de
+     * salle/classe. */
+    @Test
+    void create_teacherAllowsConcurrentClasses_bypassesTeacherConflict() {
+        when(teacherProvider.allowsConcurrentClasses(3L)).thenReturn(true);
+        when(repo.existsRoomConflict(any(), any(), any(), any())).thenReturn(false);
+        when(repo.existsClassConflict(any(), any(), any(), any())).thenReturn(false);
+        when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        EmploiDuTemps result = service.create(cmd());
+
+        verify(repo, never()).existsTeacherConflict(any(), any(), any(), any());
+        verify(repo).save(any(EmploiDuTemps.class));
+        org.assertj.core.api.Assertions.assertThat(result.getDay()).isEqualTo(JourSemaine.LUNDI);
+    }
+
+    @Test
+    void create_teacherAllowsConcurrentClasses_stillChecksRoomAndClassConflicts() {
+        when(teacherProvider.allowsConcurrentClasses(3L)).thenReturn(true);
+        when(repo.existsRoomConflict(any(), any(), any(), any())).thenReturn(false);
+        when(repo.existsClassConflict(1L, JourSemaine.LUNDI, LocalTime.of(8, 0), LocalTime.of(10, 0)))
+                .thenReturn(true);
+
+        assertThatThrownBy(() -> service.create(cmd()))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("Cette classe a déjà un cours");
     }
 }

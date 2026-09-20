@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
-@Tag(name = "Payments", description = "Initiate and manage student fee payments via mobile money and card providers")
+@Tag(name = "Payments", description = "Initier et gérer les paiements des frais scolaires via mobile money et carte bancaire")
 @RestController @RequestMapping("/api/v1/payments") @RequiredArgsConstructor
 public class PaymentController {
     private final PaymentUseCase useCase;
@@ -25,8 +25,8 @@ public class PaymentController {
                                   String payerNumber, Long academicYearId) {}
     /** Initiation result: the payment plus the aggregator redirect URL (Djomy) when present. */
     public record InitiateResponse(Payment payment, String redirectUrl) {}
-    @Operation(summary = "Initiate a new payment for a student invoice (returns redirectUrl for aggregator channels)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT','SECRETARY')")
+    @Operation(summary = "Initier un nouveau paiement pour une facture élève (retourne redirectUrl pour les canaux agrégateurs)")
+    @PreAuthorize("hasAuthority('paiement:create')")
     @PostMapping public ResponseEntity<InitiateResponse> initiate(@RequestBody InitiateRequest r, @AuthenticationPrincipal Jwt jwt) throws JsonProcessingException {
         return ResponseEntity.ok(doInitiate(r, currentUserId(jwt)));
     }
@@ -38,9 +38,9 @@ public class PaymentController {
                                 *  après une coupure réseau) — voir {@link PaymentUseCase.GroupPaymentCommand}. */
                                String idempotencyKey) {}
 
-    @Operation(summary = "Group payment of several months / the whole year — one payment, one receipt. "
-            + "Desk channels are immediate; Djomy returns a redirectUrl for a single online transaction.")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT','SECRETARY')")
+    @Operation(summary = "Paiement groupé de plusieurs mois / de l'année entière — un paiement, un reçu. "
+            + "Les canaux guichet sont immédiats ; Djomy retourne une redirectUrl pour une transaction en ligne unique.")
+    @PreAuthorize("hasAuthority('paiement:create')")
     @PostMapping("/group") public ResponseEntity<InitiateResponse> group(@RequestBody GroupRequest r, @AuthenticationPrincipal Jwt jwt) {
         Payment payment = useCase.initiateGroup(new PaymentUseCase.GroupPaymentCommand(
                 r.tenantId(), r.studentId(), r.channel(), r.payerNumber(),
@@ -62,14 +62,14 @@ public class PaymentController {
         }
     }
 
-    @Operation(summary = "Confirm a payment by polling Djomy on demand (no webhook): on success, "
-            + "confirms the payment, splits a group across its month-invoices and emits the receipt. Idempotent.")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT','SECRETARY','PARENT','STUDENT')")
+    @Operation(summary = "Confirmer un paiement en interrogeant Djomy à la demande (sans webhook) : en cas de succès, "
+            + "confirme le paiement, répartit un groupe sur ses factures mensuelles et émet le reçu. Idempotent.")
+    @PreAuthorize("hasAuthority('paiement:create') or hasRole('PARENT') or hasRole('STUDENT')")
     @PostMapping("/{id}/confirm-djomy") public ResponseEntity<Payment> confirmViaDjomy(@PathVariable Long id) throws JsonProcessingException {
         return ResponseEntity.ok(useCase.confirmViaDjomy(id));
     }
 
-    @Operation(summary = "Self-service online payment by a parent/student (online channels only — no cash)")
+    @Operation(summary = "Paiement en ligne self-service par un parent/élève (canaux en ligne uniquement — pas d'espèces)")
     @PreAuthorize("hasAnyRole('PARENT','STUDENT')")
     @PostMapping("/self-service") public ResponseEntity<InitiateResponse> selfService(@RequestBody InitiateRequest r) throws JsonProcessingException {
         if (r.channel().isDeskManual()) {
@@ -88,41 +88,41 @@ public class PaymentController {
                 .findFirst().orElse(null);
         return new InitiateResponse(payment, redirectUrl);
     }
-    @Operation(summary = "Query the live Djomy status of a payment (diagnostic: follow CREATED → PENDING → SUCCESS without waiting for the webhook)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @Operation(summary = "Consulter le statut Djomy en temps réel d'un paiement (diagnostic : suivre CREATED → PENDING → SUCCESS sans attendre le webhook)")
+    @PreAuthorize("hasAuthority('paiement:read')")
     @GetMapping("/{id}/djomy-status") public ResponseEntity<PaymentUseCase.DjomyStatusResponse> djomyStatus(@PathVariable Long id) throws JsonProcessingException {
         return ResponseEntity.ok(useCase.checkDjomyStatus(id));
     }
-    @Operation(summary = "Confirm a payment as successful")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @Operation(summary = "Confirmer un paiement comme réussi")
+    @PreAuthorize("hasAuthority('paiement:create')")
     @PutMapping("/{id}/success") public ResponseEntity<Payment> confirmSuccess(@PathVariable Long id) { return ResponseEntity.ok(useCase.confirmSuccess(id)); }
-    @Operation(summary = "Mark a payment as failed")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @Operation(summary = "Marquer un paiement comme échoué")
+    @PreAuthorize("hasAuthority('paiement:create')")
     @PutMapping("/{id}/fail") public ResponseEntity<Payment> markFailed(@PathVariable Long id) { return ResponseEntity.ok(useCase.markFailed(id)); }
-    @Operation(summary = "Mark a payment as refunded")
+    @Operation(summary = "Marquer un paiement comme remboursé")
     @PreAuthorize("hasAuthority('paiement:refund')")
     @PutMapping("/{id}/refund") public ResponseEntity<Payment> markRefunded(@PathVariable Long id) { return ResponseEntity.ok(useCase.markRefunded(id)); }
-    @Operation(summary = "Get a payment by ID")
+    @Operation(summary = "Consulter un paiement par ID")
     @GetMapping("/{id}") public ResponseEntity<Payment> findById(@PathVariable Long id) {
         return useCase.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
-    @Operation(summary = "Get a payment by its reference number")
+    @Operation(summary = "Consulter un paiement par son numéro de référence")
     @GetMapping("/reference/{reference}") public ResponseEntity<Payment> findByReference(@PathVariable String reference) {
         return useCase.findByReference(reference).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
-    @Operation(summary = "Get the provider transactions associated with a payment (§9.1)")
+    @Operation(summary = "Consulter les transactions fournisseur associées à un paiement (§9.1)")
     @PreAuthorize("hasAuthority('transaction:read')")
     @GetMapping("/{id}/transactions") public List<PaymentTransaction> transactions(@PathVariable Long id) {
         return transactionUseCase.findByPaymentId(id);
     }
-    @Operation(summary = "Get the receipt PDF URL for a successful payment (§9.1) — generated on demand if missing")
+    @Operation(summary = "Consulter l'URL du reçu PDF d'un paiement réussi (§9.1) — généré à la demande si absent")
     @GetMapping("/{id}/receipt/pdf") public ResponseEntity<Map<String, String>> receiptPdf(@PathVariable Long id) {
         return receiptUseCase.findByPaymentId(id)
                 .map(r -> ResponseEntity.ok(Map.of("url", receiptUseCase.pdfUrl(r.getId()))))
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    @Operation(summary = "Stream the receipt PDF bytes (inline) for a payment — independent of Cloudinary")
+    @Operation(summary = "Diffuser les octets du reçu PDF (inline) pour un paiement — indépendant de Cloudinary")
     @GetMapping("/{id}/receipt/pdf/download") public ResponseEntity<byte[]> receiptPdfDownload(@PathVariable Long id) {
         return receiptUseCase.findByPaymentId(id)
                 .map(r -> ResponseEntity.ok()
@@ -131,14 +131,14 @@ public class PaymentController {
                         .body(receiptUseCase.pdfBytes(r.getId())))
                 .orElse(ResponseEntity.notFound().build());
     }
-    @Operation(summary = "List all payments for an invoice")
+    @Operation(summary = "Lister tous les paiements d'une facture")
     @GetMapping("/invoice/{invoiceId}") public List<Payment> findByInvoice(@PathVariable Long invoiceId) { return useCase.findByInvoiceId(invoiceId); }
-    @Operation(summary = "List all payments for a student (personnel)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT','SECRETARY')")
+    @Operation(summary = "Lister tous les paiements d'un élève (personnel)")
+    @PreAuthorize("hasAuthority('paiement:read')")
     @GetMapping("/student/{studentId}") public List<Payment> findByStudent(@PathVariable Long studentId) {
         return useCase.findByStudentId(studentId);
     }
-    @Operation(summary = "List all payments for a tenant — pass academicYearId to scope to one school year (recommended: an unscoped call mixes every year ever created)")
+    @Operation(summary = "Lister tous les paiements d'un tenant — passer academicYearId pour se limiter à une année scolaire (recommandé : un appel sans filtre mélange toutes les années créées)")
     @GetMapping("/tenant/{tenantId}") public List<Payment> findByTenant(@PathVariable Long tenantId, @RequestParam(required = false) Long academicYearId) {
         return academicYearId != null ? useCase.findByTenantIdAndAcademicYearId(tenantId, academicYearId) : useCase.findByTenantId(tenantId);
     }
@@ -162,7 +162,7 @@ public class PaymentController {
             @RequestParam java.time.LocalDateTime to) {
         return useCase.dailyCollectionsReport(from, to);
     }
-    @Operation(summary = "Delete a payment record")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @Operation(summary = "Supprimer un enregistrement de paiement")
+    @PreAuthorize("hasAuthority('paiement:delete')")
     @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id) { useCase.delete(id); return ResponseEntity.noContent().build(); }
 }

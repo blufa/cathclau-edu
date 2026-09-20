@@ -1,5 +1,6 @@
 package gn.lacaeducation.payroll.application.service;
 
+import gn.lacaeducation.billing.StudentFeePaymentApi;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.payroll.application.port.in.SalaryFeeDeductionUseCase;
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 
 @Service
@@ -22,6 +24,7 @@ public class SalaryFeeDeductionService implements SalaryFeeDeductionUseCase {
     private final SalaryFeeDeductionRuleRepository repo;
     private final TeacherPublicInfoProvider teacherProvider;
     private final ParentAccessProvider parentAccessProvider;
+    private final StudentFeePaymentApi studentFeePaymentApi;
 
     @Override
     public SalaryFeeDeductionRule create(Long tenantId, RuleCommand c) {
@@ -82,6 +85,60 @@ public class SalaryFeeDeductionService implements SalaryFeeDeductionUseCase {
             amount = rule.getCap();
         }
         return new FeeDeduction(amount, rule.getLabel(), concerned);
+    }
+
+    @Override
+    public void applyDeductionAsInvoicePayment(Long tenantId, Long teacherId) {
+        Long userId = teacherProvider.findUserIdByTeacherId(teacherId).orElse(null);
+        if (userId == null) return;
+        List<Long> childIds = parentAccessProvider.findChildStudentIdsWithValidatedEnrollment(userId);
+        if (childIds.isEmpty()) return;
+        SalaryFeeDeductionRule rule = repo.findByTenantId(tenantId).stream()
+                .filter(SalaryFeeDeductionRule::isActive)
+                .findFirst()
+                .orElse(null);
+        if (rule == null) return;
+        int concerned = rule.getMaxChildren() != null ? Math.min(childIds.size(), rule.getMaxChildren()) : childIds.size();
+        if (concerned == 0) return;
+        BigDecimal perChild = rule.getAmountPerChild();
+        BigDecimal total = perChild.multiply(BigDecimal.valueOf(concerned));
+        if (rule.getCap() != null && total.compareTo(rule.getCap()) > 0) {
+            // Plafond atteint : répartir le plafond également entre les enfants concernés, pour ne
+            // jamais reverser sur les factures plus que ce qui a réellement été retenu sur le salaire.
+            perChild = rule.getCap().divide(BigDecimal.valueOf(concerned), 2, RoundingMode.HALF_UP);
+        }
+        for (Long studentId : childIds.subList(0, concerned)) {
+            studentFeePaymentApi.applyMonthlyPayment(tenantId, studentId, perChild);
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public StaffBenefitRemainderDeduction computeStaffBenefitRemainder(Long tenantId, Long teacherId) {
+        Long userId = teacherProvider.findUserIdByTeacherId(teacherId).orElse(null);
+        if (userId == null) return new StaffBenefitRemainderDeduction(BigDecimal.ZERO, 0);
+        BigDecimal total = BigDecimal.ZERO;
+        int concerned = 0;
+        for (Long studentId : parentAccessProvider.findChildStudentIdsWithValidatedEnrollment(userId)) {
+            BigDecimal remainder = studentFeePaymentApi.outstandingStaffBenefitRemainder(studentId);
+            if (remainder != null && remainder.signum() > 0) {
+                total = total.add(remainder);
+                concerned++;
+            }
+        }
+        return new StaffBenefitRemainderDeduction(total, concerned);
+    }
+
+    @Override
+    public void applyStaffBenefitRemainderAsInvoicePayment(Long tenantId, Long teacherId) {
+        Long userId = teacherProvider.findUserIdByTeacherId(teacherId).orElse(null);
+        if (userId == null) return;
+        for (Long studentId : parentAccessProvider.findChildStudentIdsWithValidatedEnrollment(userId)) {
+            BigDecimal remainder = studentFeePaymentApi.outstandingStaffBenefitRemainder(studentId);
+            if (remainder != null && remainder.signum() > 0) {
+                studentFeePaymentApi.applyMonthlyPayment(tenantId, studentId, remainder);
+            }
+        }
     }
 
     private void validate(RuleCommand c) {

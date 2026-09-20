@@ -37,7 +37,7 @@ class ExemptionPersistenceAdapter implements ExemptionRepository {
     private Exemption toDomain(ExemptionJpaEntity e) {
         return Exemption.builder()
                 .id(e.getId()).tenantId(e.getTenantId()).studentId(e.getStudentId()).type(e.getType())
-                .percentage(e.getPercentage()).amount(e.getAmount()).feeType(e.getFeeType())
+                .percentage(e.getPercentage()).amount(e.getAmount()).feeTypes(e.getFeeTypes())
                 .reason(e.getReason()).startDate(e.getStartDate()).endDate(e.getEndDate())
                 .validatedBy(e.getValidatedBy()).active(e.isActive()).createdAt(e.getCreatedAt())
                 .build();
@@ -46,7 +46,7 @@ class ExemptionPersistenceAdapter implements ExemptionRepository {
     private ExemptionJpaEntity toEntity(Exemption d) {
         ExemptionJpaEntity e = new ExemptionJpaEntity();
         e.setId(d.getId()); e.setTenantId(d.getTenantId()); e.setStudentId(d.getStudentId()); e.setType(d.getType());
-        e.setPercentage(d.getPercentage()); e.setAmount(d.getAmount()); e.setFeeType(d.getFeeType());
+        e.setPercentage(d.getPercentage()); e.setAmount(d.getAmount()); e.setFeeTypes(d.getFeeTypes());
         e.setReason(d.getReason()); e.setStartDate(d.getStartDate()); e.setEndDate(d.getEndDate());
         e.setValidatedBy(d.getValidatedBy()); e.setActive(d.isActive()); e.setCreatedAt(d.getCreatedAt());
         return e;

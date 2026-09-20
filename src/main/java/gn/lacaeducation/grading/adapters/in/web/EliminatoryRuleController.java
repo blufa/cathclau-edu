@@ -28,7 +28,7 @@ public class EliminatoryRuleController {
     private final EliminatoryRuleUseCase useCase;
 
     @Operation(summary = "Créer une règle de note éliminatoire pour une matière")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','RESPONSABLE_PEDAGOGIQUE')")
+    @PreAuthorize("hasAuthority('parametrage_notes:manage')")
     @PostMapping
     public ResponseEntity<EliminatoryRule> create(@RequestBody RuleCommand cmd) {
         EliminatoryRule r = useCase.create(TenantContext.get(), cmd);
@@ -42,14 +42,14 @@ public class EliminatoryRuleController {
     }
 
     @Operation(summary = "Modifier une règle éliminatoire")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','RESPONSABLE_PEDAGOGIQUE')")
+    @PreAuthorize("hasAuthority('parametrage_notes:manage')")
     @PutMapping("/{id}")
     public EliminatoryRule update(@PathVariable Long id, @RequestBody RuleCommand cmd) {
         return useCase.update(id, cmd);
     }
 
     @Operation(summary = "Supprimer une règle éliminatoire")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('parametrage_notes:manage')")
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {

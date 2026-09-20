@@ -42,9 +42,35 @@ interface BillingEnrollmentJpaRepository extends JpaRepository<BillingEnrollment
             + "AND e.status <> 'CANCELLED' ORDER BY CASE WHEN e.status = 'VALIDATED' THEN 0 ELSE 1 END, e.id DESC")
     List<Long> findActiveAcademicYearIdsMostRecentFirst(@Param("studentId") Long studentId);
 
-    // Même garde VALIDATED que l'opt-in plateforme ci-dessus, pour la même raison de cohérence.
+    // À la différence de l'opt-in plateforme ci-dessus, VALIDATED ou PENDING sont acceptés ici : ce
+    // choix n'a aucun impact sur les notifications (contrairement au frais plateforme), et
+    // generateMonthly() est explicitement conçu pour tourner dès l'inscription PENDING ("on peut payer
+    // l'inscription + les premiers mois en même temps"). Exiger VALIDATED faisait silencieusement
+    // ignorer l'opt-in « paiement par mois » choisi à l'inscription tant que celle-ci n'était pas
+    // encore validée administrativement, générant des factures en tranche au lieu de mensuelles.
     @Query("SELECT COUNT(e) > 0 FROM BillingEnrollmentJpaEntity e WHERE e.studentId = :studentId "
-            + "AND e.academicYearId = :academicYearId AND e.status = 'VALIDATED' AND e.monthlyPaymentOptIn = true")
+            + "AND e.academicYearId = :academicYearId AND e.status IN ('VALIDATED', 'PENDING') "
+            + "AND e.monthlyPaymentOptIn = true")
     boolean existsMonthlyPaymentOptInByStudentIdAndAcademicYearId(
             @Param("studentId") Long studentId, @Param("academicYearId") Long academicYearId);
+
+    // Requête native (jointure directe sur les tables, pas d'entité JPA dédiée pour school_classes/
+    // levels) : même ordre VALIDATED-d'abord que findActiveAcademicYearIdsMostRecentFirst, pour rester
+    // cohérent avec la même notion d'« inscription active la plus récente » utilisée partout ailleurs
+    // dans ce module. Renvoie cycle+libellé (pas seulement sort_order) pour permettre un classement
+    // fiable selon la progression pédagogique officielle, indépendant du sort_order que chaque école
+    // saisit elle-même à la main.
+    @Query(value = "SELECT l.cycle AS cycle, l.label AS label, l.sort_order AS sortOrder FROM enrollments e "
+            + "JOIN school_classes c ON c.id = e.class_id "
+            + "JOIN levels l ON l.id = c.level_id "
+            + "WHERE e.student_id = :studentId AND e.status <> 'CANCELLED' "
+            + "ORDER BY CASE WHEN e.status = 'VALIDATED' THEN 0 ELSE 1 END, e.id DESC LIMIT 1",
+            nativeQuery = true)
+    ActiveLevelProjection findActiveLevel(@Param("studentId") Long studentId);
+
+    interface ActiveLevelProjection {
+        String getCycle();
+        String getLabel();
+        Integer getSortOrder();
+    }
 }
