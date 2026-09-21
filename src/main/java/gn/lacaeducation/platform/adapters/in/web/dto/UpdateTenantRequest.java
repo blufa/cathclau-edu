@@ -3,4 +3,5 @@ public record UpdateTenantRequest(String schoolName, String logo, String brandCo
         String address, String city, String country, String phone, String email,
         String website, String director, String accreditationNumber, String openingAuthorization,
         String payoutMerchantNumber, String payoutOperator, String payoutAccountName,
-        String motto, String slogan, String ire, String dpeLabel, String sousPrefectureLabel) {}
+        String motto, String slogan, String ire, String dpeLabel, String sousPrefectureLabel,
+        String matriculeFormat, Integer matriculeDigits) {}

@@ -1,6 +1,7 @@
 package gn.lacaeducation.academics.domain;
 
 import gn.lacaeducation.academics.domain.valueobject.ClassType;
+import gn.lacaeducation.academics.domain.valueobject.Grade;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -22,6 +23,13 @@ public class Classe {
     private String label;
     private Integer headcount;
     private Integer maxCapacity;
+    /** Grade pédagogique précis (ex. CP1, SEPTIEME, TERMINALE) — porte la granularité que le Niveau
+     * (réduit à Maternelle/Primaire/Secondaire) ne porte plus. Nullable : classes historiques non
+     * migrées ou nomenclature maison hors catalogue dégradent gracieusement (pas de blocage). */
+    private Grade grade;
+    /** Série au lycée (LITTERAIRE/SCIENTIFIQUE) — pertinent uniquement si grade a une série
+     * (SECONDE..TERMINALE), null sinon. */
+    private String serie;
     /** Classe normale ou classe d'examen (§6) — détermine le tarif horaire de paie appliqué. */
     @Builder.Default
     private ClassType classType = ClassType.NORMALE;

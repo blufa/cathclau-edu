@@ -43,8 +43,8 @@ class EnrollmentQueryAdapter implements EnrollmentQueryPort {
     }
 
     @Override
-    public ActiveLevel findActiveLevel(Long studentId) {
-        BillingEnrollmentJpaRepository.ActiveLevelProjection p = enrollmentJpaRepository.findActiveLevel(studentId);
-        return p == null ? null : new ActiveLevel(p.getCycle(), p.getLabel(), p.getSortOrder());
+    public ActiveGrade findActiveLevel(Long studentId) {
+        BillingEnrollmentJpaRepository.ActiveGradeProjection p = enrollmentJpaRepository.findActiveLevel(studentId);
+        return p == null ? null : new ActiveGrade(p.getGrade(), p.getNiveauCycle(), p.getNiveauSortOrder());
     }
 }

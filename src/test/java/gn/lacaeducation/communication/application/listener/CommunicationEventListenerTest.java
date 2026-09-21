@@ -62,7 +62,7 @@ class CommunicationEventListenerTest {
         when(schoolStaffDirectory.findSchoolAdminContacts(10L))
                 .thenReturn(List.of(new SchoolAdminContact("622000000", "Directeur École")));
         when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.of(
-                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
+                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
         when(templateRepository.findByTenantIdAndReason(any(), any())).thenReturn(Optional.empty());
 
         listener().onPaymentSucceeded(new PaymentSucceededEvent(10L, 7L, 1L, null, new BigDecimal("50000"), null));

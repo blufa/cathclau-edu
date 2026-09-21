@@ -35,7 +35,10 @@ public interface CreateTenantUseCase {
             String address, String city, String country, String phone, String email,
             String website, String director, String accreditationNumber, String openingAuthorization,
             String payoutMerchantNumber, String payoutOperator, String payoutAccountName,
-            String motto, String slogan, String ire, String dpeLabel, String sousPrefectureLabel) {}
+            String motto, String slogan, String ire, String dpeLabel, String sousPrefectureLabel,
+            /** Format du matricule (jetons {PREFIXE}/{ANNEE}/{NUM}) et nombre de chiffres du numéro
+             * séquentiel — null = valeurs par défaut. Voir {@code MatriculeFormatter}. */
+            String matriculeFormat, Integer matriculeDigits) {}
 
     /** Tenant detail with its current subscription, plan and consumed student quota (§1.1). */
     record TenantDetail(Tenant tenant, Subscription currentSubscription, Plan plan,

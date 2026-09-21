@@ -1,5 +1,6 @@
 package gn.lacaeducation.academics.domain.referentiel;
 
+import gn.lacaeducation.academics.domain.valueobject.Grade;
 import gn.lacaeducation.academics.domain.valueobject.SchoolCycle;
 
 import java.math.BigDecimal;
@@ -28,6 +29,16 @@ public final class CatalogueMepua {
             case LYCEE -> lycee(serie);
             case SUPERIEUR -> List.of();
         };
+    }
+
+    /**
+     * Résout le catalogue MEPUA d'une classe à partir de son {@link Grade} — dérive Collège vs Lycée
+     * du grade plutôt que du Niveau, qui ne distingue plus les deux depuis la réforme du catalogue de
+     * référentiels (réduit à Maternelle/Primaire/Secondaire).
+     */
+    public static List<MatiereModele> pourClasse(Grade grade, String serie) {
+        if (grade == null) return List.of();
+        return pour(grade.mepuaCycle(), serie);
     }
 
     private static List<MatiereModele> lycee(String serie) {

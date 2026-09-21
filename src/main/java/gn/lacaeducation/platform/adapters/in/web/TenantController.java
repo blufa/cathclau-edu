@@ -74,7 +74,8 @@ public class TenantController {
                 req.country(), req.phone(), req.email(), req.website(), req.director(),
                 req.accreditationNumber(), req.openingAuthorization(),
                 req.payoutMerchantNumber(), req.payoutOperator(), req.payoutAccountName(),
-                req.motto(), req.slogan(), req.ire(), req.dpeLabel(), req.sousPrefectureLabel())));
+                req.motto(), req.slogan(), req.ire(), req.dpeLabel(), req.sousPrefectureLabel(),
+                req.matriculeFormat(), req.matriculeDigits())));
     }
 
     @Operation(summary = "Suspend a tenant (blocks all users)")

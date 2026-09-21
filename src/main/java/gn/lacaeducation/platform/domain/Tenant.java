@@ -72,4 +72,12 @@ public class Tenant {
      * d'un partenariat DPE. Ne concerne jamais l'abonnement SaaS ni le fonctionnement normal de
      * l'école, uniquement la supervision en lecture seule par la DPE/DCE. */
     private Long prefectureId;
+    /** Format du matricule (élèves/enseignants), défini librement par l'école via des jetons
+     * {PREFIXE}/{ANNEE}/{NUM} (ex. "{PREFIXE}-{ANNEE}-{NUM}") — null = format par défaut
+     * {@code {PREFIXE}{NUM}} (comportement historique, ex. "AT00001"). Voir
+     * {@code gn.lacaeducation.common.MatriculeFormatter}. */
+    private String matriculeFormat;
+    /** Nombre de chiffres du numéro séquentiel du matricule (avec zéros de tête) — null = 5 par
+     * défaut (comportement historique). */
+    private Integer matriculeDigits;
 }

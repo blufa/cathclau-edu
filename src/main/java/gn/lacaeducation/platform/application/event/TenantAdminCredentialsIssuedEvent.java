@@ -10,5 +10,6 @@ public record TenantAdminCredentialsIssuedEvent(
         Long tenantId,
         String schoolName,
         String adminEmail,
+        String adminPhone,
         String temporaryPassword
 ) {}
