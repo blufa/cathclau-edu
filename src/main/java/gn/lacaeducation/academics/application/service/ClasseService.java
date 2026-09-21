@@ -51,6 +51,8 @@ public class ClasseService implements GererClasseUseCase {
                 .headcount(0)
                 .maxCapacity(command.maxCapacity())
                 .classType(command.classType() != null ? command.classType() : gn.lacaeducation.academics.domain.valueobject.ClassType.NORMALE)
+                .grade(command.grade())
+                .serie(command.serie())
                 .build();
         return classeRepository.save(classe);
     }
@@ -160,6 +162,7 @@ public class ClasseService implements GererClasseUseCase {
         c.setHeadTeacherId(command.headTeacherId()); c.setRoomId(command.roomId());
         c.setLabel(command.label()); c.setMaxCapacity(command.maxCapacity());
         if (command.classType() != null) c.setClassType(command.classType());
+        c.setGrade(command.grade()); c.setSerie(command.serie());
         return classeRepository.save(c);
     }
 

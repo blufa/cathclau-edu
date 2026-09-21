@@ -1,6 +1,6 @@
 package gn.lacaeducation.billing.application.service;
 
-import gn.lacaeducation.billing.application.port.out.EnrollmentQueryPort.ActiveLevel;
+import gn.lacaeducation.billing.application.port.out.EnrollmentQueryPort.ActiveGrade;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -8,51 +8,37 @@ import static org.assertj.core.api.Assertions.assertThat;
 class NiveauCanonicalOrderTest {
 
     @Test
-    void cycleRank_ordersGarderieBeforeMaternelleBeforePrimaireBeforeCollegeBeforeLyceeBeforeSuperieur() {
-        assertThat(NiveauCanonicalOrder.cycleRank("GARDERIE"))
-                .isLessThan(NiveauCanonicalOrder.cycleRank("MATERNELLE"));
-        assertThat(NiveauCanonicalOrder.cycleRank("MATERNELLE"))
-                .isLessThan(NiveauCanonicalOrder.cycleRank("PRIMAIRE"));
-        assertThat(NiveauCanonicalOrder.cycleRank("PRIMAIRE"))
-                .isLessThan(NiveauCanonicalOrder.cycleRank("COLLEGE"));
-        assertThat(NiveauCanonicalOrder.cycleRank("COLLEGE"))
-                .isLessThan(NiveauCanonicalOrder.cycleRank("LYCEE"));
-        assertThat(NiveauCanonicalOrder.cycleRank("LYCEE"))
-                .isLessThan(NiveauCanonicalOrder.cycleRank("SUPERIEUR"));
+    void gradeRank_ordersMaternelleSectionsThenPrimaireThenCollegeThenLycee() {
+        assertThat(NiveauCanonicalOrder.gradeRank("PETITE_SECTION"))
+                .isLessThan(NiveauCanonicalOrder.gradeRank("MOYENNE_SECTION"));
+        assertThat(NiveauCanonicalOrder.gradeRank("MOYENNE_SECTION"))
+                .isLessThan(NiveauCanonicalOrder.gradeRank("GRANDE_SECTION"));
+        assertThat(NiveauCanonicalOrder.gradeRank("GRANDE_SECTION"))
+                .isLessThan(NiveauCanonicalOrder.gradeRank("CP1"));
+        assertThat(NiveauCanonicalOrder.gradeRank("CM2"))
+                .isLessThan(NiveauCanonicalOrder.gradeRank("SIXIEME"));
+        assertThat(NiveauCanonicalOrder.gradeRank("CM2"))
+                .isLessThan(NiveauCanonicalOrder.gradeRank("SEPTIEME"));
+        assertThat(NiveauCanonicalOrder.gradeRank("DIXIEME"))
+                .isLessThan(NiveauCanonicalOrder.gradeRank("ONZIEME"));
+        assertThat(NiveauCanonicalOrder.gradeRank("ONZIEME"))
+                .isLessThan(NiveauCanonicalOrder.gradeRank("DOUZIEME"));
+        assertThat(NiveauCanonicalOrder.gradeRank("DOUZIEME"))
+                .isLessThan(NiveauCanonicalOrder.gradeRank("TERMINALE"));
     }
 
     @Test
-    void cycleRank_unknownOrNullCycle_returnsNull() {
-        assertThat(NiveauCanonicalOrder.cycleRank(null)).isNull();
-        assertThat(NiveauCanonicalOrder.cycleRank("INCONNU")).isNull();
+    void gradeRank_unknownOrNullGrade_returnsNull() {
+        assertThat(NiveauCanonicalOrder.gradeRank(null)).isNull();
+        assertThat(NiveauCanonicalOrder.gradeRank("INCONNU")).isNull();
     }
 
     @Test
-    void effectiveWithinCycleRank_maternelleSections_orderedPetiteThenMoyenneThenGrande() {
-        int petite = NiveauCanonicalOrder.effectiveWithinCycleRank(new ActiveLevel("MATERNELLE", "Petite Section", null));
-        int moyenne = NiveauCanonicalOrder.effectiveWithinCycleRank(new ActiveLevel("MATERNELLE", "Moyenne Section", null));
-        int grande = NiveauCanonicalOrder.effectiveWithinCycleRank(new ActiveLevel("MATERNELLE", "Grande Section", null));
-
-        assertThat(petite).isLessThan(moyenne);
-        assertThat(moyenne).isLessThan(grande);
-    }
-
-    @Test
-    void effectiveWithinCycleRank_maternelleSections_insensitiveToAccentsCaseAndSortOrder() {
-        // Même si l'école a saisi un sort_order incohérent (Grande Section=1, avant Moyenne
-        // Section=2), le libellé canonique doit toujours l'emporter.
-        int grandeAvecSortOrderBas = NiveauCanonicalOrder.effectiveWithinCycleRank(new ActiveLevel("MATERNELLE", "grande section", 1));
-        int moyenneAvecSortOrderHaut = NiveauCanonicalOrder.effectiveWithinCycleRank(new ActiveLevel("MATERNELLE", "MOYENNE SECTION", 2));
-
-        assertThat(moyenneAvecSortOrderHaut).isLessThan(grandeAvecSortOrderBas);
-    }
-
-    @Test
-    void effectiveWithinCycleRank_primaire_ordersCp1ThroughCm2() {
-        int cp1 = NiveauCanonicalOrder.effectiveWithinCycleRank(new ActiveLevel("PRIMAIRE", "CP1", null));
-        int cp2 = NiveauCanonicalOrder.effectiveWithinCycleRank(new ActiveLevel("PRIMAIRE", "CP2", null));
-        int ce1 = NiveauCanonicalOrder.effectiveWithinCycleRank(new ActiveLevel("PRIMAIRE", "CE1", null));
-        int cm2 = NiveauCanonicalOrder.effectiveWithinCycleRank(new ActiveLevel("PRIMAIRE", "CM2", null));
+    void gradeRank_primaire_ordersCp1ThroughCm2() {
+        int cp1 = NiveauCanonicalOrder.gradeRank("CP1");
+        int cp2 = NiveauCanonicalOrder.gradeRank("CP2");
+        int ce1 = NiveauCanonicalOrder.gradeRank("CE1");
+        int cm2 = NiveauCanonicalOrder.gradeRank("CM2");
 
         assertThat(cp1).isLessThan(cp2);
         assertThat(cp2).isLessThan(ce1);
@@ -60,39 +46,51 @@ class NiveauCanonicalOrderTest {
     }
 
     @Test
-    void effectiveWithinCycleRank_lycee_terminaleIsLast() {
-        int onzieme = NiveauCanonicalOrder.effectiveWithinCycleRank(new ActiveLevel("LYCEE", "11ème", null));
-        int douzieme = NiveauCanonicalOrder.effectiveWithinCycleRank(new ActiveLevel("LYCEE", "12ème", null));
-        int terminale = NiveauCanonicalOrder.effectiveWithinCycleRank(new ActiveLevel("LYCEE", "Terminale", null));
-
-        assertThat(onzieme).isLessThan(douzieme);
-        assertThat(douzieme).isLessThan(terminale);
+    void niveauFallbackRank_ordersMaternelleBeforePrimaireBeforeSecondaire() {
+        assertThat(NiveauCanonicalOrder.niveauFallbackRank("MATERNELLE", null))
+                .isLessThan(NiveauCanonicalOrder.niveauFallbackRank("PRIMAIRE", null));
+        assertThat(NiveauCanonicalOrder.niveauFallbackRank("PRIMAIRE", null))
+                .isLessThan(NiveauCanonicalOrder.niveauFallbackRank("COLLEGE", null)); // COLLEGE = Secondaire
     }
 
     @Test
-    void effectiveWithinCycleRank_unrecognizedLabel_fallsBackToSortOrderOffsetBy1000() {
-        Integer rank = NiveauCanonicalOrder.effectiveWithinCycleRank(new ActiveLevel("PRIMAIRE", "Niveau maison", 3));
-
-        assertThat(rank).isEqualTo(1003);
+    void niveauFallbackRank_unknownOrNullCycle_returnsNull() {
+        assertThat(NiveauCanonicalOrder.niveauFallbackRank(null, 3)).isNull();
+        assertThat(NiveauCanonicalOrder.niveauFallbackRank("INCONNU", 3)).isNull();
     }
 
     @Test
-    void effectiveWithinCycleRank_unrecognizedLabelAndNoSortOrder_returnsNull() {
-        assertThat(NiveauCanonicalOrder.effectiveWithinCycleRank(new ActiveLevel("PRIMAIRE", "Niveau maison", null))).isNull();
+    void niveauFallbackRank_usesSortOrderWithinSameCycle() {
+        Integer bas = NiveauCanonicalOrder.niveauFallbackRank("PRIMAIRE", 1);
+        Integer haut = NiveauCanonicalOrder.niveauFallbackRank("PRIMAIRE", 3);
+
+        assertThat(bas).isLessThan(haut);
     }
 
     @Test
-    void effectiveWithinCycleRank_nullLevel_returnsNull() {
-        assertThat(NiveauCanonicalOrder.effectiveWithinCycleRank(null)).isNull();
+    void effectiveRank_nullLevel_returnsNull() {
+        assertThat(NiveauCanonicalOrder.effectiveRank(null)).isNull();
     }
 
     @Test
-    void effectiveWithinCycleRank_recognizedLabelAlwaysBeatsUnrecognizedFallback() {
-        // Un niveau reconnu (rang 0..n) doit toujours passer avant un niveau non reconnu (replié sur
-        // 1000+sortOrder), même si le sort_order du niveau non reconnu est très petit.
-        int reconnu = NiveauCanonicalOrder.effectiveWithinCycleRank(new ActiveLevel("PRIMAIRE", "CM2", 99));
-        int nonReconnu = NiveauCanonicalOrder.effectiveWithinCycleRank(new ActiveLevel("PRIMAIRE", "Niveau maison", 0));
+    void effectiveRank_recognizedGradeAlwaysBeatsNiveauFallback() {
+        // Un grade reconnu sur la classe doit toujours passer avant le repli grossier sur le niveau,
+        // même si le sort_order du repli est très bas.
+        int reconnu = NiveauCanonicalOrder.effectiveRank(new ActiveGrade("CM2", "PRIMAIRE", 99));
+        int repli = NiveauCanonicalOrder.effectiveRank(new ActiveGrade(null, "PRIMAIRE", 0));
 
-        assertThat(reconnu).isLessThan(nonReconnu);
+        assertThat(reconnu).isLessThan(repli);
+    }
+
+    @Test
+    void effectiveRank_unrecognizedGrade_fallsBackToNiveauCycleAndSortOrder() {
+        Integer rank = NiveauCanonicalOrder.effectiveRank(new ActiveGrade("GRADE_MAISON", "PRIMAIRE", 3));
+
+        assertThat(rank).isEqualTo(NiveauCanonicalOrder.niveauFallbackRank("PRIMAIRE", 3));
+    }
+
+    @Test
+    void effectiveRank_noGradeAndNoNiveau_returnsNull() {
+        assertThat(NiveauCanonicalOrder.effectiveRank(new ActiveGrade(null, null, null))).isNull();
     }
 }

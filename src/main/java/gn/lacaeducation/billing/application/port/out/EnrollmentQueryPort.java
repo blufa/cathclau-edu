@@ -31,14 +31,16 @@ public interface EnrollmentQueryPort {
      * invisible des tableaux de bord qui filtrent strictement par année (ex. Vision Fondateur). */
     Long findActiveAcademicYearId(Long studentId);
 
-    /** Cycle, libellé et sort_order du niveau de l'inscription active la plus récente de l'élève, ou
-     * {@code null} s'il n'en a aucune. Utilisé pour déterminer le cadet d'une fratrie par niveau plutôt
-     * que par date de naissance (§5, plus fiable : le niveau est toujours renseigné, l'état civil
-     * parfois approximatif) — {@code cycle}/{@code label} permettent un classement selon la
-     * progression pédagogique officielle (garderie → petite/moyenne/grande section → CP1…CM2 →
-     * 7e…10e → 11e…terminale), plus fiable que le seul {@code sortOrder} que chaque école saisit
-     * elle-même à la main et peut mal ordonner (ex. grande section avant moyenne section). */
-    record ActiveLevel(String cycle, String label, Integer sortOrder) {}
+    /** Grade précis de la classe (et, à défaut, cycle/sort_order du Niveau en repli grossier) de
+     * l'inscription active la plus récente de l'élève, ou {@code null} s'il n'en a aucune. Utilisé
+     * pour déterminer le cadet d'une fratrie par progression pédagogique plutôt que par date de
+     * naissance (§5, plus fiable : le niveau est toujours renseigné, l'état civil parfois
+     * approximatif). Depuis la réforme du catalogue de Niveau (réduit à Maternelle/Primaire/
+     * Secondaire), la précision fine (CP1…CM2, 7e…10e, 11e…terminale) vit sur {@code Classe.grade},
+     * plus sur le Niveau — {@code niveauCycle}/{@code niveauSortOrder} ne servent plus que de repli
+     * grossier quand aucun grade n'est renseigné sur la classe (classes historiques non migrées ou
+     * nomenclature maison hors catalogue). */
+    record ActiveGrade(String grade, String niveauCycle, Integer niveauSortOrder) {}
 
-    ActiveLevel findActiveLevel(Long studentId);
+    ActiveGrade findActiveLevel(Long studentId);
 }

@@ -56,6 +56,9 @@ public class CommunicationEventListener {
     @org.springframework.beans.factory.annotation.Value("${app.platform.reset-password-url:https://app.lacaeducation.gn/reset-password}")
     private String resetPasswordUrl;
 
+    @org.springframework.beans.factory.annotation.Value("${app.platform.login-url:https://app.lacaeducation.gn/login}")
+    private String loginUrl;
+
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH'h'mm");
 
@@ -283,30 +286,49 @@ public class CommunicationEventListener {
     }
 
     /**
-     * Envoie ses identifiants de connexion à tout compte créé (personnel ou parent) — par email s'il
-     * en a un (message plus complet, sans limite de caractères), sinon par SMS (§2.2). La connexion
-     * elle-même reste toujours possible par numéro de téléphone, quel que soit le canal choisi ici
-     * pour communiquer le mot de passe. Pas de filtrage par accès plateforme : ce n'est pas une
-     * notification au sujet d'un élève, mais l'accès du compte lui-même.
+     * Envoie ses identifiants de connexion à tout compte créé (personnel ou parent) — par SMS s'il a un
+     * numéro (message bref, la connexion se fait par numéro de téléphone + mot de passe) ET par email
+     * s'il a une adresse (message plus complet) : les deux canaux sont indépendants, l'un n'exclut plus
+     * l'autre (avant : email envoyé seul dès qu'il existait, aucun SMS n'était alors envoyé — ce que
+     * l'école recevait dépendait donc du hasard des champs renseignés). Pas de filtrage par accès
+     * plateforme : ce n'est pas une notification au sujet d'un élève, mais l'accès du compte lui-même.
      */
     @TransactionalEventListener
     @Async
     public void onUserAccountCreated(UserAccountCreatedEvent event) {
         boolean hasEmail = event.email() != null && !event.email().isBlank();
+        boolean hasPhone = event.phone() != null && !event.phone().isBlank();
         String fullName = ((event.firstName() != null ? event.firstName() : "") + " "
                 + (event.lastName() != null ? event.lastName() : "")).trim();
-        Map<String, String> vars = Map.of(
-                "nom", fullName, "ecole", schoolName(event.tenantId()),
-                "identifiant", event.username() == null ? "" : event.username(),
-                "mot_de_passe", event.plainPassword() == null ? "" : event.plainPassword());
-        String defaultBody = "Bienvenue " + fullName + ". Identifiant : " + event.username()
-                + " — Mot de passe : " + event.plainPassword() + ". Connectez-vous pour le modifier.";
-        Resolved r = resolve(event.tenantId(), CommunicationReason.ACCOUNT_CREATED, "Votre compte a été créé", defaultBody, vars);
-        CommunicationChannel channel = hasEmail ? CommunicationChannel.EMAIL : CommunicationChannel.SMS;
-        String destination = hasEmail ? event.email() : event.phone();
-        communicationUseCase.send(new SendCommunicationCommand(event.tenantId(), null, channel,
-                RecipientType.GROUP, r.subject(), r.content(), CommunicationReason.ACCOUNT_CREATED,
-                List.of(new RecipientTarget(event.userId(), destination))));
+        String password = event.plainPassword() == null ? "" : event.plainPassword();
+
+        if (hasPhone) {
+            // Bref : la connexion se fait par numéro de téléphone, pas par l'identifiant généré
+            // (prenom.nom) — l'afficher n'aurait fait qu'induire en erreur sur la façon de se connecter.
+            Map<String, String> smsVars = Map.of(
+                    "nom", fullName, "ecole", schoolName(event.tenantId()),
+                    "mot_de_passe", password, "lien", loginUrl);
+            String smsBody = "Bienvenue " + fullName + ". Connectez-vous avec votre numéro et le mot de "
+                    + "passe " + password + " : " + loginUrl;
+            Resolved r = resolve(event.tenantId(), CommunicationReason.ACCOUNT_CREATED,
+                    "Votre compte a été créé", smsBody, smsVars);
+            communicationUseCase.send(new SendCommunicationCommand(event.tenantId(), null, CommunicationChannel.SMS,
+                    RecipientType.GROUP, r.subject(), r.content(), CommunicationReason.ACCOUNT_CREATED,
+                    List.of(new RecipientTarget(event.userId(), event.phone()))));
+        }
+        if (hasEmail) {
+            Map<String, String> emailVars = Map.of(
+                    "nom", fullName, "ecole", schoolName(event.tenantId()),
+                    "identifiant", event.username() == null ? "" : event.username(),
+                    "mot_de_passe", password, "lien", loginUrl);
+            String emailBody = "Bienvenue " + fullName + ". Identifiant : " + event.username()
+                    + " — Mot de passe : " + password + ". Connectez-vous pour le modifier : " + loginUrl;
+            Resolved r = resolve(event.tenantId(), CommunicationReason.ACCOUNT_CREATED,
+                    "Votre compte a été créé", emailBody, emailVars);
+            communicationUseCase.send(new SendCommunicationCommand(event.tenantId(), null, CommunicationChannel.EMAIL,
+                    RecipientType.GROUP, r.subject(), r.content(), CommunicationReason.ACCOUNT_CREATED,
+                    List.of(new RecipientTarget(event.userId(), event.email()))));
+        }
     }
 
     /**

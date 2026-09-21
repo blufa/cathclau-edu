@@ -57,20 +57,21 @@ interface BillingEnrollmentJpaRepository extends JpaRepository<BillingEnrollment
     // Requête native (jointure directe sur les tables, pas d'entité JPA dédiée pour school_classes/
     // levels) : même ordre VALIDATED-d'abord que findActiveAcademicYearIdsMostRecentFirst, pour rester
     // cohérent avec la même notion d'« inscription active la plus récente » utilisée partout ailleurs
-    // dans ce module. Renvoie cycle+libellé (pas seulement sort_order) pour permettre un classement
-    // fiable selon la progression pédagogique officielle, indépendant du sort_order que chaque école
-    // saisit elle-même à la main.
-    @Query(value = "SELECT l.cycle AS cycle, l.label AS label, l.sort_order AS sortOrder FROM enrollments e "
+    // dans ce module. Renvoie le grade précis de la classe (school_classes.grade — CP1, SEPTIEME,
+    // TERMINALE...) en priorité, plus le cycle/sort_order du Niveau (réduit à 3 valeurs depuis la
+    // réforme du catalogue de référentiels) en repli grossier quand la classe n'a pas de grade
+    // renseigné.
+    @Query(value = "SELECT c.grade AS grade, l.cycle AS niveauCycle, l.sort_order AS niveauSortOrder FROM enrollments e "
             + "JOIN school_classes c ON c.id = e.class_id "
             + "JOIN levels l ON l.id = c.level_id "
             + "WHERE e.student_id = :studentId AND e.status <> 'CANCELLED' "
             + "ORDER BY CASE WHEN e.status = 'VALIDATED' THEN 0 ELSE 1 END, e.id DESC LIMIT 1",
             nativeQuery = true)
-    ActiveLevelProjection findActiveLevel(@Param("studentId") Long studentId);
+    ActiveGradeProjection findActiveLevel(@Param("studentId") Long studentId);
 
-    interface ActiveLevelProjection {
-        String getCycle();
-        String getLabel();
-        Integer getSortOrder();
+    interface ActiveGradeProjection {
+        String getGrade();
+        String getNiveauCycle();
+        Integer getNiveauSortOrder();
     }
 }

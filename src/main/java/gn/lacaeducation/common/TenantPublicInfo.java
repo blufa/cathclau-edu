@@ -16,4 +16,8 @@ public record TenantPublicInfo(Long id, String schoolName, String email, String 
                                String ire, String dpeLabel, String sousPrefectureLabel,
                                /** Devise de l'établissement (phrase courte, ex. "Excellence, Rigueur, Discipline")
                                 * — affichée sous le nom de l'école dans l'en-tête des documents (§common/pdf). */
-                               String motto) {}
+                               String motto,
+                               /** Format de matricule défini par l'école (jetons {PREFIXE}/{ANNEE}/{NUM}) et
+                                * nombre de chiffres du numéro séquentiel — null = valeurs par défaut. Voir
+                                * {@link MatriculeFormatter}. */
+                               String matriculeFormat, Integer matriculeDigits) {}

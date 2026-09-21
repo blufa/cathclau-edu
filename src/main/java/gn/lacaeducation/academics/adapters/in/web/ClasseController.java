@@ -43,7 +43,8 @@ public class ClasseController {
     public ResponseEntity<Classe> create(@Valid @RequestBody CreateClassCommand cmd) {
         Classe classe = useCase.create(new CreateClassCommand(
                 TenantContext.get(), cmd.levelId(), cmd.academicYearId(),
-                cmd.headTeacherId(), cmd.roomId(), cmd.label(), cmd.maxCapacity(), cmd.classType()
+                cmd.headTeacherId(), cmd.roomId(), cmd.label(), cmd.maxCapacity(), cmd.classType(),
+                cmd.grade(), cmd.serie()
         ));
         return ResponseEntity.created(URI.create("/api/academics/classes/" + classe.getId())).body(classe);
     }
@@ -66,7 +67,8 @@ public class ClasseController {
     public Classe update(@PathVariable Long id, @Valid @RequestBody CreateClassCommand cmd) {
         return useCase.update(id, new CreateClassCommand(
                 TenantContext.get(), cmd.levelId(), cmd.academicYearId(),
-                cmd.headTeacherId(), cmd.roomId(), cmd.label(), cmd.maxCapacity(), cmd.classType()));
+                cmd.headTeacherId(), cmd.roomId(), cmd.label(), cmd.maxCapacity(), cmd.classType(),
+                cmd.grade(), cmd.serie()));
     }
 
     @Operation(summary = "Désigner (ou retirer) le professeur principal de la classe, depuis le tableau matières/enseignants")
@@ -76,7 +78,8 @@ public class ClasseController {
         Classe c = useCase.findById(id)
                 .orElseThrow(() -> new gn.lacaeducation.common.ResourceNotFoundException("Classe", id));
         return useCase.update(id, new CreateClassCommand(TenantContext.get(), c.getLevelId(), c.getAcademicYearId(),
-                teacherId, c.getRoomId(), c.getLabel(), c.getMaxCapacity(), c.getClassType()));
+                teacherId, c.getRoomId(), c.getLabel(), c.getMaxCapacity(), c.getClassType(),
+                c.getGrade(), c.getSerie()));
     }
 
     @Operation(summary = "Désigner (ou retirer, sans studentId) le chef de classe — un élève inscrit (validé) dans cette classe")

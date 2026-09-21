@@ -1,6 +1,7 @@
 package gn.lacaeducation.academics.adapters.out.persistence;
 
 import gn.lacaeducation.academics.domain.valueobject.ClassType;
+import gn.lacaeducation.academics.domain.valueobject.Grade;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -30,4 +31,6 @@ public class ClasseJpaEntity {
     @Enumerated(EnumType.STRING) @Column(name = "class_type", nullable = false)
     private ClassType classType;
     @Column(name = "class_representative_student_id") private Long classRepresentativeStudentId;
+    @Enumerated(EnumType.STRING) @Column(name = "grade") private Grade grade;
+    @Column(name = "serie") private String serie;
 }

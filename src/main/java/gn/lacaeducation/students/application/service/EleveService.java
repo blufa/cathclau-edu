@@ -86,8 +86,9 @@ public class EleveService implements StudentUseCase {
     }
 
     /**
-     * Returns a tenant-unique matricule: validates a provided one, or auto-generates one in the simple
-     * {@code SIGLESEQ} format (e.g. {@code AT00001}) — no dashes, year or type infix.
+     * Returns a tenant-unique matricule: validates a provided one, or auto-generates one using the
+     * school's own format (settings, defaults to {@code SIGLESEQ}, e.g. {@code AT00001}) —
+     * see {@link gn.lacaeducation.common.MatriculeFormatter}.
      */
     private String resolveStudentNumber(Long tenantId, String provided) {
         if (provided != null && !provided.isBlank()) {
@@ -97,10 +98,14 @@ public class EleveService implements StudentUseCase {
             return provided;
         }
         String prefix = SchoolCode.prefix(tenantInfoProvider, tenantId);
+        var info = tenantId == null ? Optional.<gn.lacaeducation.common.TenantPublicInfo>empty()
+                : tenantInfoProvider.findTenantInfo(tenantId);
+        String format = info.map(gn.lacaeducation.common.TenantPublicInfo::matriculeFormat).orElse(null);
+        Integer digits = info.map(gn.lacaeducation.common.TenantPublicInfo::matriculeDigits).orElse(null);
         long seq = studentRepository.countByTenantId(tenantId) + 1;
         String candidate;
         do {
-            candidate = String.format("%s%05d", prefix, seq++);
+            candidate = gn.lacaeducation.common.MatriculeFormatter.generate(format, digits, prefix, seq++);
         } while (studentRepository.existsByTenantIdAndStudentNumber(tenantId, candidate));
         return candidate;
     }
