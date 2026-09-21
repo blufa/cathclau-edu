@@ -3,7 +3,7 @@ target/
 .mvn/wrapper/maven-wrapper.jar
 
 ### Secrets — jamais commités (Djomy, etc.) ###
-.env
+*.env
 .env.local
 .env.example
 !**/src/main/**/target/
@@ -38,7 +38,10 @@ build/
 ### VS Code ###
 .vscode/
 
-# Secrets de déploiement (garder les *.example)
+# Secrets de déploiement (garder les *.example) — à la racine ET dans deploy/, quel que soit
+# l'endroit où ils sont créés par erreur (ex. copiés/collés à la racine au lieu de deploy/).
+.env.prod
+.env.dev
 deploy/.env.prod
 deploy/.env.dev
 

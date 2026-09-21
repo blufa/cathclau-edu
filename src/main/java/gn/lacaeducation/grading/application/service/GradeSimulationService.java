@@ -1,18 +1,15 @@
 package gn.lacaeducation.grading.application.service;
 
+import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.grading.application.port.in.GradeSimulationUseCase;
 import gn.lacaeducation.grading.application.port.out.AssessmentRepository;
-import gn.lacaeducation.grading.application.port.out.AssessmentTypeConfigRepository;
 import gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort;
 import gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort.ClassSubjectInfo;
 import gn.lacaeducation.grading.application.port.out.GradeRepository;
-import gn.lacaeducation.grading.application.port.out.GradingCalculationSettingsRepository;
 import gn.lacaeducation.grading.domain.Assessment;
-import gn.lacaeducation.grading.domain.AssessmentTypeConfig;
+import gn.lacaeducation.grading.domain.CycleGroup;
 import gn.lacaeducation.grading.domain.Grade;
-import gn.lacaeducation.grading.domain.GradingCalculationSettings;
-import gn.lacaeducation.grading.domain.SubjectAverageCalculator;
-import gn.lacaeducation.grading.domain.SubjectAverageCalculator.WeightedGrade;
+import gn.lacaeducation.grading.domain.SubjectSemesterAverage;
 import gn.lacaeducation.students.StudentDataProvider;
 import gn.lacaeducation.students.StudentPublicInfo;
 import lombok.RequiredArgsConstructor;
@@ -20,7 +17,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -30,6 +26,8 @@ import java.util.stream.Collectors;
 /**
  * Simulateur de bulletins (§9). Recalcule à blanc les moyennes/rangs d'une classe et signale les
  * anomalies, sans rien persister. La direction publie les bulletins seulement après validation.
+ * Utilise exactement la même formule que la génération réelle des bulletins (voir
+ * {@link SubjectSemesterAverage}, branchée dans {@link GradeCalculationService}).
  */
 @Service
 @Transactional(readOnly = true)
@@ -39,8 +37,7 @@ public class GradeSimulationService implements GradeSimulationUseCase {
     private final AssessmentRepository assessmentRepository;
     private final GradeRepository gradeRepository;
     private final ClassSubjectQueryPort classSubjectQueryPort;
-    private final GradingCalculationSettingsRepository calculationSettingsRepository;
-    private final AssessmentTypeConfigRepository assessmentTypeConfigRepository;
+    private final AcademicsDataProvider academicsDataProvider;
     private final StudentDataProvider studentDataProvider;
 
     @Override
@@ -48,8 +45,7 @@ public class GradeSimulationService implements GradeSimulationUseCase {
         List<Assessment> assessments = assessmentRepository.findByClassIdAndPeriodId(classId, periodId);
         List<ClassSubjectInfo> subjects = classSubjectQueryPort.findByClassId(classId);
         List<StudentPublicInfo> students = studentDataProvider.findStudentsByClass(classId);
-        GradingCalculationSettings settings = resolveSettings(assessments);
-        Map<Long, BigDecimal> categoryWeights = resolveCategoryWeights(assessments);
+        CycleGroup cycleGroup = resolveCycleGroup(classId);
 
         Map<Long, List<Assessment>> assessmentsBySubject = assessments.stream()
                 .collect(Collectors.groupingBy(Assessment::getSubjectId));
@@ -58,7 +54,7 @@ public class GradeSimulationService implements GradeSimulationUseCase {
 
         List<StudentSimulation> sims = new ArrayList<>();
         for (StudentPublicInfo student : students) {
-            sims.add(simulateStudent(student, subjects, assessmentsBySubject, subjectCoeff, settings, categoryWeights));
+            sims.add(simulateStudent(student, subjects, assessmentsBySubject, subjectCoeff, cycleGroup));
         }
 
         // Rang : par moyenne générale décroissante (élèves sans note en fin, non classés).
@@ -71,8 +67,7 @@ public class GradeSimulationService implements GradeSimulationUseCase {
 
     private StudentSimulation simulateStudent(StudentPublicInfo student, List<ClassSubjectInfo> subjects,
                                               Map<Long, List<Assessment>> assessmentsBySubject,
-                                              Map<Long, BigDecimal> subjectCoeff, GradingCalculationSettings settings,
-                                              Map<Long, BigDecimal> categoryWeights) {
+                                              Map<Long, BigDecimal> subjectCoeff, CycleGroup cycleGroup) {
         Long studentId = student.id();
         BigDecimal sumWeighted = BigDecimal.ZERO;
         BigDecimal sumCoeff = BigDecimal.ZERO;
@@ -81,28 +76,21 @@ public class GradeSimulationService implements GradeSimulationUseCase {
 
         for (ClassSubjectInfo subject : subjects) {
             List<Assessment> subjectAssessments = assessmentsBySubject.getOrDefault(subject.subjectId(), List.of());
-            Map<Long, BigDecimal> coeffByAssessment = subjectAssessments.stream()
-                    .collect(Collectors.toMap(Assessment::getId,
-                            a -> a.getCoefficient() != null ? a.getCoefficient() : BigDecimal.ONE));
-            Map<Long, Long> categoryByAssessment = subjectAssessments.stream()
-                    .filter(a -> a.getAssessmentTypeId() != null)
-                    .collect(Collectors.toMap(Assessment::getId, Assessment::getAssessmentTypeId));
-            List<WeightedGrade> grades = subjectAssessments.stream()
+            List<Grade> grades = subjectAssessments.stream()
                     .flatMap(a -> gradeRepository.findByAssessmentId(a.getId()).stream())
                     .filter(g -> studentId.equals(g.getStudentId()))
-                    .map(g -> new WeightedGrade(g.getValue(),
-                            coeffByAssessment.getOrDefault(g.getAssessmentId(), BigDecimal.ONE),
-                            categoryByAssessment.get(g.getAssessmentId())))
                     .toList();
 
             if (grades.isEmpty()) {
                 missing.add(subject.subjectId());
                 continue;
             }
+            BigDecimal subjectAvg = SubjectSemesterAverage.compute(cycleGroup, subjectAssessments, grades).finalValue();
+            if (subjectAvg == null) {
+                missing.add(subject.subjectId());
+                continue;
+            }
             gradedSubjects++;
-            BigDecimal subjectAvg = SubjectAverageCalculator.compute(
-                    settings.methodOrDefault(), grades, categoryWeights,
-                    settings.decimalsOrDefault(), settings.roundingOrDefault());
             BigDecimal coeff = subjectCoeff.getOrDefault(subject.subjectId(), BigDecimal.ONE);
             sumWeighted = sumWeighted.add(subjectAvg.multiply(coeff));
             sumCoeff = sumCoeff.add(coeff);
@@ -110,8 +98,7 @@ public class GradeSimulationService implements GradeSimulationUseCase {
 
         boolean hasNoGrades = gradedSubjects == 0;
         BigDecimal overall = sumCoeff.signum() == 0 ? null
-                : sumWeighted.divide(sumCoeff, settings.decimalsOrDefault(),
-                        settings.roundingOrDefault().toRoundingMode());
+                : sumWeighted.divide(sumCoeff, 2, java.math.RoundingMode.HALF_UP);
         return new StudentSimulation(studentId, fullName(student), overall, null, gradedSubjects, missing, hasNoGrades);
     }
 
@@ -130,25 +117,12 @@ public class GradeSimulationService implements GradeSimulationUseCase {
                 rankByStudent.get(s.studentId()), s.gradedSubjects(), s.missingSubjects(), s.hasNoGrades()));
     }
 
-    private GradingCalculationSettings resolveSettings(List<Assessment> assessments) {
-        Long tenantId = assessments.stream()
-                .map(Assessment::getTenantId).filter(java.util.Objects::nonNull).findFirst().orElse(null);
-        if (tenantId == null) return GradingCalculationSettings.defaults();
-        return calculationSettingsRepository.findByTenantId(tenantId).orElseGet(GradingCalculationSettings::defaults);
-    }
-
-    /**
-     * Poids de catégorie (type d'évaluation) du tenant, pour la méthode {@code BY_CATEGORY} :
-     * map {@code assessmentTypeId -> poids}. Seuls les types actifs à poids strictement positif sont
-     * retenus ; vide si non applicable (retombe alors sur la moyenne pondérée).
-     */
-    private Map<Long, BigDecimal> resolveCategoryWeights(List<Assessment> assessments) {
-        Long tenantId = assessments.stream()
-                .map(Assessment::getTenantId).filter(java.util.Objects::nonNull).findFirst().orElse(null);
-        if (tenantId == null) return Map.of();
-        return assessmentTypeConfigRepository.findByTenantId(tenantId).stream()
-                .filter(c -> c.isActive() && c.getWeight() != null && c.getWeight().signum() > 0)
-                .collect(Collectors.toMap(AssessmentTypeConfig::getId, AssessmentTypeConfig::getWeight, (a, b) -> a));
+    /** Groupe de cycle (primaire/secondaire) de la classe, résolu via son niveau (module academics). */
+    private CycleGroup resolveCycleGroup(Long classId) {
+        if (classId == null) return CycleGroup.SECONDAIRE;
+        return academicsDataProvider.findClass(classId)
+                .map(c -> CycleGroup.fromSchoolCycle(c.schoolCycle()))
+                .orElse(CycleGroup.SECONDAIRE);
     }
 
     private String fullName(StudentPublicInfo s) {

@@ -1,26 +1,21 @@
 package gn.lacaeducation.grading.application.service;
 
 import gn.lacaeducation.academics.AcademicsDataProvider;
-import gn.lacaeducation.academics.PeriodPublicInfo;
 import gn.lacaeducation.grading.application.event.ReportCardGeneratedEvent;
 import gn.lacaeducation.grading.application.port.out.AssessmentRepository;
 import gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort;
 import gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort.ClassSubjectInfo;
 import gn.lacaeducation.grading.application.port.out.GradeRepository;
-import gn.lacaeducation.grading.application.port.out.GradingFormulaRepository;
 import gn.lacaeducation.grading.application.port.out.GradingScaleRepository;
 import gn.lacaeducation.grading.application.port.out.ReportCardRepository;
 import gn.lacaeducation.grading.domain.Assessment;
 import gn.lacaeducation.grading.domain.CycleGroup;
-import gn.lacaeducation.grading.domain.GradingFormula;
-import gn.lacaeducation.grading.domain.GradingFormulaEngine;
-import gn.lacaeducation.grading.domain.GradingFormulaStep;
 import gn.lacaeducation.grading.domain.GradingScale;
 import gn.lacaeducation.grading.domain.Grade;
 import gn.lacaeducation.grading.domain.ReportCard;
 import gn.lacaeducation.grading.domain.ReportCardLine;
 import gn.lacaeducation.grading.domain.ReportCardStatus;
-import gn.lacaeducation.grading.domain.StepKind;
+import gn.lacaeducation.grading.domain.SubjectSemesterAverage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -29,7 +24,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.math.RoundingMode;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -43,7 +37,7 @@ import java.util.stream.Collectors;
  *
  * Algorithm (CLAUDE.md §7.4):
  * <pre>
- * subject_average   = Σ(grade.value × assessment.coefficient) / Σ(assessment.coefficient)
+ * subject_average   = voir {@link SubjectSemesterAverage} (formule distincte primaire/secondaire)
  * weighted_subject  = subject_average × subject_coefficient   (from ClasseMatiere / subjects table)
  * general_average   = Σ(weighted_subject) / Σ(subject_coefficient)
  * rank              = position of student ordered by general_average desc within class+period (1 = best)
@@ -62,11 +56,8 @@ public class GradeCalculationService {
     private final ReportCardRepository reportCardRepository;
     private final ClassSubjectQueryPort classSubjectQueryPort;
     private final GradingScaleRepository gradingScaleRepository;
-    private final gn.lacaeducation.grading.application.port.out.GradingCalculationSettingsRepository calculationSettingsRepository;
     private final gn.lacaeducation.grading.application.port.out.EliminatoryRuleRepository eliminatoryRuleRepository;
     private final gn.lacaeducation.grading.application.port.out.DecisionRuleRepository decisionRuleRepository;
-    private final gn.lacaeducation.grading.application.port.out.AssessmentTypeConfigRepository assessmentTypeConfigRepository;
-    private final GradingFormulaRepository gradingFormulaRepository;
     private final AcademicsDataProvider academicsDataProvider;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -99,8 +90,6 @@ public class GradeCalculationService {
         }
 
         GradingScale scale = resolveScale(assessments);
-        gn.lacaeducation.grading.domain.GradingCalculationSettings calcSettings = resolveCalcSettings(assessments);
-        Map<Long, BigDecimal> categoryWeights = resolveCategoryWeights(assessments);
         List<gn.lacaeducation.grading.domain.EliminatoryRule> eliminatoryRules = resolveEliminatoryRules(assessments);
         List<gn.lacaeducation.grading.domain.DecisionRule> decisionRules = resolveDecisionRules(assessments);
 
@@ -108,7 +97,7 @@ public class GradeCalculationService {
         List<ReportCard> reportCards = new ArrayList<>();
         for (Long studentId : studentIds) {
             ReportCardWithLines rcWithLines = buildReportCard(studentId, classId, periodId, assessments,
-                    subjectInfos, scale, calcSettings, categoryWeights, eliminatoryRules, decisionRules);
+                    subjectInfos, scale, eliminatoryRules, decisionRules);
             ReportCard saved = persistReportCardWithLines(rcWithLines, periodId);
             reportCards.add(saved);
         }
@@ -130,8 +119,7 @@ public class GradeCalculationService {
         List<ClassSubjectInfo> subjectInfos = classSubjectQueryPort.findByClassId(classId);
 
         ReportCardWithLines rcWithLines = buildReportCard(studentId, classId, periodId, assessments, subjectInfos,
-                resolveScale(assessments), resolveCalcSettings(assessments), resolveCategoryWeights(assessments),
-                resolveEliminatoryRules(assessments), resolveDecisionRules(assessments));
+                resolveScale(assessments), resolveEliminatoryRules(assessments), resolveDecisionRules(assessments));
         ReportCard saved = persistReportCardWithLines(rcWithLines, periodId);
 
         // Recalculate ranks for the whole class so the new card gets the right rank
@@ -154,10 +142,10 @@ public class GradeCalculationService {
                                                 List<Assessment> assessments,
                                                 List<ClassSubjectInfo> subjectInfos,
                                                 GradingScale scale,
-                                                gn.lacaeducation.grading.domain.GradingCalculationSettings calcSettings,
-                                                Map<Long, BigDecimal> categoryWeights,
                                                 List<gn.lacaeducation.grading.domain.EliminatoryRule> eliminatoryRules,
                                                 List<gn.lacaeducation.grading.domain.DecisionRule> decisionRules) {
+
+        CycleGroup cycleGroup = resolveCycleGroup(classId);
 
         Map<Long, List<Assessment>> assessmentsBySubject = assessments.stream()
                 .collect(Collectors.groupingBy(Assessment::getSubjectId));
@@ -188,10 +176,13 @@ public class GradeCalculationService {
                 continue;
             }
 
-            BigDecimal subjectCoeff = subjectCoeffMap.getOrDefault(subjectId, BigDecimal.ONE);
-            GradingFormulaEngine.SubjectFormulaResult formulaResult =
-                    computeSubjectAverage(grades, subjectAssessments, calcSettings, categoryWeights, subjectCoeff);
+            SubjectSemesterAverage.Result formulaResult =
+                    SubjectSemesterAverage.compute(cycleGroup, subjectAssessments, grades);
             BigDecimal subjectAverage = formulaResult.finalValue();
+            if (subjectAverage == null) {
+                continue; // notes présentes mais sans valeur exploitable (cas dégradé, voir domaine)
+            }
+            BigDecimal subjectCoeff = subjectCoeffMap.getOrDefault(subjectId, BigDecimal.ONE);
             BigDecimal weighted = subjectAverage.multiply(subjectCoeff, MC).setScale(SCALE, RoundingMode.HALF_UP);
 
             Long teacherId = subjectTeacherMap.get(subjectId);
@@ -383,92 +374,19 @@ public class GradeCalculationService {
     }
 
     /**
-     * Moyenne d'un élève dans une matière (sur les évaluations données), calculée avec exactement le
-     * même paramétrage que les bulletins (formule, méthode, décimales, arrondi, poids de catégorie).
-     * Renvoie {@code null} si l'élève n'a aucune note. Exposée pour le relevé de notes par matière.
-     *
-     * @param subjectCoefficient coefficient de la matière (poids « SUBJECT_COEFFICIENT » d'une éventuelle
-     *                           étape de combinaison de la formule) ; {@code null} équivaut à 1.
+     * Moyenne d'un élève dans une matière (sur les évaluations données), calculée avec exactement la
+     * même formule que les bulletins (voir {@link SubjectSemesterAverage}). Renvoie {@code null} si
+     * l'élève n'a aucune note exploitable. Exposée pour le relevé de notes par matière.
      */
-    public BigDecimal subjectAverage(List<Assessment> subjectAssessments, List<Grade> studentGrades,
-                                     BigDecimal subjectCoefficient) {
+    public BigDecimal subjectAverage(List<Assessment> subjectAssessments, List<Grade> studentGrades) {
         if (subjectAssessments == null || subjectAssessments.isEmpty()
                 || studentGrades == null || studentGrades.isEmpty()) {
             return null;
         }
-        var settings = resolveCalcSettings(subjectAssessments);
-        var categoryWeights = resolveCategoryWeights(subjectAssessments);
-        return computeSubjectAverage(studentGrades, subjectAssessments, settings, categoryWeights, subjectCoefficient)
+        Long classId = subjectAssessments.stream()
+                .map(Assessment::getClassId).filter(java.util.Objects::nonNull).findFirst().orElse(null);
+        return SubjectSemesterAverage.compute(resolveCycleGroup(classId), subjectAssessments, studentGrades)
                 .finalValue();
-    }
-
-    /**
-     * Moyenne d'une matière : exécute la {@link GradingFormula} active du tenant pour le type de
-     * période des évaluations (§ Refonte du moteur de calcul des notes), via {@link GradingFormulaEngine}.
-     * Si aucune formule n'est encore configurée pour ce (tenant, type de période), une formule
-     * « Héritée » équivalente à l'ancien calcul plat pondéré est créée automatiquement au premier
-     * calcul (voir {@link #resolveFormula}) — aucune régression pour les tenants non migrés.
-     */
-    private GradingFormulaEngine.SubjectFormulaResult computeSubjectAverage(List<Grade> grades, List<Assessment> assessments,
-                                             gn.lacaeducation.grading.domain.GradingCalculationSettings settings,
-                                             Map<Long, BigDecimal> categoryWeights,
-                                             BigDecimal subjectCoefficient) {
-        Long tenantId = assessments.stream()
-                .map(Assessment::getTenantId).filter(java.util.Objects::nonNull).findFirst().orElse(null);
-        Long periodId = assessments.stream()
-                .map(Assessment::getPeriodId).filter(java.util.Objects::nonNull).findFirst().orElse(null);
-
-        Optional<PeriodPublicInfo> period = (tenantId != null && periodId != null)
-                ? academicsDataProvider.findPeriod(periodId) : Optional.empty();
-
-        List<GradingFormulaStep> steps = period
-                .map(p -> resolveFormula(tenantId, p.type()).getSteps())
-                .orElse(List.of());
-        LocalDate periodStart = period.map(PeriodPublicInfo::startDate).orElse(null);
-
-        return GradingFormulaEngine.computeDetailed(steps, assessments, grades, subjectCoefficient,
-                periodStart, settings, categoryWeights);
-    }
-
-    /**
-     * Formule active du tenant pour ce type de période, ou création automatique (et persistance)
-     * d'une formule « Héritée » à une seule étape couvrant toute la période — mathématiquement
-     * identique à l'ancien calcul plat pondéré — la première fois qu'elle est nécessaire.
-     */
-    private GradingFormula resolveFormula(Long tenantId, String periodType) {
-        return gradingFormulaRepository.findActiveByTenantIdAndPeriodType(tenantId, periodType)
-                .orElseGet(() -> gradingFormulaRepository.save(GradingFormula.builder()
-                        .tenantId(tenantId).label("Héritée").periodType(periodType).active(true)
-                        .steps(List.of(GradingFormulaStep.builder()
-                                .stepOrder(1).stepKind(StepKind.GROUP)
-                                .label("Héritée (calcul historique)").finalStep(true).build()))
-                        .build()));
-    }
-
-    /**
-     * Poids de catégorie (type d'évaluation) du tenant, pour la méthode {@code BY_CATEGORY} :
-     * map {@code assessmentTypeId -> poids}. Seuls les types actifs avec un poids strictement positif
-     * sont retenus ; vide si non applicable (retombe alors sur la moyenne pondérée).
-     */
-    private Map<Long, BigDecimal> resolveCategoryWeights(List<Assessment> assessments) {
-        Long tenantId = assessments.stream()
-                .map(Assessment::getTenantId).filter(java.util.Objects::nonNull).findFirst().orElse(null);
-        if (tenantId == null) return Map.of();
-        return assessmentTypeConfigRepository.findByTenantId(tenantId).stream()
-                .filter(c -> c.isActive() && c.getWeight() != null && c.getWeight().signum() > 0)
-                .collect(Collectors.toMap(
-                        gn.lacaeducation.grading.domain.AssessmentTypeConfig::getId,
-                        gn.lacaeducation.grading.domain.AssessmentTypeConfig::getWeight,
-                        (a, b) -> a));
-    }
-
-    /** Réglage du moteur de calcul du tenant des évaluations (ou défauts). */
-    private gn.lacaeducation.grading.domain.GradingCalculationSettings resolveCalcSettings(List<Assessment> assessments) {
-        Long tenantId = assessments.stream()
-                .map(Assessment::getTenantId).filter(java.util.Objects::nonNull).findFirst().orElse(null);
-        if (tenantId == null) return gn.lacaeducation.grading.domain.GradingCalculationSettings.defaults();
-        return calculationSettingsRepository.findByTenantId(tenantId)
-                .orElseGet(gn.lacaeducation.grading.domain.GradingCalculationSettings::defaults);
     }
 
     /** Règles de notes éliminatoires (§7) du tenant des évaluations. */
