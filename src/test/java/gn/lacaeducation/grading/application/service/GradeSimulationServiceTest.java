@@ -1,13 +1,14 @@
 package gn.lacaeducation.grading.application.service;
 
+import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.grading.application.port.in.GradeSimulationUseCase.SimulationReport;
 import gn.lacaeducation.grading.application.port.in.GradeSimulationUseCase.StudentSimulation;
 import gn.lacaeducation.grading.application.port.out.AssessmentRepository;
 import gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort;
 import gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort.ClassSubjectInfo;
 import gn.lacaeducation.grading.application.port.out.GradeRepository;
-import gn.lacaeducation.grading.application.port.out.GradingCalculationSettingsRepository;
 import gn.lacaeducation.grading.domain.Assessment;
+import gn.lacaeducation.grading.domain.AssessmentType;
 import gn.lacaeducation.grading.domain.Grade;
 import gn.lacaeducation.students.StudentDataProvider;
 import gn.lacaeducation.students.StudentPublicInfo;
@@ -18,8 +19,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
@@ -30,8 +31,7 @@ class GradeSimulationServiceTest {
     @Mock AssessmentRepository assessmentRepository;
     @Mock GradeRepository gradeRepository;
     @Mock ClassSubjectQueryPort classSubjectQueryPort;
-    @Mock GradingCalculationSettingsRepository calculationSettingsRepository;
-    @Mock gn.lacaeducation.grading.application.port.out.AssessmentTypeConfigRepository assessmentTypeConfigRepository;
+    @Mock AcademicsDataProvider academicsDataProvider;
     @Mock StudentDataProvider studentDataProvider;
     @InjectMocks GradeSimulationService service;
 
@@ -42,16 +42,17 @@ class GradeSimulationServiceTest {
     @Test
     void simulate_computesAveragesRanksAndAnomalies() {
         Assessment math = Assessment.builder().id(10L).tenantId(99L).classId(1L).subjectId(1L)
-                .periodId(2L).coefficient(BigDecimal.ONE).maxScore(BigDecimal.valueOf(20)).build();
+                .periodId(2L).type(AssessmentType.QUIZ).date(LocalDate.of(2026, 10, 5))
+                .coefficient(BigDecimal.ONE).maxScore(BigDecimal.valueOf(20)).build();
         Assessment french = Assessment.builder().id(20L).tenantId(99L).classId(1L).subjectId(2L)
-                .periodId(2L).coefficient(BigDecimal.ONE).maxScore(BigDecimal.valueOf(20)).build();
+                .periodId(2L).type(AssessmentType.QUIZ).date(LocalDate.of(2026, 10, 5))
+                .coefficient(BigDecimal.ONE).maxScore(BigDecimal.valueOf(20)).build();
         when(assessmentRepository.findByClassIdAndPeriodId(1L, 2L)).thenReturn(List.of(math, french));
         when(classSubjectQueryPort.findByClassId(1L)).thenReturn(List.of(
                 new ClassSubjectInfo(1L, new BigDecimal("5"), null),   // Maths coeff 5
                 new ClassSubjectInfo(2L, new BigDecimal("4"), null))); // Français coeff 4
         when(studentDataProvider.findStudentsByClass(1L)).thenReturn(List.of(
                 student(1, "Awa"), student(2, "Bah"), student(3, "Cissé")));
-        when(calculationSettingsRepository.findByTenantId(99L)).thenReturn(Optional.empty());
         // Maths : élève 1 = 14, élève 2 = 8 (élève 3 : rien)
         when(gradeRepository.findByAssessmentId(10L)).thenReturn(List.of(
                 Grade.builder().assessmentId(10L).studentId(1L).value(new BigDecimal("14")).build(),

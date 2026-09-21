@@ -36,7 +36,6 @@ public class GradeService implements GradeUseCase {
     private final StudentDataProvider studentDataProvider;
     private final ApplicationEventPublisher eventPublisher;
     private final GradeCalculationService calculationService;
-    private final gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort classSubjectQueryPort;
     private final gn.lacaeducation.grading.application.port.out.SubjectGradeReportPdfGenerator subjectReportPdfGenerator;
 
     @Override
@@ -217,11 +216,6 @@ public class GradeService implements GradeUseCase {
                         a.getType() == null ? null : a.getType().name(), a.getDate(), a.getMaxScore(), a.getCoefficient()))
                 .toList();
 
-        BigDecimal subjectCoefficient = classSubjectQueryPort.findByClassId(classId).stream()
-                .filter(i -> subjectId.equals(i.subjectId()))
-                .map(gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort.ClassSubjectInfo::coefficient)
-                .findFirst().orElse(BigDecimal.ONE);
-
         List<ReleveRow> rows = studentDataProvider.findStudentsByClass(classId).stream()
                 .map(s -> {
                     java.util.Map<Long, BigDecimal> notes = new java.util.LinkedHashMap<>();
@@ -232,7 +226,7 @@ public class GradeService implements GradeUseCase {
                         if (g != null && g.getValue() != null) studentGrades.add(g);
                     }
                     return new ReleveRow(s.id(), s.studentNumber(), fullName(s), notes,
-                            calculationService.subjectAverage(assessments, studentGrades, subjectCoefficient));
+                            calculationService.subjectAverage(assessments, studentGrades));
                 })
                 .sorted(java.util.Comparator.comparing(ReleveRow::fullName, String.CASE_INSENSITIVE_ORDER))
                 .toList();
