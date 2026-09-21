@@ -15,13 +15,13 @@ public class ReceiptController {
     private final ReceiptUseCase useCase;
 
     @Operation(summary = "List receipts, optionally filtered by student (§9.3)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT','SECRETARY')")
+    @PreAuthorize("hasAuthority('recu:read')")
     @GetMapping public List<Receipt> list(@RequestParam(required = false) Long studentId) {
         return studentId == null ? List.of() : useCase.findByStudentId(studentId);
     }
 
     @Operation(summary = "Get the receipt PDF URL (§9.3) — generated on demand if missing")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT','SECRETARY')")
+    @PreAuthorize("hasAuthority('recu:read')")
     @GetMapping("/{id}/pdf") public ResponseEntity<Map<String, String>> pdf(@PathVariable Long id) {
         if (useCase.findById(id).isEmpty()) {
             return ResponseEntity.notFound().build();
@@ -30,7 +30,7 @@ public class ReceiptController {
     }
 
     @Operation(summary = "Stream the receipt PDF bytes (inline) — independent of Cloudinary delivery")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT','SECRETARY')")
+    @PreAuthorize("hasAuthority('recu:read')")
     @GetMapping("/{id}/pdf/download") public ResponseEntity<byte[]> pdfDownload(@PathVariable Long id) {
         if (useCase.findById(id).isEmpty()) {
             return ResponseEntity.notFound().build();
@@ -41,7 +41,7 @@ public class ReceiptController {
                 .body(useCase.pdfBytes(id));
     }
     @Operation(summary = "Generate a receipt for a successful payment")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT','SECRETARY')")
+    @PreAuthorize("hasAuthority('recu:read')")
     @PostMapping("/payment/{paymentId}") public ResponseEntity<Receipt> generate(@PathVariable Long paymentId) { return ResponseEntity.ok(useCase.generate(paymentId)); }
     @Operation(summary = "Get a receipt by ID")
     @GetMapping("/{id}") public ResponseEntity<Receipt> findById(@PathVariable Long id) {

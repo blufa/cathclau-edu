@@ -20,4 +20,5 @@ public class ClasseMatiereJpaEntity {
     @Column(name = "teacher_id") private Long teacherId;
     @Column(name = "coefficient") private java.math.BigDecimal coefficient;
     @Column(name = "code") private String code;
+    @Column(name = "is_specialty", nullable = false) private boolean specialty;
 }

@@ -14,7 +14,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/accounting")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+@PreAuthorize("hasAuthority('comptabilite:manage')")
 public class AccountingReportController {
 
     private final AccountingReportService service;

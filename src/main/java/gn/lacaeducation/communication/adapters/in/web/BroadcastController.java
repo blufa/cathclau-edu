@@ -33,7 +33,7 @@ public class BroadcastController {
                                    String subject, String content, CommunicationReason reason) {}
 
     @Operation(summary = "Diffuser un message à une audience segmentée (parents, classe, sexe, enseignants, élève)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','TEACHER')")
+    @PreAuthorize("hasAuthority('communication:send')")
     @PostMapping
     public ResponseEntity<Communication> broadcast(@RequestBody DiffusionRequest r) {
         Communication result = broadcastUseCase.broadcast(new BroadcastUseCase.BroadcastCommand(

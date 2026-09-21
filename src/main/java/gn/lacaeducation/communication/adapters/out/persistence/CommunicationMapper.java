@@ -9,4 +9,6 @@ interface CommunicationMapper {
     MessageRecipientJpaEntity toEntity(MessageRecipient d);
     MessageTemplate toDomain(MessageTemplateJpaEntity e);
     MessageTemplateJpaEntity toEntity(MessageTemplate d);
+    ScheduledBroadcast toDomain(ScheduledBroadcastJpaEntity e);
+    ScheduledBroadcastJpaEntity toEntity(ScheduledBroadcast d);
 }

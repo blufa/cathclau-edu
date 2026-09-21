@@ -15,7 +15,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
-@Tag(name = "Student Cards", description = "Issue and manage student cards with signed QR")
+@Tag(name = "Student Cards", description = "Émettre et gérer les cartes scolaires avec QR code signé")
 @RestController
 @RequestMapping("/api/v1")
 @RequiredArgsConstructor
@@ -26,7 +26,7 @@ public class StudentCardController {
     public record IssueRequest(Long cardTemplateId, Long academicYearId, Long classId, String studentNumber,
                                String photoUrl, LocalDate expirationDate) {}
 
-    @Operation(summary = "Issue a card for a student")
+    @Operation(summary = "Émettre une carte pour un élève")
     @PreAuthorize("hasAuthority('carte:manage')")
     @PostMapping("/eleves/{studentId}/carte")
     public StudentCard issue(@PathVariable Long studentId, @RequestBody IssueRequest r) {
@@ -34,27 +34,27 @@ public class StudentCardController {
                 r.academicYearId(), r.classId(), r.studentNumber(), r.photoUrl(), r.expirationDate()));
     }
 
-    @Operation(summary = "Current active card of a student")
+    @Operation(summary = "Carte active en cours d'un élève")
     @GetMapping("/eleves/{studentId}/carte")
     public ResponseEntity<StudentCard> current(@PathVariable Long studentId) {
         return service.currentCard(studentId).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
-    @Operation(summary = "List cards for the current tenant")
+    @Operation(summary = "Lister les cartes de l'établissement")
     @GetMapping("/cartes")
     public List<StudentCard> list() { return service.findByTenant(TenantContext.get()); }
 
-    @Operation(summary = "Re-issue (replace) a card")
+    @Operation(summary = "Réémettre (remplacer) une carte")
     @PreAuthorize("hasAuthority('carte:manage')")
     @PatchMapping("/cartes/{id}/remplacer")
     public StudentCard replace(@PathVariable Long id) { return service.replace(id); }
 
-    @Operation(summary = "Declare a card lost")
+    @Operation(summary = "Déclarer une carte perdue")
     @PreAuthorize("hasAuthority('carte:manage')")
     @PatchMapping("/cartes/{id}/declarer-perdue")
     public StudentCard declareLost(@PathVariable Long id) { return service.declareLost(id); }
 
-    @Operation(summary = "Verify a card by scanning its QR (payload + signature)")
+    @Operation(summary = "Vérifier une carte en scannant son QR code (payload + signature)")
     @GetMapping("/cartes/verifier")
     public ResponseEntity<Map<String, Object>> verify(@RequestParam String payload, @RequestParam String signature) {
         return service.verify(payload, signature)

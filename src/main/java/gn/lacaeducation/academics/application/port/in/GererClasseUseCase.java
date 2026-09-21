@@ -11,7 +11,10 @@ public interface GererClasseUseCase {
     Optional<Classe> findById(Long id);
     List<Classe> findByAcademicYear(Long academicYearId);
     List<Classe> findByTenantId(Long tenantId);
-    ClasseMatiere assignSubject(Long classId, Long subjectId, Long teacherId, java.math.BigDecimal coefficient, String code);
+    /** {@code specialty} : {@code null} = ne pas modifier la valeur existante à la mise à jour (false à
+     * la création) ; sinon impose explicitement la valeur (ex. décocher « matière de spécialité »). */
+    ClasseMatiere assignSubject(Long classId, Long subjectId, Long teacherId, java.math.BigDecimal coefficient,
+                                String code, Boolean specialty);
     void removeSubject(Long classSubjectId);
     List<ClasseMatiere> findSubjects(Long classId);
     /** Affectations existantes d'une matière (tenant-wide) — pour lister les codes enseignants déjà
@@ -27,5 +30,8 @@ public interface GererClasseUseCase {
     record CreateClassCommand(Long tenantId, Long levelId, Long academicYearId,
                                Long headTeacherId, Long roomId, String label, Integer maxCapacity,
                                ClassType classType) {}
-    record EnrollmentCountInfo(Long classId, long currentCount, Integer maxCapacity, long available) {}
+    /** {@code available} est {@code null} quand la classe n'a pas de capacité maximale définie (pas de
+     * limite), plutôt qu'un entier sentinelle (ex. {@code Long.MAX_VALUE}) qui s'afficherait tel quel,
+     * de façon absurde, côté frontend. */
+    record EnrollmentCountInfo(Long classId, long currentCount, Integer maxCapacity, Long available) {}
 }

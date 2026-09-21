@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /** Public, unauthenticated branding endpoint for tenant login pages (§1.1). */
-@Tag(name = "Public", description = "Unauthenticated tenant branding for login pages")
+@Tag(name = "Public", description = "Branding de l'établissement pour les pages de connexion, sans authentification")
 @RestController
 @RequestMapping("/api/v1/public/tenants")
 @RequiredArgsConstructor
@@ -19,7 +19,7 @@ public class PublicTenantController {
 
     private final CreateTenantUseCase tenantUseCase;
 
-    @Operation(summary = "Get a tenant's public branding (logo, colors) for the login page")
+    @Operation(summary = "Consulter le branding public d'un établissement (logo, couleurs) pour la page de connexion")
     @GetMapping("/{id}/branding")
     public TenantBrandingResponse branding(@PathVariable Long id) {
         return TenantBrandingResponse.from(tenantUseCase.findById(id));

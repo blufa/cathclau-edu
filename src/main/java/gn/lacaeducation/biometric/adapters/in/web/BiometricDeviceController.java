@@ -19,7 +19,7 @@ import java.util.List;
 @Tag(name = "Biometric Devices", description = "Appareils biométriques : configuration, test, synchronisation")
 @RestController
 @RequestMapping("/api/v1/biometric/devices")
-@PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+@PreAuthorize("hasAuthority('biometrique:manage')")
 @RequiredArgsConstructor
 public class BiometricDeviceController {
 

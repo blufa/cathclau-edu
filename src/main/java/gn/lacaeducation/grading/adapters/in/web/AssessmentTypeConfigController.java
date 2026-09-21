@@ -28,7 +28,7 @@ public class AssessmentTypeConfigController {
     private final AssessmentTypeConfigUseCase useCase;
 
     @Operation(summary = "Créer un type d'évaluation")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','RESPONSABLE_PEDAGOGIQUE')")
+    @PreAuthorize("hasAuthority('parametrage_notes:manage')")
     @PostMapping
     public ResponseEntity<AssessmentTypeConfig> create(@RequestBody TypeCommand cmd) {
         AssessmentTypeConfig t = useCase.create(TenantContext.get(), cmd);
@@ -48,14 +48,14 @@ public class AssessmentTypeConfigController {
     }
 
     @Operation(summary = "Modifier un type d'évaluation")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','RESPONSABLE_PEDAGOGIQUE')")
+    @PreAuthorize("hasAuthority('parametrage_notes:manage')")
     @PutMapping("/{id}")
     public AssessmentTypeConfig update(@PathVariable Long id, @RequestBody TypeCommand cmd) {
         return useCase.update(id, cmd);
     }
 
     @Operation(summary = "Supprimer un type d'évaluation")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('parametrage_notes:manage')")
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {

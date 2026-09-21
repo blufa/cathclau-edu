@@ -45,7 +45,7 @@ public class StudentController {
 
     @Operation(summary = "Generate a school-leaving / transfer certificate (PDF) for a student")
     @PostMapping("/{id}/certificat-radiation")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @PreAuthorize("hasAuthority('eleve:update')")
     public java.util.Map<String, String> transferCertificate(@PathVariable Long id, @RequestBody(required = false) CertificateRequest req) {
         String url = certificateService.generateTransferCertificate(id,
                 req == null ? null : req.schoolName(), req == null ? null : req.motif());
@@ -73,7 +73,7 @@ public class StudentController {
         return ResponseEntity.created(URI.create("/api/v1/students/" + s.getId())).body(s);
     }
 
-    @Operation(summary = "List students in current tenant (filters: class, enrollment status, gender, name/matricule search)")
+    @Operation(summary = "Lister les élèves du tenant (filtres : classe, statut d'inscription, sexe, recherche par nom/matricule/parent)")
     @GetMapping
     @PreAuthorize("hasAuthority('eleve:read') and !hasRole('PARENT')")
     public PageResponse<Student> findAll(@RequestParam(required = false) Long classId,
@@ -86,14 +86,19 @@ public class StudentController {
                 TenantContext.get(), gender, search, classId, enrollmentStatus, notEnrolled, pageable));
     }
 
-    @Operation(summary = "List students with their current class and principal parent (guichet d'accueil)")
+    @Operation(summary = "Lister les élèves avec leur classe et parent principal (guichet d'accueil, liste des élèves) — recherche par nom/matricule/parent")
     @GetMapping("/summary")
     @PreAuthorize("hasAuthority('eleve:read') and !hasRole('PARENT')")
-    public PageResponse<StudentSummaryResponse> summary(@RequestParam(required = false) String search,
+    public PageResponse<StudentSummaryResponse> summary(@RequestParam(required = false) Long classId,
+                                                         @RequestParam(required = false) EnrollmentStatus enrollmentStatus,
+                                                         @RequestParam(required = false) Gender gender,
+                                                         @RequestParam(required = false) String search,
+                                                         @RequestParam(required = false, defaultValue = "false") boolean notEnrolled,
                                                          @PageableDefault(size = 20) Pageable pageable) {
-        return PageResponse.of(studentUseCase.search(TenantContext.get(), null, search, null, null, false, pageable)
+        return PageResponse.of(studentUseCase.search(
+                TenantContext.get(), gender, search, classId, enrollmentStatus, notEnrolled, pageable)
                 .map(s -> {
-                    Long classId = enrollmentUseCase.findByStudent(s.getId()).stream()
+                    Long enrolledClassId = enrollmentUseCase.findByStudent(s.getId()).stream()
                             .filter(e -> e.getStatus() == EnrollmentStatus.VALIDATED)
                             .reduce((first, last) -> last)
                             .map(Enrollment::getClassId)
@@ -102,7 +107,7 @@ public class StudentController {
                     Parent principal = parents.stream().filter(Parent::isPrimaryGuardian).findFirst()
                             .or(() -> parents.stream().findFirst())
                             .orElse(null);
-                    return new StudentSummaryResponse(s, classId,
+                    return new StudentSummaryResponse(s, enrolledClassId,
                             principal == null ? null : (principal.getFirstName() + " " + principal.getLastName()).trim(),
                             principal == null ? null : principal.getPhone());
                 }));
@@ -179,7 +184,7 @@ public class StudentController {
 
     @Operation(summary = "Upload a document for a student")
     @PostMapping("/{id}/documents")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','SECRETARY','DIRECTOR')")
+    @PreAuthorize("hasAuthority('eleve:update')")
     @ResponseStatus(HttpStatus.CREATED)
     public StudentDocument addDocument(@PathVariable Long id,
                                         @Valid @RequestBody StudentUseCase.AddDocumentCommand cmd) {
@@ -192,7 +197,7 @@ public class StudentController {
 
     @Operation(summary = "Delete a student document")
     @DeleteMapping("/{id}/documents/{documentId}")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','SECRETARY','DIRECTOR')")
+    @PreAuthorize("hasAuthority('eleve:update')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteDocument(@PathVariable Long id, @PathVariable Long documentId) {
         studentUseCase.deleteDocument(documentId);
@@ -250,14 +255,14 @@ public class StudentController {
 
     @Operation(summary = "Cancel an enrollment")
     @PatchMapping("/enrollments/{enrollmentId}/cancel")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('inscription:validate')")
     public Enrollment cancelEnrollment(@PathVariable Long enrollmentId) {
         return enrollmentUseCase.cancel(enrollmentId);
     }
 
     @Operation(summary = "Delete an enrollment")
     @DeleteMapping("/enrollments/{enrollmentId}")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('inscription:validate')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteEnrollment(@PathVariable Long enrollmentId) { enrollmentUseCase.delete(enrollmentId); }
 }

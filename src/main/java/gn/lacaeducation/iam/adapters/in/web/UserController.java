@@ -5,7 +5,6 @@ import gn.lacaeducation.common.TenantContext;
 import gn.lacaeducation.iam.adapters.in.web.dto.CreateUserRequest;
 import gn.lacaeducation.iam.adapters.in.web.dto.UserResponse;
 import gn.lacaeducation.iam.application.port.in.UserUseCase;
-import gn.lacaeducation.iam.domain.Role;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -23,7 +22,7 @@ import org.springframework.web.bind.annotation.*;
 import java.net.URI;
 import java.util.List;
 
-@Tag(name = "Users", description = "User management within a tenant")
+@Tag(name = "Users", description = "Gestion des utilisateurs au sein d'un tenant")
 @RestController
 @RequestMapping("/api/v1/users")
 @RequiredArgsConstructor
@@ -31,7 +30,7 @@ public class UserController {
 
     private final UserUseCase userUseCase;
 
-    @Operation(summary = "Create a new user in the current tenant")
+    @Operation(summary = "Créer un nouvel utilisateur dans le tenant courant")
     @PostMapping
     @PreAuthorize("hasAuthority('user:create')")
     public ResponseEntity<UserResponse> create(@Valid @RequestBody CreateUserRequest req) {
@@ -45,19 +44,23 @@ public class UserController {
                 .body(toResponse(user));
     }
 
-    @Operation(summary = "List all users in the current tenant")
+    @Operation(summary = "Lister tous les utilisateurs du tenant courant")
     @GetMapping
     @PreAuthorize("hasAuthority('user:read')")
-    public PageResponse<UserResponse> findAll(@AuthenticationPrincipal Jwt jwt,
-                                               @PageableDefault(size = 20) Pageable pageable) {
-        Long tenantId = jwt.getClaim("tenant_id") instanceof Number n ? n.longValue() : null;
+    public PageResponse<UserResponse> findAll(@PageableDefault(size = 20) Pageable pageable) {
+        // Bug corrigé : lisait le claim JWT "tenant_id" directement, qui n'existe jamais pour un
+        // SUPER_ADMIN (hors tenant) — même en impersonation via le header X-Tenant-Id (qui alimente
+        // TenantContext, pas le JWT), la requête tombait sur tenantId=null et ne retournait jamais
+        // aucun utilisateur. TenantContext.get() reflète correctement l'impersonation (voir
+        // TenantContextFilter) — même pattern que StudentController.findAll.
+        Long tenantId = TenantContext.get();
         List<UserResponse> list = userUseCase.findByTenantId(tenantId).stream().map(this::toResponse).toList();
         int start = (int) pageable.getOffset();
         int end = Math.min(start + pageable.getPageSize(), list.size());
         return PageResponse.of(new PageImpl<>(list.subList(start, end), pageable, list.size()));
     }
 
-    @Operation(summary = "Get user by ID")
+    @Operation(summary = "Consulter un utilisateur par ID")
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('user:read')")
     public ResponseEntity<UserResponse> findById(@PathVariable Long id) {
@@ -70,7 +73,7 @@ public class UserController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    @Operation(summary = "Get the profile of the authenticated user")
+    @Operation(summary = "Consulter le profil de l'utilisateur connecté")
     @GetMapping("/me")
     public ResponseEntity<UserResponse> me(@AuthenticationPrincipal Jwt jwt) {
         Long userId = Long.parseLong(jwt.getSubject());
@@ -95,7 +98,7 @@ public class UserController {
         return toResponse(userUseCase.update(userId, new UserUseCase.UpdateUserCommand(null, null, null, null, photoUrl)));
     }
 
-    @Operation(summary = "Update a user")
+    @Operation(summary = "Modifier un utilisateur")
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('user:update')")
     public UserResponse update(@PathVariable Long id, @Valid @RequestBody UpdateUserRequest req) {
@@ -103,7 +106,7 @@ public class UserController {
                 req.firstName(), req.lastName(), req.phone(), req.active(), null)));
     }
 
-    @Operation(summary = "Deactivate a user account")
+    @Operation(summary = "Désactiver un compte utilisateur")
     @PatchMapping("/{id}/deactivate")
     @PreAuthorize("hasAuthority('user:update')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -111,7 +114,7 @@ public class UserController {
         userUseCase.update(id, new UserUseCase.UpdateUserCommand(null, null, null, false, null));
     }
 
-    @Operation(summary = "Reactivate a user account")
+    @Operation(summary = "Réactiver un compte utilisateur")
     @PatchMapping("/{id}/activate")
     @PreAuthorize("hasAuthority('user:update')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -119,13 +122,13 @@ public class UserController {
         userUseCase.update(id, new UserUseCase.UpdateUserCommand(null, null, null, true, null));
     }
 
-    @Operation(summary = "Delete (soft-delete) a user")
+    @Operation(summary = "Supprimer (suppression logique) un utilisateur")
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('user:delete')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) { userUseCase.delete(id); }
 
-    @Operation(summary = "Assign a role to a user")
+    @Operation(summary = "Affecter un rôle à un utilisateur")
     @PostMapping("/{id}/roles")
     @PreAuthorize("hasAuthority('role:assign')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -133,10 +136,15 @@ public class UserController {
         userUseCase.assignRole(id, roleId);
     }
 
-    @Operation(summary = "Get roles assigned to a user")
+    public record UserRoleResponse(Long id, String name) {}
+
+    @Operation(summary = "Consulter les rôles affectés à un utilisateur")
     @GetMapping("/{id}/roles")
-    public List<String> getRoles(@PathVariable Long id) {
-        return userUseCase.findUserRoles(id).stream().map(Role::getName).toList();
+    public List<UserRoleResponse> getRoles(@PathVariable Long id) {
+        // Comparé par id côté frontend (pas par nom) : un rôle personnalisé peut porter le même
+        // libellé qu'un rôle système (ex. deux rôles nommés « Comptable ») — comparer par nom faisait
+        // alors apparaître le mauvais rôle comme attribué, rendant son retrait impossible en pratique.
+        return userUseCase.findUserRoles(id).stream().map(r -> new UserRoleResponse(r.getId(), r.getName())).toList();
     }
 
     public record ResetAccessRequest(String password) {}

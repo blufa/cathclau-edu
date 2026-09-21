@@ -31,6 +31,28 @@ class LessonServiceTest {
     @InjectMocks LessonService service;
 
     @Test
+    void find_filtersByTeacherIdOnTopOfTenant() {
+        LessonEntry forTeacher1 = LessonEntry.builder().id(1L).tenantId(1L).classId(10L).teacherId(100L).build();
+        LessonEntry forTeacher2 = LessonEntry.builder().id(2L).tenantId(1L).classId(10L).teacherId(200L).build();
+        when(repo.findByTenantId(1L)).thenReturn(List.of(forTeacher1, forTeacher2));
+
+        List<LessonEntry> result = service.find(1L, null, null, 100L);
+
+        assertThat(result).containsExactly(forTeacher1);
+    }
+
+    @Test
+    void find_filtersByTeacherIdAndClassId() {
+        LessonEntry match = LessonEntry.builder().id(1L).tenantId(1L).classId(10L).teacherId(100L).build();
+        LessonEntry wrongTeacher = LessonEntry.builder().id(2L).tenantId(1L).classId(10L).teacherId(200L).build();
+        when(repo.findByTenantIdAndClassId(1L, 10L)).thenReturn(List.of(match, wrongTeacher));
+
+        List<LessonEntry> result = service.find(1L, 10L, null, 100L);
+
+        assertThat(result).containsExactly(match);
+    }
+
+    @Test
     void recordAssessmentSession_pastDate_createsDoneSessionWithTypeDuration() {
         when(repo.existsByTenantIdAndSourceAssessmentId(1L, 99L)).thenReturn(false);
         when(repo.save(any())).thenAnswer(i -> i.getArgument(0));

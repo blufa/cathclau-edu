@@ -15,5 +15,8 @@ class InstallmentPersistenceAdapter implements InstallmentRepository {
     @Override public Optional<Installment> findById(Long id) { return jpa.findById(id).map(mapper::toDomain); }
     @Override public List<Installment> findByFeeId(Long feeId) { return jpa.findByFeeId(feeId).stream().map(mapper::toDomain).toList(); }
     @Override public List<Installment> findOverdue(LocalDate today) { return jpa.findOverdue(today, InstallmentStatus.PAID).stream().map(mapper::toDomain).toList(); }
+    @Override public List<Installment> findUpcomingByTenant(Long tenantId, LocalDate from, LocalDate to) {
+        return jpa.findUpcomingByTenant(tenantId, from, to, InstallmentStatus.PENDING).stream().map(mapper::toDomain).toList();
+    }
     @Override public void deleteById(Long id) { jpa.deleteById(id); }
 }

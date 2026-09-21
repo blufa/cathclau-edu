@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.*;
 import java.net.URI;
 import java.util.List;
 
-@Tag(name = "Parents", description = "Parent records and student-parent relationships")
+@Tag(name = "Parents", description = "Fiches parents et liens de parenté élève-parent")
 @RestController
 @RequestMapping("/api/v1/parents")
 @RequiredArgsConstructor
@@ -33,7 +33,7 @@ public class ParentController {
     private final ParentUseCase parentUseCase;
     private final StudentDataProvider studentDataProvider;
 
-    @Operation(summary = "Register a new parent")
+    @Operation(summary = "Enregistrer un nouveau parent")
     @PostMapping
     @PreAuthorize("hasAuthority('parent:manage')")
     public ResponseEntity<Parent> create(@Valid @RequestBody ParentUseCase.CreateParentCommand cmd) {
@@ -43,7 +43,7 @@ public class ParentController {
         return ResponseEntity.created(URI.create("/api/v1/parents/" + p.getId())).body(p);
     }
 
-    @Operation(summary = "List all parents in current tenant (paginated)")
+    @Operation(summary = "Lister tous les parents de l'établissement (paginé)")
     @GetMapping
     @PreAuthorize("hasAuthority('parent:manage')")
     public PageResponse<Parent> findAll(@PageableDefault(size = 20) Pageable pageable) {
@@ -53,13 +53,13 @@ public class ParentController {
         return PageResponse.of(new PageImpl<>(list.subList(start, end), pageable, list.size()));
     }
 
-    @Operation(summary = "Get the parent record of the currently authenticated user (parent portal)")
+    @Operation(summary = "Consulter la fiche du parent connecté (portail parent)")
     @GetMapping("/me")
     public ResponseEntity<Parent> me(@AuthenticationPrincipal Jwt jwt) {
         return parentUseCase.findByUserId(currentUserId(jwt)).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
-    @Operation(summary = "Get the children (students) of the currently authenticated parent")
+    @Operation(summary = "Consulter les enfants (élèves) du parent connecté")
     @GetMapping("/me/children")
     public List<gn.lacaeducation.students.domain.Student> myChildren(@AuthenticationPrincipal Jwt jwt) {
         return parentUseCase.findByUserId(currentUserId(jwt))
@@ -82,7 +82,7 @@ public class ParentController {
         return parentUseCase.updateOwnPhoto(currentUserId(jwt), photoUrl);
     }
 
-    @Operation(summary = "Get parent by ID")
+    @Operation(summary = "Consulter un parent par son ID")
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('parent:manage')")
     public ResponseEntity<Parent> findById(@PathVariable Long id) {
@@ -93,20 +93,20 @@ public class ParentController {
         try { return Long.parseLong(jwt.getSubject()); } catch (RuntimeException e) { return null; }
     }
 
-    @Operation(summary = "Update parent information")
+    @Operation(summary = "Modifier les informations d'un parent")
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('parent:manage')")
     public Parent update(@PathVariable Long id, @Valid @RequestBody ParentUseCase.UpdateParentCommand cmd) {
         return parentUseCase.update(id, cmd);
     }
 
-    @Operation(summary = "Delete a parent")
+    @Operation(summary = "Supprimer un parent")
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('parent:manage')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) { parentUseCase.delete(id); }
 
-    @Operation(summary = "Link a parent to a student with relationship type")
+    @Operation(summary = "Lier un parent à un élève avec un type de lien de parenté")
     @PostMapping("/{parentId}/students/{studentId}")
     @PreAuthorize("hasAuthority('parent:manage')")
     @ResponseStatus(HttpStatus.CREATED)
@@ -123,17 +123,17 @@ public class ParentController {
         parentUseCase.setPrimaryGuardian(studentId, parentId);
     }
 
-    @Operation(summary = "Remove a student-parent link")
+    @Operation(summary = "Supprimer un lien élève-parent")
     @DeleteMapping("/links/{linkId}")
     @PreAuthorize("hasAuthority('parent:manage')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void unlinkStudent(@PathVariable Long linkId) { parentUseCase.unlinkStudent(linkId); }
 
-    @Operation(summary = "Get parents of a student")
+    @Operation(summary = "Consulter les parents d'un élève")
     @GetMapping("/by-student/{studentId}")
     public List<Parent> findByStudent(@PathVariable Long studentId) { return parentUseCase.findByStudent(studentId); }
 
-    @Operation(summary = "Get children (students) of a parent")
+    @Operation(summary = "Consulter les enfants (élèves) d'un parent")
     @GetMapping("/{id}/students")
     public List<gn.lacaeducation.students.domain.Student> findChildren(@PathVariable Long id) {
         return parentUseCase.findStudentsByParent(id);
@@ -142,7 +142,7 @@ public class ParentController {
     @Operation(summary = "Parents dont au moins un enfant a accepté l'accès à la plateforme — présélection "
             + "automatique des destinataires lors de la composition d'un message (§communication)")
     @GetMapping("/with-platform-access")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','TEACHER')")
+    @PreAuthorize("hasAuthority('eleve:read')")
     public List<gn.lacaeducation.students.ParentPublicInfo> findAllWithPlatformAccess() {
         return studentDataProvider.findAllParentsWithPlatformAccess(TenantContext.get());
     }

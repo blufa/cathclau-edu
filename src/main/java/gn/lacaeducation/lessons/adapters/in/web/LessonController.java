@@ -35,11 +35,12 @@ public class LessonController {
     /** Durée réellement effectuée (optionnelle) — corrige la durée planifiée au moment de la réalisation. */
     public record MarkDoneRequest(Integer durationMinutes) {}
 
-    @Operation(summary = "Lister les séances (filtres classe / matière)")
+    @Operation(summary = "Lister les séances (filtres classe / matière / enseignant)")
     @GetMapping
     public List<LessonEntry> list(@RequestParam(required = false) Long classId,
-                                  @RequestParam(required = false) Long subjectId) {
-        return service.find(TenantContext.get(), classId, subjectId);
+                                  @RequestParam(required = false) Long subjectId,
+                                  @RequestParam(required = false) Long teacherId) {
+        return service.find(TenantContext.get(), classId, subjectId, teacherId);
     }
 
     @Operation(summary = "Cahier de textes de la classe d'un élève (portail élève / parent)")

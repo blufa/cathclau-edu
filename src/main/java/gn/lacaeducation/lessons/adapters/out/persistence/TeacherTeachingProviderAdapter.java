@@ -28,4 +28,12 @@ class TeacherTeachingProviderAdapter implements TeacherTeachingProvider {
                 .collect(Collectors.groupingBy(LessonEntryJpaEntity::getClassId,
                         Collectors.summingInt(l -> l.getDurationMinutes() != null ? l.getDurationMinutes() : 0)));
     }
+
+    @Override
+    public Map<LocalDate, Map<Long, Integer>> realizedMinutesByClassAndDate(Long teacherId, LocalDate from, LocalDate to) {
+        return jpa.findByTeacherIdAndStatusAndLessonDateBetween(teacherId, LessonStatus.DONE, from, to).stream()
+                .collect(Collectors.groupingBy(LessonEntryJpaEntity::getLessonDate,
+                        Collectors.groupingBy(LessonEntryJpaEntity::getClassId,
+                                Collectors.summingInt(l -> l.getDurationMinutes() != null ? l.getDurationMinutes() : 0))));
+    }
 }

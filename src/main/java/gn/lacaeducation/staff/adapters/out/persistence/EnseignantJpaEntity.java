@@ -31,4 +31,5 @@ class EnseignantJpaEntity {
     @Column(name = "cnss_number") private String cnssNumber;
     @Column(name = "bank_account") private String bankAccount;
     @Column(name = "idempotency_key") private String idempotencyKey;
+    @Column(name = "allows_concurrent_classes", nullable = false) private boolean allowsConcurrentClasses;
 }

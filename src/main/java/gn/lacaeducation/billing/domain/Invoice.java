@@ -27,6 +27,10 @@ public class Invoice {
     private BigDecimal discountAmount;
     /** Motif de la remise (bourse, remise d'ordre Ramadan, réduction fratrie…). */
     private String discountReason;
+    /** Origine de la remise en % effectivement appliquée (la plus avantageuse des trois) — voir
+     * {@link DiscountSource}. Null si aucune remise en % (seule une remise EXCEPTIONAL éventuelle,
+     * ou aucune remise du tout). */
+    private DiscountSource discountSource;
     /** Étape de recouvrement (relances → exclusion de l'élève). */
     private RecoveryStage recoveryStage;
     /** Date de la dernière relance. */

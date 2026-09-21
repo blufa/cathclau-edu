@@ -17,26 +17,26 @@ import org.springframework.web.bind.annotation.*;
 import java.net.URI;
 import java.util.List;
 
-@Tag(name = "Roles & Permissions", description = "RBAC: roles management and permission assignment")
+@Tag(name = "Roles & Permissions", description = "RBAC : gestion des rôles et affectation des permissions")
 @RestController
 @RequiredArgsConstructor
 public class RoleController {
 
     private final RoleUseCase roleUseCase;
 
-    @Operation(summary = "List all roles")
+    @Operation(summary = "Lister tous les rôles")
     @GetMapping("/api/v1/roles")
     public List<RoleResponse> findAll() {
         return roleUseCase.findAll().stream().map(this::toResponse).toList();
     }
 
-    @Operation(summary = "Get role by ID")
+    @Operation(summary = "Consulter un rôle par ID")
     @GetMapping("/api/v1/roles/{id}")
     public RoleResponse findById(@PathVariable Long id) {
         return toResponse(roleUseCase.findById(id));
     }
 
-    @Operation(summary = "Create a custom role")
+    @Operation(summary = "Créer un rôle personnalisé")
     @PostMapping("/api/v1/roles")
     @PreAuthorize("hasAuthority('role:create')")
     public ResponseEntity<RoleResponse> create(@Valid @RequestBody CreateRoleRequest req) {
@@ -45,14 +45,14 @@ public class RoleController {
                 .body(toResponse(role));
     }
 
-    @Operation(summary = "Update a role (custom roles only)")
+    @Operation(summary = "Modifier un rôle (rôles personnalisés uniquement)")
     @PutMapping("/api/v1/roles/{id}")
     @PreAuthorize("hasAuthority('role:update')")
     public RoleResponse update(@PathVariable Long id, @Valid @RequestBody CreateRoleRequest req) {
         return toResponse(roleUseCase.update(id, new RoleUseCase.UpdateRoleCommand(req.name(), req.description())));
     }
 
-    @Operation(summary = "Delete a custom role (system roles cannot be deleted)")
+    @Operation(summary = "Supprimer un rôle personnalisé (les rôles système ne peuvent pas être supprimés)")
     @DeleteMapping("/api/v1/roles/{id}")
     @PreAuthorize("hasAuthority('role:delete')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -60,13 +60,13 @@ public class RoleController {
         roleUseCase.delete(id);
     }
 
-    @Operation(summary = "Get permissions catalog (read-only)")
+    @Operation(summary = "Consulter le catalogue des permissions (lecture seule)")
     @GetMapping("/api/v1/permissions")
     public List<PermissionResponse> findAllPermissions() {
         return roleUseCase.findAllPermissions().stream().map(this::toPermissionResponse).toList();
     }
 
-    @Operation(summary = "Assign permissions to a role (replaces existing)")
+    @Operation(summary = "Affecter des permissions à un rôle (remplace les permissions existantes)")
     @PostMapping("/api/v1/roles/{id}/permissions")
     @PreAuthorize("hasAuthority('role:assign_permissions')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -75,7 +75,7 @@ public class RoleController {
         roleUseCase.assignPermissions(id, req.permissionIds());
     }
 
-    @Operation(summary = "Remove a role from a user")
+    @Operation(summary = "Retirer un rôle à un utilisateur")
     @DeleteMapping("/api/v1/users/{userId}/roles/{roleId}")
     @PreAuthorize("hasAuthority('role:assign')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -83,14 +83,14 @@ public class RoleController {
         roleUseCase.removeRoleFromUser(userId, roleId);
     }
 
-    @Operation(summary = "Get a user's directly-granted permissions (beyond their role)")
+    @Operation(summary = "Consulter les permissions accordées directement à un utilisateur (au-delà de son rôle)")
     @GetMapping("/api/v1/users/{userId}/permissions")
     @PreAuthorize("hasAuthority('role:assign_permissions')")
     public List<PermissionResponse> findDirectPermissionsByUser(@PathVariable Long userId) {
         return roleUseCase.findDirectPermissionsByUser(userId).stream().map(this::toPermissionResponse).toList();
     }
 
-    @Operation(summary = "Assign extra permissions directly to a user, on top of their role (replaces existing direct grants)")
+    @Operation(summary = "Affecter des permissions supplémentaires directement à un utilisateur, en plus de son rôle (remplace les permissions directes existantes)")
     @PostMapping("/api/v1/users/{userId}/permissions")
     @PreAuthorize("hasAuthority('role:assign_permissions')")
     @ResponseStatus(HttpStatus.NO_CONTENT)

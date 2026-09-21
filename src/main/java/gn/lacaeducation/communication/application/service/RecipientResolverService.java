@@ -50,6 +50,16 @@ class RecipientResolverService {
                     .map(d -> new RecipientTarget(null, d))
                     .toList();
         }
+        if (audience == BroadcastAudience.ALL) {
+            // Union parents + enseignants + personnel, dédupliquée par destination (un enseignant qui
+            // est aussi parent d'élève dans la même école ne reçoit le message qu'une seule fois).
+            Map<String, RecipientTarget> byDestination = new LinkedHashMap<>();
+            resolve(tenantId, BroadcastAudience.ALL_PARENTS, null, null, channel)
+                    .forEach(r -> byDestination.putIfAbsent(r.destination(), r));
+            resolve(tenantId, BroadcastAudience.ALL_STAFF, null, null, channel)
+                    .forEach(r -> byDestination.putIfAbsent(r.destination(), r));
+            return List.copyOf(byDestination.values());
+        }
 
         // Frais annexe optionnel (§billing) : la diffusion de masse (annonces, etc.) ne touche que les
         // familles ayant accepté l'accès à la plateforme — jamais les autres, quel que soit le public visé.
@@ -60,7 +70,7 @@ class RecipientResolverService {
             case CLASS_PARENTS_GIRLS -> parentsOfClass(classId, "FEMALE");
             case STUDENT_PARENTS -> studentDataProvider.hasPlatformAccessOptIn(studentId)
                     ? studentDataProvider.findParentsByStudent(studentId) : List.of();
-            case ALL_TEACHERS, ALL_STAFF -> throw new IllegalStateException("traité plus haut");
+            case ALL_TEACHERS, ALL_STAFF, ALL -> throw new IllegalStateException("traité plus haut");
         };
 
         return parents.stream()

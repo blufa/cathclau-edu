@@ -19,5 +19,6 @@ class StudentAttendancePersistenceAdapter implements StudentAttendanceRepository
     @Override public List<StudentAttendance> findByClassIdAndDateBetweenAndStatus(Long c, LocalDate f, LocalDate t, AttendanceStatus st) { return repo.findByClassIdAndDateBetweenAndStatus(c,f,t,st).stream().map(mapper::toDomain).toList(); }
     @Override public long countByStudentIdAndDateBetweenAndStatus(Long s, LocalDate f, LocalDate t, AttendanceStatus st) { return repo.countByStudentIdAndDateBetweenAndStatus(s,f,t,st); }
     @Override public long countByStudentIdAndDateBetween(Long s, LocalDate f, LocalDate t) { return repo.countByStudentIdAndDateBetween(s,f,t); }
+    @Override public List<StudentAttendance> findByTenantIdAndDate(Long t, LocalDate d) { return repo.findByTenantIdAndDate(t,d).stream().map(mapper::toDomain).toList(); }
     @Override public void deleteById(Long id) { repo.deleteById(id); }
 }

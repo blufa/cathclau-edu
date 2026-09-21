@@ -17,7 +17,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 
-@Tag(name = "Platform Users", description = "All users across every tenant (SUPER_ADMIN oversight)")
+@Tag(name = "Platform Users", description = "Tous les utilisateurs, tous tenants confondus (supervision SUPER_ADMIN)")
 @RestController
 @RequestMapping("/api/v1/platform/users")
 @RequiredArgsConstructor
@@ -29,7 +29,7 @@ public class PlatformUserController {
     private final UserUseCase userUseCase;
     private final RoleRepository roleRepository;
 
-    @Operation(summary = "List every user across all tenants, with roles and an online/offline status")
+    @Operation(summary = "Lister tous les utilisateurs de tous les tenants, avec leurs rôles et leur statut en ligne/hors ligne")
     @GetMapping
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public List<PlatformUserResponse> findAll(@RequestParam(required = false) Long tenantId) {

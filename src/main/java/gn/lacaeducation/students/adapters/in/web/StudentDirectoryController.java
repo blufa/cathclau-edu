@@ -32,7 +32,7 @@ public class StudentDirectoryController {
 
     @Operation(summary = "Search a student across all schools (exact matricule or name ≥ 3 chars)")
     @GetMapping("/students")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @PreAuthorize("hasAuthority('eleve:read')")
     public List<DirectoryEntryResponse> search(@RequestParam(required = false) String matricule,
                                                @RequestParam(required = false) String name) {
         return service.search(matricule, name).stream()
@@ -44,7 +44,7 @@ public class StudentDirectoryController {
 
     @Operation(summary = "Suggest platform school names (for a transferred student's origin school)")
     @GetMapping("/schools")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @PreAuthorize("hasAuthority('eleve:read')")
     public List<String> searchSchools(@RequestParam(required = false) String q) {
         return service.searchSchools(q);
     }

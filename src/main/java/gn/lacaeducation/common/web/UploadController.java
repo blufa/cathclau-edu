@@ -11,7 +11,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.Map;
 
 /** Generic authenticated file upload to Cloudinary (photos & documents). Returns the secure URL. */
-@Tag(name = "Uploads", description = "Upload images and documents to Cloudinary")
+@Tag(name = "Uploads", description = "Téléverser des images et documents vers Cloudinary")
 @RestController
 @RequestMapping("/api/v1/uploads")
 @RequiredArgsConstructor
@@ -19,7 +19,7 @@ public class UploadController {
 
     private final MediaUploadService uploadService;
 
-    @Operation(summary = "Upload a file (image or document); returns its secure URL")
+    @Operation(summary = "Téléverser un fichier (image ou document) ; retourne son URL sécurisée")
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Map<String, String> upload(@RequestParam("file") MultipartFile file,
                                       @RequestParam(value = "folder", required = false) String folder) {

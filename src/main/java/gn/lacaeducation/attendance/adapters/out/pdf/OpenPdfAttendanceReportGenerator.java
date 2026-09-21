@@ -76,6 +76,35 @@ class OpenPdfAttendanceReportGenerator implements AttendanceReportPdfGenerator {
                 });
     }
 
+    @Override
+    public byte[] teacherLatenessReport(TeacherLatenessReport data) {
+        String period = data.from() == null || data.to() == null ? null
+                : "Du " + data.from().format(DATE) + " au " + data.to().format(DATE);
+        int totalLate = data.rows().stream().mapToInt(TeacherReportRow::lateMinutes).sum();
+        int totalEarly = data.rows().stream().mapToInt(TeacherReportRow::earlyMinutes).sum();
+        long absentDays = data.rows().stream().filter(TeacherReportRow::absent).count();
+        String summary = totalLate + " min de retard, " + totalEarly + " min de départ anticipé, "
+                + absentDays + " jour(s) d'absence sur la période";
+        return render(data.tenantId(), "RÉCAPITULATIF RETARDS / ABSENCES",
+                join(" · ", data.teacherName(), period),
+                new String[]{"Date", "Matière", "Classe", "Retard", "Départ anticipé", "Absence"},
+                new float[]{1.6f, 2.2f, 1.6f, 1.2f, 1.6f, 2f},
+                summary,
+                (table, brand) -> {
+                    boolean zebra = false;
+                    for (TeacherReportRow r : data.rows()) {
+                        Color bg = zebra ? ZEBRA : Color.WHITE; zebra = !zebra;
+                        bodyCell(table, r.date() == null ? "—" : r.date().format(DATE), Element.ALIGN_LEFT, bg);
+                        bodyCell(table, r.absent() ? "—" : safe(r.subjectLabel()), Element.ALIGN_LEFT, bg);
+                        bodyCell(table, r.absent() ? "—" : safe(r.className()), Element.ALIGN_LEFT, bg);
+                        bodyCell(table, r.absent() || r.lateMinutes() <= 0 ? "—" : r.lateMinutes() + " min", Element.ALIGN_CENTER, bg);
+                        bodyCell(table, r.absent() || r.earlyMinutes() <= 0 ? "—" : r.earlyMinutes() + " min", Element.ALIGN_CENTER, bg);
+                        bodyCell(table, r.absent() ? safe(r.absenceReason()) : "—", Element.ALIGN_LEFT, bg);
+                    }
+                    if (data.rows().isEmpty()) emptyRow(table, 6, "Aucun retard, départ anticipé ni absence sur la période.");
+                });
+    }
+
     // ── Rendu commun ────────────────────────────────────────────────────────────
     private interface TableFiller { void fill(PdfPTable table, Color brand); }
 

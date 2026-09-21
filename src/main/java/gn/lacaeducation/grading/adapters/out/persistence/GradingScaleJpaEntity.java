@@ -6,11 +6,14 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import java.math.BigDecimal;
 
-@Entity @Table(name = "grading_scales")
+@Entity @Table(name = "grading_scales",
+        uniqueConstraints = @UniqueConstraint(name = "uq_grading_scales_tenant_cycle",
+                columnNames = {"tenant_id", "cycle_group"}))
 @Getter @Setter @NoArgsConstructor
 class GradingScaleJpaEntity {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
-    @Column(name = "tenant_id", nullable = false, unique = true) private Long tenantId;
+    @Column(name = "tenant_id", nullable = false) private Long tenantId;
+    @Column(name = "cycle_group", nullable = false) private String cycleGroup;
     @Column(name = "pass_threshold", nullable = false) private BigDecimal passThreshold;
     @Column(name = "passable_min", nullable = false) private BigDecimal passableMin;
     @Column(name = "assez_bien_min", nullable = false) private BigDecimal assezBienMin;

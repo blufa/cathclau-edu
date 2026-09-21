@@ -11,6 +11,7 @@ import java.math.BigDecimal;
 public class GradingScale {
     private Long id;
     private Long tenantId;
+    private CycleGroup cycleGroup;
     private BigDecimal passThreshold;
     private BigDecimal passableMin;
     private BigDecimal assezBienMin;
@@ -34,6 +35,13 @@ public class GradingScale {
                 .complimentsMin(BigDecimal.valueOf(13))
                 .distinctionNoFailingThreshold(BigDecimal.valueOf(10))
                 .build();
+    }
+
+    /** Barème par défaut rattaché à un groupe de cycle donné (primaire/secondaire). */
+    public static GradingScale defaults(CycleGroup cycleGroup) {
+        GradingScale scale = defaults();
+        scale.setCycleGroup(cycleGroup);
+        return scale;
     }
 
     public String honorFor(BigDecimal average) {

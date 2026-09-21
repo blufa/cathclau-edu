@@ -36,7 +36,6 @@ public class GradeService implements GradeUseCase {
     private final StudentDataProvider studentDataProvider;
     private final ApplicationEventPublisher eventPublisher;
     private final GradeCalculationService calculationService;
-    private final gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort classSubjectQueryPort;
     private final gn.lacaeducation.grading.application.port.out.SubjectGradeReportPdfGenerator subjectReportPdfGenerator;
 
     @Override
@@ -189,9 +188,19 @@ public class GradeService implements GradeUseCase {
     @Override
     @Transactional(readOnly = true)
     public SubjectGradeReport subjectGradeReport(Long classId, Long subjectId, Long periodId) {
+        return buildSubjectGradeReport(classId, subjectId, periodId, null);
+    }
+
+    /**
+     * @param month si non nul (1-12), limite le relevé aux évaluations datées de ce mois-là — utilisé
+     *              pour le « relevé du mois » (deux évaluations orale/écrite du même mois par exemple),
+     *              par opposition au relevé complet de la période.
+     */
+    private SubjectGradeReport buildSubjectGradeReport(Long classId, Long subjectId, Long periodId, Integer month) {
         // Évaluations de la matière pour la classe/période, ordonnées par date puis identifiant.
         List<Assessment> assessments = assessmentRepository.findByClassIdAndPeriodId(classId, periodId).stream()
                 .filter(a -> subjectId.equals(a.getSubjectId()))
+                .filter(a -> month == null || (a.getDate() != null && a.getDate().getMonthValue() == month))
                 .sorted(java.util.Comparator
                         .comparing((Assessment a) -> a.getDate() == null ? java.time.LocalDate.MIN : a.getDate())
                         .thenComparing(Assessment::getId))
@@ -207,11 +216,6 @@ public class GradeService implements GradeUseCase {
                         a.getType() == null ? null : a.getType().name(), a.getDate(), a.getMaxScore(), a.getCoefficient()))
                 .toList();
 
-        BigDecimal subjectCoefficient = classSubjectQueryPort.findByClassId(classId).stream()
-                .filter(i -> subjectId.equals(i.subjectId()))
-                .map(gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort.ClassSubjectInfo::coefficient)
-                .findFirst().orElse(BigDecimal.ONE);
-
         List<ReleveRow> rows = studentDataProvider.findStudentsByClass(classId).stream()
                 .map(s -> {
                     java.util.Map<Long, BigDecimal> notes = new java.util.LinkedHashMap<>();
@@ -222,7 +226,7 @@ public class GradeService implements GradeUseCase {
                         if (g != null && g.getValue() != null) studentGrades.add(g);
                     }
                     return new ReleveRow(s.id(), s.studentNumber(), fullName(s), notes,
-                            calculationService.subjectAverage(assessments, studentGrades, subjectCoefficient));
+                            calculationService.subjectAverage(assessments, studentGrades));
                 })
                 .sorted(java.util.Comparator.comparing(ReleveRow::fullName, String.CASE_INSENSITIVE_ORDER))
                 .toList();
@@ -242,8 +246,8 @@ public class GradeService implements GradeUseCase {
 
     @Override
     @Transactional(readOnly = true)
-    public byte[] subjectGradeReportPdf(Long classId, Long subjectId, Long periodId) {
-        return subjectReportPdfGenerator.generate(subjectGradeReport(classId, subjectId, periodId));
+    public byte[] subjectGradeReportPdf(Long classId, Long subjectId, Long periodId, Integer month) {
+        return subjectReportPdfGenerator.generate(buildSubjectGradeReport(classId, subjectId, periodId, month));
     }
 
     @Override

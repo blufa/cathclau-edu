@@ -1,6 +1,7 @@
 package gn.lacaeducation.reporting.adapters.in.web;
 
 import gn.lacaeducation.academics.AcademicsDataProvider;
+import gn.lacaeducation.attendance.StudentAttendanceStatsProvider;
 import gn.lacaeducation.attendance.TeacherWorkProvider;
 import gn.lacaeducation.billing.SchoolBillingStatsProvider;
 import gn.lacaeducation.billing.SchoolBillingStatsProvider.BillingStats;
@@ -47,6 +48,7 @@ public class SchoolDashboardController {
     private final SchoolCollectionStatsProvider collectionStatsProvider;
     private final SchoolPayrollStatsProvider payrollStatsProvider;
     private final TeacherWorkProvider teacherWorkProvider;
+    private final StudentAttendanceStatsProvider studentAttendanceStatsProvider;
     private final TeacherPublicInfoProvider teacherPublicInfoProvider;
     private final AcademicsDataProvider academicsDataProvider;
     private final StudentDataProvider studentDataProvider;
@@ -92,6 +94,22 @@ public class SchoolDashboardController {
     public FinanceDashboard finance() {
         BillingStats s = billingStatsProvider.billingStats(TenantContext.get());
         return new FinanceDashboard(s.invoiced(), s.collected(), s.outstanding(), s.recoveryRate(), s.unpaidCount());
+    }
+
+    @Operation(summary = "Prochaines échéances de paiement des frais (statut PENDING), triées par date limite croissante")
+    @PreAuthorize("hasAuthority('dashboard:admin')")
+    @GetMapping("/finance/upcoming-installments")
+    public List<SchoolBillingStatsProvider.UpcomingInstallment> upcomingInstallments(
+            @RequestParam(defaultValue = "30") int daysAhead, @RequestParam(defaultValue = "5") int limit) {
+        return billingStatsProvider.upcomingInstallments(TenantContext.get(), daysAhead, limit);
+    }
+
+    // ── Présences élèves du jour ─────────────────────────────────────────────
+    @Operation(summary = "Taux de présence élèves du jour, toutes classes confondues")
+    @PreAuthorize("hasAuthority('dashboard:admin')")
+    @GetMapping("/attendance/today")
+    public StudentAttendanceStatsProvider.TodayAttendanceStats todayAttendance() {
+        return studentAttendanceStatsProvider.todayAttendanceStats(TenantContext.get());
     }
 
     // ── 10.2 Financier : prévisionnel de trésorerie ─────────────────────────
@@ -267,6 +285,26 @@ public class SchoolDashboardController {
         }
 
         return new FounderDashboard(academicYearId, recovery, payroll, realPayroll, teacherHours, payrollProjection, teacherSalaries, subsidy, alerts, comparison);
+    }
+
+    // ── Élèves abandonnés (§14) : justifie la disparition d'anciennes factures impayées ────────
+    public record AbandonedStudentRow(Long studentId, String studentName, Long classId, String className,
+                                      java.math.BigDecimal writtenOffAmount) {}
+
+    @Operation(summary = "Élèves partis en cours d'année (abandon) sur une année scolaire, avec le montant "
+            + "de factures autrefois impayées désormais annulées — pour justifier ces écarts au comptable")
+    @PreAuthorize("hasAuthority('dashboard:direction')")
+    @GetMapping("/founder/abandoned-students")
+    public List<AbandonedStudentRow> abandonedStudents(@RequestParam Long academicYearId) {
+        Long tenantId = TenantContext.get();
+        List<gn.lacaeducation.students.AbandonedStudentInfo> students =
+                studentDataProvider.findAbandonedStudents(academicYearId);
+        java.util.Map<Long, BigDecimal> writtenOff = billingStatsProvider.writtenOffAmountByStudent(
+                tenantId, academicYearId, students.stream().map(gn.lacaeducation.students.AbandonedStudentInfo::studentId).toList());
+        return students.stream()
+                .map(s -> new AbandonedStudentRow(s.studentId(), s.studentName(), s.classId(), className(s.classId()),
+                        writtenOff.getOrDefault(s.studentId(), BigDecimal.ZERO)))
+                .toList();
     }
 
     // ── 10.3 RH ─────────────────────────────────────────────────────────────

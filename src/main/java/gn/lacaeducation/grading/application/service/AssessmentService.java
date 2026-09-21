@@ -6,8 +6,10 @@ import gn.lacaeducation.grading.application.event.AssessmentScheduledEvent;
 import gn.lacaeducation.grading.application.port.in.AssessmentUseCase;
 import gn.lacaeducation.grading.application.port.out.AssessmentRepository;
 import gn.lacaeducation.grading.application.port.out.AssessmentSessionSettingsRepository;
+import gn.lacaeducation.grading.application.port.out.GradeRepository;
 import gn.lacaeducation.grading.domain.Assessment;
 import gn.lacaeducation.grading.domain.AssessmentSessionSettings;
+import gn.lacaeducation.grading.domain.Grade;
 import gn.lacaeducation.students.StudentDataProvider;
 import gn.lacaeducation.students.StudentPublicInfo;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +18,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 @Service @Transactional @RequiredArgsConstructor
 public class AssessmentService implements AssessmentUseCase {
@@ -24,7 +27,9 @@ public class AssessmentService implements AssessmentUseCase {
     private final AssessmentSessionSettingsRepository sessionSettingsRepository;
     private final gn.lacaeducation.grading.application.port.out.AssessmentTypeConfigRepository assessmentTypeConfigRepository;
     private final StudentDataProvider studentDataProvider;
+    private final GradeRepository gradeRepository;
     private final gn.lacaeducation.grading.application.port.out.AssessmentPlanPdfGenerator planPdfGenerator;
+    private final gn.lacaeducation.grading.application.port.out.AssessmentGradeSheetPdfGenerator gradeSheetPdfGenerator;
     private final ApplicationEventPublisher eventPublisher;
 
     @Override public Assessment create(CreateAssessmentCommand c) {
@@ -87,6 +92,32 @@ public class AssessmentService implements AssessmentUseCase {
                 .toList();
         return planPdfGenerator.generate(new gn.lacaeducation.grading.application.port.out.AssessmentPlanPdfGenerator.AssessmentPlan(
                 tenantId, className, subjectName, schoolYear, studentNames));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] assessmentGradeSheetPdf(Long assessmentId) {
+        Assessment a = load(assessmentId);
+        String className = academicsDataProvider.findClass(a.getClassId())
+                .map(c -> c.levelLabel() != null && !c.levelLabel().isBlank() ? c.label() + " (" + c.levelLabel() + ")" : c.label())
+                .orElse(null);
+        String subjectName = academicsDataProvider.subjectLabels(java.util.Set.of(a.getSubjectId())).get(a.getSubjectId());
+        String typeLabel = a.getAssessmentTypeId() != null
+                ? assessmentTypeConfigRepository.findById(a.getAssessmentTypeId())
+                        .map(gn.lacaeducation.grading.domain.AssessmentTypeConfig::getLabel).orElse(a.getType().name())
+                : a.getType().name();
+        Map<Long, BigDecimal> gradeByStudent = gradeRepository.findByAssessmentId(assessmentId).stream()
+                .collect(java.util.stream.Collectors.toMap(Grade::getStudentId, Grade::getValue, (x, y) -> x));
+        List<gn.lacaeducation.grading.application.port.out.AssessmentGradeSheetPdfGenerator.StudentGradeRow> rows =
+                studentDataProvider.findStudentsByClass(a.getClassId()).stream()
+                        .sorted(java.util.Comparator.comparing(StudentPublicInfo::lastName,
+                                java.util.Comparator.nullsLast(String::compareToIgnoreCase)))
+                        .map(s -> new gn.lacaeducation.grading.application.port.out.AssessmentGradeSheetPdfGenerator.StudentGradeRow(
+                                ((s.firstName() != null ? s.firstName() : "") + " " + (s.lastName() != null ? s.lastName() : "")).trim(),
+                                gradeByStudent.get(s.id())))
+                        .toList();
+        return gradeSheetPdfGenerator.generate(new gn.lacaeducation.grading.application.port.out.AssessmentGradeSheetPdfGenerator.AssessmentGradeSheet(
+                a.getTenantId(), className, subjectName, a.getLabel(), typeLabel, a.getDate(), a.getMaxScore(), rows));
     }
 
     /** Creating/modifying an assessment is forbidden on a closed period (or a non-EN_COURS year). */

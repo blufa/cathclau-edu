@@ -30,9 +30,13 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.YearMonth;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Paie (inspiré OpenEduCat Payroll) : règles de paie, structures salariales, génération de fiches
@@ -55,6 +59,7 @@ public class PayrollService {
     private final TeacherTeachingProvider teachingProvider;
     private final TeacherWorkProvider workProvider;
     private final gn.lacaeducation.payroll.application.port.in.SalaryFeeDeductionUseCase salaryFeeDeductionUseCase;
+    private final gn.lacaeducation.payroll.application.port.in.SalaryAdvanceUseCase salaryAdvanceUseCase;
     private final AcademicsDataProvider academics;
     private final CalendarDataProvider calendar;
     private final ApplicationEventPublisher eventPublisher;
@@ -136,7 +141,17 @@ public class PayrollService {
     public MonthlyPay computeMonthlyPay(Long teacherId, int year, int month) {
         LocalDate from = LocalDate.of(year, month, 1);
         LocalDate to = from.withDayOfMonth(from.lengthOfMonth());
-        Map<Long, Integer> realizedByClass = teachingProvider.realizedMinutesByClass(teacherId, from, to);
+        TeacherCompensation comp = compRepo.findByTeacherId(teacherId).orElse(null);
+        Long tenantId = comp != null && comp.getTenantId() != null ? comp.getTenantId() : TenantContext.get();
+
+        Map<Long, Integer> realizedByClass = new HashMap<>(dedupedRealizedByClass(teacherId, from, to));
+        // Événement école (kermesse, match, entraînement... §academics) qui a empêché le cours sur une
+        // période : les heures des créneaux concernés restent payées comme si le cours avait eu lieu —
+        // jamais retirées des heures réalisées, même si aucune séance n'a été (et ne sera jamais) marquée
+        // « réalisée » au cahier de textes pour ces créneaux (les élèves étant rentrés à la maison).
+        for (var e : eventCoveredMinutesByClass(teacherId, tenantId, from, to).entrySet()) {
+            realizedByClass.merge(e.getKey(), e.getValue(), Integer::sum);
+        }
         Map<Long, TeacherWorkProvider.ClassLateEarly> lateEarlyByClass = workProvider.monthlyLateEarlyByClass(teacherId, year, month);
 
         Map<Long, ClassPublicInfo> classCache = new HashMap<>();
@@ -157,7 +172,6 @@ public class PayrollService {
         int examEffective = examRealized;
         int effective = normalEffective + examEffective;
 
-        TeacherCompensation comp = compRepo.findByTeacherId(teacherId).orElse(null);
         PayMode mode = comp != null && comp.getPayMode() != null ? comp.getPayMode() : PayMode.HOURLY;
         BigDecimal rateNormal = comp != null && comp.getHourlyRateNormal() != null ? comp.getHourlyRateNormal() : BigDecimal.ZERO;
         BigDecimal rateExam = comp != null && comp.getHourlyRateExam() != null ? comp.getHourlyRateExam() : BigDecimal.ZERO;
@@ -169,6 +183,116 @@ public class PayrollService {
         BigDecimal gross = mode == PayMode.FIXED ? fixed.add(teachingPay) : teachingPay;
         return new MonthlyPay(teacherId, year, month, mode.name(), realized, late, early, effective,
                 normalEffective, examEffective, rateNormal, rateExam, fixed, teachingPay, gross);
+    }
+
+    /**
+     * Minutes des créneaux récurrents d'un enseignant qui tombent dans un événement école (kermesse,
+     * match, entraînement... §academics, décidé par la direction) sur [from, to] : les élèves sont
+     * rentrés à la maison, mais l'enseignant reste payé sur ces heures comme si le cours avait eu lieu —
+     * voir {@link #computeMonthlyPay}. Regroupées par bloc d'emploi du temps (voir {@link #scheduleBlocks})
+     * pour ne compter qu'une seule fois les blocs concurrents (§5.6 enseignant exceptionnel).
+     */
+    private Map<Long, Integer> eventCoveredMinutesByClass(Long teacherId, Long tenantId, LocalDate from, LocalDate to) {
+        if (tenantId == null) return Map.of();
+        List<gn.lacaeducation.academics.SchoolEventPublicInfo> events = academics.findSchoolEvents(tenantId, from, to);
+        if (events.isEmpty()) return Map.of();
+        Map<Long, Integer> result = new HashMap<>();
+        for (ScheduleBlock block : scheduleBlocks(teacherId)) {
+            for (LocalDate d = from; !d.isAfter(to); d = d.plusDays(1)) {
+                if (d.getDayOfWeek() != block.day()) continue;
+                LocalDate date = d;
+                boolean covered = events.stream().anyMatch(ev -> eventCoversSlot(ev, date, block.start(), block.end()));
+                if (covered) result.merge(block.representativeClassId(), block.durationMinutes(), Integer::sum);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Un enseignant "exceptionnel" (§5.6, ex. EPS) peut couvrir plusieurs classes au même horaire —
+     * l'emploi du temps ne bloque plus le conflit d'enseignant pour lui (voir
+     * {@code EmploiDuTempsService}). Ses heures sont FIXÉES par le créneau (ex. samedi 8h-12h), pas
+     * multipliées par le nombre de classes rassemblées dedans : c'est à lui de couvrir toutes ces
+     * classes dans ce temps imparti. Un {@link ScheduleBlock} fusionne les créneaux d'un même jour qui
+     * se chevauchent (donc "concurrent" seulement s'il regroupe plus d'une classe) ; un enseignant
+     * normal n'a jamais de bloc concurrent puisque le conflit d'enseignant l'en empêche à la création.
+     */
+    private record ScheduleBlock(DayOfWeek day, LocalTime start, LocalTime end, Set<Long> classIds) {
+        int durationMinutes() { return (int) Duration.between(start, end).toMinutes(); }
+        boolean concurrent() { return classIds.size() > 1; }
+        Long representativeClassId() { return classIds.stream().min(Comparator.naturalOrder()).orElse(null); }
+    }
+
+    /** Fusionne les créneaux récurrents (jour + horaire) d'un enseignant qui se chevauchent en blocs
+     * uniques — voir {@link ScheduleBlock}. */
+    private List<ScheduleBlock> scheduleBlocks(Long teacherId) {
+        Map<DayOfWeek, List<ScheduleSlotPublicInfo>> byDay = new HashMap<>();
+        for (ScheduleSlotPublicInfo slot : academics.findScheduleByTeacher(teacherId)) {
+            if (slot.day() == null || slot.startTime() == null || slot.endTime() == null || slot.classId() == null) continue;
+            DayOfWeek dow = DAY_OF_WEEK.get(slot.day().toUpperCase());
+            if (dow == null) continue;
+            byDay.computeIfAbsent(dow, d -> new ArrayList<>()).add(slot);
+        }
+        List<ScheduleBlock> blocks = new ArrayList<>();
+        for (var e : byDay.entrySet()) {
+            List<ScheduleSlotPublicInfo> sorted = e.getValue().stream()
+                    .sorted(Comparator.comparing(s -> LocalTime.parse(s.startTime())))
+                    .toList();
+            LocalTime curStart = null, curEnd = null;
+            Set<Long> curClasses = null;
+            for (ScheduleSlotPublicInfo s : sorted) {
+                LocalTime start = LocalTime.parse(s.startTime());
+                LocalTime end = LocalTime.parse(s.endTime());
+                // Ne fusionne que les créneaux qui se CHEVAUCHENT réellement (start < curEnd) — deux
+                // créneaux simplement consécutifs (ex. 8h-9h puis 9h-10h, deux classes différentes à la
+                // suite, cas normal très courant) ne doivent jamais être traités comme "concurrents" :
+                // ce serait perdre des heures réellement enseignées à des moments différents.
+                if (curStart == null || !start.isBefore(curEnd)) {
+                    if (curStart != null) blocks.add(new ScheduleBlock(e.getKey(), curStart, curEnd, curClasses));
+                    curStart = start; curEnd = end; curClasses = new HashSet<>();
+                } else if (end.isAfter(curEnd)) {
+                    curEnd = end;
+                }
+                curClasses.add(s.classId());
+            }
+            if (curStart != null) blocks.add(new ScheduleBlock(e.getKey(), curStart, curEnd, curClasses));
+        }
+        return blocks;
+    }
+
+    /** Comme {@link TeacherTeachingProvider#realizedMinutesByClass}, mais déduplique les blocs
+     * concurrents (§5.6 enseignant exceptionnel) : si plusieurs classes d'un même bloc ont une séance
+     * réalisée à la même date, la durée fixe du bloc n'est comptée qu'une seule fois pour cette date,
+     * jamais multipliée par le nombre de classes couvertes en même temps. */
+    private Map<Long, Integer> dedupedRealizedByClass(Long teacherId, LocalDate from, LocalDate to) {
+        List<ScheduleBlock> blocks = scheduleBlocks(teacherId);
+        if (blocks.stream().noneMatch(ScheduleBlock::concurrent)) {
+            return teachingProvider.realizedMinutesByClass(teacherId, from, to);
+        }
+        Map<LocalDate, Map<Long, Integer>> byDateClass = teachingProvider.realizedMinutesByClassAndDate(teacherId, from, to);
+        Map<Long, Integer> result = new HashMap<>();
+        for (var dateEntry : byDateClass.entrySet()) {
+            DayOfWeek dow = dateEntry.getKey().getDayOfWeek();
+            Map<Long, Integer> perClass = new HashMap<>(dateEntry.getValue());
+            for (ScheduleBlock block : blocks) {
+                if (block.day() != dow || !block.concurrent()) continue;
+                boolean anyRealized = block.classIds().stream().anyMatch(perClass::containsKey);
+                block.classIds().forEach(perClass::remove);
+                if (anyRealized) result.merge(block.representativeClassId(), block.durationMinutes(), Integer::sum);
+            }
+            perClass.forEach((classId, minutes) -> result.merge(classId, minutes, Integer::sum));
+        }
+        return result;
+    }
+
+    /** Vrai si l'événement couvre cette date et que sa plage horaire (toute la journée si non précisée)
+     * chevauche le créneau [slotStart, slotEnd[. */
+    private boolean eventCoversSlot(gn.lacaeducation.academics.SchoolEventPublicInfo ev, LocalDate date,
+                                    LocalTime slotStart, LocalTime slotEnd) {
+        if (date.isBefore(ev.startDate()) || date.isAfter(ev.endDate())) return false;
+        LocalTime eventStart = ev.startTime() != null ? ev.startTime() : LocalTime.MIN;
+        LocalTime eventEnd = ev.endTime() != null ? ev.endTime() : LocalTime.MAX;
+        return slotStart.isBefore(eventEnd) && eventStart.isBefore(slotEnd);
     }
 
     private static final String[] FR_MONTHS = {"Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
@@ -476,6 +600,8 @@ public class PayrollService {
         if (c.structureId() != null) applyStructure(p, c.structureId());
         applyAttendanceAndOvertime(p, c);
         applySchoolFeeDeduction(p, c);
+        applyStaffBenefitRemainderDeduction(p, c);
+        applySalaryAdvanceDeduction(p, c);
         return recompute(p.getId());
     }
 
@@ -489,6 +615,44 @@ public class PayrollService {
             String label = deduction.label() != null ? deduction.label() : "Frais scolaires enfants";
             saveLine(p, label + " (" + deduction.childrenCount() + " enfant(s))",
                     PayslipLineType.DEDUCTION, deduction.amount());
+        }
+    }
+
+    /**
+     * Reste à charge non couvert par un avantage personnel PARTIEL (§billing) sur les factures des
+     * enfants du salarié : ajouté comme ligne de retenue distincte de {@link #applySchoolFeeDeduction}
+     * (règle à montant fixe, indépendante du montant réellement dû) — ici le montant est exactement le
+     * solde réel restant sur les factures concernées, répercuté comme paiement à la mise en paiement de
+     * la fiche (voir {@code markPaid}).
+     */
+    private void applyStaffBenefitRemainderDeduction(Payslip p, GenerateCommand c) {
+        var deduction = salaryFeeDeductionUseCase.computeStaffBenefitRemainder(c.tenantId(), c.teacherId());
+        if (deduction.amount() != null && deduction.amount().signum() > 0) {
+            saveLine(p, "Reste avantage personnel (" + deduction.childrenCount() + " enfant(s))",
+                    PayslipLineType.DEDUCTION, deduction.amount());
+        }
+    }
+
+    /**
+     * Remboursement automatique d'une avance sur salaire en cours (§payroll) : déduit du solde restant,
+     * borné par le net déjà calculé sur la fiche à ce stade (lignes de structure/absences/scolarité déjà
+     * appliquées) — jamais un net négatif. Répété à chaque génération de fiche tant que le solde n'est
+     * pas épuisé (voir {@code SalaryAdvanceService#applyDeduction}).
+     */
+    private void applySalaryAdvanceDeduction(Payslip p, GenerateCommand c) {
+        BigDecimal base = p.getBaseSalary() != null ? p.getBaseSalary() : BigDecimal.ZERO;
+        BigDecimal earnings = BigDecimal.ZERO;
+        BigDecimal deductions = BigDecimal.ZERO;
+        for (PayslipLine l : lineRepo.findByPayslipId(p.getId())) {
+            if (l.getLineType() == PayslipLineType.EARNING) earnings = earnings.add(l.getAmount());
+            else deductions = deductions.add(l.getAmount());
+        }
+        BigDecimal netSoFar = base.add(earnings).subtract(deductions);
+        gn.lacaeducation.payroll.domain.EmployeeType type = c.employeeType() != null
+                ? c.employeeType() : gn.lacaeducation.payroll.domain.EmployeeType.TEACHER;
+        var result = salaryAdvanceUseCase.applyDeduction(c.tenantId(), c.teacherId(), type, netSoFar);
+        if (result.amount() != null && result.amount().signum() > 0) {
+            saveLine(p, result.label(), PayslipLineType.DEDUCTION, result.amount());
         }
     }
 
@@ -622,10 +786,22 @@ public class PayrollService {
     public Payslip markPaid(Long id, String paymentMethod) {
         Payslip p = loadPayslip(id);
         if (p.getStatus() == PayslipStatus.DRAFT) throw new BusinessRuleException("Validez la fiche avant de la payer");
+        // Empêche un double-clic/rejeu de repayer une fiche déjà payée — sans ce garde-fou, la retenue
+        // scolarité (voir ci-dessous) serait répercutée deux fois sur les factures des enfants.
+        if (p.getStatus() == PayslipStatus.PAID) throw new BusinessRuleException("Fiche déjà payée");
         p.setStatus(PayslipStatus.PAID);
         p.setPaymentMethod(paymentMethod != null ? paymentMethod : "BANK_TRANSFER");
         p.setPaidAt(LocalDateTime.now());
         Payslip saved = payslipRepo.save(p);
+        // Répercute la retenue de scolarité (si applicable) sur les factures de mensualité des enfants
+        // du salarié, maintenant que la fiche est réellement payée (§payroll ↔ billing) — sans ça,
+        // l'école a bien été payée (via la paie) mais la facturation continue d'afficher ces enfants
+        // comme débiteurs.
+        salaryFeeDeductionUseCase.applyDeductionAsInvoicePayment(saved.getTenantId(), saved.getTeacherId());
+        // Idem pour le reste non couvert par un avantage personnel partiel (voir
+        // applyStaffBenefitRemainderDeduction) — même principe, montant différent (solde réel des
+        // factures plutôt qu'une règle à montant fixe).
+        salaryFeeDeductionUseCase.applyStaffBenefitRemainderAsInvoicePayment(saved.getTenantId(), saved.getTeacherId());
         // Fait remonter la paie dans la trésorerie (sortie de caisse "Salaires") — jamais dans le
         // budget annuel voté, qui couvre le fonctionnement courant (carburant, kermesse, événements),
         // financièrement distinct de la masse salariale (toujours puisée dans les recettes de l'école).
@@ -671,30 +847,6 @@ public class PayrollService {
         }
         return pdfGenerator.generate(p, lineRepo.findByPayslipId(id), hours);
     }
-
-    /**
-     * Fichier bancaire (CSV) : une ligne par fiche payée/validée avec le net à virer, le nom, et les
-     * coordonnées de virement — téléphone Mobile Money en priorité, compte bancaire sinon (colonne
-     * {@code identifiant_virement}), les deux valeurs brutes restant disponibles pour vérification.
-     */
-    @Transactional(readOnly = true)
-    public String bankFileCsv(Long tenantId) {
-        StringBuilder sb = new StringBuilder("nom;telephone;compte_bancaire;identifiant_virement;periode;net;mode\n");
-        for (Payslip p : payslipRepo.findByTenantId(tenantId)) {
-            if (p.getStatus() == PayslipStatus.DRAFT) continue;
-            String phone = p.getTeacherPhone();
-            String bankAccount = p.getBankAccount();
-            String identifiant = (phone != null && !phone.isBlank()) ? phone
-                    : (bankAccount != null && !bankAccount.isBlank()) ? bankAccount : "";
-            sb.append(csv(p.getTeacherName())).append(';').append(csv(phone)).append(';').append(csv(bankAccount))
-              .append(';').append(csv(identifiant)).append(';').append(csv(p.getPeriodLabel())).append(';')
-              .append(p.getNetSalary() == null ? "0" : p.getNetSalary().toPlainString()).append(';')
-              .append(p.getPaymentMethod() == null ? "BANK_TRANSFER" : p.getPaymentMethod()).append('\n');
-        }
-        return sb.toString();
-    }
-
-    private static String csv(String value) { return value == null ? "" : value.replace(";", ","); }
 
     private Payslip mutable(Long id) {
         Payslip p = loadPayslip(id);

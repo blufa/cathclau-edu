@@ -24,7 +24,7 @@ public class GradeSimulationController {
     private final GradeSimulationUseCase useCase;
 
     @Operation(summary = "Simuler les bulletins d'une classe/période : moyennes, rangs et anomalies (sans publier)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','RESPONSABLE_PEDAGOGIQUE','SECRETARY')")
+    @PreAuthorize("hasAuthority('bulletin:read')")
     @GetMapping
     public SimulationReport simulate(@RequestParam Long classId, @RequestParam Long periodId) {
         return useCase.simulate(classId, periodId);

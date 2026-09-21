@@ -32,14 +32,14 @@ public class ValidationWorkflowController {
     public record CommentRequest(String comment) {}
 
     @Operation(summary = "Récupérer (ou initialiser) le workflow d'une classe/période")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','RESPONSABLE_PEDAGOGIQUE','TEACHER','SECRETARY')")
+    @PreAuthorize("hasAuthority('bulletin:read')")
     @GetMapping
     public ValidationWorkflow get(@RequestParam Long classId, @RequestParam Long periodId) {
         return useCase.getOrCreate(TenantContext.get(), classId, periodId);
     }
 
     @Operation(summary = "Faire avancer le workflow à l'étape suivante (signé par le niveau autorisé)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','RESPONSABLE_PEDAGOGIQUE','TEACHER')")
+    @PreAuthorize("hasAuthority('bulletin:generate')")
     @PostMapping("/{id}/advance")
     public ValidationWorkflow advance(@PathVariable Long id, @RequestBody(required = false) CommentRequest req,
                                       @AuthenticationPrincipal Jwt jwt) {
@@ -47,7 +47,7 @@ public class ValidationWorkflowController {
     }
 
     @Operation(summary = "Rejeter et renvoyer le workflow à une étape antérieure")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','RESPONSABLE_PEDAGOGIQUE')")
+    @PreAuthorize("hasAuthority('bulletin:publish')")
     @PostMapping("/{id}/reject")
     public ValidationWorkflow reject(@PathVariable Long id, @RequestBody RejectRequest req,
                                      @AuthenticationPrincipal Jwt jwt) {

@@ -24,6 +24,7 @@ class EmployeePersistenceAdapter implements EmployeeRepository {
     @Override public boolean existsByTenantIdAndEmployeeNumber(Long t, String n) {
         return repo.existsByTenantIdAndEmployeeNumber(t, n);
     }
+    @Override public Optional<Employee> findByUserId(Long userId) { return repo.findByUserId(userId).map(this::toDomain); }
 
     private Employee toDomain(EmployeeJpaEntity e) {
         return Employee.builder()
@@ -33,6 +34,7 @@ class EmployeePersistenceAdapter implements EmployeeRepository {
                 .hireDate(e.getHireDate()).baseSalary(e.getBaseSalary()).cnssNumber(e.getCnssNumber())
                 .bankAccount(e.getBankAccount())
                 .active(e.getActive()).linkedTeacherId(e.getLinkedTeacherId())
+                .photo(e.getPhoto())
                 .build();
     }
 
@@ -54,6 +56,7 @@ class EmployeePersistenceAdapter implements EmployeeRepository {
         e.setBankAccount(d.getBankAccount());
         e.setActive(d.getActive() != null ? d.getActive() : Boolean.TRUE);
         e.setLinkedTeacherId(d.getLinkedTeacherId());
+        e.setPhoto(d.getPhoto());
         return e;
     }
 }

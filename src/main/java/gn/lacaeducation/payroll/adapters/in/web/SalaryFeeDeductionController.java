@@ -51,7 +51,7 @@ public class SalaryFeeDeductionController {
     }
 
     @Operation(summary = "Supprimer une règle")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('paie:manage')")
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {

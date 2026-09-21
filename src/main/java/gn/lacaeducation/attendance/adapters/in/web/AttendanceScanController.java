@@ -77,7 +77,7 @@ public class AttendanceScanController {
             + "personnel). Un élève ne peut scanner que s'il est le chef de classe désigné de la "
             + "classe scannée. Les enseignants ne peuvent jamais scanner (ni eux-mêmes ni les élèves "
             + "ou le personnel).")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','STUDENT')")
+    @PreAuthorize("hasAuthority('presence:create') or hasRole('STUDENT')")
     @PostMapping
     public ScanResponse scan(@RequestBody ScanRequest r, @AuthenticationPrincipal Jwt jwt) {
         // Évite une erreur SQL brute (contrainte tenant_id NOT NULL) si la session n'a pas de tenant

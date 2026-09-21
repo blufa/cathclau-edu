@@ -28,7 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.net.URI;
 import java.util.List;
 
-@Tag(name = "Academic Years", description = "Manage academic years and periods for the school")
+@Tag(name = "Academic Years", description = "Gérer les années scolaires et les périodes de l'établissement")
 @RestController
 @RequestMapping("/api/v1/academics/academic-years")
 @RequiredArgsConstructor
@@ -36,7 +36,7 @@ public class AnneeScolaireController {
 
     private final GererAnneeScolaireUseCase useCase;
 
-    @Operation(summary = "Create a new academic year")
+    @Operation(summary = "Créer une nouvelle année scolaire")
     @PostMapping
     @PreAuthorize("hasAuthority('annee:manage')")
     public ResponseEntity<AnneeScolaire> create(@Valid @RequestBody CreateAcademicYearCommand command) {
@@ -46,26 +46,26 @@ public class AnneeScolaireController {
         return ResponseEntity.created(URI.create("/api/academics/academic-years/" + annee.getId())).body(annee);
     }
 
-    @Operation(summary = "List all academic years for the current tenant")
+    @Operation(summary = "Lister toutes les années scolaires de l'établissement")
     @GetMapping
     public List<AnneeScolaire> findAll() {
         return useCase.findByTenantId(TenantContext.get());
     }
 
-    @Operation(summary = "Get the current active academic year")
+    @Operation(summary = "Consulter l'année scolaire courante")
     @GetMapping("/current")
     public ResponseEntity<AnneeScolaire> findCurrent() {
         return useCase.findCurrent(TenantContext.get())
                 .map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
-    @Operation(summary = "Get an academic year by ID")
+    @Operation(summary = "Consulter une année scolaire par son identifiant")
     @GetMapping("/{id}")
     public ResponseEntity<AnneeScolaire> findById(@PathVariable Long id) {
         return useCase.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
-    @Operation(summary = "Update an academic year (label, dates)")
+    @Operation(summary = "Modifier une année scolaire (libellé, dates)")
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('annee:manage')")
     public ResponseEntity<AnneeScolaire> update(@PathVariable Long id,
@@ -74,7 +74,7 @@ public class AnneeScolaireController {
                 TenantContext.get(), cmd.label(), cmd.startDate(), cmd.endDate())));
     }
 
-    @Operation(summary = "Change the status: EN_COURS (start), CLOTUREE (close) or ARCHIVEE (archive)")
+    @Operation(summary = "Changer le statut : EN_COURS (démarrer), CLOTUREE (clôturer) ou ARCHIVEE (archiver)")
     @PatchMapping("/{id}/status")
     @PreAuthorize("hasAuthority('annee:manage')")
     public ResponseEntity<AnneeScolaire> changeStatus(@PathVariable Long id, @RequestParam StatutAnneeScolaire status) {
@@ -87,28 +87,28 @@ public class AnneeScolaireController {
         return ResponseEntity.ok(result);
     }
 
-    @Operation(summary = "Set this academic year as the current one (only one current per tenant)")
+    @Operation(summary = "Définir cette année scolaire comme année courante (une seule par établissement)")
     @PatchMapping("/{id}/set-current")
     @PreAuthorize("hasAuthority('annee:manage')")
     public ResponseEntity<AnneeScolaire> setCurrent(@PathVariable Long id) {
         return ResponseEntity.ok(useCase.setCurrent(id));
     }
 
-    @Operation(summary = "Start (activate) an academic year")
+    @Operation(summary = "Démarrer (activer) une année scolaire")
     @PutMapping("/{id}/start")
     @PreAuthorize("hasAuthority('annee:manage')")
     public ResponseEntity<AnneeScolaire> start(@PathVariable Long id) {
         return ResponseEntity.ok(useCase.start(id));
     }
 
-    @Operation(summary = "Close an academic year")
+    @Operation(summary = "Clôturer une année scolaire")
     @PutMapping("/{id}/close")
     @PreAuthorize("hasAuthority('annee:manage')")
     public ResponseEntity<AnneeScolaire> close(@PathVariable Long id) {
         return ResponseEntity.ok(useCase.close(id));
     }
 
-    @Operation(summary = "Create a period (term/semester) within an academic year")
+    @Operation(summary = "Créer une période (trimestre/semestre) au sein d'une année scolaire")
     @PostMapping("/{academicYearId}/periods")
     @PreAuthorize("hasAuthority('periode:manage')")
     public ResponseEntity<Periode> createPeriod(@PathVariable Long academicYearId,
@@ -119,13 +119,13 @@ public class AnneeScolaireController {
         return ResponseEntity.created(URI.create("/api/academics/periods/" + p.getId())).body(p);
     }
 
-    @Operation(summary = "List all periods for an academic year")
+    @Operation(summary = "Lister toutes les périodes d'une année scolaire")
     @GetMapping("/{academicYearId}/periods")
     public List<Periode> findPeriods(@PathVariable Long academicYearId) {
         return useCase.findPeriods(academicYearId);
     }
 
-    @Operation(summary = "Update a period (label, type, order, dates) — only while open")
+    @Operation(summary = "Modifier une période (libellé, type, ordre, dates) — uniquement si ouverte")
     @PutMapping("/periods/{periodId}")
     @PreAuthorize("hasAuthority('periode:manage')")
     public ResponseEntity<Periode> updatePeriod(@PathVariable Long periodId,
@@ -134,14 +134,14 @@ public class AnneeScolaireController {
                 null, cmd.label(), cmd.type(), cmd.cycle(), cmd.sortOrder(), cmd.startDate(), cmd.endDate())));
     }
 
-    @Operation(summary = "Close a period, freezing grades and triggering report card generation")
+    @Operation(summary = "Clôturer une période, ce qui fige les notes et déclenche la génération des bulletins")
     @PutMapping("/periods/{periodId}/close")
     @PreAuthorize("hasAuthority('periode:manage')")
     public ResponseEntity<Periode> closePeriod(@PathVariable Long periodId) {
         return ResponseEntity.ok(useCase.closePeriod(periodId));
     }
 
-    @Operation(summary = "Delete a period created by mistake (refused once closed)")
+    @Operation(summary = "Supprimer une période créée par erreur (refusé une fois clôturée)")
     @DeleteMapping("/periods/{periodId}")
     @PreAuthorize("hasAuthority('periode:manage')")
     @org.springframework.web.bind.annotation.ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)

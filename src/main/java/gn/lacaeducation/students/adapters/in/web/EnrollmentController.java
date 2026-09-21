@@ -92,7 +92,7 @@ public class EnrollmentController {
 
     @Operation(summary = "Annuler une inscription")
     @PatchMapping("/{id}/cancel")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('inscription:validate')")
     public Enrollment cancel(@PathVariable Long id) {
         return useCase.cancel(id);
     }
@@ -100,7 +100,7 @@ public class EnrollmentController {
     @Operation(summary = "Marquer une inscription validée comme abandon (élève parti en cours d'année) — "
             + "contrairement à l'annulation, les factures déjà émises continuent de compter dans le recouvrement de la classe")
     @PatchMapping("/{id}/abandon")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('inscription:validate')")
     public Enrollment abandon(@PathVariable Long id) {
         return useCase.abandon(id);
     }
@@ -109,7 +109,7 @@ public class EnrollmentController {
             + "si les frais scolaires diffèrent, les mensualités impayées de l'ancienne classe sont annulées "
             + "et ce qui a déjà été payé est reporté en crédit sur les nouvelles mensualités")
     @PatchMapping("/{id}/transfer-class")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('inscription:validate')")
     public Enrollment transferClass(@PathVariable Long id, @RequestBody TransferClassRequest r) {
         return useCase.transferClass(id, r.newClassId());
     }
@@ -118,7 +118,7 @@ public class EnrollmentController {
 
     @Operation(summary = "Supprimer une inscription")
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('inscription:validate')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {
         useCase.delete(id);

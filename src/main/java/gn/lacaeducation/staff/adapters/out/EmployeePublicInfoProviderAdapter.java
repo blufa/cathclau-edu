@@ -26,6 +26,12 @@ class EmployeePublicInfoProviderAdapter implements EmployeePublicInfoProvider {
         return employeeRepository.findById(id).map(this::toInfo);
     }
 
+    @Override
+    public Optional<Long> findEmployeeIdByUserId(Long userId) {
+        if (userId == null) return Optional.empty();
+        return employeeRepository.findByUserId(userId).map(gn.lacaeducation.staff.domain.Employee::getId);
+    }
+
     private EmployeeInfo toInfo(gn.lacaeducation.staff.domain.Employee e) {
         return new EmployeeInfo(e.getId(), e.fullName(),
                 e.getCategory() != null ? e.getCategory().name() : null,

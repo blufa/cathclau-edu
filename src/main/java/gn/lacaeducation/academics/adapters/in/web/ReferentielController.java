@@ -32,7 +32,7 @@ import java.math.BigDecimal;
 import java.net.URI;
 import java.util.List;
 
-@Tag(name = "Academic Referential", description = "Manage reference data: rooms, levels, and subjects")
+@Tag(name = "Academic Referential", description = "Gérer les données de référence : salles, niveaux et matières")
 @RestController
 @RequestMapping("/api/v1/academics")
 @RequiredArgsConstructor
@@ -41,7 +41,7 @@ public class ReferentielController {
     private final GererReferentielUseCase useCase;
     private final GererClasseUseCase classeUseCase;
 
-    @Operation(summary = "Create a new room")
+    @Operation(summary = "Créer une nouvelle salle")
     @PostMapping("/rooms")
     @PreAuthorize("hasAuthority('salle:manage')")
     public ResponseEntity<Salle> createRoom(@RequestBody CreateRoomCommand cmd) {
@@ -51,11 +51,11 @@ public class ReferentielController {
         return ResponseEntity.created(URI.create("/api/academics/rooms/" + s.getId())).body(s);
     }
 
-    @Operation(summary = "List all rooms for the current tenant")
+    @Operation(summary = "Lister toutes les salles de l'établissement")
     @GetMapping("/rooms")
     public List<Salle> findRooms() { return useCase.findRooms(TenantContext.get()); }
 
-    @Operation(summary = "Update a room")
+    @Operation(summary = "Modifier une salle")
     @PutMapping("/rooms/{id}")
     @PreAuthorize("hasAuthority('salle:manage')")
     public Salle updateRoom(@PathVariable Long id, @RequestBody CreateRoomCommand cmd) {
@@ -63,20 +63,20 @@ public class ReferentielController {
                 TenantContext.get(), cmd.label(), cmd.building(), cmd.capacity(), cmd.type()));
     }
 
-    @Operation(summary = "Set a room's availability")
+    @Operation(summary = "Définir la disponibilité d'une salle")
     @PatchMapping("/rooms/{id}/availability")
     @PreAuthorize("hasAuthority('salle:manage')")
     public Salle setRoomAvailability(@PathVariable Long id, @RequestParam boolean available) {
         return useCase.setRoomAvailability(id, available);
     }
 
-    @Operation(summary = "Delete a room")
+    @Operation(summary = "Supprimer une salle")
     @DeleteMapping("/rooms/{id}")
     @PreAuthorize("hasAuthority('salle:manage')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteRoom(@PathVariable Long id) { useCase.deleteRoom(id); }
 
-    @Operation(summary = "Create a new school level (grade level)")
+    @Operation(summary = "Créer un nouveau niveau scolaire")
     @PostMapping("/levels")
     @PreAuthorize("hasAuthority('niveau:manage')")
     public ResponseEntity<Niveau> createLevel(@RequestParam String label, @RequestParam Integer sortOrder,
@@ -85,11 +85,11 @@ public class ReferentielController {
         return ResponseEntity.created(URI.create("/api/academics/levels/" + n.getId())).body(n);
     }
 
-    @Operation(summary = "List all school levels for the current tenant")
+    @Operation(summary = "Lister tous les niveaux scolaires de l'établissement")
     @GetMapping("/levels")
     public List<Niveau> findLevels() { return useCase.findLevels(TenantContext.get()); }
 
-    @Operation(summary = "Update a school level")
+    @Operation(summary = "Modifier un niveau scolaire")
     @PutMapping("/levels/{id}")
     @PreAuthorize("hasAuthority('niveau:manage')")
     public Niveau updateLevel(@PathVariable Long id, @RequestParam String label, @RequestParam Integer sortOrder,
@@ -97,13 +97,13 @@ public class ReferentielController {
         return useCase.updateLevel(id, label, sortOrder, cycle);
     }
 
-    @Operation(summary = "Delete a school level")
+    @Operation(summary = "Supprimer un niveau scolaire")
     @DeleteMapping("/levels/{id}")
     @PreAuthorize("hasAuthority('niveau:manage')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteLevel(@PathVariable Long id) { useCase.deleteLevel(id); }
 
-    @Operation(summary = "Create a new subject")
+    @Operation(summary = "Créer une nouvelle matière")
     @PostMapping("/subjects")
     @PreAuthorize("hasAuthority('matiere:manage')")
     public ResponseEntity<Matiere> createSubject(
@@ -114,11 +114,11 @@ public class ReferentielController {
         return ResponseEntity.created(URI.create("/api/academics/subjects/" + m.getId())).body(m);
     }
 
-    @Operation(summary = "List all subjects for the current tenant")
+    @Operation(summary = "Lister toutes les matières de l'établissement")
     @GetMapping("/subjects")
     public List<Matiere> findSubjects() { return useCase.findSubjects(TenantContext.get()); }
 
-    @Operation(summary = "Update a subject")
+    @Operation(summary = "Modifier une matière")
     @PutMapping("/subjects/{id}")
     @PreAuthorize("hasAuthority('matiere:manage')")
     public Matiere updateSubject(@PathVariable Long id,
@@ -128,26 +128,26 @@ public class ReferentielController {
         return useCase.updateSubject(id, label, coefficient, syllabus);
     }
 
-    @Operation(summary = "Delete a subject")
+    @Operation(summary = "Supprimer une matière")
     @DeleteMapping("/subjects/{id}")
     @PreAuthorize("hasAuthority('matiere:manage')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteSubject(@PathVariable Long id) { useCase.deleteSubject(id); }
 
-    @Operation(summary = "Get the official MEPUA subject/coefficient catalog for a cycle (série required for LYCEE: SCIENCES/SOCIALES for 11ème, SM/SE/SS for 12ème-Terminale)")
+    @Operation(summary = "Consulter le catalogue officiel MEPUA des matières/coefficients pour un cycle (série requise pour le LYCEE : LITTERAIRE ou SCIENTIFIQUE)")
     @GetMapping("/subjects/catalogue-mepua")
     public List<MatiereModele> catalogueMepua(@RequestParam SchoolCycle cycle, @RequestParam(required = false) String serie) {
         return useCase.catalogueMepua(cycle, serie);
     }
 
-    @Operation(summary = "Import the MEPUA subjects/coefficients for a cycle (and série) as subjects of the current tenant, skipping subjects that already exist")
+    @Operation(summary = "Importer les matières/coefficients MEPUA d'un cycle (et série) comme matières de l'établissement, en ignorant celles déjà existantes")
     @PostMapping("/subjects/importer-mepua")
     @PreAuthorize("hasAuthority('matiere:manage')")
     public List<Matiere> importerMepua(@RequestParam SchoolCycle cycle, @RequestParam(required = false) String serie) {
         return useCase.importerMatieresMepua(TenantContext.get(), cycle, serie);
     }
 
-    @Operation(summary = "List the teacher codes already assigned for a subject (e.g. CH1, CH2), across all classes — used by the timetable grid to assign/reassign a teacher by code")
+    @Operation(summary = "Lister les codes enseignants déjà affectés pour une matière (ex. CH1, CH2), toutes classes confondues — utilisé par la grille d'emploi du temps pour affecter/réaffecter un enseignant par code")
     @GetMapping("/subjects/{subjectId}/teacher-codes")
     public List<ClasseMatiere> teacherCodesForSubject(@PathVariable Long subjectId) {
         return classeUseCase.findTeacherCodesForSubject(subjectId);

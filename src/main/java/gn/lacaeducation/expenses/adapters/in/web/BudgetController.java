@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 import java.util.List;
 
-@Tag(name = "Budgets", description = "Annual budget allocations per expense category")
+@Tag(name = "Budgets", description = "Dotations budgétaires annuelles par catégorie de dépense")
 @RestController
 @RequestMapping("/api/v1/budgets")
 @RequiredArgsConstructor
@@ -25,25 +25,25 @@ public class BudgetController {
     public record BudgetRequest(Long categoryId, String academicYear, BigDecimal allocatedAmount) {}
     public record UpdateBudgetRequest(BigDecimal allocatedAmount) {}
 
-    @Operation(summary = "List budget allocations for the current tenant")
+    @Operation(summary = "Lister les dotations budgétaires du tenant courant")
     @GetMapping
     public List<Budget> list() { return service.findByTenant(TenantContext.get()); }
 
-    @Operation(summary = "Create a budget allocation")
+    @Operation(summary = "Créer une dotation budgétaire")
     @PreAuthorize("hasAuthority('budget:approve')")
     @PostMapping
     public Budget create(@RequestBody BudgetRequest r) {
         return service.save(new BudgetCommand(TenantContext.get(), r.categoryId(), r.academicYear(), r.allocatedAmount()));
     }
 
-    @Operation(summary = "Update a budget allocation amount")
+    @Operation(summary = "Modifier le montant d'une dotation budgétaire")
     @PreAuthorize("hasAuthority('budget:approve')")
     @PutMapping("/{id}")
     public Budget update(@PathVariable Long id, @RequestBody UpdateBudgetRequest r) {
         return service.update(id, r.allocatedAmount());
     }
 
-    @Operation(summary = "Delete a budget allocation")
+    @Operation(summary = "Supprimer une dotation budgétaire")
     @PreAuthorize("hasAuthority('budget:approve')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) { service.delete(id); return ResponseEntity.noContent().build(); }

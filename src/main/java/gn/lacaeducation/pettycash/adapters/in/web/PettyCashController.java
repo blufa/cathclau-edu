@@ -52,26 +52,26 @@ public class PettyCashController {
     }
 
     @Operation(summary = "Créer une caisse")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('petite_caisse:manage')")
     @PostMapping("/funds")
     public PettyCashFund createFund(@RequestBody FundRequest r) {
         return service.createFund(new FundCommand(TenantContext.get(), r.label(), r.floatAmount(), r.custodian(), r.active()));
     }
 
     @Operation(summary = "Modifier une caisse")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('petite_caisse:manage')")
     @PutMapping("/funds/{id}")
     public PettyCashFund updateFund(@PathVariable Long id, @RequestBody FundRequest r) {
         return service.updateFund(id, new FundCommand(TenantContext.get(), r.label(), r.floatAmount(), r.custodian(), r.active()));
     }
 
     @Operation(summary = "Supprimer une caisse")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('petite_caisse:manage')")
     @DeleteMapping("/funds/{id}")
     public ResponseEntity<Void> deleteFund(@PathVariable Long id) { service.deleteFund(id); return ResponseEntity.noContent().build(); }
 
     @Operation(summary = "Enregistrer une opération (bon de sortie ou réapprovisionnement)")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT','SECRETARY')")
+    @PreAuthorize("hasAuthority('petite_caisse:enregistrer')")
     @PostMapping("/funds/{id}/transactions")
     public PettyCashTransaction record(@PathVariable Long id, @RequestBody TxRequest r, @AuthenticationPrincipal Jwt jwt) {
         return service.record(id, new TxCommand(r.txDate(), r.txType(), r.amount(), r.voucherNumber(),
@@ -79,7 +79,7 @@ public class PettyCashController {
     }
 
     @Operation(summary = "Supprimer une opération")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('petite_caisse:manage')")
     @DeleteMapping("/transactions/{txId}")
     public ResponseEntity<Void> deleteTransaction(@PathVariable Long txId) { service.deleteTransaction(txId); return ResponseEntity.noContent().build(); }
 

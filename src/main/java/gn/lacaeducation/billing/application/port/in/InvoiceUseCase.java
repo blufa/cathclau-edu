@@ -65,6 +65,21 @@ public interface InvoiceUseCase {
     /** Applique une remise / bourse (montant + motif) et recalcule le reste à payer / le statut. */
     Invoice applyDiscount(Long invoiceId, BigDecimal amount, String reason);
     /**
+     * Applique un paiement déjà perçu par un autre canal (ex. retenue sur salaire du personnel pour
+     * les frais de ses enfants, §payroll ↔ billing) sur les factures MENSUALITE impayées/partielles
+     * d'un élève, de la plus ancienne à la plus récente, jusqu'à épuisement du montant — pour que
+     * facturation et perception réelle restent cohérentes. Sans notification parent (déjà informé par
+     * un autre canal) et sans effet si le montant est nul/négatif ou si aucune facture n'est éligible.
+     */
+    void applyExternalPayment(Long tenantId, Long studentId, BigDecimal amount);
+    /**
+     * Solde total restant dû sur les factures de mensualité de cet élève dont la remise appliquée est
+     * un avantage personnel PARTIEL (§billing ↔ payroll, {@link gn.lacaeducation.billing.domain.DiscountSource#STAFF_BENEFIT})
+     * — le « reste » que l'école ne prend pas en charge, destiné à être retenu automatiquement sur le
+     * salaire du parent employé plutôt que facturé au guichet. 0 si aucune facture éligible.
+     */
+    BigDecimal outstandingStaffBenefitRemainder(Long studentId);
+    /**
      * Applique la remise pour paiement annuel complet (§billing) sur toutes les factures restantes
      * (non soldées) d'un élève pour un frais donné, si une règle est active pour le type de ce frais.
      * Sans effet (renvoie les factures inchangées) s'il n'y a qu'une seule tranche restante ou si

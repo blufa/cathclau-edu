@@ -24,6 +24,50 @@ class SessionResolver {
                 .orElse(slots.get(slots.size() - 1));
     }
 
+    /** Un ensemble de créneaux consécutifs (écart entre deux créneaux ≤ la marge de transition
+     * configurée) formant une seule plage de présence continue — un enseignant/élève avec par exemple
+     * 8h-10h puis 10h-12h puis 12h-14h ne doit scanner qu'une fois à l'entrée et une fois à la sortie
+     * pour toute la plage, pas un aller-retour par créneau (§retour direction pédagogique). */
+    record Block(List<ScheduleSlotPublicInfo> slots) {
+        Long firstSlotId() { return slots.get(0).id(); }
+        LocalTime start() { return LocalTime.parse(slots.get(0).startTime()); }
+        LocalTime end() { return LocalTime.parse(slots.get(slots.size() - 1).endTime()); }
+    }
+
+    /** Le bloc de créneaux continus que la personne vient assurer/suivre à l'heure {@code at}
+     * (équivalent de {@link #currentSession}, mais fusionne les créneaux consécutifs en une seule
+     * plage). Null si aucune séance ce jour-là. */
+    Block currentBlock(List<ScheduleSlotPublicInfo> allSlots, LocalDate date, LocalTime at, int marginMinutes) {
+        List<List<ScheduleSlotPublicInfo>> blocks = groupIntoBlocks(slotsForDay(allSlots, date), marginMinutes);
+        if (blocks.isEmpty()) return null;
+        return blocks.stream()
+                .filter(b -> LocalTime.parse(b.get(b.size() - 1).endTime()).isAfter(at))
+                .findFirst()
+                .map(Block::new)
+                .orElseGet(() -> new Block(blocks.get(blocks.size() - 1)));
+    }
+
+    /** Regroupe des créneaux déjà triés par heure de début en blocs de créneaux consécutifs — deux
+     * créneaux appartiennent au même bloc si l'écart entre la fin de l'un et le début du suivant ne
+     * dépasse pas {@code marginMinutes} (la même marge de transition que la tolérance de retard,
+     * réutilisée ici comme écart maximal pour rester « une seule séance continue »). */
+    private List<List<ScheduleSlotPublicInfo>> groupIntoBlocks(List<ScheduleSlotPublicInfo> sortedSlots, int marginMinutes) {
+        List<List<ScheduleSlotPublicInfo>> blocks = new java.util.ArrayList<>();
+        List<ScheduleSlotPublicInfo> current = new java.util.ArrayList<>();
+        LocalTime prevEnd = null;
+        for (ScheduleSlotPublicInfo s : sortedSlots) {
+            LocalTime start = LocalTime.parse(s.startTime());
+            if (prevEnd != null && start.isAfter(prevEnd.plusMinutes(marginMinutes))) {
+                blocks.add(current);
+                current = new java.util.ArrayList<>();
+            }
+            current.add(s);
+            prevEnd = LocalTime.parse(s.endTime());
+        }
+        if (!current.isEmpty()) blocks.add(current);
+        return blocks;
+    }
+
     /** Séances du jour (emploi du temps hebdomadaire récurrent), triées par heure de début — sert à
      * détecter deux séances consécutives (marge de transition entre salles, §heures). */
     List<ScheduleSlotPublicInfo> slotsForDay(List<ScheduleSlotPublicInfo> allSlots, LocalDate date) {

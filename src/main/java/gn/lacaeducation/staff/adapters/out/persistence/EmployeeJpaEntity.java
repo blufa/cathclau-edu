@@ -28,4 +28,5 @@ class EmployeeJpaEntity {
     @Column(name = "bank_account") private String bankAccount;
     @Column(nullable = false) private Boolean active = true;
     @Column(name = "linked_teacher_id") private Long linkedTeacherId;
+    private String photo;
 }

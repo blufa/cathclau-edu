@@ -15,5 +15,8 @@ public enum BroadcastAudience {
     /** Tout le personnel du tenant : enseignants ET personnel non-enseignant (ex. annonce de paie). */
     ALL_STAFF,
     /** Parent(s) d'un élève précis (ex. notification ponctuelle retard/absence). */
-    STUDENT_PARENTS
+    STUDENT_PARENTS,
+    /** Toute l'école : parents (élèves), enseignants ET personnel non-enseignant — ex. annonce d'un
+     * événement école à tout le monde. */
+    ALL
 }

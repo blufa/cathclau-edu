@@ -1,6 +1,7 @@
 package gn.lacaeducation.billing.application.service;
 
 import gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase;
+import gn.lacaeducation.billing.application.port.out.EnrollmentQueryPort;
 import gn.lacaeducation.billing.application.port.out.FamilyDiscountRuleRepository;
 import gn.lacaeducation.billing.domain.FamilyDiscountRule;
 import gn.lacaeducation.billing.domain.FeeType;
@@ -13,7 +14,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
 
@@ -24,13 +24,14 @@ public class FamilyDiscountService implements FamilyDiscountUseCase {
 
     private final FamilyDiscountRuleRepository repo;
     private final FamilyProvider familyProvider;
+    private final EnrollmentQueryPort enrollmentQueryPort;
 
     @Override
     public FamilyDiscountRule create(Long tenantId, RuleCommand c) {
         validate(c);
         return repo.save(FamilyDiscountRule.builder()
                 .tenantId(tenantId).label(c.label()).minChildren(c.minChildren()).maxChildren(c.maxChildren())
-                .percentage(c.percentage()).feeType(c.feeType())
+                .percentage(c.percentage()).feeTypes(c.feeTypes())
                 .appliesToYoungest(c.appliesToYoungest() == null || c.appliesToYoungest())
                 .active(c.active() == null || c.active())
                 .build());
@@ -42,7 +43,7 @@ public class FamilyDiscountService implements FamilyDiscountUseCase {
         FamilyDiscountRule r = repo.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("FamilyDiscountRule", id));
         r.setLabel(c.label()); r.setMinChildren(c.minChildren()); r.setMaxChildren(c.maxChildren());
-        r.setPercentage(c.percentage()); r.setFeeType(c.feeType());
+        r.setPercentage(c.percentage()); r.setFeeTypes(c.feeTypes());
         if (c.appliesToYoungest() != null) r.setAppliesToYoungest(c.appliesToYoungest());
         if (c.active() != null) r.setActive(c.active());
         return repo.save(r);
@@ -70,7 +71,7 @@ public class FamilyDiscountService implements FamilyDiscountUseCase {
                 .filter(FamilyDiscountRule::isActive)
                 .filter(r -> r.getMinChildren() != null && childCount >= r.getMinChildren())
                 .filter(r -> r.getMaxChildren() == null || childCount <= r.getMaxChildren())
-                .filter(r -> r.getFeeType() == null || r.getFeeType() == feeType)
+                .filter(r -> r.getFeeTypes() == null || r.getFeeTypes().isEmpty() || r.getFeeTypes().contains(feeType))
                 .max(Comparator.comparingInt(FamilyDiscountRule::getMinChildren))
                 .orElse(null);
 
@@ -84,8 +85,56 @@ public class FamilyDiscountService implements FamilyDiscountUseCase {
         return new ApplicableDiscount(rule.getPercentage(), rule.getLabel());
     }
 
-    /** Le plus jeune = la date de naissance la plus récente (les dates nulles sont ignorées). */
+    @Override
+    @Transactional(readOnly = true)
+    public List<Long> eligibleYoungest(Long tenantId, List<Long> studentIds) {
+        List<FamilyDiscountRule> youngestRules = repo.findByTenantId(tenantId).stream()
+                .filter(FamilyDiscountRule::isActive)
+                .filter(FamilyDiscountRule::isAppliesToYoungest)
+                .toList();
+        if (youngestRules.isEmpty()) {
+            return List.of();
+        }
+        return studentIds.stream()
+                .filter(id -> {
+                    List<ChildInfo> siblings = familyProvider.findSiblings(id);
+                    int childCount = siblings.size();
+                    boolean anyRuleMatches = youngestRules.stream().anyMatch(r ->
+                            r.getMinChildren() != null && childCount >= r.getMinChildren()
+                                    && (r.getMaxChildren() == null || childCount <= r.getMaxChildren()));
+                    return anyRuleMatches && id.equals(youngestStudentId(siblings));
+                })
+                .toList();
+    }
+
+    /**
+     * Le cadet = l'enfant inscrit dans le niveau le plus bas selon la progression pédagogique
+     * officielle guinéenne (garderie → petite/moyenne/grande section → CP1…CM2 → 7e…10e →
+     * 11e…terminale, cf. {@link NiveauCanonicalOrder}) — plus fiable que le seul {@code sort_order}
+     * que chaque école saisit elle-même à la main et peut mal ordonner (ex. grande section classée
+     * avant moyenne section, ce qui faisait alors ressortir DEUX cadets dans une même fratrie). En cas
+     * d'égalité de niveau ou de niveau non reconnu, la date de naissance la plus récente départage.
+     * Repli complet sur la date de naissance si aucun enfant de la fratrie n'a d'inscription active
+     * (cas rare).
+     */
     private Long youngestStudentId(List<ChildInfo> siblings) {
+        record Ranked(Long studentId, Integer cycleOrder, Integer withinCycleOrder, java.time.LocalDate birthDate) {}
+        List<Ranked> ranked = siblings.stream()
+                .map(c -> {
+                    EnrollmentQueryPort.ActiveLevel level = enrollmentQueryPort.findActiveLevel(c.studentId());
+                    return new Ranked(c.studentId(),
+                            NiveauCanonicalOrder.cycleRank(level == null ? null : level.cycle()),
+                            NiveauCanonicalOrder.effectiveWithinCycleRank(level), c.birthDate());
+                })
+                .toList();
+        boolean anyLevelKnown = ranked.stream().anyMatch(r -> r.cycleOrder() != null);
+        if (anyLevelKnown) {
+            Comparator<Ranked> byLevelThenLatestBirth = Comparator
+                    .comparing(Ranked::cycleOrder, Comparator.nullsLast(Comparator.naturalOrder()))
+                    .thenComparing(Ranked::withinCycleOrder, Comparator.nullsLast(Comparator.naturalOrder()))
+                    .thenComparing(Ranked::birthDate, Comparator.nullsFirst(Comparator.<java.time.LocalDate>naturalOrder()).reversed());
+            return ranked.stream().min(byLevelThenLatestBirth).map(Ranked::studentId).orElse(null);
+        }
         return siblings.stream()
                 .filter(c -> c.birthDate() != null)
                 .max(Comparator.comparing(ChildInfo::birthDate))

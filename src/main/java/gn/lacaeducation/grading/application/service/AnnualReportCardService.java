@@ -79,7 +79,11 @@ public class AnnualReportCardService implements AnnualReportCardUseCase {
             return List.of();
         }
 
-        GradingScale scale = gradingScaleRepository.findByTenantId(tenantId).orElseGet(GradingScale::defaults);
+        gn.lacaeducation.grading.domain.CycleGroup cycleGroup = academicsDataProvider.findClass(classId)
+                .map(c -> gn.lacaeducation.grading.domain.CycleGroup.fromSchoolCycle(c.schoolCycle()))
+                .orElse(gn.lacaeducation.grading.domain.CycleGroup.SECONDAIRE);
+        GradingScale scale = gradingScaleRepository.findByTenantIdAndCycleGroup(tenantId, cycleGroup)
+                .orElseGet(() -> GradingScale.defaults(cycleGroup));
         List<EliminatoryRule> eliminatoryRules = eliminatoryRuleRepository.findByTenantId(tenantId);
         List<DecisionRule> decisionRules = decisionRuleRepository.findByTenantId(tenantId);
 

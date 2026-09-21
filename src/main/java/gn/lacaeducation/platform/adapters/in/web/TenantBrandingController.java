@@ -20,9 +20,11 @@ public class TenantBrandingController {
 
     // La devise/le slogan/la hiérarchie administrative (IRE, DPE/DCE, DSSEE) sont inclus ici (et non
     // uniquement dans /school/profile, réservé à SCHOOL_ADMIN) car tout utilisateur du tenant pouvant
-    // émettre un badge (ex. SECRETARY) doit pouvoir en imprimer le verso officiel.
+    // émettre un badge (ex. SECRETARY) doit pouvoir en imprimer le verso officiel. `phone` (numéro de
+    // l'école) est imprimé sur les badges élève, pour joindre l'établissement en cas de besoin.
     public record BrandingResponse(Long tenantId, String schoolName, String logo, String brandColor,
-                                    String motto, String slogan, String ire, String dpeLabel, String sousPrefectureLabel) {}
+                                    String motto, String slogan, String ire, String dpeLabel,
+                                    String sousPrefectureLabel, String phone) {}
     public record BrandingRequest(String logo, String brandColor) {}
 
     @Operation(summary = "Get the current school's branding")
@@ -30,15 +32,15 @@ public class TenantBrandingController {
     public BrandingResponse get() {
         Tenant t = tenantUseCase.findById(TenantContext.get());
         return new BrandingResponse(t.getId(), t.getSchoolName(), t.getLogo(), t.getBrandColor(), t.getMotto(), t.getSlogan(),
-                t.getIre(), t.getDpeLabel(), t.getSousPrefectureLabel());
+                t.getIre(), t.getDpeLabel(), t.getSousPrefectureLabel(), t.getPhone());
     }
 
     @Operation(summary = "Update the current school's logo and brand colour")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('ecole:profil')")
     @PutMapping
     public BrandingResponse update(@RequestBody BrandingRequest r) {
         Tenant t = tenantUseCase.updateBranding(TenantContext.get(), r.logo(), r.brandColor());
         return new BrandingResponse(t.getId(), t.getSchoolName(), t.getLogo(), t.getBrandColor(), t.getMotto(), t.getSlogan(),
-                t.getIre(), t.getDpeLabel(), t.getSousPrefectureLabel());
+                t.getIre(), t.getDpeLabel(), t.getSousPrefectureLabel(), t.getPhone());
     }
 }

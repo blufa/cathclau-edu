@@ -2,6 +2,7 @@ package gn.lacaeducation.studentcards.application.service;
 
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.studentcards.application.port.out.CardTemplateRepository;
+import gn.lacaeducation.studentcards.domain.BadgeKind;
 import gn.lacaeducation.studentcards.domain.CardTemplate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -20,6 +21,7 @@ public class CardTemplateService {
     public CardTemplate save(CardTemplate t) {
         if (t.getActive() == null) t.setActive(true);
         if (t.getIsDefault() == null) t.setIsDefault(false);
+        if (t.getBadgeKind() == null) t.setBadgeKind(BadgeKind.STUDENT);
         return repo.save(t);
     }
 
@@ -30,17 +32,19 @@ public class CardTemplateService {
         t.setBackgroundUrl(patch.getBackgroundUrl()); t.setOrientation(patch.getOrientation());
         t.setRectoConfig(patch.getRectoConfig()); t.setVersoConfig(patch.getVersoConfig());
         if (patch.getActive() != null) t.setActive(patch.getActive());
+        if (patch.getBadgeKind() != null) t.setBadgeKind(patch.getBadgeKind());
         return repo.save(t);
     }
 
     @Transactional(readOnly = true)
     public List<CardTemplate> findByTenant(Long tenantId) { return repo.findByTenantId(tenantId); }
 
-    /** Sets the given template as the tenant's only default. */
+    /** Sets the given template as the tenant's default FOR ITS BADGE KIND — un défaut par type de badge
+     * (élève/enseignant/personnel), pas un seul défaut global pour tout le tenant. */
     public CardTemplate setDefault(Long tenantId, Long id) {
         CardTemplate target = load(id);
         for (CardTemplate t : repo.findByTenantId(tenantId)) {
-            if (Boolean.TRUE.equals(t.getIsDefault()) && !t.getId().equals(id)) {
+            if (Boolean.TRUE.equals(t.getIsDefault()) && !t.getId().equals(id) && t.getBadgeKind() == target.getBadgeKind()) {
                 t.setIsDefault(false);
                 repo.save(t);
             }

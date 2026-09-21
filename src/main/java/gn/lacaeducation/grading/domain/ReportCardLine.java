@@ -9,9 +9,11 @@ public class ReportCardLine {
     private BigDecimal subjectAverage;
     private BigDecimal coefficient;
     private BigDecimal weightedAverage;
-    /** Moyenne de cours de la matière (étape de formule étiquetée COURS), si la formule active en fournit une. */
+    /** Moyenne de cours (interrogations/devoirs) de la matière — secondaire uniquement, voir
+     * {@code SubjectSemesterAverage} ; {@code null} pour le primaire/maternelle. */
     private BigDecimal coursAverage;
-    /** Moyenne de composition de la matière (étape de formule étiquetée COMPOSITION), si la formule active en fournit une. */
+    /** Moyenne de composition de la matière — secondaire uniquement, voir {@code SubjectSemesterAverage} ;
+     * {@code null} pour le primaire/maternelle. */
     private BigDecimal compoAverage;
     private Integer subjectRank;
     private String comment;

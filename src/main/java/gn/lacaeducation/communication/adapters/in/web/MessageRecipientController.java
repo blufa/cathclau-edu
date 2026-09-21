@@ -8,24 +8,24 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
-@Tag(name = "Message Recipients", description = "Track delivery and read status of messages per recipient user")
+@Tag(name = "Message Recipients", description = "Suivre le statut de livraison et de lecture des messages par destinataire")
 @RestController @RequestMapping("/api/v1/communications/messages") @RequiredArgsConstructor
 public class MessageRecipientController {
     private final MessageRecipientUseCase useCase;
-    @Operation(summary = "List all messages received by a user")
+    @Operation(summary = "Lister tous les messages reçus par un utilisateur")
     @GetMapping("/user/{userId}") public List<MessageRecipient> findByUser(@PathVariable Long userId) { return useCase.findByUserId(userId); }
-    @Operation(summary = "List unread messages for a user")
+    @Operation(summary = "Lister les messages non lus d'un utilisateur")
     @GetMapping("/user/{userId}/unread") public List<MessageRecipient> findUnread(@PathVariable Long userId) { return useCase.findUnreadByUserId(userId); }
-    @Operation(summary = "Count unread messages for a user")
+    @Operation(summary = "Compter les messages non lus d'un utilisateur")
     @GetMapping("/user/{userId}/unread/count") public long countUnread(@PathVariable Long userId) { return useCase.countUnreadByUserId(userId); }
-    @Operation(summary = "List all recipients for a given communication")
+    @Operation(summary = "Lister tous les destinataires d'une communication donnée")
     @GetMapping("/communication/{communicationId}") public List<MessageRecipient> findByCommunication(@PathVariable Long communicationId) { return useCase.findByCommunicationId(communicationId); }
-    @Operation(summary = "Mark a message as delivered to a recipient")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @Operation(summary = "Marquer un message comme livré à un destinataire")
+    @PreAuthorize("hasAuthority('communication:read')")
     @PutMapping("/{id}/deliver") public ResponseEntity<MessageRecipient> markDelivered(@PathVariable Long id) { return ResponseEntity.ok(useCase.markDelivered(id)); }
-    @Operation(summary = "Mark a message delivery as failed for a recipient")
-    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY')")
+    @Operation(summary = "Marquer la livraison d'un message comme échouée pour un destinataire")
+    @PreAuthorize("hasAuthority('communication:read')")
     @PutMapping("/{id}/fail") public ResponseEntity<MessageRecipient> markFailed(@PathVariable Long id) { return ResponseEntity.ok(useCase.markFailed(id)); }
-    @Operation(summary = "Mark a message as read by a recipient")
+    @Operation(summary = "Marquer un message comme lu par un destinataire")
     @PutMapping("/{id}/read") public ResponseEntity<MessageRecipient> markRead(@PathVariable Long id) { return ResponseEntity.ok(useCase.markRead(id)); }
 }

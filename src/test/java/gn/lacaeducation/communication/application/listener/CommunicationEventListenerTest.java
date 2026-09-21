@@ -56,7 +56,7 @@ class CommunicationEventListenerTest {
         when(studentDataProvider.findStudent(7L)).thenReturn(Optional.of(student));
         when(studentDataProvider.hasPlatformAccessOptIn(7L)).thenReturn(true);
         when(paymentDataProvider.findPayment(1L))
-                .thenReturn(Optional.of(new PaymentPublicInfo(1L, "PAY-1", new BigDecimal("50000"), "CASH", null)));
+                .thenReturn(Optional.of(new PaymentPublicInfo(1L, "PAY-1", new BigDecimal("50000"), "CASH", null, "Octobre, Novembre")));
         when(studentDataProvider.findParentsByStudent(7L))
                 .thenReturn(List.of(new ParentPublicInfo(1L, "Mariama", "Bah", null, "621000000")));
         when(schoolStaffDirectory.findSchoolAdminContacts(10L))
@@ -65,7 +65,7 @@ class CommunicationEventListenerTest {
                 new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
         when(templateRepository.findByTenantIdAndReason(any(), any())).thenReturn(Optional.empty());
 
-        listener().onPaymentSucceeded(new PaymentSucceededEvent(10L, 7L, 1L, null, new BigDecimal("50000")));
+        listener().onPaymentSucceeded(new PaymentSucceededEvent(10L, 7L, 1L, null, new BigDecimal("50000"), null));
 
         ArgumentCaptor<SendCommunicationCommand> captor = ArgumentCaptor.forClass(SendCommunicationCommand.class);
         verify(communicationUseCase, times(2)).send(captor.capture());
@@ -73,6 +73,9 @@ class CommunicationEventListenerTest {
         SendCommunicationCommand parentCmd = captor.getAllValues().stream()
                 .filter(c -> c.recipientType() == RecipientType.PARENT).findFirst().orElseThrow();
         assertThat(parentCmd.recipients()).extracting("destination").containsExactly("621000000");
+        // Mention brève de ce qui a été réglé (§billing paiement groupé) — sans quoi le parent ne sait
+        // pas quels mois/factures ce SMS couvre.
+        assertThat(parentCmd.content()).contains("Octobre, Novembre");
 
         SendCommunicationCommand founderCmd = captor.getAllValues().stream()
                 .filter(c -> c.recipientType() == RecipientType.GROUP).findFirst().orElseThrow();
@@ -86,13 +89,13 @@ class CommunicationEventListenerTest {
         when(studentDataProvider.findStudent(7L)).thenReturn(Optional.of(student));
         when(studentDataProvider.hasPlatformAccessOptIn(7L)).thenReturn(true);
         when(paymentDataProvider.findPayment(1L))
-                .thenReturn(Optional.of(new PaymentPublicInfo(1L, "PAY-1", new BigDecimal("50000"), "CASH", null)));
+                .thenReturn(Optional.of(new PaymentPublicInfo(1L, "PAY-1", new BigDecimal("50000"), "CASH", null, null)));
         when(studentDataProvider.findParentsByStudent(7L)).thenReturn(List.of());
         when(schoolStaffDirectory.findSchoolAdminContacts(10L)).thenReturn(List.of());
         when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.empty());
         when(templateRepository.findByTenantIdAndReason(any(), any())).thenReturn(Optional.empty());
 
-        listener().onPaymentSucceeded(new PaymentSucceededEvent(10L, 7L, 1L, null, new BigDecimal("50000")));
+        listener().onPaymentSucceeded(new PaymentSucceededEvent(10L, 7L, 1L, null, new BigDecimal("50000"), null));
 
         verify(communicationUseCase, times(0)).send(any());
     }

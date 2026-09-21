@@ -5,6 +5,7 @@ import gn.lacaeducation.billing.application.event.InvoicePaidEvent;
 import gn.lacaeducation.billing.application.event.InvoicePaymentAppliedEvent;
 import gn.lacaeducation.billing.application.port.in.InvoiceUseCase;
 import gn.lacaeducation.billing.application.port.out.*;
+import gn.lacaeducation.billing.domain.FeeType;
 import gn.lacaeducation.billing.domain.Invoice;
 import gn.lacaeducation.billing.domain.InvoiceStatus;
 import gn.lacaeducation.billing.domain.RecoveryStage;
@@ -13,7 +14,6 @@ import gn.lacaeducation.common.MediaUploadService;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.common.TenantInfoProvider;
 import gn.lacaeducation.platform.PlatformFeeLedgerApi;
-import gn.lacaeducation.platform.PlatformFeeQuoteApi;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -37,8 +37,9 @@ public class InvoiceService implements InvoiceUseCase {
     private final MediaUploadService mediaUploadService;
     private final TenantInfoProvider tenantInfoProvider;
     private final gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase familyDiscountUseCase;
+    private final gn.lacaeducation.billing.application.port.in.StaffChildBenefitUseCase staffChildBenefitUseCase;
+    private final gn.lacaeducation.billing.application.port.in.ExemptionUseCase exemptionUseCase;
     private final gn.lacaeducation.billing.application.port.in.EarlyPaymentDiscountUseCase earlyPaymentDiscountUseCase;
-    private final PlatformFeeQuoteApi platformFeeQuoteApi;
     private final PlatformFeeLedgerApi platformFeeLedgerApi;
 
     @Override @org.springframework.transaction.annotation.Transactional(readOnly = true)
@@ -81,38 +82,95 @@ public class InvoiceService implements InvoiceUseCase {
         return provided != null ? provided : enrollmentQueryPort.findActiveAcademicYearId(studentId);
     }
 
+    /**
+     * Remise automatique applicable à une facture — trois sources possibles : réduction familiale
+     * (fratrie, §5), avantage personnel (enfant de membre du personnel, §6), exonération TOTAL/PARTIAL
+     * (§8, décision manuelle de la direction). Les trois sont calculées, mais jamais cumulées entre
+     * elles : la plus avantageuse l'emporte (jamais leur somme), pour éviter qu'un cumul mécanique ne
+     * produise une remise déraisonnable. Une exonération EXCEPTIONAL (montant fixe, décision ponctuelle
+     * documentée), elle, s'ajoute EN PLUS du pourcentage gagnant — c'est un geste distinct, pas une
+     * règle automatique concurrente des trois autres. {@code feeType == null} (fee introuvable/non
+     * précisé) ne déclenche aucune remise, aucune des règles ne pouvant alors être évaluée avec
+     * certitude.
+     */
+    private record ApplicableInvoiceDiscount(BigDecimal percentage, String percentageReason,
+                                              gn.lacaeducation.billing.domain.DiscountSource source,
+                                              BigDecimal exceptionalAmount, String exceptionalReason) {}
+
+    private ApplicableInvoiceDiscount computeApplicableDiscount(Long tenantId, Long studentId, FeeType feeType) {
+        if (feeType == null) return new ApplicableInvoiceDiscount(BigDecimal.ZERO, null, null, BigDecimal.ZERO, null);
+        var family = familyDiscountUseCase.computeApplicable(tenantId, studentId, feeType);
+        var staff = staffChildBenefitUseCase.computeCoverage(tenantId, studentId, feeType);
+        var exemption = exemptionUseCase.computeApplicable(studentId, feeType);
+
+        BigDecimal familyPercent = family.percentage() != null ? family.percentage() : BigDecimal.ZERO;
+        BigDecimal staffPercent = staff.coveragePercent() != null ? staff.coveragePercent() : BigDecimal.ZERO;
+        BigDecimal exemptionPercent = exemption.percentage() != null ? exemption.percentage() : BigDecimal.ZERO;
+
+        BigDecimal bestPercent = BigDecimal.ZERO;
+        String bestReason = null;
+        gn.lacaeducation.billing.domain.DiscountSource bestSource = null;
+        if (staffPercent.compareTo(bestPercent) > 0) {
+            bestPercent = staffPercent; bestReason = "Avantage personnel : " + staff.policyLabel();
+            bestSource = gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT;
+        }
+        if (familyPercent.compareTo(bestPercent) > 0) {
+            bestPercent = familyPercent; bestReason = "Réduction familiale : " + family.ruleLabel();
+            bestSource = gn.lacaeducation.billing.domain.DiscountSource.FAMILY;
+        }
+        if (exemptionPercent.compareTo(bestPercent) > 0) {
+            bestPercent = exemptionPercent; bestReason = "Exonération : " + exemption.percentageReason();
+            bestSource = gn.lacaeducation.billing.domain.DiscountSource.EXEMPTION;
+        }
+        BigDecimal exceptionalAmount = exemption.exceptionalAmount() != null ? exemption.exceptionalAmount() : BigDecimal.ZERO;
+        return new ApplicableInvoiceDiscount(bestPercent, bestReason, bestSource, exceptionalAmount, exemption.exceptionalReason());
+    }
+
+    /** Traduit une {@link ApplicableInvoiceDiscount} en montant réel sur un montant brut donné —
+     * pourcentage gagnant + remise exceptionnelle éventuelle, plafonné au montant brut (jamais un net
+     * négatif). */
+    private record DiscountResult(BigDecimal amount, String reason, gn.lacaeducation.billing.domain.DiscountSource source) {}
+
+    private DiscountResult resolveDiscount(BigDecimal grossAmount, ApplicableInvoiceDiscount d) {
+        BigDecimal percentPart = grossAmount.multiply(d.percentage())
+                .divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
+        BigDecimal total = percentPart.add(d.exceptionalAmount());
+        if (total.compareTo(grossAmount) > 0) total = grossAmount;
+        String reason = java.util.stream.Stream.of(
+                        percentPart.signum() > 0 ? d.percentageReason() : null,
+                        d.exceptionalAmount().signum() > 0 ? "Remise exceptionnelle : " + d.exceptionalReason() : null)
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.joining(" + "));
+        gn.lacaeducation.billing.domain.DiscountSource source = percentPart.signum() > 0 ? d.source() : null;
+        return new DiscountResult(total, reason.isBlank() ? null : reason, source);
+    }
+
     @Override
     public Invoice create(CreateInvoiceCommand c) {
         String reference = (c.reference() == null || c.reference().isBlank())
                 ? generateReference(c.tenantId()) : c.reference();
         Long academicYearId = resolveAcademicYearId(c.academicYearId(), c.studentId());
-        // Frais d'usage plateforme (§billing) : appliqué ici aussi (pas seulement dans
-        // generateMonthly()) pour que la génération en lot ou la création manuelle d'une facture de
-        // mensualité respecte le même opt-in — sans quoi le frais plateforme n'était jamais facturé
-        // dès que l'école passait par "Générer en lot" plutôt que par la génération mensuelle standard.
-        BigDecimal platformFee = computePlatformFee(c.tenantId(), c.studentId(), academicYearId, c.feeId());
-        BigDecimal totalAmount = platformFee.signum() > 0 ? c.totalAmount().add(platformFee) : c.totalAmount();
+        BigDecimal grossAmount = c.totalAmount();
+        // Réduction familiale / avantage personnel (voir computeApplicableDiscount) : appliquée ici
+        // aussi (pas seulement dans generateMonthly()) pour que l'inscription, le transport, la
+        // cantine et les examens en bénéficient au même titre que la mensualité — jusqu'ici seule la
+        // mensualité appliquait une remise automatique, les autres frais étaient toujours facturés
+        // plein tarif même pour un élève éligible.
+        FeeType feeType = c.feeId() != null
+                ? schoolFeeRepository.findById(c.feeId()).map(gn.lacaeducation.billing.domain.SchoolFee::getType).orElse(null)
+                : null;
+        var discountInfo = computeApplicableDiscount(c.tenantId(), c.studentId(), feeType);
+        var discount = resolveDiscount(grossAmount, discountInfo);
+        BigDecimal netAmount = grossAmount.subtract(discount.amount());
         Invoice inv = repo.save(Invoice.builder().tenantId(c.tenantId()).studentId(c.studentId()).feeId(c.feeId())
                 .academicYearId(academicYearId)
-                .reference(reference).totalAmount(totalAmount).paidAmount(BigDecimal.ZERO).discountAmount(BigDecimal.ZERO)
-                .remainingBalance(totalAmount).status(InvoiceStatus.UNPAID).issueDate(LocalDate.now()).recoveryStage(RecoveryStage.NONE)
-                .platformFeeAmount(platformFee.signum() > 0 ? platformFee : null)
+                .reference(reference).totalAmount(grossAmount).paidAmount(BigDecimal.ZERO).discountAmount(discount.amount())
+                .discountReason(discount.reason()).discountSource(discount.source())
+                .remainingBalance(netAmount).status(InvoiceStatus.UNPAID).issueDate(LocalDate.now()).recoveryStage(RecoveryStage.NONE)
                 .build());
         eventPublisher.publishEvent(new InvoiceGeneratedEvent(c.tenantId(), c.studentId(), inv.getId(), inv.getReference()));
         eventPublisher.publishEvent(new InvoiceIssuedEvent(inv.getId(), c.studentId(), c.tenantId()));
         return inv;
-    }
-
-    /** Montant du frais d'usage plateforme à ajouter à une facture : uniquement pour un frais de type
-     * MONTHLY (jamais inscription/transport/cantine/examen) et seulement si le parent a accepté
-     * l'accès plateforme pour cet élève sur cette année scolaire ; zéro sinon. */
-    private BigDecimal computePlatformFee(Long tenantId, Long studentId, Long academicYearId, Long feeId) {
-        boolean isMonthlyTuition = feeId != null && schoolFeeRepository.findById(feeId)
-                .map(fee -> fee.getType() == gn.lacaeducation.billing.domain.FeeType.MONTHLY)
-                .orElse(false);
-        boolean platformAccessOptIn = isMonthlyTuition && studentId != null
-                && enrollmentQueryPort.hasPlatformAccessOptIn(studentId, academicYearId);
-        return platformAccessOptIn ? platformFeeQuoteApi.currentAmount() : BigDecimal.ZERO;
     }
 
     @Override public List<Invoice> generateMonthly(GenerateMonthlyCommand c) {
@@ -128,16 +186,14 @@ public class InvoiceService implements InvoiceUseCase {
                     + " ; définissez les mensualités avant de facturer.");
         }
         Long academicYearId = resolveAcademicYearId(c.academicYearId(), c.studentId());
-        // Réduction familiale (§5) applicable à cet élève sur les mensualités — calculée une seule fois.
-        var familyDiscount = familyDiscountUseCase.computeApplicable(
-                c.tenantId(), c.studentId(), gn.lacaeducation.billing.domain.FeeType.MONTHLY);
-        BigDecimal discountPercent = familyDiscount.percentage() != null
-                ? familyDiscount.percentage() : BigDecimal.ZERO;
+        // Réduction familiale / avantage personnel (voir computeApplicableDiscount) applicable à cet
+        // élève sur ces échéances — calculée une seule fois, la même pour toutes. Utilise le type RÉEL
+        // du frais (ex. TRANSPORT) et non un MONTHLY codé en dur : cette méthode est aussi appelée pour
+        // les frais transport (voir TransportInvoiceListener), qui ont leurs propres règles de remise.
+        FeeType feeType = schoolFeeRepository.findById(c.feeId())
+                .map(gn.lacaeducation.billing.domain.SchoolFee::getType).orElse(FeeType.MONTHLY);
+        var discount = computeApplicableDiscount(c.tenantId(), c.studentId(), feeType);
 
-        // Frais d'usage plateforme (SUPER_ADMIN) : voir computePlatformFee — chaque facture fige le
-        // montant courant, un changement de tarif plateforme n'affecte que les factures générées
-        // ensuite, jamais celles déjà émises.
-        BigDecimal platformFee = computePlatformFee(c.tenantId(), c.studentId(), academicYearId, c.feeId());
         // Paiement mensuel (§billing, opt-in par inscription) : CE parent précis règle mois par mois —
         // une tranche multi-mois de sa classe est alors éclatée en autant de factures séparées d'un
         // mois, au lieu d'une seule facture groupée. Les autres familles de la même classe ne sont
@@ -157,8 +213,7 @@ public class InvoiceService implements InvoiceUseCase {
                     if (repo.existsByStudentIdAndInstallmentIdAndPeriodLabel(c.studentId(), installment.getId(), label)) {
                         continue;
                     }
-                    created.add(buildAndSaveInvoice(c, academicYearId, installment.getId(), label, perMonth,
-                            discountPercent, familyDiscount, platformFee));
+                    created.add(buildAndSaveInvoice(c, academicYearId, installment.getId(), label, perMonth, discount));
                 }
             } else {
                 // Idempotence : on ne recrée pas la facture d'une échéance déjà facturée pour cet élève.
@@ -166,7 +221,7 @@ public class InvoiceService implements InvoiceUseCase {
                     continue;
                 }
                 created.add(buildAndSaveInvoice(c, academicYearId, installment.getId(), installment.getLabel(),
-                        installment.getAmount(), discountPercent, familyDiscount, platformFee));
+                        installment.getAmount(), discount));
             }
         }
         log.info("Génération mensuelle : {} facture(s) créée(s) pour l'élève id={} frais id={}",
@@ -175,23 +230,19 @@ public class InvoiceService implements InvoiceUseCase {
     }
 
     private Invoice buildAndSaveInvoice(GenerateMonthlyCommand c, Long academicYearId, Long installmentId,
-                                        String periodLabel, BigDecimal baseAmount, BigDecimal discountPercent,
-                                        gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase.ApplicableDiscount familyDiscount,
-                                        BigDecimal platformFee) {
-        BigDecimal amount = platformFee.signum() > 0 ? baseAmount.add(platformFee) : baseAmount;
-        BigDecimal discount = amount.multiply(discountPercent)
-                .divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
-        BigDecimal net = amount.subtract(discount);
+                                        String periodLabel, BigDecimal baseAmount,
+                                        ApplicableInvoiceDiscount discountInfo) {
+        var discount = resolveDiscount(baseAmount, discountInfo);
+        BigDecimal net = baseAmount.subtract(discount.amount());
         String reference = generateReference(c.tenantId());
         Invoice inv = repo.save(Invoice.builder()
                 .tenantId(c.tenantId()).studentId(c.studentId()).feeId(c.feeId())
                 .academicYearId(academicYearId)
-                .reference(reference).totalAmount(amount).paidAmount(BigDecimal.ZERO).discountAmount(discount)
-                .discountReason(discount.signum() > 0 ? "Réduction familiale : " + familyDiscount.ruleLabel() : null)
+                .reference(reference).totalAmount(baseAmount).paidAmount(BigDecimal.ZERO).discountAmount(discount.amount())
+                .discountReason(discount.reason()).discountSource(discount.source())
                 .remainingBalance(net).status(InvoiceStatus.UNPAID).issueDate(LocalDate.now())
                 .recoveryStage(RecoveryStage.NONE)
-                .installmentId(installmentId).periodLabel(periodLabel)
-                .platformFeeAmount(platformFee.signum() > 0 ? platformFee : null).build());
+                .installmentId(installmentId).periodLabel(periodLabel).build());
         eventPublisher.publishEvent(new InvoiceGeneratedEvent(c.tenantId(), c.studentId(), inv.getId(), inv.getReference()));
         eventPublisher.publishEvent(new InvoiceIssuedEvent(inv.getId(), c.studentId(), c.tenantId()));
         return inv;
@@ -263,13 +314,14 @@ public class InvoiceService implements InvoiceUseCase {
             eventPublisher.publishEvent(
                     new InvoicePaidEvent(inv.getTenantId(), inv.getStudentId(), inv.getId(), inv.getReference()));
         }
-        // Part de frais plateforme effectivement encaissée par ce paiement, au prorata du montant
-        // total de la facture — voir Invoice.platformFeeAmount (figé à la génération).
-        if (inv.getPlatformFeeAmount() != null && inv.getPlatformFeeAmount().signum() > 0
-                && inv.getTotalAmount() != null && inv.getTotalAmount().signum() > 0) {
-            BigDecimal platformShare = amount.multiply(inv.getPlatformFeeAmount())
-                    .divide(inv.getTotalAmount(), 2, java.math.RoundingMode.HALF_UP);
-            platformFeeLedgerApi.record(inv.getTenantId(), inv.getId(), platformShare);
+        // Frais plateforme (§billing) : désormais un frais annexe comme un autre, configuré par
+        // l'école elle-même (FeeType.PLATFORM, nom et montant à sa discrétion) — tout encaissement sur
+        // une facture de ce type alimente le solde dû à l'éditeur de la plateforme (voir
+        // platform.PlatformFeeSettlementService, resté inchangé).
+        if (inv.getFeeId() != null) {
+            schoolFeeRepository.findById(inv.getFeeId())
+                    .filter(fee -> fee.getType() == FeeType.PLATFORM)
+                    .ifPresent(fee -> platformFeeLedgerApi.record(inv.getTenantId(), inv.getId(), amount));
         }
         return saved;
     }
@@ -311,6 +363,37 @@ public class InvoiceService implements InvoiceUseCase {
         inv.setDiscountReason(reason);
         recomputeBalance(inv);
         return repo.save(inv);
+    }
+
+    @Override public void applyExternalPayment(Long tenantId, Long studentId, BigDecimal amount) {
+        if (amount == null || amount.signum() <= 0 || studentId == null) return;
+        BigDecimal remaining = amount;
+        List<Invoice> outstanding = repo.findByStudentId(studentId).stream()
+                .filter(i -> i.getStatus() == InvoiceStatus.UNPAID || i.getStatus() == InvoiceStatus.PARTIAL)
+                .filter(i -> i.getFeeId() != null && schoolFeeRepository.findById(i.getFeeId())
+                        .map(f -> f.getType() == FeeType.MONTHLY).orElse(false))
+                .sorted(java.util.Comparator.comparing(Invoice::getIssueDate,
+                        java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())))
+                .toList();
+        for (Invoice inv : outstanding) {
+            if (remaining.signum() <= 0) break;
+            BigDecimal due = inv.getRemainingBalance() != null ? inv.getRemainingBalance() : BigDecimal.ZERO;
+            if (due.signum() <= 0) continue;
+            BigDecimal toApply = due.min(remaining);
+            applyPayment(inv.getId(), toApply, false);
+            remaining = remaining.subtract(toApply);
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public BigDecimal outstandingStaffBenefitRemainder(Long studentId) {
+        if (studentId == null) return BigDecimal.ZERO;
+        return repo.findByStudentId(studentId).stream()
+                .filter(i -> i.getDiscountSource() == gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT)
+                .filter(i -> i.getStatus() == InvoiceStatus.UNPAID || i.getStatus() == InvoiceStatus.PARTIAL)
+                .map(i -> i.getRemainingBalance() != null ? i.getRemainingBalance() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     @Override

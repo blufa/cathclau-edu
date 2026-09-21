@@ -13,6 +13,7 @@ import gn.lacaeducation.iam.application.port.out.RoleRepository;
 import gn.lacaeducation.iam.application.port.out.TokenGenerator;
 import gn.lacaeducation.iam.application.port.out.UserRepository;
 import gn.lacaeducation.iam.domain.Permission;
+import gn.lacaeducation.iam.domain.PasswordResetOtp;
 import gn.lacaeducation.iam.domain.PasswordResetToken;
 import gn.lacaeducation.iam.domain.RefreshToken;
 import gn.lacaeducation.iam.domain.User;
@@ -47,8 +48,11 @@ public class AuthService implements AuthUseCase {
     private final PasswordHasher passwordHasher;
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final gn.lacaeducation.iam.application.port.out.PasswordResetOtpRepository passwordResetOtpRepository;
     private final TenantInfoProvider tenantInfoProvider;
     private final ApplicationEventPublisher eventPublisher;
+
+    private static final int OTP_EXPIRY_MINUTES = 10;
 
     @Value("${app.jwt.expiration}")
     private long jwtExpiration;
@@ -181,6 +185,58 @@ public class AuthService implements AuthUseCase {
         refreshTokenRepository.revokeAllByUserId(user.getId());
 
         eventPublisher.publishEvent(new PasswordResetEvent(user.getId(), user.getTenantId()));
+    }
+
+    @Override
+    public void requestPasswordResetOtp(String identifier) {
+        // Même résolution que la connexion (username, email ou téléphone) — anti-énumération : ne
+        // révèle jamais si l'identifiant existe.
+        resolveIdentifier(identifier).ifPresent(user -> {
+            if (user.getPhone() == null || user.getPhone().isBlank()) return;
+            String code = String.format("%06d", (int) (Math.random() * 1_000_000));
+            PasswordResetOtp otp = PasswordResetOtp.builder()
+                    .userId(user.getId())
+                    .code(code)
+                    .expiresAt(LocalDateTime.now().plusMinutes(OTP_EXPIRY_MINUTES))
+                    .used(false)
+                    .build();
+            passwordResetOtpRepository.save(otp);
+            eventPublisher.publishEvent(new gn.lacaeducation.iam.application.event.PasswordResetOtpRequestedEvent(
+                    user.getTenantId(), user.getId(), user.getPhone(), code));
+        });
+    }
+
+    @Override
+    public void resetPasswordWithOtp(ResetWithOtpCommand command) {
+        User user = resolveIdentifier(command.identifier())
+                .orElseThrow(() -> new BusinessRuleException("Code invalide ou expiré"));
+        PasswordResetOtp otp = passwordResetOtpRepository.findByUserIdAndCode(user.getId(), command.code())
+                .orElseThrow(() -> new BusinessRuleException("Code invalide ou expiré"));
+        if (otp.isUsed()) {
+            throw new BusinessRuleException("Ce code a déjà été utilisé");
+        }
+        if (otp.getExpiresAt().isBefore(LocalDateTime.now())) {
+            throw new BusinessRuleException("Ce code a expiré");
+        }
+
+        user.setPasswordHash(passwordHasher.hash(command.newPassword()));
+        user.setMustChangePassword(false);
+        userRepository.save(user);
+
+        otp.setUsed(true);
+        passwordResetOtpRepository.save(otp);
+
+        refreshTokenRepository.revokeAllByUserId(user.getId());
+
+        eventPublisher.publishEvent(new PasswordResetEvent(user.getId(), user.getTenantId()));
+    }
+
+    /** Résout un identifiant (username, email ou téléphone) vers un utilisateur — même logique que
+     * la connexion, réutilisée pour la demande et la vérification OTP. */
+    private Optional<User> resolveIdentifier(String identifier) {
+        return userRepository.findByUsername(identifier)
+                .or(() -> userRepository.findByEmail(identifier))
+                .or(() -> resolveByPhone(identifier));
     }
 
     @Override

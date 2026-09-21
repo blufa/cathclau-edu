@@ -8,7 +8,6 @@ import gn.lacaeducation.attendance.application.port.out.AttendanceReportPdfGener
 import gn.lacaeducation.attendance.application.port.out.AttendanceReportPdfGenerator.AbsenteeRow;
 import gn.lacaeducation.attendance.application.port.out.AttendanceReportPdfGenerator.LatenessReport;
 import gn.lacaeducation.attendance.application.port.out.AttendanceReportPdfGenerator.LatenessRow;
-import gn.lacaeducation.academics.ScheduleSlotPublicInfo;
 import gn.lacaeducation.attendance.application.port.out.AttendanceSettingsRepository;
 import gn.lacaeducation.attendance.application.port.out.ChildPickupRepository;
 import gn.lacaeducation.attendance.application.port.out.RecessWindowRepository;
@@ -60,12 +59,14 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
      * récréation. Même mécanisme que pour l'enseignant (voir
      * {@code TeacherAttendanceService#graceDeadline}), marge différente.
      */
-    private LocalTime graceDeadline(ScheduleSlotPublicInfo session) {
-        LocalTime start = LocalTime.parse(session.startTime());
-        int margin = settingsRepository.findByTenantId(TenantContext.get())
+    private LocalTime graceDeadline(LocalTime sessionStart) {
+        return sessionResolver.graceDeadline(sessionStart, transitionMargin(), recessWindowRepository.findByTenantId(TenantContext.get()));
+    }
+
+    private int transitionMargin() {
+        return settingsRepository.findByTenantId(TenantContext.get())
                 .map(AttendanceSettings::studentTransitionMarginMinutesOrDefault)
                 .orElseGet(() -> AttendanceSettings.defaults().studentTransitionMarginMinutesOrDefault());
-        return sessionResolver.graceDeadline(start, margin, recessWindowRepository.findByTenantId(TenantContext.get()));
     }
 
     @Override
@@ -76,19 +77,19 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
 
         LocalDate today = LocalDate.now();
         LocalTime now = LocalTime.now();
-        ScheduleSlotPublicInfo session = sessionResolver.currentSession(academicsProvider.findScheduleByClass(classId), today, now);
-        if (session == null) {
+        SessionResolver.Block block = sessionResolver.currentBlock(academicsProvider.findScheduleByClass(classId), today, now, transitionMargin());
+        if (block == null) {
             throw new BusinessRuleException("Aucun cours programmé aujourd'hui pour cette classe.");
         }
-        StudentCheckin checkin = checkinRepository.findByStudentIdAndDateAndSlot(studentId, today, session.id())
+        StudentCheckin checkin = checkinRepository.findByStudentIdAndDateAndSlot(studentId, today, block.firstSlotId())
                 .orElseGet(() -> {
-                    LocalTime start = LocalTime.parse(session.startTime());
-                    LocalTime end = LocalTime.parse(session.endTime());
-                    LocalTime deadline = graceDeadline(session);
+                    LocalTime start = block.start();
+                    LocalTime end = block.end();
+                    LocalTime deadline = graceDeadline(start);
                     int late = (int) Math.max(0, Duration.between(deadline, now).toMinutes());
                     return checkinRepository.save(StudentCheckin.builder()
                             .tenantId(TenantContext.get()).studentId(studentId).classId(classId).checkinDate(today)
-                            .scheduleSlotId(session.id()).sessionStart(start).sessionEnd(end)
+                            .scheduleSlotId(block.firstSlotId()).sessionStart(start).sessionEnd(end)
                             .checkInTime(now).lateMinutes(late).createdAt(LocalDateTime.now()).build());
                 });
         upsertDailyAttendance(studentId, classId, today);
@@ -103,15 +104,15 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
 
         LocalDate today = LocalDate.now();
         LocalTime now = LocalTime.now();
-        ScheduleSlotPublicInfo session = sessionResolver.currentSession(academicsProvider.findScheduleByClass(classId), today, now);
-        if (session == null) {
+        SessionResolver.Block block = sessionResolver.currentBlock(academicsProvider.findScheduleByClass(classId), today, now, transitionMargin());
+        if (block == null) {
             throw new BusinessRuleException("Aucun cours programmé aujourd'hui pour cette classe.");
         }
-        StudentCheckin checkin = checkinRepository.findByStudentIdAndDateAndSlot(studentId, today, session.id())
+        StudentCheckin checkin = checkinRepository.findByStudentIdAndDateAndSlot(studentId, today, block.firstSlotId())
                 .orElseThrow(() -> new BusinessRuleException(
                         "Aucun pointage d'entrée trouvé pour cette séance : scannez d'abord l'entrée."));
         checkin.setCheckOutTime(now);
-        if (checkin.getSessionEnd() == null) checkin.setSessionEnd(LocalTime.parse(session.endTime()));
+        if (checkin.getSessionEnd() == null) checkin.setSessionEnd(block.end());
         // Départ anticipé : sortie pointée avant la fin prévue de la séance (symétrique du retard à
         // l'entrée, miroir de TeacherAttendanceService#recordExit).
         int early = (int) Math.max(0, Duration.between(now, checkin.getSessionEnd()).toMinutes());
@@ -125,16 +126,16 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
         // sinon complète le pointage d'entrée déjà existant avec l'heure de sortie saisie.
         Long classId = studentDataProvider.findCurrentClassId(studentId)
                 .orElseThrow(() -> new BusinessRuleException("Élève sans classe courante : impossible de pointer"));
-        ScheduleSlotPublicInfo session = sessionResolver.currentSession(academicsProvider.findScheduleByClass(classId), date, checkOutTime);
-        if (session == null) {
+        SessionResolver.Block block = sessionResolver.currentBlock(academicsProvider.findScheduleByClass(classId), date, checkOutTime, transitionMargin());
+        if (block == null) {
             throw new BusinessRuleException("Aucun cours programmé ce jour-là pour cette classe.");
         }
-        LocalTime start = LocalTime.parse(session.startTime());
-        LocalTime end = LocalTime.parse(session.endTime());
-        StudentCheckin checkin = checkinRepository.findByStudentIdAndDateAndSlot(studentId, date, session.id())
+        LocalTime start = block.start();
+        LocalTime end = block.end();
+        StudentCheckin checkin = checkinRepository.findByStudentIdAndDateAndSlot(studentId, date, block.firstSlotId())
                 .orElseGet(() -> StudentCheckin.builder()
                         .tenantId(TenantContext.get()).studentId(studentId).classId(classId).checkinDate(date)
-                        .scheduleSlotId(session.id()).sessionStart(start).lateMinutes(0).createdAt(LocalDateTime.now()).build());
+                        .scheduleSlotId(block.firstSlotId()).sessionStart(start).lateMinutes(0).createdAt(LocalDateTime.now()).build());
         checkin.setSessionEnd(end);
         checkin.setCheckOutTime(checkOutTime);
         int early = (int) Math.max(0, Duration.between(checkOutTime, end).toMinutes());
@@ -150,18 +151,18 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
         // vérifié au niveau du contrôleur), pas un scan par un élève.
         Long classId = studentDataProvider.findCurrentClassId(studentId)
                 .orElseThrow(() -> new BusinessRuleException("Élève sans classe courante : impossible de pointer"));
-        ScheduleSlotPublicInfo session = sessionResolver.currentSession(academicsProvider.findScheduleByClass(classId), date, checkInTime);
-        if (session == null) {
+        SessionResolver.Block block = sessionResolver.currentBlock(academicsProvider.findScheduleByClass(classId), date, checkInTime, transitionMargin());
+        if (block == null) {
             throw new BusinessRuleException("Aucun cours programmé ce jour-là pour cette classe.");
         }
-        LocalTime start = LocalTime.parse(session.startTime());
-        LocalTime end = LocalTime.parse(session.endTime());
-        LocalTime deadline = graceDeadline(session);
+        LocalTime start = block.start();
+        LocalTime end = block.end();
+        LocalTime deadline = graceDeadline(start);
         int late = (int) Math.max(0, Duration.between(deadline, checkInTime).toMinutes());
-        StudentCheckin checkin = checkinRepository.findByStudentIdAndDateAndSlot(studentId, date, session.id())
+        StudentCheckin checkin = checkinRepository.findByStudentIdAndDateAndSlot(studentId, date, block.firstSlotId())
                 .orElseGet(() -> StudentCheckin.builder()
                         .tenantId(TenantContext.get()).studentId(studentId).classId(classId).checkinDate(date)
-                        .scheduleSlotId(session.id()).createdAt(LocalDateTime.now()).build());
+                        .scheduleSlotId(block.firstSlotId()).createdAt(LocalDateTime.now()).build());
         checkin.setSessionStart(start);
         checkin.setSessionEnd(end);
         checkin.setCheckInTime(checkInTime);

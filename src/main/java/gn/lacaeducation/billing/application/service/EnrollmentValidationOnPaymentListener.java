@@ -12,9 +12,11 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * When an ENROLLMENT-fee invoice is fully settled, validates the matching PENDING enrollment.
- * This makes enrollment validation payment-driven: the student is validated only once the
- * enrollment fee is entirely paid (partial payments leave the enrollment PENDING).
+ * When an ENROLLMENT- or RE_ENROLLMENT-fee invoice is fully settled, validates the matching PENDING
+ * enrollment. This makes enrollment validation payment-driven: the student is validated only once the
+ * enrollment fee is entirely paid (partial payments leave the enrollment PENDING). Re-enrollment was
+ * missing here until now: its invoice (FeeType.RE_ENROLLMENT — see EnrollmentInvoiceListener) settled
+ * fine, but the enrollment itself stayed PENDING forever since this listener silently ignored it.
  */
 @Slf4j
 @Component
@@ -31,7 +33,7 @@ public class EnrollmentValidationOnPaymentListener {
         invoiceRepository.findById(event.invoiceId()).ifPresent(invoice -> {
             if (invoice.getFeeId() == null) return;
             schoolFeeRepository.findById(invoice.getFeeId()).ifPresent(fee -> {
-                if (fee.getType() != FeeType.ENROLLMENT) return;
+                if (fee.getType() != FeeType.ENROLLMENT && fee.getType() != FeeType.RE_ENROLLMENT) return;
                 enrollmentValidationApi.validatePaidEnrollment(event.studentId(), fee.getClassId());
                 log.info("Enrollment fee fully paid (invoice id={}): validated enrollment for student id={} class id={}",
                         event.invoiceId(), event.studentId(), fee.getClassId());

@@ -76,8 +76,8 @@ class OpenPdfReportCardGenerator implements ReportCardPdfGenerator {
             doc.add(ident);
 
             // ── Tableau des matières ───────────────────────────────────────────
-            // Colonnes Cours/Composition affichées seulement si la formule active les renseigne
-            // (étapes étiquetées §StepRole) — sinon tableau classique, aucune régression visuelle.
+            // Colonnes Cours/Composition affichées seulement au secondaire (voir SubjectSemesterAverage,
+            // null au primaire) — sinon tableau classique, aucune régression visuelle.
             boolean showCoursCompo = lines.stream().anyMatch(l -> l.getCoursAverage() != null || l.getCompoAverage() != null);
             int columns = showCoursCompo ? 7 : 5;
             PdfPTable table = new PdfPTable(showCoursCompo

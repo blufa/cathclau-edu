@@ -23,12 +23,12 @@ public class JournalController {
 
     @GetMapping public List<Journal> list() { return service.journals(TenantContext.get()); }
 
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR','ACCOUNTANT')")
+    @PreAuthorize("hasAuthority('comptabilite:manage')")
     @PostMapping public Journal create(@RequestBody JournalRequest r) {
         return service.saveJournal(Journal.builder().tenantId(TenantContext.get())
                 .code(r.code()).label(r.label()).type(r.type()).defaultCounterpartAccountId(r.defaultCounterpartAccountId()).build());
     }
 
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SCHOOL_ADMIN','DIRECTOR')")
+    @PreAuthorize("hasAuthority('comptabilite:approve')")
     @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id) { service.deleteJournal(id); return ResponseEntity.noContent().build(); }
 }

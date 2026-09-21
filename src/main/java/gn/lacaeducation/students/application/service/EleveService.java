@@ -1,6 +1,7 @@
 package gn.lacaeducation.students.application.service;
 
 import gn.lacaeducation.common.ConflictException;
+import gn.lacaeducation.common.PersonName;
 import gn.lacaeducation.common.QuotaExceededException;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.common.SchoolCode;
@@ -68,7 +69,9 @@ public class EleveService implements StudentUseCase {
 
         Student saved = studentRepository.save(Student.builder()
                 .tenantId(cmd.tenantId()).userId(userId)
-                .studentNumber(matricule).firstName(cmd.firstName()).lastName(cmd.lastName())
+                .studentNumber(matricule)
+                .firstName(PersonName.capitalizeFirstName(cmd.firstName()))
+                .lastName(PersonName.upperCaseLastName(cmd.lastName()))
                 .gender(cmd.gender()).birthDate(cmd.birthDate()).birthPlace(cmd.birthPlace())
                 .address(cmd.address()).phone(cmd.phone()).email(cmd.email())
                 .nationality(cmd.nationality()).originSchool(cmd.originSchool()).photo(cmd.photo())
@@ -106,7 +109,9 @@ public class EleveService implements StudentUseCase {
     public Student update(Long id, UpdateStudentCommand cmd) {
         Student s = studentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Student", id));
-        s.setStudentNumber(cmd.studentNumber()); s.setFirstName(cmd.firstName()); s.setLastName(cmd.lastName());
+        s.setStudentNumber(cmd.studentNumber());
+        s.setFirstName(PersonName.capitalizeFirstName(cmd.firstName()));
+        s.setLastName(PersonName.upperCaseLastName(cmd.lastName()));
         s.setGender(cmd.gender()); s.setBirthDate(cmd.birthDate()); s.setBirthPlace(cmd.birthPlace());
         s.setAddress(cmd.address()); s.setPhone(cmd.phone()); s.setEmail(cmd.email());
         s.setNationality(cmd.nationality()); s.setOriginSchool(cmd.originSchool());

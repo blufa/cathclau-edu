@@ -4,6 +4,7 @@
         "students",
         "staff",
         "attendance::events",
+        "calendar::events",
         "grading::events",
         "billing::events",
         "payments", "payments::events",

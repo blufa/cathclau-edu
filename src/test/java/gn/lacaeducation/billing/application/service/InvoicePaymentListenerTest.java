@@ -26,14 +26,14 @@ class InvoicePaymentListenerTest {
     void appliesPaymentToInvoiceOnSuccess() {
         when(invoiceUseCase.existsById(3L)).thenReturn(true);
 
-        listener.onPaymentSucceeded(new PaymentSucceededEvent(10L, 7L, 100L, 3L, new BigDecimal("60.00")));
+        listener.onPaymentSucceeded(new PaymentSucceededEvent(10L, 7L, 100L, 3L, new BigDecimal("60.00"), null));
 
         verify(invoiceUseCase).applyPayment(3L, new BigDecimal("60.00"));
     }
 
     @Test
     void skipsWhenInvoiceIdMissing() {
-        listener.onPaymentSucceeded(new PaymentSucceededEvent(10L, 7L, 100L, null, new BigDecimal("60.00")));
+        listener.onPaymentSucceeded(new PaymentSucceededEvent(10L, 7L, 100L, null, new BigDecimal("60.00"), null));
 
         verify(invoiceUseCase, never()).applyPayment(any(), any());
     }
@@ -42,7 +42,7 @@ class InvoicePaymentListenerTest {
     void skipsWhenInvoiceUnknown() {
         when(invoiceUseCase.existsById(3L)).thenReturn(false);
 
-        listener.onPaymentSucceeded(new PaymentSucceededEvent(10L, 7L, 100L, 3L, new BigDecimal("60.00")));
+        listener.onPaymentSucceeded(new PaymentSucceededEvent(10L, 7L, 100L, 3L, new BigDecimal("60.00"), null));
 
         verify(invoiceUseCase, never()).applyPayment(any(), any());
     }

@@ -79,6 +79,22 @@ class BroadcastServiceTest {
     }
 
     @Test
+    void all_usesGroupRecipientType() {
+        RecipientTarget target = new RecipientTarget(null, "623000099");
+        when(recipientResolverService.resolve(1L, BroadcastAudience.ALL, null, null, CommunicationChannel.SMS))
+                .thenReturn(List.of(target));
+        when(communicationUseCase.send(any())).thenReturn(Communication.builder().id(99L).build());
+
+        service.broadcast(new BroadcastCommand(
+                1L, 2L, CommunicationChannel.SMS, BroadcastAudience.ALL, null, null,
+                "Kermesse", "La kermesse commence dans 1h, merci de venir récupérer vos enfants à 15h.", null));
+
+        ArgumentCaptor<SendCommunicationCommand> captor = ArgumentCaptor.forClass(SendCommunicationCommand.class);
+        verify(communicationUseCase).send(captor.capture());
+        assertThat(captor.getValue().recipientType()).isEqualTo(RecipientType.GROUP);
+    }
+
+    @Test
     void classAudienceWithoutClassId_throws() {
         assertThatThrownBy(() -> service.broadcast(new BroadcastCommand(
                 1L, 2L, CommunicationChannel.SMS, BroadcastAudience.CLASS_PARENTS, null, null,
