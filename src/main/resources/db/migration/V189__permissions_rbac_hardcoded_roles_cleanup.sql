@@ -18,7 +18,7 @@ INSERT INTO permissions (name, code) VALUES
     ('Gérer le profil de l''école (identité, coordonnées, image)', 'ecole:profil'),
     ('Déverrouiller une note validée', 'note:unlock'),
     ('Supprimer un bulletin', 'bulletin:delete'),
-    ('Configurer le moteur de calcul des notes (barème, formules, règles de décision/élimination, sessions d''évaluation)', 'parametrage_notes:manage'),
+    ('Configurer les notes (barème, règles de décision/élimination, sessions d''évaluation)', 'parametrage_notes:manage'),
     ('Supprimer un enregistrement de présence', 'presence:delete')
 ON CONFLICT (code) DO NOTHING;
 
