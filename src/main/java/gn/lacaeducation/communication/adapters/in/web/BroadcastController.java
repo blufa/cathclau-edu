@@ -30,7 +30,10 @@ public class BroadcastController {
 
     public record DiffusionRequest(Long tenantId, Long senderId, CommunicationChannel channel,
                                    BroadcastAudience audience, Long classId, Long studentId,
-                                   String subject, String content, CommunicationReason reason) {}
+                                   String subject, String content, CommunicationReason reason,
+                                   /** Clé d'idempotence générée côté client (double-clic, requête
+                                    * réseau dupliquée) — optionnelle. */
+                                   String idempotencyKey) {}
 
     @Operation(summary = "Diffuser un message à une audience segmentée (parents, classe, sexe, enseignants, élève)")
     @PreAuthorize("hasAuthority('communication:send')")
@@ -38,7 +41,7 @@ public class BroadcastController {
     public ResponseEntity<Communication> broadcast(@RequestBody DiffusionRequest r) {
         Communication result = broadcastUseCase.broadcast(new BroadcastUseCase.BroadcastCommand(
                 r.tenantId(), r.senderId(), r.channel(), r.audience(), r.classId(), r.studentId(),
-                r.subject(), r.content(), r.reason()));
+                r.subject(), r.content(), r.reason(), r.idempotencyKey()));
         if (result == null) {
             return ResponseEntity.unprocessableEntity().build();
         }

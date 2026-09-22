@@ -18,4 +18,5 @@ public class CommunicationJpaEntity {
     @JdbcTypeCode(SqlTypes.LONGVARCHAR) @Column(nullable = false) private String content;
     @Enumerated(EnumType.STRING) @Column private CommunicationReason reason;
     @Column(name = "sent_at", nullable = false) private LocalDateTime sentAt;
+    @Column(name = "idempotency_key") private String idempotencyKey;
 }

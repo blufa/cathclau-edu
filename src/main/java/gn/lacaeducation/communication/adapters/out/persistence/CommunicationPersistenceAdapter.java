@@ -20,5 +20,6 @@ class CommunicationPersistenceAdapter implements CommunicationRepository {
     @Override public List<Communication> findBySenderId(Long s) { return jpa.findBySenderId(s).stream().map(mapper::toDomain).toList(); }
     @Override public List<Communication> findByTenantIdAndChannel(Long t, CommunicationChannel ch) { return jpa.findByTenantIdAndChannel(t, ch).stream().map(mapper::toDomain).toList(); }
     @Override public List<Communication> findByTenantIdAndReason(Long t, CommunicationReason r) { return jpa.findByTenantIdAndReason(t, r).stream().map(mapper::toDomain).toList(); }
+    @Override public Optional<Communication> findByIdempotencyKey(String key) { return jpa.findByIdempotencyKey(key).map(mapper::toDomain); }
     @Override public void deleteById(Long id) { jpa.deleteById(id); }
 }

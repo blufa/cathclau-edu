@@ -8,4 +8,5 @@ interface CommunicationJpaRepository extends JpaRepository<CommunicationJpaEntit
     List<CommunicationJpaEntity> findBySenderId(Long senderId);
     List<CommunicationJpaEntity> findByTenantIdAndChannel(Long tenantId, CommunicationChannel channel);
     List<CommunicationJpaEntity> findByTenantIdAndReason(Long tenantId, CommunicationReason reason);
+    java.util.Optional<CommunicationJpaEntity> findByIdempotencyKey(String idempotencyKey);
 }

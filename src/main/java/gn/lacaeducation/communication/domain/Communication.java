@@ -12,4 +12,7 @@ public class Communication {
     private String content;
     private CommunicationReason reason;
     private LocalDateTime sentAt;
+    /** Clé d'idempotence fournie par le client (double-clic, requête réseau dupliquée) : rejouer avec
+     * la même clé renvoie cette communication au lieu d'en créer une seconde. Null si non fournie. */
+    private String idempotencyKey;
 }
