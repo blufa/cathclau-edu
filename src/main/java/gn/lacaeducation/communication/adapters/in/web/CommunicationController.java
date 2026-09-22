@@ -18,7 +18,10 @@ public class CommunicationController {
     public record SendRequest(Long tenantId, Long senderId, CommunicationChannel channel,
                               RecipientType recipientType, String subject, String content,
                               CommunicationReason reason, List<Long> recipientUserIds,
-                              List<String> recipientDestinations) {}
+                              List<String> recipientDestinations,
+                              /** Clé d'idempotence générée côté client (double-clic, requête réseau
+                               * dupliquée) — optionnelle. */
+                              String idempotencyKey) {}
     @Operation(summary = "Envoyer une communication (SMS, e-mail ou WhatsApp) à un ou plusieurs destinataires")
     @PreAuthorize("hasAuthority('communication:send')")
     @PostMapping public ResponseEntity<Communication> send(@RequestBody SendRequest r) {
@@ -37,7 +40,7 @@ public class CommunicationController {
         Long tenantId = TenantContext.get();
         return ResponseEntity.ok(useCase.send(new CommunicationUseCase.SendCommunicationCommand(
                 tenantId, r.senderId(), r.channel(), r.recipientType(), r.subject(),
-                r.content(), r.reason(), targets)));
+                r.content(), r.reason(), targets, r.idempotencyKey())));
     }
     @Operation(summary = "Consulter une communication par son ID")
     @GetMapping("/{id}") public ResponseEntity<Communication> findById(@PathVariable Long id) {

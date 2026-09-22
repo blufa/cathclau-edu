@@ -70,9 +70,9 @@ public class TenantService implements CreateTenantUseCase, TenantEstablishmentTy
                 saved.getId(), saved.getSchoolName(), saved.getEmail(), saved.getDirector(),
                 effectivePassword, !chosen, c.adminUsername(), saved.getPhone()));
         if (!chosen) {
-            // Envoi des identifiants (email + mot de passe temporaire) à l'administrateur de l'école.
+            // Envoi des identifiants (email + SMS + mot de passe temporaire) à l'administrateur de l'école.
             eventPublisher.publishEvent(new TenantAdminCredentialsIssuedEvent(
-                    saved.getId(), saved.getSchoolName(), saved.getEmail(), effectivePassword));
+                    saved.getId(), saved.getSchoolName(), saved.getEmail(), saved.getPhone(), effectivePassword));
         }
         eventPublisher.publishEvent(new TenantActivatedEvent(
                 saved.getId(), saved.getSchoolName(), saved.getEmail(), saved.getDirector()));
@@ -115,11 +115,14 @@ public class TenantService implements CreateTenantUseCase, TenantEstablishmentTy
         t.setAccreditationNumber(c.accreditationNumber()); t.setOpeningAuthorization(c.openingAuthorization());
         t.setMotto(c.motto()); t.setSlogan(c.slogan());
         t.setIre(c.ire()); t.setDpeLabel(c.dpeLabel()); t.setSousPrefectureLabel(c.sousPrefectureLabel());
-        // Payout : ne pas écraser avec null (les éditions SUPER_ADMIN n'envoient pas ces champs).
-        // Le formulaire de l'école envoie "" pour effacer, jamais null.
+        // Payout + format de matricule : ne pas écraser avec null (les éditions SUPER_ADMIN n'envoient
+        // pas ces champs, absents de son formulaire d'édition). Le formulaire de l'école envoie ""
+        // pour effacer/revenir au défaut, jamais null.
         if (c.payoutMerchantNumber() != null) t.setPayoutMerchantNumber(c.payoutMerchantNumber());
         if (c.payoutOperator() != null) t.setPayoutOperator(c.payoutOperator());
         if (c.payoutAccountName() != null) t.setPayoutAccountName(c.payoutAccountName());
+        if (c.matriculeFormat() != null) t.setMatriculeFormat(c.matriculeFormat());
+        if (c.matriculeDigits() != null) t.setMatriculeDigits(c.matriculeDigits());
         Tenant saved = tenantRepository.save(t);
         if (brandingChanged) {
             eventPublisher.publishEvent(new TenantBrandingUpdatedEvent(id));

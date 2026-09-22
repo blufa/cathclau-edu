@@ -48,23 +48,34 @@ public class PlatformOnboardingListener {
     }
 
     /**
-     * Envoie les identifiants de connexion (email + mot de passe temporaire) à l'administrateur de
-     * l'école créée manuellement par le SUPER_ADMIN sans mot de passe fourni.
+     * Envoie les identifiants de connexion (mot de passe temporaire) à l'administrateur de l'école
+     * créée manuellement par le SUPER_ADMIN sans mot de passe fourni — par SMS s'il a un numéro
+     * (message bref, la connexion se fait par numéro + mot de passe) ET par email s'il a une adresse :
+     * les deux canaux sont indépendants, comme pour {@code CommunicationEventListener.onUserAccountCreated}.
      */
     @TransactionalEventListener
     @Async
     public void onTenantAdminCredentialsIssued(TenantAdminCredentialsIssuedEvent event) {
-        if (event.adminEmail() == null || event.adminEmail().isBlank()) {
-            return;
+        boolean hasEmail = event.adminEmail() != null && !event.adminEmail().isBlank();
+        boolean hasPhone = event.adminPhone() != null && !event.adminPhone().isBlank();
+
+        if (hasPhone) {
+            // Bref, pas d'identifiant à retenir : la connexion se fait par numéro + mot de passe.
+            String smsBody = "Votre espace pour l'école \"" + event.schoolName() + "\" est prêt. "
+                    + "Connectez-vous avec votre numéro et le mot de passe " + event.temporaryPassword()
+                    + " : " + loginUrl;
+            sendSms(event.tenantId(), smsBody, event.adminPhone());
         }
-        String body = "Votre espace pour l'école \"" + event.schoolName() + "\" est prêt.\n\n"
-                + "Identifiants de connexion :\n"
-                + "• Adresse : " + loginUrl + "\n"
-                + "• Email : " + event.adminEmail() + "\n"
-                + "• Mot de passe temporaire : " + event.temporaryPassword() + "\n\n"
-                + "Pour votre sécurité, ce mot de passe est temporaire : vous devrez le changer lors de "
-                + "votre première connexion.";
-        send(event.tenantId(), "Vos identifiants de connexion — " + event.schoolName(), body, event.adminEmail());
+        if (hasEmail) {
+            String body = "Votre espace pour l'école \"" + event.schoolName() + "\" est prêt.\n\n"
+                    + "Identifiants de connexion :\n"
+                    + "• Adresse : " + loginUrl + "\n"
+                    + "• Email : " + event.adminEmail() + "\n"
+                    + "• Mot de passe temporaire : " + event.temporaryPassword() + "\n\n"
+                    + "Pour votre sécurité, ce mot de passe est temporaire : vous devrez le changer lors de "
+                    + "votre première connexion.";
+            send(event.tenantId(), "Vos identifiants de connexion — " + event.schoolName(), body, event.adminEmail());
+        }
     }
 
     @TransactionalEventListener
@@ -87,6 +98,17 @@ public class PlatformOnboardingListener {
                     List.of(new RecipientTarget(null, email))));
         } catch (Exception e) {
             log.warn("Failed to send onboarding email to {} for tenant {}: {}", email, tenantId, e.getMessage());
+        }
+    }
+
+    private void sendSms(Long tenantId, String body, String phone) {
+        try {
+            communicationUseCase.send(new SendCommunicationCommand(
+                    tenantId, null, CommunicationChannel.SMS, RecipientType.GROUP,
+                    "Vos identifiants de connexion", body, CommunicationReason.GENERAL,
+                    List.of(new RecipientTarget(null, phone))));
+        } catch (Exception e) {
+            log.warn("Failed to send onboarding SMS to {} for tenant {}: {}", phone, tenantId, e.getMessage());
         }
     }
 }

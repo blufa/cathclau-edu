@@ -60,9 +60,9 @@ public class EnseignantService implements TeacherUseCase {
     }
 
     /**
-     * Returns a tenant-unique staff number: validates a provided one, or auto-generates one in the
-     * simple {@code SIGLESEQ} format (e.g. {@code AT00001}) — no dashes, year or type infix, same as
-     * the student matricule.
+     * Returns a tenant-unique staff number: validates a provided one, or auto-generates one using the
+     * school's own format (settings, defaults to {@code SIGLESEQ}, e.g. {@code AT00001}, same as the
+     * student matricule) — see {@link gn.lacaeducation.common.MatriculeFormatter}.
      */
     private String resolveStaffNumber(Long tenantId, String provided) {
         if (provided != null && !provided.isBlank()) {
@@ -72,10 +72,14 @@ public class EnseignantService implements TeacherUseCase {
             return provided;
         }
         String prefix = SchoolCode.prefix(tenantInfoProvider, tenantId);
+        var info = tenantId == null ? Optional.<gn.lacaeducation.common.TenantPublicInfo>empty()
+                : tenantInfoProvider.findTenantInfo(tenantId);
+        String format = info.map(gn.lacaeducation.common.TenantPublicInfo::matriculeFormat).orElse(null);
+        Integer digits = info.map(gn.lacaeducation.common.TenantPublicInfo::matriculeDigits).orElse(null);
         long seq = teacherRepository.findByTenantId(tenantId).size() + 1L;
         String candidate;
         do {
-            candidate = String.format("%s%05d", prefix, seq++);
+            candidate = gn.lacaeducation.common.MatriculeFormatter.generate(format, digits, prefix, seq++);
         } while (teacherRepository.existsByTenantIdAndStaffNumber(tenantId, candidate));
         return candidate;
     }

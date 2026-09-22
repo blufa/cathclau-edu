@@ -3,7 +3,7 @@ package gn.lacaeducation.billing.application.service;
 import gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase.ApplicableDiscount;
 import gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase.RuleCommand;
 import gn.lacaeducation.billing.application.port.out.EnrollmentQueryPort;
-import gn.lacaeducation.billing.application.port.out.EnrollmentQueryPort.ActiveLevel;
+import gn.lacaeducation.billing.application.port.out.EnrollmentQueryPort.ActiveGrade;
 import gn.lacaeducation.billing.application.port.out.FamilyDiscountRuleRepository;
 import gn.lacaeducation.billing.domain.FamilyDiscountRule;
 import gn.lacaeducation.billing.domain.FeeType;
@@ -42,10 +42,10 @@ class FamilyDiscountServiceTest {
                 new ChildInfo(10L, LocalDate.of(2019, 1, 1)));
     }
 
-    // Niveau au libellé non reconnu par NiveauCanonicalOrder : classement replié sur le sort_order
-    // brut (1000 + sortOrder), pour tester le classement par sort_order indépendamment du libellé.
-    private ActiveLevel niveauNonReconnu(int sortOrder) {
-        return new ActiveLevel("PRIMAIRE", "Niveau X", sortOrder);
+    // Aucun grade reconnu sur la classe : classement replié sur le cycle du niveau + son sort_order
+    // brut, pour tester le classement par sort_order indépendamment du grade.
+    private ActiveGrade niveauNonReconnu(int sortOrder) {
+        return new ActiveGrade(null, "PRIMAIRE", sortOrder);
     }
 
     private FamilyDiscountRule rule5(int min, Integer max, String pct) {
@@ -128,8 +128,8 @@ class FamilyDiscountServiceTest {
         // classement par libellé canonique, les DEUX enfants pouvaient ressortir "cadet" simultanément.
         when(familyProvider.findSiblings(1L)).thenReturn(fiveChildren());
         when(familyProvider.findSiblings(2L)).thenReturn(fiveChildren());
-        when(enrollmentQueryPort.findActiveLevel(1L)).thenReturn(new ActiveLevel("MATERNELLE", "Grande Section", 1));
-        when(enrollmentQueryPort.findActiveLevel(2L)).thenReturn(new ActiveLevel("MATERNELLE", "Moyenne Section", 2));
+        when(enrollmentQueryPort.findActiveLevel(1L)).thenReturn(new ActiveGrade("GRANDE_SECTION", "MATERNELLE", 1));
+        when(enrollmentQueryPort.findActiveLevel(2L)).thenReturn(new ActiveGrade("MOYENNE_SECTION", "MATERNELLE", 2));
         when(repo.findByTenantId(1L)).thenReturn(List.of(rule5(5, 5, "5")));
 
         List<Long> eligible = service.eligibleYoungest(1L, List.of(1L, 2L));

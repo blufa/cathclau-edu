@@ -3,6 +3,7 @@ import gn.lacaeducation.academics.domain.Classe;
 import gn.lacaeducation.academics.domain.ClasseMatiere;
 import gn.lacaeducation.academics.domain.ClassStudent;
 import gn.lacaeducation.academics.domain.valueobject.ClassType;
+import gn.lacaeducation.academics.domain.valueobject.Grade;
 import java.util.List;
 import java.util.Optional;
 public interface GererClasseUseCase {
@@ -29,7 +30,7 @@ public interface GererClasseUseCase {
     Classe setClassRepresentative(Long classId, Long studentId);
     record CreateClassCommand(Long tenantId, Long levelId, Long academicYearId,
                                Long headTeacherId, Long roomId, String label, Integer maxCapacity,
-                               ClassType classType) {}
+                               ClassType classType, Grade grade, String serie) {}
     /** {@code available} est {@code null} quand la classe n'a pas de capacité maximale définie (pas de
      * limite), plutôt qu'un entier sentinelle (ex. {@code Long.MAX_VALUE}) qui s'afficherait tel quel,
      * de façon absurde, côté frontend. */

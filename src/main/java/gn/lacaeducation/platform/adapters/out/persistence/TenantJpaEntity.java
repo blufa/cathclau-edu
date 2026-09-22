@@ -114,4 +114,10 @@ public class TenantJpaEntity {
 
     @Column(name = "prefecture_id")
     private Long prefectureId;
+
+    @Column(name = "matricule_format")
+    private String matriculeFormat;
+
+    @Column(name = "matricule_digits")
+    private Integer matriculeDigits;
 }

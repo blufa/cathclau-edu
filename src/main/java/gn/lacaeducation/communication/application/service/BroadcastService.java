@@ -44,6 +44,6 @@ public class BroadcastService implements BroadcastUseCase {
 
         return communicationUseCase.send(new CommunicationUseCase.SendCommunicationCommand(
                 c.tenantId(), c.senderId(), c.channel(), recipientType,
-                c.subject(), c.content(), c.reason(), recipients));
+                c.subject(), c.content(), c.reason(), recipients, c.idempotencyKey()));
     }
 }

@@ -38,7 +38,11 @@ public record TenantResponse(
     /** Mot de passe temporaire généré, renvoyé une seule fois à la création ; null sinon. */
     String temporaryPassword,
     /** Préfecture/commune (DPE/DCE) de rattachement ; null si hors périmètre DPE. */
-    Long prefectureId
+    Long prefectureId,
+    /** Format du matricule (jetons {PREFIXE}/{ANNEE}/{NUM}) ; null = format par défaut. */
+    String matriculeFormat,
+    /** Nombre de chiffres du numéro séquentiel du matricule ; null = 5 par défaut. */
+    Integer matriculeDigits
 ) {
     public static TenantResponse from(Tenant tenant) {
         return from(tenant, null);
@@ -55,7 +59,8 @@ public record TenantResponse(
             tenant.getPayoutMerchantNumber(), tenant.getPayoutOperator(), tenant.getPayoutAccountName(),
             tenant.getEstablishmentTypes(),
             tenant.getStatus(), tenant.getTrialEndsAt(), tenant.getActivatedAt(), tenant.getCreatedAt(),
-            temporaryPassword, tenant.getPrefectureId()
+            temporaryPassword, tenant.getPrefectureId(),
+            tenant.getMatriculeFormat(), tenant.getMatriculeDigits()
         );
     }
 }

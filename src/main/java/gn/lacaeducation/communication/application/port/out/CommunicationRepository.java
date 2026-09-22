@@ -9,5 +9,6 @@ public interface CommunicationRepository {
     List<Communication> findBySenderId(Long senderId);
     List<Communication> findByTenantIdAndChannel(Long tenantId, CommunicationChannel channel);
     List<Communication> findByTenantIdAndReason(Long tenantId, CommunicationReason reason);
+    Optional<Communication> findByIdempotencyKey(String idempotencyKey);
     void deleteById(Long id);
 }

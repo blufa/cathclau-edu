@@ -108,32 +108,29 @@ public class FamilyDiscountService implements FamilyDiscountUseCase {
     }
 
     /**
-     * Le cadet = l'enfant inscrit dans le niveau le plus bas selon la progression pédagogique
+     * Le cadet = l'enfant inscrit dans le grade le plus bas selon la progression pédagogique
      * officielle guinéenne (garderie → petite/moyenne/grande section → CP1…CM2 → 7e…10e →
      * 11e…terminale, cf. {@link NiveauCanonicalOrder}) — plus fiable que le seul {@code sort_order}
      * que chaque école saisit elle-même à la main et peut mal ordonner (ex. grande section classée
      * avant moyenne section, ce qui faisait alors ressortir DEUX cadets dans une même fratrie). En cas
-     * d'égalité de niveau ou de niveau non reconnu, la date de naissance la plus récente départage.
+     * d'égalité de rang ou de rang non reconnu, la date de naissance la plus récente départage.
      * Repli complet sur la date de naissance si aucun enfant de la fratrie n'a d'inscription active
      * (cas rare).
      */
     private Long youngestStudentId(List<ChildInfo> siblings) {
-        record Ranked(Long studentId, Integer cycleOrder, Integer withinCycleOrder, java.time.LocalDate birthDate) {}
+        record Ranked(Long studentId, Integer rank, java.time.LocalDate birthDate) {}
         List<Ranked> ranked = siblings.stream()
                 .map(c -> {
-                    EnrollmentQueryPort.ActiveLevel level = enrollmentQueryPort.findActiveLevel(c.studentId());
-                    return new Ranked(c.studentId(),
-                            NiveauCanonicalOrder.cycleRank(level == null ? null : level.cycle()),
-                            NiveauCanonicalOrder.effectiveWithinCycleRank(level), c.birthDate());
+                    EnrollmentQueryPort.ActiveGrade level = enrollmentQueryPort.findActiveLevel(c.studentId());
+                    return new Ranked(c.studentId(), NiveauCanonicalOrder.effectiveRank(level), c.birthDate());
                 })
                 .toList();
-        boolean anyLevelKnown = ranked.stream().anyMatch(r -> r.cycleOrder() != null);
-        if (anyLevelKnown) {
-            Comparator<Ranked> byLevelThenLatestBirth = Comparator
-                    .comparing(Ranked::cycleOrder, Comparator.nullsLast(Comparator.naturalOrder()))
-                    .thenComparing(Ranked::withinCycleOrder, Comparator.nullsLast(Comparator.naturalOrder()))
+        boolean anyRankKnown = ranked.stream().anyMatch(r -> r.rank() != null);
+        if (anyRankKnown) {
+            Comparator<Ranked> byRankThenLatestBirth = Comparator
+                    .comparing(Ranked::rank, Comparator.nullsLast(Comparator.naturalOrder()))
                     .thenComparing(Ranked::birthDate, Comparator.nullsFirst(Comparator.<java.time.LocalDate>naturalOrder()).reversed());
-            return ranked.stream().min(byLevelThenLatestBirth).map(Ranked::studentId).orElse(null);
+            return ranked.stream().min(byRankThenLatestBirth).map(Ranked::studentId).orElse(null);
         }
         return siblings.stream()
                 .filter(c -> c.birthDate() != null)
