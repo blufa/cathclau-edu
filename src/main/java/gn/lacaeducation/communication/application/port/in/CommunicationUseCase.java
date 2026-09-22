@@ -7,7 +7,18 @@ public interface CommunicationUseCase {
     record RecipientTarget(Long userId, String destination) {}
     record SendCommunicationCommand(Long tenantId, Long senderId, CommunicationChannel channel,
                                     RecipientType recipientType, String subject, String content,
-                                    CommunicationReason reason, List<RecipientTarget> recipients) {}
+                                    CommunicationReason reason, List<RecipientTarget> recipients,
+                                    /** Clé d'idempotence fournie par le client (double-clic, requête
+                                     * réseau dupliquée) — null pour les envois déclenchés par un
+                                     * événement métier interne, qui n'en ont pas besoin. */
+                                    String idempotencyKey) {
+        /** Sans clé d'idempotence — envois automatiques déclenchés par un événement métier interne. */
+        public SendCommunicationCommand(Long tenantId, Long senderId, CommunicationChannel channel,
+                                         RecipientType recipientType, String subject, String content,
+                                         CommunicationReason reason, List<RecipientTarget> recipients) {
+            this(tenantId, senderId, channel, recipientType, subject, content, reason, recipients, null);
+        }
+    }
     Communication send(SendCommunicationCommand command);
     Optional<Communication> findById(Long id);
     List<Communication> findByTenantId(Long tenantId);

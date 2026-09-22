@@ -25,6 +25,14 @@ public class CommunicationService implements CommunicationUseCase {
     private final ApplicationEventPublisher eventPublisher;
 
     @Override public Communication send(SendCommunicationCommand c) {
+        // Rejoué avec la même clé (double-clic, requête réseau dupliquée) : renvoie la communication
+        // déjà créée au lieu d'en créer une seconde — même pattern que PaymentService.initiateGroup().
+        if (c.idempotencyKey() != null && !c.idempotencyKey().isBlank()) {
+            Optional<Communication> existing = repo.findByIdempotencyKey(c.idempotencyKey());
+            if (existing.isPresent()) {
+                return existing.get();
+            }
+        }
         LocalDateTime now = LocalDateTime.now();
         // Préfixe systématique du nom de l'école sur TOUS les SMS, quel que soit l'appelant (notification
         // automatique déclenchée par un événement, diffusion manuelle composée par le personnel, ou tout
@@ -34,7 +42,9 @@ public class CommunicationService implements CommunicationUseCase {
         String content = withSchoolPrefix(c.tenantId(), c.channel(), c.content());
         Communication comm = repo.save(Communication.builder().tenantId(c.tenantId()).senderId(c.senderId())
                 .channel(c.channel()).recipientType(c.recipientType()).subject(c.subject())
-                .content(content).reason(c.reason()).sentAt(now).build());
+                .content(content).reason(c.reason()).sentAt(now)
+                .idempotencyKey(c.idempotencyKey() != null && !c.idempotencyKey().isBlank() ? c.idempotencyKey() : null)
+                .build());
         log.info("Communication id={} tenantId={} channel={} reason={} enregistrée",
                 comm.getId(), comm.getTenantId(), comm.getChannel(), comm.getReason());
         NotificationGateway gateway = gatewayFor(c.channel());

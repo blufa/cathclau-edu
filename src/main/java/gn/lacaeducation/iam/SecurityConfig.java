@@ -108,6 +108,8 @@ public class SecurityConfig {
                     "/api/v1/auth/refresh",
                     "/api/v1/auth/password/forgot",
                     "/api/v1/auth/password/reset",
+                    "/api/v1/auth/password/otp/request",
+                    "/api/v1/auth/password/otp/reset",
                     "/api/v1/public/**",
                     "/api/v1/webhooks/payment/**",
                     "/api/v1/webhooks/paiement/**",

@@ -86,4 +86,38 @@ class CommunicationServiceTest {
 
         verify(eventPublisher, never()).publishEvent(any());
     }
+
+    @Test
+    void send_withIdempotencyKeyAlreadyUsed_returnsExistingCommunicationWithoutPersistingAgain() {
+        Communication existing = Communication.builder().id(42L).tenantId(1L).idempotencyKey("dup-key").build();
+        when(repo.findByIdempotencyKey("dup-key")).thenReturn(Optional.of(existing));
+        service = new CommunicationService(repo, recipientRepo, List.of(smsGateway), tenantInfoProvider, eventPublisher);
+
+        Communication result = service.send(new SendCommunicationCommand(1L, 5L, CommunicationChannel.SMS,
+                RecipientType.PARENT, "sujet", "contenu", CommunicationReason.GENERAL,
+                List.of(new RecipientTarget(null, "623273737")), "dup-key"));
+
+        assertThat(result.getId()).isEqualTo(42L);
+        verify(repo, never()).save(any());
+        verify(recipientRepo, never()).save(any());
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void send_withNewIdempotencyKey_persistsItOnTheCommunication() {
+        when(tenantInfoProvider.findTenantInfo(1L)).thenReturn(Optional.empty());
+        when(repo.findByIdempotencyKey("new-key")).thenReturn(Optional.empty());
+        when(repo.save(any())).thenAnswer(i -> { Communication c = i.getArgument(0); c.setId(11L); return c; });
+        when(recipientRepo.save(any())).thenAnswer(i -> { MessageRecipient r = i.getArgument(0); r.setId(22L); return r; });
+        when(smsGateway.getChannel()).thenReturn(CommunicationChannel.SMS);
+        service = new CommunicationService(repo, recipientRepo, List.of(smsGateway), tenantInfoProvider, eventPublisher);
+
+        service.send(new SendCommunicationCommand(1L, 5L, CommunicationChannel.SMS,
+                RecipientType.PARENT, "sujet", "contenu", CommunicationReason.GENERAL,
+                List.of(new RecipientTarget(null, "623273737")), "new-key"));
+
+        ArgumentCaptor<Communication> saved = ArgumentCaptor.forClass(Communication.class);
+        verify(repo).save(saved.capture());
+        assertThat(saved.getValue().getIdempotencyKey()).isEqualTo("new-key");
+    }
 }
