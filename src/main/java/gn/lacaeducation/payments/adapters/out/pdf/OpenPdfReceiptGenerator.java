@@ -88,6 +88,8 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
             }
             if (studentIds.isEmpty() && payment.getStudentId() != null) studentIds.add(payment.getStudentId());
 
+            // Ordre demandé (§retour comptable) : le tableau de factures, puis "Total payé", puis
+            // "Reste à payer" — jamais l'inverse.
             if (studentIds.size() <= 1) {
                 Long studentId = studentIds.isEmpty() ? payment.getStudentId() : studentIds.iterator().next();
                 PdfPTable studentBlock = compactFields(
@@ -97,6 +99,7 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
                 studentBlock.setSpacingBefore(8f);
                 doc.add(studentBlock);
                 doc.add(invoicesTable(studentId));
+                totalRow(doc, "Total payé", money(receipt.getAmount()) + " GNF");
                 remainingLine(doc, studentId);
             } else {
                 for (Long studentId : studentIds) {
@@ -107,11 +110,13 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
                     studentBlock.setSpacingBefore(8f);
                     doc.add(studentBlock);
                     doc.add(invoicesTable(studentId));
+                }
+                totalRow(doc, "Total payé", money(receipt.getAmount()) + " GNF");
+                for (Long studentId : studentIds) {
                     remainingLine(doc, studentId);
                 }
             }
 
-            totalRow(doc, "Total payé", money(receipt.getAmount()) + " GNF");
             String discountNote = discountNote(payment);
             if (discountNote != null) {
                 Paragraph discount = new Paragraph(discountNote, font(FontFactory.HELVETICA, 9, GREY));
@@ -125,7 +130,7 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
                 doc.add(pf);
             }
 
-            comptableSignatureBlock(doc, receipt, payment.getCollectedByUserId());
+            comptableSignatureBlock(doc, writer, receipt, payment.getCollectedByUserId());
 
             doc.close();
             return out.toByteArray();
@@ -210,16 +215,17 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
      * le solde de la facture réglée par ce paiement précis. Calculé côté serveur (jamais une valeur
      * transmise par le client au moment de l'encaissement, potentiellement incomplète sur une
      * fratrie). Rien n'est affiché si l'élève n'a plus aucune facture due. Le libellé "Reste à payer"
-     * est souligné plutôt qu'accompagné d'un filet/bordure, pour rester sobre sous le tableau. */
+     * n'est ni souligné ni accompagné d'un filet/bordure (retour comptable : aucun trait sous ce
+     * libellé), juste en gras. */
     private void remainingLine(Document doc, Long studentId) {
         BigDecimal total = payerDirectory.unpaidInvoices(studentId).stream()
                 .map(PayerDirectory.UnpaidInvoiceInfo::remaining)
                 .filter(java.util.Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         if (total.signum() <= 0) return;
-        Font underlinedLabel = FontFactory.getFont(FontFactory.HELVETICA, 9.5f, Font.BOLD | Font.UNDERLINE, DARK);
+        Font boldLabel = FontFactory.getFont(FontFactory.HELVETICA, 9.5f, Font.BOLD, DARK);
         Paragraph rest = new Paragraph();
-        rest.add(new Chunk("Reste à payer", underlinedLabel));
+        rest.add(new Chunk("Reste à payer", boldLabel));
         rest.add(new Chunk(" : " + money(total) + " GNF", font(FontFactory.HELVETICA_BOLD, 9.5f, DARK)));
         rest.setSpacingBefore(6f);
         doc.add(rest);
@@ -265,23 +271,33 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
         return "Dont frais d'usage plateforme : " + money(total) + " GNF";
     }
 
-    /** Bloc de signature du comptable (§retour comptable, point 2) : plus de cadre rectangulaire
-     * (remplace {@link AdminDocumentLayout#signatureBox}, encore utilisé tel quel par la paie), le
-     * libellé porte "Comptable" au lieu de "Caissier", et le nom de l'encaisseur (auparavant affiché
-     * dans une ligne "Opérateur" séparée) est imprimé sous ce libellé, avec son téléphone PERSONNEL
-     * juste en dessous — distinct du "Tél :" de l'école affiché en en-tête — puis un espace suffisant
-     * pour que le comptable puisse y apposer sa signature et son cachet à la main. */
-    private void comptableSignatureBlock(Document doc, Receipt receipt, Long collectedByUserId) {
+    /** Bloc de signature du comptable (§retour comptable, point 2) : le libellé "Signature et Cachet
+     * du Comptable", puis un espace blanc (SANS cadre : le comptable ne voulait pas de bordure
+     * visible, seulement de la place) où il appose sa signature et son cachet à la main, et enfin —
+     * en dessous de cet espace, pas au-dessus — son nom et son téléphone PERSONNEL, distinct du
+     * "Tél :" de l'école affiché en en-tête. Le reçu ne doit JAMAIS déborder sur une deuxième page
+     * (retour comptable) : une valeur fixe (essayé 80pt, puis 40pt) reste sujette au débordement dès
+     * que le tableau de factures au-dessus est long — la hauteur de l'espace est donc calculée à
+     * partir de ce qu'il reste réellement avant le bas de page, plutôt qu'une constante. */
+    private void comptableSignatureBlock(Document doc, PdfWriter writer, Receipt receipt, Long collectedByUserId) {
         Paragraph label = new Paragraph("Signature et Cachet du Comptable",
                 font(FontFactory.HELVETICA_BOLD, 9.5f, DARK));
         label.setAlignment(Element.ALIGN_RIGHT);
         label.setSpacingBefore(24f);
         doc.add(label);
+        // Place restante avant le bas de page, moins la place nécessaire au nom/téléphone qui suivent
+        // (~26pt pour deux lignes) : l'espace de signature se réduit tout seul si le contenu
+        // au-dessus était déjà long, au lieu d'imposer une hauteur fixe qui pousserait le nom/téléphone
+        // sur une deuxième page.
+        float remaining = writer.getVerticalPosition(true) - doc.bottom() - 26f;
+        float spacerHeight = Math.max(10f, Math.min(40f, remaining));
+        Paragraph spacer = new Paragraph(" ", font(FontFactory.HELVETICA, 9.5f, GREY));
+        spacer.setSpacingBefore(spacerHeight);
+        doc.add(spacer);
         String operator = receipt.getCollectedByName();
         if (operator != null && !operator.isBlank()) {
             Paragraph name = new Paragraph(operator, font(FontFactory.HELVETICA, 9.5f, GREY));
             name.setAlignment(Element.ALIGN_RIGHT);
-            name.setSpacingBefore(4f);
             doc.add(name);
             String phone = payerDirectory.operatorPhone(collectedByUserId).orElse(null);
             if (phone != null) {
@@ -290,11 +306,6 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
                 phoneLine.setSpacingBefore(2f);
                 doc.add(phoneLine);
             }
-            // Espace vide volontairement large (signature + cachet manuscrits), après le nom/téléphone,
-            // au lieu des 4pt précédents qui ne laissaient presque aucune place.
-            Paragraph spacer = new Paragraph(" ", font(FontFactory.HELVETICA, 9.5f, GREY));
-            spacer.setSpacingBefore(36f);
-            doc.add(spacer);
         }
     }
 

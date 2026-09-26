@@ -160,35 +160,40 @@ public class CommunicationEventListener {
     @Async
     public void onPaymentSucceeded(PaymentSucceededEvent event) {
         // Invoice-linked payments are handled by onInvoicePaymentApplied (which knows the remaining
-        // balance). Here we only cover payments not tied to a school-fee invoice, to avoid duplicates.
+        // balance). Here we only cover payments not tied to a single school-fee invoice — i.e. grouped
+        // payments (plusieurs factures/mois réglés en une fois) — to avoid duplicate per-invoice SMS.
         if (event.invoiceId() != null) return;
         studentDataProvider.findStudent(event.studentId()).ifPresentOrElse(student ->
             paymentDataProvider.findPayment(event.paymentId()).ifPresentOrElse(payment -> {
                 String amount = payment.amount() + " GNF";
                 String coverage = briefCoverage(payment.coveredMonths());
+                // Un paiement groupé ne déclenche jamais InvoicePaymentAppliedEvent par facture (voir
+                // InvoicePaymentListener#onGroupedSettlement, notify=false) : le "reste à payer" doit
+                // donc être calculé ici même, sinon ce SMS unique du règlement groupé (le seul envoyé
+                // au parent dans ce cas) omettait complètement le solde restant (§retour comptable).
+                String restLine = restLine(event.studentId());
                 Map<String, String> vars = Map.of(
                         "nom_eleve", fullName(student), "ecole", schoolName(event.tenantId()),
                         "montant", amount, "canal", payment.channel() == null ? "" : payment.channel(),
                         "reference", payment.reference() == null ? "" : payment.reference(),
-                        "couverture", coverage);
-                // Paiement groupé (§billing) : mentionner brièvement ce qui a été réglé (ex. "Octobre,
-                // Novembre") pour que le parent comprenne le SMS sans se connecter — sans dépasser la
-                // limite d'un SMS (voir briefCoverage, qui tronque si besoin).
-                String defaultBody = coverage.isEmpty()
-                        ? "Paiement de " + amount + " reçu pour " + fullName(student) + ". Facture(s) réglée(s)."
-                        : "Paiement de " + amount + " reçu pour " + fullName(student) + " (" + coverage + ").";
+                        "couverture", coverage, "reste_a_payer", restLine);
+                // Contenu volontairement bref (§retour comptable) : montant payé + reste à payer,
+                // sans détailler les mois couverts ni le canal — même contenu que le SMS envoyé au
+                // comptable (notifyFounder), les deux doivent être identiques.
+                String defaultBody = paymentSmsBody(fullName(student), amount, restLine);
                 dispatch(event.tenantId(), CommunicationReason.GENERAL, "Paiement reçu", defaultBody, vars, event.studentId());
-                notifyFounder(event.tenantId(), fullName(student), amount, event.collectedByUserId());
+                notifyFounder(event.tenantId(), fullName(student), amount, restLine, event.collectedByUserId());
             }, () -> log.warn("PaymentSucceededEvent paymentId={} introuvable ; notification paiement ignorée", event.paymentId())),
             () -> log.warn("PaymentSucceededEvent studentId={} introuvable ; notification paiement ignorée", event.studentId()));
     }
 
     /**
      * Notify the parent of each payment applied to a school-fee invoice (§11.1, §retour comptable
-     * point 1) : le nom de l'école en tête, le libellé du frais réglé (ex. « Mensualité — Novembre
-     * 2026 ») et la classe de l'élève, puis — sur une nouvelle ligne — le solde encore dû, en
-     * énumérant CHAQUE facture restant à payer (pas seulement celle qui vient d'être réglée : une
-     * mensualité soldée ne doit pas faire disparaître un frais de cantine encore impayé du message).
+     * point 1) : contenu bref — montant payé et solde encore dû (toutes factures confondues, pas
+     * seulement celle qui vient d'être réglée : une mensualité soldée ne doit pas faire disparaître un
+     * frais de cantine encore impayé du message), sans détailler le libellé du frais ni la classe.
+     * Même contenu que le SMS envoyé au comptable ({@link #notifyFounder}) — les deux doivent être
+     * identiques (§retour comptable).
      */
     @TransactionalEventListener
     @Async
@@ -200,25 +205,36 @@ public class CommunicationEventListener {
                             ? info.feeTypeLabel() : info.feeTypeLabel() + " " + info.periodLabel())
                     .orElse(null);
             String className = payerDirectory.className(event.studentId()).orElse(null);
-            List<PayerDirectory.UnpaidInvoiceInfo> unpaid = payerDirectory.unpaidInvoices(event.studentId());
-            String restLine = unpaid.isEmpty()
-                    ? "Aucun reste à payer."
-                    : "Reste à payer : " + unpaid.stream()
-                            .map(u -> u.label() + " (" + u.remaining() + " GNF)")
-                            .collect(java.util.stream.Collectors.joining(", ")) + ".";
+            String restLine = restLine(event.studentId());
             Map<String, String> vars = new HashMap<>(Map.of(
                     "nom_eleve", fullName(student), "ecole", schoolName(event.tenantId()),
                     "montant", amount, "reste_a_payer", restLine,
                     "reference", event.reference() == null ? "" : event.reference()));
             vars.put("classe", className == null ? "" : className);
             vars.put("objet", paidLabel == null ? "" : paidLabel);
-            String defaultBody = schoolName(event.tenantId()) + "\n"
-                    + "Paiement de " + amount + (paidLabel != null ? " " + paidLabel : "")
-                    + " reçu pour " + fullName(student) + (className != null ? " (" + className + ")" : "") + "\n"
-                    + restLine;
+            String defaultBody = paymentSmsBody(fullName(student), amount, restLine);
             dispatch(event.tenantId(), CommunicationReason.GENERAL, "Paiement reçu", defaultBody, vars, event.studentId());
-            notifyFounder(event.tenantId(), fullName(student), amount, event.collectedByUserId());
+            notifyFounder(event.tenantId(), fullName(student), amount, restLine, event.collectedByUserId());
         });
+    }
+
+    /** Solde encore dû par l'élève, toutes factures confondues — juste le montant total (pas le détail
+     * facture par facture, retiré du SMS pour rester bref, §retour comptable ; voir aussi
+     * {@code OpenPdfReceiptGenerator#remainingLine}, même logique côté PDF où le détail reste utile). */
+    private String restLine(Long studentId) {
+        java.math.BigDecimal total = payerDirectory.unpaidInvoices(studentId).stream()
+                .map(PayerDirectory.UnpaidInvoiceInfo::remaining)
+                .filter(java.util.Objects::nonNull)
+                .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+        return total.signum() <= 0
+                ? "Aucun reste à payer."
+                : "Reste à payer : " + total + " GNF.";
+    }
+
+    /** Contenu bref, commun au SMS parent et au SMS comptable (§retour comptable) : juste le montant
+     * payé et le reste à payer, sans détailler le canal, la classe, le frais ou les mois couverts. */
+    private String paymentSmsBody(String studentName, String amount, String restLine) {
+        return "Paiement de " + amount + " reçu pour " + studentName + ".\n" + restLine;
     }
 
     /**
@@ -440,9 +456,11 @@ public class CommunicationEventListener {
      * (§communication). Alerte aussi le comptable/caissier qui a physiquement encaissé
      * ({@code collectedByUserId}, canal CASH uniquement), pas seulement les SCHOOL_ADMIN — son
      * numéro peut être différent (point 2, retour comptable). Un même numéro n'est jamais alerté deux
-     * fois (ex. le SCHOOL_ADMIN encaisse lui-même).
+     * fois (ex. le SCHOOL_ADMIN encaisse lui-même). Contenu identique au SMS du parent
+     * ({@link #paymentSmsBody}) : le comptable/fondateur doit voir le même montant payé et le même
+     * reste à payer, pas un message différent (§retour comptable).
      */
-    private void notifyFounder(Long tenantId, String studentName, String amount, Long collectedByUserId) {
+    private void notifyFounder(Long tenantId, String studentName, String amount, String restLine, Long collectedByUserId) {
         java.util.LinkedHashMap<String, String> byPhone = new java.util.LinkedHashMap<>();
         schoolStaffDirectory.findSchoolAdminContacts(tenantId).forEach(c -> {
             if (c.phone() != null && !c.phone().isBlank()) byPhone.putIfAbsent(c.phone(), c.phone());
@@ -457,8 +475,7 @@ public class CommunicationEventListener {
             return;
         }
         List<RecipientTarget> targets = byPhone.values().stream().map(phone -> new RecipientTarget(null, phone)).toList();
-        String school = schoolName(tenantId);
-        String content = "[" + school + "] Paiement de " + amount + " reçu pour " + studentName + ".";
+        String content = paymentSmsBody(studentName, amount, restLine);
         communicationUseCase.send(new SendCommunicationCommand(tenantId, null, CommunicationChannel.SMS,
                 RecipientType.GROUP, "Paiement reçu", content, CommunicationReason.GENERAL, targets));
     }
