@@ -80,9 +80,9 @@ class CommunicationEventListenerTest {
         SendCommunicationCommand parentCmd = captor.getAllValues().stream()
                 .filter(c -> c.recipientType() == RecipientType.PARENT).findFirst().orElseThrow();
         assertThat(parentCmd.recipients()).extracting("destination").containsExactly("621000000");
-        // Mention brève de ce qui a été réglé (§billing paiement groupé) — sans quoi le parent ne sait
-        // pas quels mois/factures ce SMS couvre.
-        assertThat(parentCmd.content()).contains("Octobre, Novembre");
+        // Contenu bref (§retour comptable) : juste le montant payé et le reste à payer, sans détailler
+        // les mois couverts par ce règlement groupé.
+        assertThat(parentCmd.content()).contains("Awa Diallo").contains("50000").contains("Aucun reste à payer.");
 
         SendCommunicationCommand founderCmd = captor.getAllValues().stream()
                 .filter(c -> c.recipientType() == RecipientType.GROUP).findFirst().orElseThrow();
@@ -139,11 +139,11 @@ class CommunicationEventListenerTest {
                 .containsExactlyInAnyOrder("622000000", "628000000");
     }
 
-    // ── onInvoicePaymentApplied (§retour comptable, point 1 : école + libellé + classe + reste à
-    // payer détaillé, pas seulement le solde de la facture réglée) ────────────────────────────────────
+    // ── onInvoicePaymentApplied (§retour comptable : contenu bref — montant payé + reste à payer
+    // total, toutes factures confondues, pas seulement le solde de la facture réglée) ───────────────
 
     @Test
-    void onInvoicePaymentApplied_includesSchoolClassAndFeeLabel_andEnumeratesOtherUnpaidInvoices() {
+    void onInvoicePaymentApplied_isBrief_andTotalsOtherUnpaidInvoices() {
         when(studentDataProvider.findStudent(7L)).thenReturn(Optional.of(student));
         when(studentDataProvider.hasPlatformAccessOptIn(7L)).thenReturn(true);
         when(studentDataProvider.findParentsByStudent(7L))
@@ -164,11 +164,10 @@ class CommunicationEventListenerTest {
         ArgumentCaptor<SendCommunicationCommand> captor = ArgumentCaptor.forClass(SendCommunicationCommand.class);
         verify(communicationUseCase).send(captor.capture());
         String content = captor.getValue().content();
-        assertThat(content).startsWith("École Test");
-        assertThat(content).contains("Mensualité Novembre 2026");
-        assertThat(content).contains("Awa Diallo").contains("7ème A");
-        // La mensualité réglée n'efface pas un autre frais encore dû (cantine) du message.
-        assertThat(content).contains("Reste à payer : Cantine (20000 GNF).");
+        assertThat(content).contains("Awa Diallo").contains("50000");
+        // La mensualité réglée n'efface pas un autre frais encore dû (cantine) du message — le solde
+        // affiché est le TOTAL toutes factures confondues, pas le détail facture par facture.
+        assertThat(content).contains("Reste à payer : 20000 GNF.");
     }
 
     @Test

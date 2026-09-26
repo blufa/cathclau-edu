@@ -84,7 +84,16 @@ public class InvoiceController {
     @GetMapping("/tenant/{tenantId}/status/{status}") public List<Invoice> findByStatus(@PathVariable Long tenantId, @PathVariable InvoiceStatus status) { return useCase.findByTenantIdAndStatus(tenantId, status); }
     @Operation(summary = "Appliquer un montant de paiement à une facture")
     @PreAuthorize("hasAuthority('paiement:create')")
-    @PutMapping("/{id}/payment") public ResponseEntity<Invoice> applyPayment(@PathVariable Long id, @RequestBody PaymentRequest r) { return ResponseEntity.ok(useCase.applyPayment(id, r.amount())); }
+    @PutMapping("/{id}/payment") public ResponseEntity<Invoice> applyPayment(@PathVariable Long id, @RequestBody PaymentRequest r,
+            @AuthenticationPrincipal Jwt jwt) {
+        // Sans collectedByUserId, CommunicationEventListener#notifyFounder ne peut jamais alerter
+        // l'opérateur qui a physiquement encaissé (§retour comptable) — seul le SCHOOL_ADMIN l'était,
+        // jamais le comptable connecté ayant utilisé cet endpoint plutôt que /api/v1/payments.
+        Long collectedByUserId;
+        try { collectedByUserId = jwt == null ? null : Long.valueOf(jwt.getSubject()); }
+        catch (NumberFormatException e) { collectedByUserId = null; }
+        return ResponseEntity.ok(useCase.applyPayment(id, r.amount(), true, null, collectedByUserId));
+    }
     @Operation(summary = "Appliquer une remise / bourse à une facture (recalcule le reste à payer)")
     @PreAuthorize("hasAuthority('facture:create')")
     @PatchMapping("/{id}/discount") public ResponseEntity<Invoice> applyDiscount(@PathVariable Long id, @RequestBody DiscountRequest r) { return ResponseEntity.ok(useCase.applyDiscount(id, r.amount(), r.reason())); }
