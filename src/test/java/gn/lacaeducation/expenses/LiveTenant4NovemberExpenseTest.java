@@ -6,6 +6,7 @@ import gn.lacaeducation.expenses.application.service.MonthlyExpenseSheetService.
 import gn.lacaeducation.expenses.domain.Expense;
 import gn.lacaeducation.expenses.domain.FinancingMode;
 import gn.lacaeducation.expenses.domain.MonthlyExpenseSheet;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -19,9 +20,14 @@ import java.time.LocalDate;
  * demande utilisateur du 2026-09-25 : créer une dépense de Novembre, ajouter des lignes, puis
  * constater dans l'UI que "Dépenses totales" grimpe (cumulatif, ne se réinitialise jamais) alors que
  * "Bénéfice du mois" n'est affecté que pour le mois de Novembre. Conservé volontairement (fiche NON
- * clôturée) pour revue par l'utilisateur dans l'UI — ne pas supprimer.
+ * clôturée) pour revue par l'utilisateur dans l'UI — ne pas supprimer, mais {@code @Disabled} :
+ * il se connecte à la vraie base locale `ecole_local`, absente sur tout runner CI/pipeline (ce qui
+ * faisait échouer le build), et rejouer ce test recréerait une nouvelle fiche "Dépense Novembre" en
+ * double à chaque exécution. À réactiver ponctuellement à la main (retirer l'annotation) pour un
+ * nouveau test manuel similaire, jamais laisser actif en continu.
  */
 @SpringBootTest
+@Disabled("Test manuel contre la base réelle ecole_local — ne doit jamais tourner en CI")
 class LiveTenant4NovemberExpenseTest {
 
     @Autowired MonthlyExpenseSheetService service;
