@@ -12,8 +12,6 @@ import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.common.TenantInfoProvider;
 import gn.lacaeducation.billing.application.port.in.ExemptionUseCase;
 import gn.lacaeducation.billing.application.port.in.ExemptionUseCase.ApplicableExemption;
-import gn.lacaeducation.billing.application.port.in.StaffChildBenefitUseCase;
-import gn.lacaeducation.billing.application.port.in.StaffChildBenefitUseCase.StaffCoverage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -42,37 +40,32 @@ class InvoiceServiceTest {
     @Mock InvoicePdfGenerator invoicePdfGenerator;
     @Mock MediaUploadService mediaUploadService;
     @Mock TenantInfoProvider tenantInfoProvider;
-    @Mock gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase familyDiscountUseCase;
-    @Mock StaffChildBenefitUseCase staffChildBenefitUseCase;
     @Mock ExemptionUseCase exemptionUseCase;
     @Mock gn.lacaeducation.billing.application.port.in.EarlyPaymentDiscountUseCase earlyPaymentDiscountUseCase;
     @Mock gn.lacaeducation.platform.PlatformFeeLedgerApi platformFeeLedgerApi;
 
     @BeforeEach
-    void defaultNoStaffCoverage() {
-        // La plupart des tests ne s'intéressent pas à l'avantage personnel/l'exonération : réponse
-        // neutre par défaut (lenient — certains tests, ex. applyPayment/*, n'atteignent jamais ce calcul).
-        lenient().when(staffChildBenefitUseCase.computeCoverage(any(), any(), any()))
-                .thenReturn(new StaffCoverage(BigDecimal.ZERO, null));
+    void defaultNoExemption() {
+        // La plupart des tests ne s'intéressent pas à l'exonération : réponse neutre par défaut
+        // (lenient — certains tests, ex. applyPayment/*, n'atteignent jamais ce calcul).
         lenient().when(exemptionUseCase.computeApplicable(any(), any()))
-                .thenReturn(new ApplicableExemption(BigDecimal.ZERO, null, BigDecimal.ZERO, null));
+                .thenReturn(new ApplicableExemption(BigDecimal.ZERO, null, false, BigDecimal.ZERO, null));
     }
 
     InvoiceService service() {
-        return new InvoiceService(repo, schoolFeeRepository, installmentRepository, enrollmentQueryPort, eventPublisher, invoicePdfGenerator, mediaUploadService, tenantInfoProvider, familyDiscountUseCase, staffChildBenefitUseCase, exemptionUseCase, earlyPaymentDiscountUseCase, platformFeeLedgerApi);
+        return new InvoiceService(repo, schoolFeeRepository, installmentRepository, enrollmentQueryPort, eventPublisher, invoicePdfGenerator, mediaUploadService, tenantInfoProvider, exemptionUseCase, earlyPaymentDiscountUseCase, platformFeeLedgerApi);
 
     }
 
     @Test
-    void generateMonthly_appliesFamilyDiscountOnEachInstallment() {
+    void generateMonthly_appliesExemptionOnEachInstallment() {
         when(enrollmentQueryPort.hasActiveEnrollment(7L)).thenReturn(true);
         when(installmentRepository.findByFeeId(3L)).thenReturn(java.util.List.of(
                 gn.lacaeducation.billing.domain.Installment.builder()
                         .id(1L).feeId(3L).label("Septembre").amount(new BigDecimal("100")).build()));
         when(repo.existsByStudentIdAndInstallmentId(7L, 1L)).thenReturn(false);
-        when(familyDiscountUseCase.computeApplicable(1L, 7L, gn.lacaeducation.billing.domain.FeeType.MONTHLY))
-                .thenReturn(new gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase.ApplicableDiscount(
-                        new BigDecimal("5"), "Règle fratrie"));
+        when(exemptionUseCase.computeApplicable(7L, gn.lacaeducation.billing.domain.FeeType.MONTHLY))
+                .thenReturn(new ApplicableExemption(new BigDecimal("5"), "Cas social", false, BigDecimal.ZERO, null));
         when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
 
         var invoices = service().generateMonthly(
@@ -82,15 +75,15 @@ class InvoiceServiceTest {
         Invoice inv = invoices.get(0);
         assertThat(inv.getDiscountAmount()).isEqualByComparingTo("5.00");
         assertThat(inv.getRemainingBalance()).isEqualByComparingTo("95.00");
-        assertThat(inv.getDiscountReason()).contains("Règle fratrie");
+        assertThat(inv.getDiscountReason()).contains("Cas social");
     }
 
     @Test
     void generateMonthly_transportFee_usesTransportFeeTypeNotHardcodedMonthlyForDiscount() {
         // Régression : generateMonthly() est aussi appelée pour les frais TRANSPORT (voir
         // TransportInvoiceListener) — le calcul de remise doit utiliser le VRAI type du frais, pas
-        // FeeType.MONTHLY codé en dur, sinon une règle de remise spécifique au transport ne s'applique
-        // jamais (et une règle spécifique à la mensualité s'appliquerait à tort au transport).
+        // FeeType.MONTHLY codé en dur, sinon une exonération spécifique au transport ne s'applique
+        // jamais (et une exonération spécifique à la mensualité s'appliquerait à tort au transport).
         when(enrollmentQueryPort.hasActiveEnrollment(7L)).thenReturn(true);
         when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(
                 gn.lacaeducation.billing.domain.SchoolFee.builder()
@@ -99,17 +92,16 @@ class InvoiceServiceTest {
                 gn.lacaeducation.billing.domain.Installment.builder()
                         .id(1L).feeId(3L).label("Septembre").amount(new BigDecimal("50")).build()));
         when(repo.existsByStudentIdAndInstallmentId(7L, 1L)).thenReturn(false);
-        when(familyDiscountUseCase.computeApplicable(1L, 7L, gn.lacaeducation.billing.domain.FeeType.TRANSPORT))
-                .thenReturn(new gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase.ApplicableDiscount(
-                        new BigDecimal("10"), "Règle fratrie transport"));
+        when(exemptionUseCase.computeApplicable(7L, gn.lacaeducation.billing.domain.FeeType.TRANSPORT))
+                .thenReturn(new ApplicableExemption(new BigDecimal("10"), "Exonération transport", false, BigDecimal.ZERO, null));
         when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
 
         var invoices = service().generateMonthly(
                 new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 3L, 99L));
 
         assertThat(invoices).hasSize(1);
-        assertThat(invoices.get(0).getDiscountReason()).contains("Règle fratrie transport");
-        verify(familyDiscountUseCase, never()).computeApplicable(1L, 7L, gn.lacaeducation.billing.domain.FeeType.MONTHLY);
+        assertThat(invoices.get(0).getDiscountReason()).contains("Exonération transport");
+        verify(exemptionUseCase, never()).computeApplicable(7L, gn.lacaeducation.billing.domain.FeeType.MONTHLY);
     }
 
     @Test
@@ -123,9 +115,6 @@ class InvoiceServiceTest {
                 gn.lacaeducation.billing.domain.Installment.builder()
                         .id(1L).feeId(3L).label("Septembre").amount(new BigDecimal("100")).build()));
         when(repo.existsByStudentIdAndInstallmentId(7L, 1L)).thenReturn(false);
-        when(familyDiscountUseCase.computeApplicable(1L, 7L, gn.lacaeducation.billing.domain.FeeType.MONTHLY))
-                .thenReturn(new gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase.ApplicableDiscount(
-                        BigDecimal.ZERO, null));
         when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
 
         var invoices = service().generateMonthly(
@@ -322,9 +311,6 @@ class InvoiceServiceTest {
                         .id(1L).feeId(3L).label("Trimestre 1").amount(new BigDecimal("300"))
                         .months(java.util.List.of("2026-09", "2026-10", "2026-11")).build()));
         when(repo.existsByStudentIdAndInstallmentIdAndPeriodLabel(eq(7L), eq(1L), any())).thenReturn(false);
-        when(familyDiscountUseCase.computeApplicable(1L, 7L, gn.lacaeducation.billing.domain.FeeType.MONTHLY))
-                .thenReturn(new gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase.ApplicableDiscount(
-                        null, null));
         when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
 
         var invoices = service().generateMonthly(
@@ -348,9 +334,6 @@ class InvoiceServiceTest {
                         .id(1L).feeId(3L).label("Trimestre 1").amount(new BigDecimal("300"))
                         .months(java.util.List.of("2026-09", "2026-10", "2026-11")).build()));
         when(repo.existsByStudentIdAndInstallmentId(7L, 1L)).thenReturn(false);
-        when(familyDiscountUseCase.computeApplicable(1L, 7L, gn.lacaeducation.billing.domain.FeeType.MONTHLY))
-                .thenReturn(new gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase.ApplicableDiscount(
-                        null, null));
         when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
 
         var invoices = service().generateMonthly(
@@ -516,20 +499,19 @@ class InvoiceServiceTest {
 
         assertThat(inv.getDiscountAmount()).isEqualByComparingTo("0");
         assertThat(inv.getRemainingBalance()).isEqualByComparingTo("100.00");
-        verify(staffChildBenefitUseCase, never()).computeCoverage(any(), any(), any());
+        verify(exemptionUseCase, never()).computeApplicable(any(), any());
     }
 
     @Test
-    void create_appliesFamilyDiscount_onNonMonthlyFee() {
-        // Régression du bug corrigé : avant, seule generateMonthly() (mensualités) appliquait la
-        // réduction familiale — une facture d'inscription/transport/cantine/examen restait toujours
-        // plein tarif même pour une famille éligible. Ici : frais d'inscription (ENROLLMENT).
+    void create_appliesExemption_onNonMonthlyFee() {
+        // Régression du bug corrigé : avant, seule generateMonthly() (mensualités) appliquait une
+        // remise — une facture d'inscription/transport/cantine/examen restait toujours plein tarif
+        // même pour un élève exonéré. Ici : frais d'inscription (ENROLLMENT).
         when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(
                 gn.lacaeducation.billing.domain.SchoolFee.builder().id(3L)
                         .type(gn.lacaeducation.billing.domain.FeeType.ENROLLMENT).build()));
-        when(familyDiscountUseCase.computeApplicable(10L, 7L, gn.lacaeducation.billing.domain.FeeType.ENROLLMENT))
-                .thenReturn(new gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase.ApplicableDiscount(
-                        new BigDecimal("20"), "3 enfants inscrits"));
+        when(exemptionUseCase.computeApplicable(7L, gn.lacaeducation.billing.domain.FeeType.ENROLLMENT))
+                .thenReturn(new ApplicableExemption(new BigDecimal("20"), "3 enfants inscrits", false, BigDecimal.ZERO, null));
         when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
 
         Invoice inv = service().create(new CreateInvoiceCommand(10L, 7L, 3L, "FAC-1", new BigDecimal("100.00"), 99L));
@@ -540,15 +522,14 @@ class InvoiceServiceTest {
     }
 
     @Test
-    void create_appliesStaffChildBenefit_onNonMonthlyFee() {
+    void create_appliesStaffBenefitExemption_onNonMonthlyFee() {
+        // Exonération marquée "avantage personnel" (§retour comptable — la détection automatique
+        // enfant de personnel est retirée, le comptable choisit manuellement ce type d'exonération).
         when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(
                 gn.lacaeducation.billing.domain.SchoolFee.builder().id(3L)
                         .type(gn.lacaeducation.billing.domain.FeeType.TRANSPORT).build()));
-        when(familyDiscountUseCase.computeApplicable(10L, 7L, gn.lacaeducation.billing.domain.FeeType.TRANSPORT))
-                .thenReturn(new gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase.ApplicableDiscount(
-                        BigDecimal.ZERO, null));
-        when(staffChildBenefitUseCase.computeCoverage(10L, 7L, gn.lacaeducation.billing.domain.FeeType.TRANSPORT))
-                .thenReturn(new StaffCoverage(new BigDecimal("50"), "Enseignants — 50%"));
+        when(exemptionUseCase.computeApplicable(7L, gn.lacaeducation.billing.domain.FeeType.TRANSPORT))
+                .thenReturn(new ApplicableExemption(new BigDecimal("50"), "Enseignants — 50%", true, BigDecimal.ZERO, null));
         when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
 
         Invoice inv = service().create(new CreateInvoiceCommand(10L, 7L, 3L, "FAC-1", new BigDecimal("100.00"), 99L));
@@ -556,60 +537,18 @@ class InvoiceServiceTest {
         assertThat(inv.getDiscountAmount()).isEqualByComparingTo("50.00");
         assertThat(inv.getRemainingBalance()).isEqualByComparingTo("50.00");
         assertThat(inv.getDiscountReason()).contains("Enseignants — 50%");
+        assertThat(inv.getDiscountSource()).isEqualTo(gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT);
     }
 
     @Test
-    void create_familyAndStaffBenefitBothApply_higherPercentageWins_neverStacked() {
-        // 30% (fratrie) vs 50% (avantage personnel) : la facture doit refléter 50% de remise, jamais
-        // 80% (les deux cumulés) — décision produit explicite (la plus avantageuse l'emporte).
-        when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(
-                gn.lacaeducation.billing.domain.SchoolFee.builder().id(3L)
-                        .type(gn.lacaeducation.billing.domain.FeeType.CANTEEN).build()));
-        when(familyDiscountUseCase.computeApplicable(10L, 7L, gn.lacaeducation.billing.domain.FeeType.CANTEEN))
-                .thenReturn(new gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase.ApplicableDiscount(
-                        new BigDecimal("30"), "Règle fratrie"));
-        when(staffChildBenefitUseCase.computeCoverage(10L, 7L, gn.lacaeducation.billing.domain.FeeType.CANTEEN))
-                .thenReturn(new StaffCoverage(new BigDecimal("50"), "Enseignants — 50%"));
-        when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
-
-        Invoice inv = service().create(new CreateInvoiceCommand(10L, 7L, 3L, "FAC-1", new BigDecimal("200.00"), 99L));
-
-        assertThat(inv.getDiscountAmount()).isEqualByComparingTo("100.00");
-        assertThat(inv.getRemainingBalance()).isEqualByComparingTo("100.00");
-        assertThat(inv.getDiscountReason()).contains("Enseignants — 50%");
-        assertThat(inv.getDiscountReason()).doesNotContain("Règle fratrie");
-    }
-
-    @Test
-    void create_familyDiscountHigherThanStaffBenefit_familyDiscountWins() {
-        when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(
-                gn.lacaeducation.billing.domain.SchoolFee.builder().id(3L)
-                        .type(gn.lacaeducation.billing.domain.FeeType.CANTEEN).build()));
-        when(familyDiscountUseCase.computeApplicable(10L, 7L, gn.lacaeducation.billing.domain.FeeType.CANTEEN))
-                .thenReturn(new gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase.ApplicableDiscount(
-                        new BigDecimal("60"), "Règle fratrie"));
-        when(staffChildBenefitUseCase.computeCoverage(10L, 7L, gn.lacaeducation.billing.domain.FeeType.CANTEEN))
-                .thenReturn(new StaffCoverage(new BigDecimal("50"), "Enseignants — 50%"));
-        when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
-
-        Invoice inv = service().create(new CreateInvoiceCommand(10L, 7L, 3L, "FAC-1", new BigDecimal("200.00"), 99L));
-
-        assertThat(inv.getDiscountAmount()).isEqualByComparingTo("120.00");
-        assertThat(inv.getDiscountReason()).contains("Règle fratrie");
-    }
-
-    @Test
-    void generateMonthly_staffBenefitHigherThanFamilyDiscount_appliesStaffBenefit() {
+    void generateMonthly_staffBenefitExemption_appliesOnInstallment() {
         when(enrollmentQueryPort.hasActiveEnrollment(7L)).thenReturn(true);
         when(installmentRepository.findByFeeId(3L)).thenReturn(java.util.List.of(
                 gn.lacaeducation.billing.domain.Installment.builder()
                         .id(1L).feeId(3L).label("Septembre").amount(new BigDecimal("100")).build()));
         when(repo.existsByStudentIdAndInstallmentId(7L, 1L)).thenReturn(false);
-        when(familyDiscountUseCase.computeApplicable(1L, 7L, gn.lacaeducation.billing.domain.FeeType.MONTHLY))
-                .thenReturn(new gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase.ApplicableDiscount(
-                        new BigDecimal("10"), "Règle fratrie"));
-        when(staffChildBenefitUseCase.computeCoverage(1L, 7L, gn.lacaeducation.billing.domain.FeeType.MONTHLY))
-                .thenReturn(new StaffCoverage(new BigDecimal("100"), "Direction — 100%"));
+        when(exemptionUseCase.computeApplicable(7L, gn.lacaeducation.billing.domain.FeeType.MONTHLY))
+                .thenReturn(new ApplicableExemption(new BigDecimal("100"), "Direction — 100%", true, BigDecimal.ZERO, null));
         when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
 
         var invoices = service().generateMonthly(
@@ -621,42 +560,35 @@ class InvoiceServiceTest {
         assertThat(inv.getDiscountReason()).contains("Direction — 100%");
     }
 
-    // ── Exonération (§8) : TOTAL/PARTIAL concourent avec famille/personnel (la meilleure gagne),
-    // EXCEPTIONAL (montant fixe) s'ajoute en plus du pourcentage gagnant ──────────────────────────────
+    // ── Exonération (§8) : TOTAL/PARTIAL déterminent le pourcentage, EXCEPTIONAL (montant fixe)
+    // s'ajoute en plus du pourcentage ──────────────────────────────────────────────────────────────
 
     @Test
-    void create_partialExemptionHigherThanFamilyAndStaff_exemptionWins() {
+    void create_exemptionApplies_setsDiscountAndReason() {
         when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(
                 gn.lacaeducation.billing.domain.SchoolFee.builder().id(3L)
                         .type(gn.lacaeducation.billing.domain.FeeType.EXAM).build()));
-        when(familyDiscountUseCase.computeApplicable(10L, 7L, gn.lacaeducation.billing.domain.FeeType.EXAM))
-                .thenReturn(new gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase.ApplicableDiscount(
-                        new BigDecimal("20"), "Règle fratrie"));
         when(exemptionUseCase.computeApplicable(7L, gn.lacaeducation.billing.domain.FeeType.EXAM))
                 .thenReturn(new ApplicableExemption(new BigDecimal("70"), "Situation familiale difficile",
-                        BigDecimal.ZERO, null));
+                        false, BigDecimal.ZERO, null));
         when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
 
         Invoice inv = service().create(new CreateInvoiceCommand(10L, 7L, 3L, "FAC-1", new BigDecimal("100.00"), 99L));
 
         assertThat(inv.getDiscountAmount()).isEqualByComparingTo("70.00");
         assertThat(inv.getDiscountReason()).contains("Situation familiale difficile");
+        assertThat(inv.getDiscountSource()).isEqualTo(gn.lacaeducation.billing.domain.DiscountSource.EXEMPTION);
     }
 
     @Test
     void create_exceptionalExemption_stacksOnTopOfWinningPercentage() {
-        // 50% (avantage personnel) + 15 GNF fixes (remise exceptionnelle) : les deux s'additionnent,
-        // contrairement aux trois remises en pourcentage qui ne se cumulent jamais entre elles.
+        // 50% (avantage personnel) + 15 GNF fixes (remise exceptionnelle) : les deux s'additionnent.
         when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(
                 gn.lacaeducation.billing.domain.SchoolFee.builder().id(3L)
                         .type(gn.lacaeducation.billing.domain.FeeType.EXAM).build()));
-        when(familyDiscountUseCase.computeApplicable(10L, 7L, gn.lacaeducation.billing.domain.FeeType.EXAM))
-                .thenReturn(new gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase.ApplicableDiscount(
-                        BigDecimal.ZERO, null));
-        when(staffChildBenefitUseCase.computeCoverage(10L, 7L, gn.lacaeducation.billing.domain.FeeType.EXAM))
-                .thenReturn(new StaffCoverage(new BigDecimal("50"), "Enseignants — 50%"));
         when(exemptionUseCase.computeApplicable(7L, gn.lacaeducation.billing.domain.FeeType.EXAM))
-                .thenReturn(new ApplicableExemption(BigDecimal.ZERO, null, new BigDecimal("15"), "Geste directeur"));
+                .thenReturn(new ApplicableExemption(new BigDecimal("50"), "Enseignants — 50%", true,
+                        new BigDecimal("15"), "Geste directeur"));
         when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
 
         Invoice inv = service().create(new CreateInvoiceCommand(10L, 7L, 3L, "FAC-1", new BigDecimal("100.00"), 99L));
@@ -675,11 +607,8 @@ class InvoiceServiceTest {
         when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(
                 gn.lacaeducation.billing.domain.SchoolFee.builder().id(3L)
                         .type(gn.lacaeducation.billing.domain.FeeType.EXAM).build()));
-        when(familyDiscountUseCase.computeApplicable(10L, 7L, gn.lacaeducation.billing.domain.FeeType.EXAM))
-                .thenReturn(new gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase.ApplicableDiscount(
-                        BigDecimal.ZERO, null));
         when(exemptionUseCase.computeApplicable(7L, gn.lacaeducation.billing.domain.FeeType.EXAM))
-                .thenReturn(new ApplicableExemption(new BigDecimal("100"), "Exonération totale",
+                .thenReturn(new ApplicableExemption(new BigDecimal("100"), "Exonération totale", false,
                         new BigDecimal("50"), "Geste directeur"));
         when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -689,18 +618,15 @@ class InvoiceServiceTest {
         assertThat(inv.getRemainingBalance()).isEqualByComparingTo("0.00");
     }
 
-    // ── discountSource (§billing ↔ payroll, avantage personnel PARTIEL → reste retenu sur salaire) ────
+    // ── discountSource (§billing ↔ payroll, avantage personnel → reste retenu sur salaire) ────────────
 
     @Test
-    void create_staffBenefitWins_setsDiscountSourceStaffBenefit() {
+    void create_staffBenefitExemption_setsDiscountSourceStaffBenefit() {
         when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(
                 gn.lacaeducation.billing.domain.SchoolFee.builder().id(3L)
                         .type(gn.lacaeducation.billing.domain.FeeType.MONTHLY).build()));
-        when(familyDiscountUseCase.computeApplicable(10L, 7L, gn.lacaeducation.billing.domain.FeeType.MONTHLY))
-                .thenReturn(new gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase.ApplicableDiscount(
-                        BigDecimal.ZERO, null));
-        when(staffChildBenefitUseCase.computeCoverage(10L, 7L, gn.lacaeducation.billing.domain.FeeType.MONTHLY))
-                .thenReturn(new StaffCoverage(new BigDecimal("50"), "Enseignants — 50%"));
+        when(exemptionUseCase.computeApplicable(7L, gn.lacaeducation.billing.domain.FeeType.MONTHLY))
+                .thenReturn(new ApplicableExemption(new BigDecimal("50"), "Enseignants — 50%", true, BigDecimal.ZERO, null));
         when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
 
         Invoice inv = service().create(new CreateInvoiceCommand(10L, 7L, 3L, "FAC-1", new BigDecimal("100.00"), 99L));
@@ -709,18 +635,17 @@ class InvoiceServiceTest {
     }
 
     @Test
-    void create_familyDiscountWins_setsDiscountSourceFamily() {
+    void create_regularExemptionWins_setsDiscountSourceExemption() {
         when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(
                 gn.lacaeducation.billing.domain.SchoolFee.builder().id(3L)
                         .type(gn.lacaeducation.billing.domain.FeeType.MONTHLY).build()));
-        when(familyDiscountUseCase.computeApplicable(10L, 7L, gn.lacaeducation.billing.domain.FeeType.MONTHLY))
-                .thenReturn(new gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase.ApplicableDiscount(
-                        new BigDecimal("10"), "Règle fratrie"));
+        when(exemptionUseCase.computeApplicable(7L, gn.lacaeducation.billing.domain.FeeType.MONTHLY))
+                .thenReturn(new ApplicableExemption(new BigDecimal("10"), "Cas social", false, BigDecimal.ZERO, null));
         when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
 
         Invoice inv = service().create(new CreateInvoiceCommand(10L, 7L, 3L, "FAC-1", new BigDecimal("100.00"), 99L));
 
-        assertThat(inv.getDiscountSource()).isEqualTo(gn.lacaeducation.billing.domain.DiscountSource.FAMILY);
+        assertThat(inv.getDiscountSource()).isEqualTo(gn.lacaeducation.billing.domain.DiscountSource.EXEMPTION);
     }
 
     @Test
@@ -728,9 +653,6 @@ class InvoiceServiceTest {
         when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(
                 gn.lacaeducation.billing.domain.SchoolFee.builder().id(3L)
                         .type(gn.lacaeducation.billing.domain.FeeType.MONTHLY).build()));
-        when(familyDiscountUseCase.computeApplicable(10L, 7L, gn.lacaeducation.billing.domain.FeeType.MONTHLY))
-                .thenReturn(new gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase.ApplicableDiscount(
-                        BigDecimal.ZERO, null));
         when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
 
         Invoice inv = service().create(new CreateInvoiceCommand(10L, 7L, 3L, "FAC-1", new BigDecimal("100.00"), 99L));
@@ -756,7 +678,7 @@ class InvoiceServiceTest {
                 .status(InvoiceStatus.PAID).remainingBalance(BigDecimal.ZERO).build();
         when(repo.findByStudentId(7L)).thenReturn(List.of(staffBenefit1, staffBenefit2, familyDiscounted, staffBenefitPaid));
 
-        BigDecimal remainder = service().outstandingStaffBenefitRemainder(7L);
+        BigDecimal remainder = service().outstandingStaffBenefitRemainder(7L, null, null);
 
         assertThat(remainder).isEqualByComparingTo("20000");
     }
@@ -765,6 +687,81 @@ class InvoiceServiceTest {
     void outstandingStaffBenefitRemainder_noStaffBenefitInvoices_returnsZero() {
         when(repo.findByStudentId(7L)).thenReturn(List.of());
 
-        assertThat(service().outstandingStaffBenefitRemainder(7L)).isEqualByComparingTo("0");
+        assertThat(service().outstandingStaffBenefitRemainder(7L, null, null)).isEqualByComparingTo("0");
+    }
+
+    // ── outstandingStaffBenefitRemainder scoping to one payroll period (§retour comptable, bug corrigé :
+    // une mensualité éclatée en 9 factures dès l'inscription ne doit faire retenir qu'UN mois) ──────────
+
+    @Test
+    void outstandingStaffBenefitRemainder_onlyCountsInvoiceMatchingThePayrollPeriod() {
+        Invoice october = Invoice.builder().id(1L).studentId(7L)
+                .discountSource(gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT)
+                .status(InvoiceStatus.UNPAID).remainingBalance(new BigDecimal("67500"))
+                .periodLabel("Octobre 2026").build();
+        Invoice november = Invoice.builder().id(2L).studentId(7L)
+                .discountSource(gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT)
+                .status(InvoiceStatus.UNPAID).remainingBalance(new BigDecimal("67500"))
+                .periodLabel("Novembre 2026").build();
+        when(repo.findByStudentId(7L)).thenReturn(List.of(october, november));
+
+        // La fiche de paie d'octobre ne doit récupérer QUE la facture d'octobre — jamais celle de
+        // novembre, déjà générée d'avance mais pas encore due.
+        BigDecimal remainder = service().outstandingStaffBenefitRemainder(7L, java.time.LocalDate.of(2026, 10, 1), "Octobre 2026");
+
+        assertThat(remainder).isEqualByComparingTo("67500");
+    }
+
+    @Test
+    void outstandingStaffBenefitRemainder_nonMonthlyLabelledInvoice_alwaysCountedRegardlessOfPeriod() {
+        // Tranche non éclatée (ex. "Trimestre 1") ou frais non-mensuel (transport, cantine...) : pas
+        // rattachée à un seul mois, donc comptée quel que soit le mois de paie demandé.
+        Invoice tranche = Invoice.builder().id(1L).studentId(7L)
+                .discountSource(gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT)
+                .status(InvoiceStatus.UNPAID).remainingBalance(new BigDecimal("15000"))
+                .periodLabel("Trimestre 1").build();
+        when(repo.findByStudentId(7L)).thenReturn(List.of(tranche));
+
+        BigDecimal remainder = service().outstandingStaffBenefitRemainder(7L, java.time.LocalDate.of(2026, 10, 1), "Octobre 2026");
+
+        assertThat(remainder).isEqualByComparingTo("15000");
+    }
+
+    @Test
+    void outstandingStaffBenefitRemainder_periodStartTakesPrecedenceOverPeriodLabel() {
+        Invoice october = Invoice.builder().id(1L).studentId(7L)
+                .discountSource(gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT)
+                .status(InvoiceStatus.UNPAID).remainingBalance(new BigDecimal("67500"))
+                .periodLabel("Octobre 2026").build();
+        when(repo.findByStudentId(7L)).thenReturn(List.of(october));
+
+        // periodStart (2026-10) l'emporte sur un periodLabel de paie qui ne correspond à rien
+        // ("Paie #3") — dérive quand même "Octobre 2026" et trouve la bonne facture.
+        BigDecimal remainder = service().outstandingStaffBenefitRemainder(7L, java.time.LocalDate.of(2026, 10, 15), "Paie #3");
+
+        assertThat(remainder).isEqualByComparingTo("67500");
+    }
+
+    // ── applyStaffBenefitRemainderPayment (§retour comptable) ───────────────────────────────────────
+
+    @Test
+    void applyStaffBenefitRemainderPayment_paysOnlyTheMatchingMonthsInvoice() {
+        Invoice october = Invoice.builder().id(1L).studentId(7L).tenantId(1L)
+                .discountSource(gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT)
+                .status(InvoiceStatus.UNPAID).totalAmount(new BigDecimal("67500")).paidAmount(BigDecimal.ZERO)
+                .remainingBalance(new BigDecimal("67500")).periodLabel("Octobre 2026").build();
+        Invoice november = Invoice.builder().id(2L).studentId(7L).tenantId(1L)
+                .discountSource(gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT)
+                .status(InvoiceStatus.UNPAID).totalAmount(new BigDecimal("67500")).paidAmount(BigDecimal.ZERO)
+                .remainingBalance(new BigDecimal("67500")).periodLabel("Novembre 2026").build();
+        when(repo.findByStudentId(7L)).thenReturn(List.of(october, november));
+        when(repo.findById(1L)).thenReturn(Optional.of(october));
+        when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
+
+        service().applyStaffBenefitRemainderPayment(7L, java.time.LocalDate.of(2026, 10, 1), "Octobre 2026", new BigDecimal("67500"));
+
+        assertThat(october.getStatus()).isEqualTo(InvoiceStatus.PAID);
+        assertThat(november.getStatus()).isEqualTo(InvoiceStatus.UNPAID);
+        verify(repo, never()).findById(2L);
     }
 }

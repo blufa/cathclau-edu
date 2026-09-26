@@ -33,7 +33,7 @@ public class InvoicePaymentListener {
             log.warn("PaymentSucceeded references unknown invoice id={}, skipping", event.invoiceId());
             return;
         }
-        invoiceUseCase.applyPayment(event.invoiceId(), event.amount());
+        invoiceUseCase.applyPayment(event.invoiceId(), event.amount(), true, null, event.collectedByUserId());
         log.info("Applied payment id={} amount={} to invoice id={}",
                 event.paymentId(), event.amount(), event.invoiceId());
     }
@@ -79,7 +79,7 @@ public class InvoicePaymentListener {
                 log.warn("Paiement groupé {} : facture inconnue id={}, ignorée", event.paymentId(), share.invoiceId());
                 continue;
             }
-            invoiceUseCase.applyPayment(share.invoiceId(), share.amount(), false, share.paidMonths());
+            invoiceUseCase.applyPayment(share.invoiceId(), share.amount(), false, share.paidMonths(), event.collectedByUserId());
             log.info("Paiement groupé {} : {} appliqué à la facture id={}",
                     event.paymentId(), share.amount(), share.invoiceId());
         }

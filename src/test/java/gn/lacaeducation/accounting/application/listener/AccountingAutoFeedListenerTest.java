@@ -25,7 +25,7 @@ class AccountingAutoFeedListenerTest {
 
     @Test
     void onExpensePaid_recordsOutCashFlow_categorySupplier() {
-        listener.onExpensePaid(new ExpensePaidEvent(1L, 42L, 3L, 5L, BigDecimal.valueOf(15_000)));
+        listener.onExpensePaid(new ExpensePaidEvent(1L, 42L, BigDecimal.valueOf(15_000)));
 
         verify(treasuryService).recordAuto(1L, CashFlowDirection.OUT, BigDecimal.valueOf(15_000),
                 CashFlowCategory.SUPPLIER, CashFlowReferenceType.EXPENSE, 42L, "Règlement dépense #42");

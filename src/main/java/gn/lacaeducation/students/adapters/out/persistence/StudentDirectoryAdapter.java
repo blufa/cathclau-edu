@@ -27,4 +27,9 @@ class StudentDirectoryAdapter implements StudentDirectoryPort {
     public List<String> searchSchools(String query) {
         return jpa.searchSchools(query == null ? "" : query);
     }
+
+    @Override
+    public List<String> searchPreviousClasses(String query) {
+        return jpa.searchPreviousClasses(query == null ? "" : query);
+    }
 }

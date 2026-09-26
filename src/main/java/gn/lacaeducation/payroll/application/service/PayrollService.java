@@ -610,7 +610,7 @@ public class PayrollService {
      * transféré du module scolarité vers la paie, ajouté comme ligne de retenue et historisé sur la fiche.
      */
     private void applySchoolFeeDeduction(Payslip p, GenerateCommand c) {
-        var deduction = salaryFeeDeductionUseCase.computeFeeDeduction(c.tenantId(), c.teacherId());
+        var deduction = salaryFeeDeductionUseCase.computeFeeDeduction(c.tenantId(), p.getEmployeeType(), c.teacherId());
         if (deduction.amount() != null && deduction.amount().signum() > 0) {
             String label = deduction.label() != null ? deduction.label() : "Frais scolaires enfants";
             saveLine(p, label + " (" + deduction.childrenCount() + " enfant(s))",
@@ -626,7 +626,8 @@ public class PayrollService {
      * la fiche (voir {@code markPaid}).
      */
     private void applyStaffBenefitRemainderDeduction(Payslip p, GenerateCommand c) {
-        var deduction = salaryFeeDeductionUseCase.computeStaffBenefitRemainder(c.tenantId(), c.teacherId());
+        var deduction = salaryFeeDeductionUseCase.computeStaffBenefitRemainder(c.tenantId(), p.getEmployeeType(), c.teacherId(),
+                c.periodStart(), c.periodLabel());
         if (deduction.amount() != null && deduction.amount().signum() > 0) {
             saveLine(p, "Reste avantage personnel (" + deduction.childrenCount() + " enfant(s))",
                     PayslipLineType.DEDUCTION, deduction.amount());
@@ -797,11 +798,12 @@ public class PayrollService {
         // du salarié, maintenant que la fiche est réellement payée (§payroll ↔ billing) — sans ça,
         // l'école a bien été payée (via la paie) mais la facturation continue d'afficher ces enfants
         // comme débiteurs.
-        salaryFeeDeductionUseCase.applyDeductionAsInvoicePayment(saved.getTenantId(), saved.getTeacherId());
+        salaryFeeDeductionUseCase.applyDeductionAsInvoicePayment(saved.getTenantId(), saved.getEmployeeType(), saved.getTeacherId());
         // Idem pour le reste non couvert par un avantage personnel partiel (voir
         // applyStaffBenefitRemainderDeduction) — même principe, montant différent (solde réel des
         // factures plutôt qu'une règle à montant fixe).
-        salaryFeeDeductionUseCase.applyStaffBenefitRemainderAsInvoicePayment(saved.getTenantId(), saved.getTeacherId());
+        salaryFeeDeductionUseCase.applyStaffBenefitRemainderAsInvoicePayment(saved.getTenantId(), saved.getEmployeeType(), saved.getTeacherId(),
+                saved.getPeriodStart(), saved.getPeriodLabel());
         // Fait remonter la paie dans la trésorerie (sortie de caisse "Salaires") — jamais dans le
         // budget annuel voté, qui couvre le fonctionnement courant (carburant, kermesse, événements),
         // financièrement distinct de la masse salariale (toujours puisée dans les recettes de l'école).

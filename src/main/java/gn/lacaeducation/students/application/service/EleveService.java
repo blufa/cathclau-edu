@@ -7,6 +7,7 @@ import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.common.SchoolCode;
 import gn.lacaeducation.common.TenantInfoProvider;
 import gn.lacaeducation.platform.TenantQuotaService;
+import gn.lacaeducation.students.application.event.StudentArchivedEvent;
 import gn.lacaeducation.students.application.event.StudentCreatedEvent;
 import gn.lacaeducation.students.application.port.in.StudentUseCase;
 import gn.lacaeducation.students.application.port.out.StudentDocumentRepository;
@@ -187,6 +188,9 @@ public class EleveService implements StudentUseCase {
                 .orElseThrow(() -> new ResourceNotFoundException("Student", id));
         s.setDeletedAt(LocalDateTime.now());
         studentRepository.save(s);
+        // §retour comptable : un élève archivé ne doit plus rien devoir — annule ses factures encore
+        // dues (billing), sans jamais toucher ce qui a déjà été encaissé (voir StudentArchivedEvent).
+        eventPublisher.publishEvent(new StudentArchivedEvent(s.getTenantId(), s.getId()));
     }
 
     @Override

@@ -42,6 +42,12 @@ public interface InvoiceUseCase {
      */
     Invoice applyPayment(Long invoiceId, BigDecimal amount, boolean notify, List<String> paidMonths);
     /**
+     * Variante qui précise en plus qui a physiquement encaissé (canal CASH uniquement) — affiché en
+     * pied de facture PDF ("Encaissé par"). {@code null} : encaissement en ligne, ou collecteur non
+     * précisé — le champ existant sur la facture n'est alors pas modifié.
+     */
+    Invoice applyPayment(Long invoiceId, BigDecimal amount, boolean notify, List<String> paidMonths, Long collectedByUserId);
+    /**
      * Répercute un remboursement de paiement sur la facture : réduit `paidAmount` (jamais en dessous
      * de zéro) et recalcule solde/statut. Distinct de {@link #applyPayment} — ne publie PAS
      * `InvoicePaymentAppliedEvent` (écouté côté communication pour notifier le parent d'un paiement
@@ -73,12 +79,30 @@ public interface InvoiceUseCase {
      */
     void applyExternalPayment(Long tenantId, Long studentId, BigDecimal amount);
     /**
-     * Solde total restant dû sur les factures de mensualité de cet élève dont la remise appliquée est
-     * un avantage personnel PARTIEL (§billing ↔ payroll, {@link gn.lacaeducation.billing.domain.DiscountSource#STAFF_BENEFIT})
+     * Solde restant dû sur les factures de mensualité de cet élève dont la remise appliquée est un
+     * avantage personnel PARTIEL (§billing ↔ payroll, {@link gn.lacaeducation.billing.domain.DiscountSource#STAFF_BENEFIT})
      * — le « reste » que l'école ne prend pas en charge, destiné à être retenu automatiquement sur le
      * salaire du parent employé plutôt que facturé au guichet. 0 si aucune facture éligible.
+     * <p>
+     * Limité au mois de paie {@code periodStart} (dérivé en « Mois Année », ex. "Octobre 2026", comme
+     * {@link Invoice#getPeriodLabel()} pour une mensualité éclatée mois par mois — voir
+     * {@code InvoiceService#generateMonthly}) — une facture dont le libellé de période ne correspond pas
+     * à un mois précis (tranche non éclatée, transport, cantine, examen…) reste comptée quel que soit
+     * le mois demandé, elle n'est pas rattachée à un seul mois. Sans ce filtre, une mensualité entière
+     * générée d'avance (9 factures dès l'inscription) ferait retenir le solde de TOUTE l'année sur un
+     * seul salaire (§retour comptable, bug corrigé). {@code periodStart} peut être {@code null} (la
+     * paie n'a pas toujours une date de période saisie) — {@code periodLabel} sert alors de repli.
      */
-    BigDecimal outstandingStaffBenefitRemainder(Long studentId);
+    BigDecimal outstandingStaffBenefitRemainder(Long studentId, java.time.LocalDate periodStart, String periodLabel);
+    /**
+     * Applique {@code amount} comme paiement précisément sur la ou les factures STAFF_BENEFIT
+     * correspondant à ce mois de paie (même portée que {@link #outstandingStaffBenefitRemainder}) —
+     * jamais une répartition générique « la plus ancienne d'abord » (voir {@link #applyExternalPayment}),
+     * qui risquerait de solder le mauvais mois quand plusieurs factures partagent la même date
+     * d'émission (cas d'une mensualité éclatée en une fois à l'inscription). Sans effet si le montant
+     * est nul/négatif ou si aucune facture ne correspond.
+     */
+    void applyStaffBenefitRemainderPayment(Long studentId, java.time.LocalDate periodStart, String periodLabel, BigDecimal amount);
     /**
      * Applique la remise pour paiement annuel complet (§billing) sur toutes les factures restantes
      * (non soldées) d'un élève pour un frais donné, si une règle est active pour le type de ce frais.

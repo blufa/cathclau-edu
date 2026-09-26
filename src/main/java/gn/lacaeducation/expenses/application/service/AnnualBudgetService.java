@@ -3,7 +3,6 @@ package gn.lacaeducation.expenses.application.service;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.MediaUploadService;
 import gn.lacaeducation.common.ResourceNotFoundException;
-import gn.lacaeducation.expenses.application.event.ExpensePaidEvent;
 import gn.lacaeducation.expenses.application.port.out.AnnualBudgetPdfGenerator;
 import gn.lacaeducation.expenses.application.port.out.AnnualBudgetRepository;
 import gn.lacaeducation.expenses.application.port.out.BudgetLineRepository;
@@ -14,7 +13,6 @@ import gn.lacaeducation.expenses.domain.BudgetStatus;
 import gn.lacaeducation.expenses.domain.FinancingMode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -202,16 +200,4 @@ public class AnnualBudgetService {
 
     private static BigDecimal nz(BigDecimal v) { return v != null ? v : BigDecimal.ZERO; }
     private AnnualBudget load(Long id) { return budgetRepo.findById(id).orElseThrow(() -> new ResourceNotFoundException("AnnualBudget", id)); }
-
-    /** Suivi automatique : quand une dépense imputée sur une ligne de budget est payée, son montant
-     * "réalisé" est incrémenté du même coup — pas besoin de le ressaisir à la main. */
-    @EventListener
-    public void onExpensePaid(ExpensePaidEvent event) {
-        if (event.budgetLineId() == null) return;
-        lineRepo.findById(event.budgetLineId()).ifPresent(line -> {
-            line.setActualAmount(nz(line.getActualAmount()).add(event.amount()));
-            lineRepo.save(line);
-        });
-    }
-
 }

@@ -26,9 +26,9 @@ class InvoicePaymentListenerTest {
     void appliesPaymentToInvoiceOnSuccess() {
         when(invoiceUseCase.existsById(3L)).thenReturn(true);
 
-        listener.onPaymentSucceeded(new PaymentSucceededEvent(10L, 7L, 100L, 3L, new BigDecimal("60.00"), null));
+        listener.onPaymentSucceeded(new PaymentSucceededEvent(10L, 7L, 100L, 3L, new BigDecimal("60.00"), 99L));
 
-        verify(invoiceUseCase).applyPayment(3L, new BigDecimal("60.00"));
+        verify(invoiceUseCase).applyPayment(3L, new BigDecimal("60.00"), true, null, 99L);
     }
 
     @Test
@@ -85,10 +85,10 @@ class InvoicePaymentListenerTest {
 
         listener.onGroupedSettlement(new GroupedInvoiceSettlementEvent(10L, 7L, 200L, List.of(
                 new GroupedInvoiceSettlementEvent.Share(3L, 7L, new BigDecimal("100.00"), null),
-                new GroupedInvoiceSettlementEvent.Share(4L, 7L, new BigDecimal("60.00"), null))));
+                new GroupedInvoiceSettlementEvent.Share(4L, 7L, new BigDecimal("60.00"), null)), 99L));
 
-        verify(invoiceUseCase).applyPayment(3L, new BigDecimal("100.00"), false, null);
-        verify(invoiceUseCase).applyPayment(4L, new BigDecimal("60.00"), false, null);
+        verify(invoiceUseCase).applyPayment(3L, new BigDecimal("100.00"), false, null, 99L);
+        verify(invoiceUseCase).applyPayment(4L, new BigDecimal("60.00"), false, null, 99L);
         verify(invoiceUseCase, never()).applyPayment(any(), any());
     }
 }

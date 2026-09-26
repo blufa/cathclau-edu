@@ -48,4 +48,11 @@ public class StudentDirectoryController {
     public List<String> searchSchools(@RequestParam(required = false) String q) {
         return service.searchSchools(q);
     }
+
+    @Operation(summary = "Suggest platform 'previous class' labels already entered (ex. CM2, 10ème)")
+    @GetMapping("/previous-classes")
+    @PreAuthorize("hasAuthority('eleve:read')")
+    public List<String> searchPreviousClasses(@RequestParam(required = false) String q) {
+        return service.searchPreviousClasses(q);
+    }
 }

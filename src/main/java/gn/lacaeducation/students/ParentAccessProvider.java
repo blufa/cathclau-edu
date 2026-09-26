@@ -21,4 +21,9 @@ public interface ParentAccessProvider {
 
     /** Identifiants des comptes utilisateurs des parents d'un élève (pour notifier ; vide si aucun). */
     java.util.List<Long> findParentUserIdsByStudent(Long studentId);
+
+    /** Identifiant du compte utilisateur lié à ce parent (vide si le parent n'a pas de compte, ou
+     * introuvable) — pour vérifier si ce parent correspond aussi à un membre du personnel (même
+     * {@code userId} partagé que {@code Teacher}/{@code Employee}, voir refonte inscription §25). */
+    java.util.Optional<Long> findUserIdByParentId(Long parentId);
 }

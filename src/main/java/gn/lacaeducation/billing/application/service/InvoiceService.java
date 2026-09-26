@@ -36,8 +36,6 @@ public class InvoiceService implements InvoiceUseCase {
     private final InvoicePdfGenerator pdfGenerator;
     private final MediaUploadService mediaUploadService;
     private final TenantInfoProvider tenantInfoProvider;
-    private final gn.lacaeducation.billing.application.port.in.FamilyDiscountUseCase familyDiscountUseCase;
-    private final gn.lacaeducation.billing.application.port.in.StaffChildBenefitUseCase staffChildBenefitUseCase;
     private final gn.lacaeducation.billing.application.port.in.ExemptionUseCase exemptionUseCase;
     private final gn.lacaeducation.billing.application.port.in.EarlyPaymentDiscountUseCase earlyPaymentDiscountUseCase;
     private final PlatformFeeLedgerApi platformFeeLedgerApi;
@@ -83,15 +81,17 @@ public class InvoiceService implements InvoiceUseCase {
     }
 
     /**
-     * Remise automatique applicable à une facture — trois sources possibles : réduction familiale
-     * (fratrie, §5), avantage personnel (enfant de membre du personnel, §6), exonération TOTAL/PARTIAL
-     * (§8, décision manuelle de la direction). Les trois sont calculées, mais jamais cumulées entre
-     * elles : la plus avantageuse l'emporte (jamais leur somme), pour éviter qu'un cumul mécanique ne
-     * produise une remise déraisonnable. Une exonération EXCEPTIONAL (montant fixe, décision ponctuelle
-     * documentée), elle, s'ajoute EN PLUS du pourcentage gagnant — c'est un geste distinct, pas une
-     * règle automatique concurrente des trois autres. {@code feeType == null} (fee introuvable/non
-     * précisé) ne déclenche aucune remise, aucune des règles ne pouvant alors être évaluée avec
-     * certitude.
+     * Remise applicable à une facture — exonération TOTAL/PARTIAL choisie manuellement par le
+     * comptable (§8, catalogue {@code ExemptionRule}). Les mécanismes de détection automatique
+     * (réduction familiale par fratrie réelle, avantage personnel par lien parent↔enseignant) ont été
+     * retirés du calcul (§retour comptable) : le comptable connaît la situation de chaque enfant à
+     * l'inscription et choisit lui-même l'exonération adaptée dans la liste, y compris pour un
+     * "avantage personnel" ou une "remise fratrie" — ces cas restent possibles via le catalogue, mais
+     * ne sont plus jamais déclenchés automatiquement, même quand la situation change en cours d'année
+     * (un nouvel enfant inscrit n'affecte jamais rétroactivement les factures déjà générées des autres
+     * enfants). Une exonération EXCEPTIONAL (montant fixe, décision ponctuelle documentée) s'ajoute EN
+     * PLUS du pourcentage gagnant. {@code feeType == null} (fee introuvable/non précisé) ne déclenche
+     * aucune remise.
      */
     private record ApplicableInvoiceDiscount(BigDecimal percentage, String percentageReason,
                                               gn.lacaeducation.billing.domain.DiscountSource source,
@@ -99,28 +99,18 @@ public class InvoiceService implements InvoiceUseCase {
 
     private ApplicableInvoiceDiscount computeApplicableDiscount(Long tenantId, Long studentId, FeeType feeType) {
         if (feeType == null) return new ApplicableInvoiceDiscount(BigDecimal.ZERO, null, null, BigDecimal.ZERO, null);
-        var family = familyDiscountUseCase.computeApplicable(tenantId, studentId, feeType);
-        var staff = staffChildBenefitUseCase.computeCoverage(tenantId, studentId, feeType);
         var exemption = exemptionUseCase.computeApplicable(studentId, feeType);
 
-        BigDecimal familyPercent = family.percentage() != null ? family.percentage() : BigDecimal.ZERO;
-        BigDecimal staffPercent = staff.coveragePercent() != null ? staff.coveragePercent() : BigDecimal.ZERO;
         BigDecimal exemptionPercent = exemption.percentage() != null ? exemption.percentage() : BigDecimal.ZERO;
-
         BigDecimal bestPercent = BigDecimal.ZERO;
         String bestReason = null;
         gn.lacaeducation.billing.domain.DiscountSource bestSource = null;
-        if (staffPercent.compareTo(bestPercent) > 0) {
-            bestPercent = staffPercent; bestReason = "Avantage personnel : " + staff.policyLabel();
-            bestSource = gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT;
-        }
-        if (familyPercent.compareTo(bestPercent) > 0) {
-            bestPercent = familyPercent; bestReason = "Réduction familiale : " + family.ruleLabel();
-            bestSource = gn.lacaeducation.billing.domain.DiscountSource.FAMILY;
-        }
         if (exemptionPercent.compareTo(bestPercent) > 0) {
-            bestPercent = exemptionPercent; bestReason = "Exonération : " + exemption.percentageReason();
-            bestSource = gn.lacaeducation.billing.domain.DiscountSource.EXEMPTION;
+            bestPercent = exemptionPercent;
+            bestReason = (exemption.staffBenefit() ? "Avantage personnel : " : "Exonération : ") + exemption.percentageReason();
+            bestSource = exemption.staffBenefit()
+                    ? gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT
+                    : gn.lacaeducation.billing.domain.DiscountSource.EXEMPTION;
         }
         BigDecimal exceptionalAmount = exemption.exceptionalAmount() != null ? exemption.exceptionalAmount() : BigDecimal.ZERO;
         return new ApplicableInvoiceDiscount(bestPercent, bestReason, bestSource, exceptionalAmount, exemption.exceptionalReason());
@@ -295,6 +285,10 @@ public class InvoiceService implements InvoiceUseCase {
     }
 
     @Override public Invoice applyPayment(Long invoiceId, BigDecimal amount, boolean notify, List<String> paidMonths) {
+        return applyPayment(invoiceId, amount, notify, paidMonths, null);
+    }
+
+    @Override public Invoice applyPayment(Long invoiceId, BigDecimal amount, boolean notify, List<String> paidMonths, Long collectedByUserId) {
         Invoice inv = load(invoiceId);
         inv.setPaidAmount(inv.getPaidAmount().add(amount));
         if (paidMonths != null && !paidMonths.isEmpty()) {
@@ -303,12 +297,19 @@ public class InvoiceService implements InvoiceUseCase {
             merged.addAll(paidMonths);
             inv.setPaidMonths(new java.util.ArrayList<>(merged));
         }
+        if (collectedByUserId != null) {
+            inv.setCollectedByUserId(collectedByUserId);
+            // Le PDF déjà généré/mis en cache (voir pdfUrl) ne reflète pas encore ce nouvel
+            // encaisseur : on force sa régénération au prochain accès plutôt que de laisser un PDF
+            // périmé en circulation.
+            inv.setPdfFile(null);
+        }
         recomputeBalance(inv);
         boolean fullySettled = inv.getStatus() == InvoiceStatus.PAID;
         Invoice saved = repo.save(inv);
         if (notify) {
             eventPublisher.publishEvent(new InvoicePaymentAppliedEvent(inv.getTenantId(), inv.getStudentId(),
-                    inv.getId(), inv.getReference(), amount, inv.getRemainingBalance()));
+                    inv.getId(), inv.getReference(), amount, inv.getRemainingBalance(), collectedByUserId));
         }
         if (fullySettled) {
             eventPublisher.publishEvent(
@@ -387,13 +388,55 @@ public class InvoiceService implements InvoiceUseCase {
 
     @Override
     @Transactional(readOnly = true)
-    public BigDecimal outstandingStaffBenefitRemainder(Long studentId) {
+    public BigDecimal outstandingStaffBenefitRemainder(Long studentId, java.time.LocalDate periodStart, String periodLabel) {
         if (studentId == null) return BigDecimal.ZERO;
+        String targetLabel = resolveTargetPeriodLabel(periodStart, periodLabel);
+        return staffBenefitInvoicesForPeriod(studentId, targetLabel).stream()
+                .map(i -> i.getRemainingBalance() != null ? i.getRemainingBalance() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    @Override
+    public void applyStaffBenefitRemainderPayment(Long studentId, java.time.LocalDate periodStart, String periodLabel, BigDecimal amount) {
+        if (studentId == null || amount == null || amount.signum() <= 0) return;
+        String targetLabel = resolveTargetPeriodLabel(periodStart, periodLabel);
+        BigDecimal remaining = amount;
+        for (Invoice inv : staffBenefitInvoicesForPeriod(studentId, targetLabel)) {
+            if (remaining.signum() <= 0) break;
+            BigDecimal due = inv.getRemainingBalance() != null ? inv.getRemainingBalance() : BigDecimal.ZERO;
+            if (due.signum() <= 0) continue;
+            BigDecimal toApply = due.min(remaining);
+            applyPayment(inv.getId(), toApply, false);
+            remaining = remaining.subtract(toApply);
+        }
+    }
+
+    /** Mois "Octobre 2026" dérivé de {@code periodStart} si fourni (même format que
+     * {@link Invoice#getPeriodLabel()} pour une mensualité éclatée, voir {@code generateMonthly}) ;
+     * repli sur le libellé de période tel quel sinon (la paie n'a pas toujours une date saisie). */
+    private String resolveTargetPeriodLabel(java.time.LocalDate periodStart, String periodLabel) {
+        if (periodStart == null) return periodLabel;
+        String yyyyMm = String.format("%04d-%02d", periodStart.getYear(), periodStart.getMonthValue());
+        return gn.lacaeducation.billing.domain.MonthLabel.frenchLabel(yyyyMm);
+    }
+
+    private static final java.util.regex.Pattern MONTH_LABEL_PATTERN = java.util.regex.Pattern.compile(
+            "(?i)^(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre) \\d{4}$");
+
+    /** Factures STAFF_BENEFIT encore dues de l'élève correspondant au mois {@code targetLabel} — une
+     * facture dont le libellé de période ne ressemble pas à un mois précis ("Mois Année", produit par
+     * l'éclatement mensuel) n'est rattachée à aucun mois en particulier : elle reste comptée quel que
+     * soit le mois demandé (tranche non éclatée, transport, cantine, examen…). */
+    private List<Invoice> staffBenefitInvoicesForPeriod(Long studentId, String targetLabel) {
         return repo.findByStudentId(studentId).stream()
                 .filter(i -> i.getDiscountSource() == gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT)
                 .filter(i -> i.getStatus() == InvoiceStatus.UNPAID || i.getStatus() == InvoiceStatus.PARTIAL)
-                .map(i -> i.getRemainingBalance() != null ? i.getRemainingBalance() : BigDecimal.ZERO)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .filter(i -> {
+                    String label = i.getPeriodLabel();
+                    if (label == null || !MONTH_LABEL_PATTERN.matcher(label).matches()) return true;
+                    return targetLabel != null && label.equalsIgnoreCase(targetLabel);
+                })
+                .toList();
     }
 
     @Override

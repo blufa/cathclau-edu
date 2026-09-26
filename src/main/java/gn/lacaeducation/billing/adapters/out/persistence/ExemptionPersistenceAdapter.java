@@ -40,6 +40,7 @@ class ExemptionPersistenceAdapter implements ExemptionRepository {
                 .percentage(e.getPercentage()).amount(e.getAmount()).feeTypes(e.getFeeTypes())
                 .reason(e.getReason()).startDate(e.getStartDate()).endDate(e.getEndDate())
                 .validatedBy(e.getValidatedBy()).active(e.isActive()).createdAt(e.getCreatedAt())
+                .staffBenefit(e.isStaffBenefit())
                 .build();
     }
 
@@ -49,6 +50,7 @@ class ExemptionPersistenceAdapter implements ExemptionRepository {
         e.setPercentage(d.getPercentage()); e.setAmount(d.getAmount()); e.setFeeTypes(d.getFeeTypes());
         e.setReason(d.getReason()); e.setStartDate(d.getStartDate()); e.setEndDate(d.getEndDate());
         e.setValidatedBy(d.getValidatedBy()); e.setActive(d.isActive()); e.setCreatedAt(d.getCreatedAt());
+        e.setStaffBenefit(d.isStaffBenefit());
         return e;
     }
 }

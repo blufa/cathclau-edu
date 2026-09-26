@@ -64,4 +64,19 @@ interface StudentDirectoryJpaRepository extends JpaRepository<EleveJpaEntity, Lo
             LIMIT 25
             """, nativeQuery = true)
     List<String> searchSchools(@Param("q") String q);
+
+    /**
+     * Libellés de "dernière classe" déjà saisis sur la plateforme (ex. "CM2", "10ème") correspondant à
+     * la recherche — pour suggérer une valeur déjà utilisée par un élève transféré, plutôt qu'un format
+     * différent ressaisi à chaque fois. NATIVE, cross-tenant comme {@link #searchSchools} : ce sont de
+     * simples libellés de niveau, sans donnée personnelle.
+     */
+    @Query(value = """
+            SELECT DISTINCT s.previous_class FROM students s
+            WHERE s.previous_class IS NOT NULL AND s.previous_class <> ''
+              AND LOWER(s.previous_class) LIKE CONCAT('%', :q, '%')
+            ORDER BY s.previous_class
+            LIMIT 25
+            """, nativeQuery = true)
+    List<String> searchPreviousClasses(@Param("q") String q);
 }

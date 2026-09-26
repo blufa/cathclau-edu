@@ -9,7 +9,7 @@ import java.util.Optional;
  */
 public interface UserPublicInfoProvider {
 
-    record UserPublicInfo(Long id, String firstName, String lastName) {}
+    record UserPublicInfo(Long id, String firstName, String lastName, String phone) {}
 
     Optional<UserPublicInfo> findUser(Long userId);
 }

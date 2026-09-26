@@ -5,6 +5,7 @@ import gn.lacaeducation.students.application.port.in.EnrollmentUseCase.EnrollCom
 import gn.lacaeducation.common.ConflictException;
 import gn.lacaeducation.students.ClassCapacityPort;
 import gn.lacaeducation.students.application.port.out.EnrollmentRepository;
+import gn.lacaeducation.students.application.port.out.StudentRepository;
 import gn.lacaeducation.students.domain.Enrollment;
 import gn.lacaeducation.students.domain.EnrollmentStatus;
 import gn.lacaeducation.students.EnrollmentType;
@@ -26,7 +27,23 @@ class InscriptionServiceTest {
     @Mock EnrollmentRepository enrollmentRepository;
     @Mock ClassCapacityPort classCapacityPort;
     @Mock ApplicationEventPublisher eventPublisher;
+    @Mock StudentRepository studentRepository;
     @InjectMocks InscriptionService service;
+
+    @Test
+    void search_excludesEnrollmentsOfArchivedStudents() {
+        // §retour comptable : un élève archivé n'a plus rien à gérer activement — son inscription ne
+        // doit plus apparaître dans /enrollments, même si la ligne existe toujours en base.
+        Enrollment active = Enrollment.builder().id(1L).studentId(7L).classId(3L).build();
+        Enrollment archived = Enrollment.builder().id(2L).studentId(8L).classId(3L).build();
+        when(enrollmentRepository.search(null, 3L, null, null)).thenReturn(java.util.List.of(active, archived));
+        when(studentRepository.existsById(7L)).thenReturn(true);
+        when(studentRepository.existsById(8L)).thenReturn(false);
+
+        java.util.List<Enrollment> result = service.search(null, 3L, null, null);
+
+        assertThat(result).containsExactly(active);
+    }
 
     @Test
     void enroll_createsWithPendingStatus() {

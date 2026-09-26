@@ -12,6 +12,7 @@ import gn.lacaeducation.students.application.event.EnrollmentValidatedEvent;
 import gn.lacaeducation.students.application.port.in.EnrollmentUseCase;
 import gn.lacaeducation.students.ClassCapacityPort;
 import gn.lacaeducation.students.application.port.out.EnrollmentRepository;
+import gn.lacaeducation.students.application.port.out.StudentRepository;
 import gn.lacaeducation.students.domain.Enrollment;
 import gn.lacaeducation.students.domain.EnrollmentStatus;
 import gn.lacaeducation.students.EnrollmentType;
@@ -28,6 +29,7 @@ public class InscriptionService implements EnrollmentUseCase, EnrollmentValidati
     private final EnrollmentRepository enrollmentRepository;
     private final ClassCapacityPort classCapacityPort;
     private final ApplicationEventPublisher eventPublisher;
+    private final StudentRepository studentRepository;
 
     @Override
     public Enrollment enroll(EnrollCommand cmd) {
@@ -46,7 +48,10 @@ public class InscriptionService implements EnrollmentUseCase, EnrollmentValidati
                 .academicYearId(cmd.academicYearId())
                 .type(type)
                 .status(EnrollmentStatus.PENDING).enrolledAt(LocalDate.now())
-                .platformAccessOptIn(Boolean.TRUE.equals(cmd.platformAccessOptIn()))
+                // Activé par défaut dès l'inscription (§retour comptable) : seul un appelant qui
+                // envoie explicitement false désactive l'accès — l'absence du champ (ancien appelant,
+                // appel API direct) n'exclut plus l'élève de la plateforme comme c'était le cas avant.
+                .platformAccessOptIn(!Boolean.FALSE.equals(cmd.platformAccessOptIn()))
                 .monthlyPaymentOptIn(Boolean.TRUE.equals(cmd.monthlyPaymentOptIn())).build());
         publishCreated(saved);
         return saved;
@@ -190,7 +195,13 @@ public class InscriptionService implements EnrollmentUseCase, EnrollmentValidati
 
     @Override @Transactional(readOnly = true)
     public List<Enrollment> search(Long studentId, Long classId, Long academicYearId, EnrollmentStatus status) {
-        return enrollmentRepository.search(studentId, classId, academicYearId, status);
+        // §retour comptable : un élève archivé n'a plus rien à gérer activement — son inscription ne
+        // doit plus apparaître dans les listes de travail courantes (studentRepository.existsById
+        // applique déjà le filtre "deleted_at IS NULL" via l'entité JPA, aucune requête N+1 lourde
+        // attendue vu le volume d'inscriptions par tenant).
+        return enrollmentRepository.search(studentId, classId, academicYearId, status).stream()
+                .filter(e -> studentRepository.existsById(e.getStudentId()))
+                .toList();
     }
 
     @Override

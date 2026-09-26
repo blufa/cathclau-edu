@@ -62,7 +62,7 @@ class PayrollServiceTest {
     void defaultNoStaffBenefitRemainder() {
         // La plupart des tests n'atteignent jamais ce calcul (ex. teacherPayrollMass) — lenient pour
         // éviter une erreur "unnecessary stubbing" sur ces tests-là.
-        lenient().when(salaryFeeDeductionUseCase.computeStaffBenefitRemainder(any(), any()))
+        lenient().when(salaryFeeDeductionUseCase.computeStaffBenefitRemainder(any(), any(), any(), any(), any()))
                 .thenReturn(new SalaryFeeDeductionUseCase.StaffBenefitRemainderDeduction(BigDecimal.ZERO, 0));
     }
 
@@ -266,7 +266,7 @@ class PayrollServiceTest {
         Long linkedTeacherId = 42L;
         BigDecimal baseSalary = new BigDecimal("2000000");
 
-        when(salaryFeeDeductionUseCase.computeFeeDeduction(anyLong(), eq(employeeId)))
+        when(salaryFeeDeductionUseCase.computeFeeDeduction(anyLong(), eq(EmployeeType.DIRECTION), eq(employeeId)))
                 .thenReturn(new SalaryFeeDeductionUseCase.FeeDeduction(BigDecimal.ZERO, null, 0));
         when(salaryAdvanceUseCase.applyDeduction(anyLong(), eq(employeeId), any(), any()))
                 .thenReturn(new SalaryAdvanceUseCase.AdvanceDeductionResult(BigDecimal.ZERO, null));
@@ -320,7 +320,7 @@ class PayrollServiceTest {
      * paiement d'une fiche, l'événement porte le net à virer. */
     @Test
     void markPaid_publishesPayslipPaidEventWithNetSalary() {
-        Payslip validated = Payslip.builder().id(1L).tenantId(9L).teacherId(7L)
+        Payslip validated = Payslip.builder().id(1L).tenantId(9L).teacherId(7L).employeeType(EmployeeType.TEACHER)
                 .status(gn.lacaeducation.payroll.domain.PayslipStatus.VALIDATED)
                 .netSalary(new BigDecimal("850000")).teacherName("Mamadou Diallo").teacherPhone("622000000")
                 .periodLabel("Mars 2026").build();
@@ -334,9 +334,9 @@ class PayrollServiceTest {
                         "Mamadou Diallo", "622000000", "Mars 2026"));
         // Répercute la retenue scolarité (si applicable) sur les factures des enfants du salarié,
         // maintenant que la fiche est réellement payée (§payroll ↔ billing).
-        org.mockito.Mockito.verify(salaryFeeDeductionUseCase).applyDeductionAsInvoicePayment(9L, 7L);
+        org.mockito.Mockito.verify(salaryFeeDeductionUseCase).applyDeductionAsInvoicePayment(9L, EmployeeType.TEACHER, 7L);
         // Idem pour le reste non couvert par un avantage personnel partiel.
-        org.mockito.Mockito.verify(salaryFeeDeductionUseCase).applyStaffBenefitRemainderAsInvoicePayment(9L, 7L);
+        org.mockito.Mockito.verify(salaryFeeDeductionUseCase).applyStaffBenefitRemainderAsInvoicePayment(9L, EmployeeType.TEACHER, 7L, null, "Mars 2026");
     }
 
     /** Empêche un double-clic/rejeu de repayer une fiche déjà payée — sans ce garde-fou, la retenue
@@ -351,9 +351,9 @@ class PayrollServiceTest {
         assertThatThrownBy(() -> payrollService.markPaid(1L, "BANK_TRANSFER"))
                 .isInstanceOf(gn.lacaeducation.common.BusinessRuleException.class);
         org.mockito.Mockito.verify(salaryFeeDeductionUseCase, org.mockito.Mockito.never())
-                .applyDeductionAsInvoicePayment(any(), any());
+                .applyDeductionAsInvoicePayment(any(), any(), any());
         org.mockito.Mockito.verify(salaryFeeDeductionUseCase, org.mockito.Mockito.never())
-                .applyStaffBenefitRemainderAsInvoicePayment(any(), any());
+                .applyStaffBenefitRemainderAsInvoicePayment(any(), any(), any(), any(), any());
         org.mockito.Mockito.verify(payslipRepo, org.mockito.Mockito.never()).save(any());
     }
 
@@ -379,7 +379,7 @@ class PayrollServiceTest {
         Long teacherId = 7L;
         when(payslipRepo.existsByTenantIdAndTeacherIdAndPeriodLabelAndEmployeeType(9L, teacherId, "Mars 2026", EmployeeType.TEACHER))
                 .thenReturn(false);
-        when(salaryFeeDeductionUseCase.computeFeeDeduction(9L, teacherId))
+        when(salaryFeeDeductionUseCase.computeFeeDeduction(9L, EmployeeType.TEACHER, teacherId))
                 .thenReturn(new SalaryFeeDeductionUseCase.FeeDeduction(BigDecimal.ZERO, null, 0));
         when(salaryAdvanceUseCase.applyDeduction(eq(9L), eq(teacherId), eq(EmployeeType.TEACHER), any()))
                 .thenReturn(new SalaryAdvanceUseCase.AdvanceDeductionResult(new BigDecimal("50000"), "Avance sur salaire"));
@@ -420,9 +420,9 @@ class PayrollServiceTest {
         Long teacherId = 7L;
         when(payslipRepo.existsByTenantIdAndTeacherIdAndPeriodLabelAndEmployeeType(9L, teacherId, "Mars 2026", EmployeeType.TEACHER))
                 .thenReturn(false);
-        when(salaryFeeDeductionUseCase.computeFeeDeduction(9L, teacherId))
+        when(salaryFeeDeductionUseCase.computeFeeDeduction(9L, EmployeeType.TEACHER, teacherId))
                 .thenReturn(new SalaryFeeDeductionUseCase.FeeDeduction(BigDecimal.ZERO, null, 0));
-        when(salaryFeeDeductionUseCase.computeStaffBenefitRemainder(9L, teacherId))
+        when(salaryFeeDeductionUseCase.computeStaffBenefitRemainder(9L, EmployeeType.TEACHER, teacherId, null, "Mars 2026"))
                 .thenReturn(new SalaryFeeDeductionUseCase.StaffBenefitRemainderDeduction(new BigDecimal("20000"), 1));
         when(salaryAdvanceUseCase.applyDeduction(eq(9L), eq(teacherId), eq(EmployeeType.TEACHER), any()))
                 .thenReturn(new SalaryAdvanceUseCase.AdvanceDeductionResult(BigDecimal.ZERO, null));
@@ -454,6 +454,71 @@ class PayrollServiceTest {
         assertThat(lines.get(0).getLabel()).isEqualTo("Reste avantage personnel (1 enfant(s))");
         assertThat(lines.get(0).getAmount()).isEqualByComparingTo("20000");
         assertThat(result.getNetSalary()).isEqualByComparingTo("280000");
+    }
+
+    /**
+     * Régression réelle (§retour comptable, tenant "Groupe Scolaire Privé Notre Mère" — bug reproduit
+     * en base : personnel administratif salaire 1 000 000 GNF, 2 enfants avec avantage personnel 30 %
+     * chacun scolarisés — la mensualité de chaque enfant est éclatée en 9 factures dès l'inscription
+     * (opt-in mensuel). Avant le correctif, la retenue sommait le solde de TOUTES ces factures
+     * (9 mois × 2 enfants) sur une seule fiche de paie, donnant -1 345 000 GNF de net (plus que le
+     * salaire lui-même) — et cette inflation empêchait aussi toute avance sur salaire de se déduire
+     * (net disponible déjà négatif). Ce test vérifie que : 1) seul le solde du mois de paie précis est
+     * retenu (315 000 = 157 500 × 2 enfants pour novembre, jamais les 9 mois), et 2) une avance sur
+     * salaire active se déduit correctement PAR-DESSUS, sur le net réellement disponible.
+     */
+    @Test
+    void generate_staffBenefitRemainderScopedToPeriod_leavesRoomForSalaryAdvanceDeduction() {
+        Long employeeId = 8L;
+        java.time.LocalDate periodStart = null; // comme en base réelle : period_start/period_end vides
+        when(payslipRepo.existsByTenantIdAndTeacherIdAndPeriodLabelAndEmployeeType(
+                4L, employeeId, "Novembre 2026", EmployeeType.ADMINISTRATIVE)).thenReturn(false);
+        when(salaryFeeDeductionUseCase.computeFeeDeduction(4L, EmployeeType.ADMINISTRATIVE, employeeId))
+                .thenReturn(new SalaryFeeDeductionUseCase.FeeDeduction(BigDecimal.ZERO, null, 0));
+        // Reflète les données réelles : 2 enfants, 157 500 GNF encore dus chacun pour NOVEMBRE
+        // uniquement (le mois d'octobre, déjà réglé au guichet, ne doit rien ajouter).
+        when(salaryFeeDeductionUseCase.computeStaffBenefitRemainder(
+                4L, EmployeeType.ADMINISTRATIVE, employeeId, periodStart, "Novembre 2026"))
+                .thenReturn(new SalaryFeeDeductionUseCase.StaffBenefitRemainderDeduction(new BigDecimal("315000"), 2));
+        // Avance active de 200 000 GNF encore due — l'appel réel calcule min(soldeAvance, netDisponible)
+        // : on vérifie ici que le net disponible transmis reflète bien la retenue avantage personnel
+        // déjà scopée au mois (685 000), jamais un net déjà négatif par la somme de 9 mois.
+        when(salaryAdvanceUseCase.applyDeduction(eq(4L), eq(employeeId), eq(EmployeeType.ADMINISTRATIVE), any()))
+                .thenAnswer(inv -> {
+                    BigDecimal availableNet = inv.getArgument(3);
+                    BigDecimal advanceRemaining = new BigDecimal("200000");
+                    BigDecimal deducted = advanceRemaining.min(availableNet);
+                    return new SalaryAdvanceUseCase.AdvanceDeductionResult(deducted, "Avance sur salaire");
+                });
+
+        AtomicReference<Payslip> saved = new AtomicReference<>();
+        when(payslipRepo.save(any())).thenAnswer(i -> {
+            Payslip p = i.getArgument(0);
+            if (p.getId() == null) p.setId(300L);
+            saved.set(p);
+            return p;
+        });
+        when(payslipRepo.findById(300L)).thenAnswer(i -> Optional.of(saved.get()));
+
+        List<PayslipLine> lines = new ArrayList<>();
+        when(lineRepo.save(any())).thenAnswer(i -> {
+            PayslipLine l = i.getArgument(0);
+            lines.add(l);
+            return l;
+        });
+        when(lineRepo.findByPayslipId(300L)).thenAnswer(i -> lines);
+
+        Payslip result = payrollService.generate(new PayrollService.GenerateCommand(
+                4L, EmployeeType.ADMINISTRATIVE, employeeId, "Salif Soumah", "Novembre 2026",
+                periodStart, null, new BigDecimal("1000000"), null, null,
+                null, null, null, null, null, null, null));
+
+        var staffBenefitLine = lines.stream().filter(l -> l.getLabel().startsWith("Reste avantage personnel")).findFirst().orElseThrow();
+        assertThat(staffBenefitLine.getAmount()).isEqualByComparingTo("315000");
+        var advanceLine = lines.stream().filter(l -> "Avance sur salaire".equals(l.getLabel())).findFirst().orElseThrow();
+        assertThat(advanceLine.getAmount()).isEqualByComparingTo("200000");
+        // 1 000 000 (base) - 315 000 (avantage personnel, UN mois) - 200 000 (avance) = 485 000.
+        assertThat(result.getNetSalary()).isEqualByComparingTo("485000");
     }
 
 }

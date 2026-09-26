@@ -12,8 +12,10 @@ import gn.lacaeducation.communication.domain.*;
 import gn.lacaeducation.grading.application.event.AssessmentScheduledEvent;
 import gn.lacaeducation.grading.application.event.GradeModifiedEvent;
 import gn.lacaeducation.grading.application.event.ReportCardPublishedEvent;
+import gn.lacaeducation.iam.UserPublicInfoProvider;
 import gn.lacaeducation.iam.application.event.PasswordResetRequestedEvent;
 import gn.lacaeducation.iam.application.event.UserAccountCreatedEvent;
+import gn.lacaeducation.payments.PayerDirectory;
 import gn.lacaeducation.payments.PaymentDataProvider;
 import gn.lacaeducation.payments.application.event.PaymentSucceededEvent;
 import gn.lacaeducation.payroll.application.event.PayslipPaidEvent;
@@ -28,7 +30,6 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionalEventListener;
 
-import java.math.BigDecimal;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
@@ -49,14 +50,16 @@ public class CommunicationEventListener {
     private final MessageTemplateRepository templateRepository;
     private final StudentDataProvider studentDataProvider;
     private final PaymentDataProvider paymentDataProvider;
+    private final PayerDirectory payerDirectory;
     private final AcademicsDataProvider academicsDataProvider;
     private final TenantInfoProvider tenantInfoProvider;
     private final gn.lacaeducation.iam.SchoolStaffDirectory schoolStaffDirectory;
+    private final UserPublicInfoProvider userPublicInfoProvider;
 
-    @org.springframework.beans.factory.annotation.Value("${app.platform.reset-password-url:https://app.lacaeducation.gn/reset-password}")
+    @org.springframework.beans.factory.annotation.Value("${app.platform.reset-password-url:https://ecole.jeccamtech.com/reset-password}")
     private String resetPasswordUrl;
 
-    @org.springframework.beans.factory.annotation.Value("${app.platform.login-url:https://app.lacaeducation.gn/login}")
+    @org.springframework.beans.factory.annotation.Value("${app.platform.login-url:https://ecole.jeccamtech.com/login}")
     private String loginUrl;
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
@@ -121,20 +124,21 @@ public class CommunicationEventListener {
             Map<String, String> vars = Map.of(
                     "nom_eleve", fullName(student), "ecole", schoolName(event.tenantId()),
                     "classe", className, "date", date);
+            // Corps raccourcis (§retour comptable, points 9/17) : tiennent en un seul segment SMS
+            // même avec le préfixe "[Nom de l'école]" ajouté automatiquement à l'envoi.
             if ("LATE".equals(status)) {
                 int minutes = event.lateMinutes() != null ? event.lateMinutes() : 0;
                 String arrival = time != null ? " à " + time : "";
-                String defaultBody = "Votre enfant " + fullName(student) + " est arrivé(e) en retard ("
-                        + minutes + " min)" + arrival + " le " + date + " en classe de " + className + ".";
+                String defaultBody = fullName(student) + " : retard de " + minutes + " min" + arrival
+                        + " le " + date + " (classe " + className + ").";
                 dispatch(event.tenantId(), CommunicationReason.LATE, "Retard signalé", defaultBody, vars, event.studentId());
             } else if ("PRESENT".equals(status)) {
                 String arrival = time != null ? " à " + time : "";
-                String defaultBody = "Votre enfant " + fullName(student) + " est bien arrivé(e) à l'école"
-                        + arrival + " le " + date + " en classe de " + className + ".";
+                String defaultBody = fullName(student) + " est arrivé(e)" + arrival + " le " + date
+                        + " (classe " + className + ").";
                 dispatch(event.tenantId(), CommunicationReason.GENERAL, "Arrivée confirmée", defaultBody, vars, event.studentId());
             } else {
-                String defaultBody = "Votre enfant " + fullName(student) + " a été absent(e) le " + date
-                        + " en classe de " + className + ".";
+                String defaultBody = fullName(student) + " absent(e) le " + date + " (classe " + className + ").";
                 dispatch(event.tenantId(), CommunicationReason.ABSENCE, "Absence signalée", defaultBody, vars, event.studentId());
             }
         });
@@ -147,8 +151,7 @@ public class CommunicationEventListener {
             String period = academicsDataProvider.findPeriod(event.periodId()).map(p -> p.label()).orElse("N/A");
             Map<String, String> vars = Map.of(
                     "nom_eleve", fullName(student), "ecole", schoolName(event.tenantId()), "periode", period);
-            String defaultBody = "Le bulletin de " + fullName(student) + " pour " + period
-                    + " est désormais disponible.";
+            String defaultBody = "Bulletin de " + fullName(student) + " (" + period + ") disponible.";
             dispatch(event.tenantId(), CommunicationReason.RESULT, "Bulletin disponible", defaultBody, vars, event.studentId());
         });
     }
@@ -175,31 +178,46 @@ public class CommunicationEventListener {
                         ? "Paiement de " + amount + " reçu pour " + fullName(student) + ". Facture(s) réglée(s)."
                         : "Paiement de " + amount + " reçu pour " + fullName(student) + " (" + coverage + ").";
                 dispatch(event.tenantId(), CommunicationReason.GENERAL, "Paiement reçu", defaultBody, vars, event.studentId());
-                notifyFounder(event.tenantId(), fullName(student), amount);
+                notifyFounder(event.tenantId(), fullName(student), amount, event.collectedByUserId());
             }, () -> log.warn("PaymentSucceededEvent paymentId={} introuvable ; notification paiement ignorée", event.paymentId())),
             () -> log.warn("PaymentSucceededEvent studentId={} introuvable ; notification paiement ignorée", event.studentId()));
     }
 
-    /** Notify the parent of each payment applied to a school-fee invoice, stating the remaining balance (§11.1). */
+    /**
+     * Notify the parent of each payment applied to a school-fee invoice (§11.1, §retour comptable
+     * point 1) : le nom de l'école en tête, le libellé du frais réglé (ex. « Mensualité — Novembre
+     * 2026 ») et la classe de l'élève, puis — sur une nouvelle ligne — le solde encore dû, en
+     * énumérant CHAQUE facture restant à payer (pas seulement celle qui vient d'être réglée : une
+     * mensualité soldée ne doit pas faire disparaître un frais de cantine encore impayé du message).
+     */
     @TransactionalEventListener
     @Async
     public void onInvoicePaymentApplied(InvoicePaymentAppliedEvent event) {
         studentDataProvider.findStudent(event.studentId()).ifPresent(student -> {
             String amount = event.paidAmount() + " GNF";
-            BigDecimal remaining = event.remainingBalance() == null ? BigDecimal.ZERO : event.remainingBalance();
-            boolean settled = remaining.compareTo(BigDecimal.ZERO) <= 0;
-            String remainingStr = remaining + " GNF";
-            Map<String, String> vars = Map.of(
+            String paidLabel = payerDirectory.invoiceFeeInfo(event.invoiceId())
+                    .map(info -> info.periodLabel() == null || info.periodLabel().isBlank()
+                            ? info.feeTypeLabel() : info.feeTypeLabel() + " " + info.periodLabel())
+                    .orElse(null);
+            String className = payerDirectory.className(event.studentId()).orElse(null);
+            List<PayerDirectory.UnpaidInvoiceInfo> unpaid = payerDirectory.unpaidInvoices(event.studentId());
+            String restLine = unpaid.isEmpty()
+                    ? "Aucun reste à payer."
+                    : "Reste à payer : " + unpaid.stream()
+                            .map(u -> u.label() + " (" + u.remaining() + " GNF)")
+                            .collect(java.util.stream.Collectors.joining(", ")) + ".";
+            Map<String, String> vars = new HashMap<>(Map.of(
                     "nom_eleve", fullName(student), "ecole", schoolName(event.tenantId()),
-                    "montant", amount, "reste_a_payer", remainingStr,
-                    "reference", event.reference() == null ? "" : event.reference());
-            String defaultBody = settled
-                    ? "Paiement de " + amount + " reçu pour " + fullName(student)
-                        + ". Facture soldée. Connectez-vous à la plateforme pour la voir."
-                    : "Paiement de " + amount + " reçu pour " + fullName(student) + ". Reste à payer : " + remainingStr
-                        + ". Connectez-vous à la plateforme pour voir la facture.";
+                    "montant", amount, "reste_a_payer", restLine,
+                    "reference", event.reference() == null ? "" : event.reference()));
+            vars.put("classe", className == null ? "" : className);
+            vars.put("objet", paidLabel == null ? "" : paidLabel);
+            String defaultBody = schoolName(event.tenantId()) + "\n"
+                    + "Paiement de " + amount + (paidLabel != null ? " " + paidLabel : "")
+                    + " reçu pour " + fullName(student) + (className != null ? " (" + className + ")" : "") + "\n"
+                    + restLine;
             dispatch(event.tenantId(), CommunicationReason.GENERAL, "Paiement reçu", defaultBody, vars, event.studentId());
-            notifyFounder(event.tenantId(), fullName(student), amount);
+            notifyFounder(event.tenantId(), fullName(student), amount, event.collectedByUserId());
         });
     }
 
@@ -220,8 +238,7 @@ public class CommunicationEventListener {
         Map<String, String> vars = Map.of(
                 "ecole", schoolName(event.tenantId()), "montant", amount, "date", date,
                 "reference", event.invoiceReference() == null ? "" : event.invoiceReference());
-        String defaultBody = "Rappel : une échéance du " + date + " (" + amount
-                + ") n'a pas été réglée. Merci de régulariser rapidement.";
+        String defaultBody = "Rappel : échéance du " + date + " (" + amount + ") non réglée. Merci de régulariser.";
         dispatch(event.tenantId(), CommunicationReason.PAYMENT_DUE, "Échéance de paiement dépassée",
                 defaultBody, vars, event.studentId());
     }
@@ -244,8 +261,8 @@ public class CommunicationEventListener {
         String period = event.periodLabel() != null ? event.periodLabel() : "";
         Map<String, String> vars = Map.of(
                 "nom", name, "ecole", schoolName(event.tenantId()), "montant", amount, "periode", period);
-        String defaultBody = "Bonjour " + name + ", votre salaire net de " + amount
-                + (period.isBlank() ? "" : " pour la période " + period) + " a été payé.";
+        String defaultBody = "Bonjour " + name + ", salaire net de " + amount
+                + (period.isBlank() ? "" : " (" + period + ")") + " payé.";
         Resolved r = resolve(event.tenantId(), CommunicationReason.SALARY_PAID, "Salaire payé", defaultBody, vars);
         communicationUseCase.send(new SendCommunicationCommand(event.tenantId(), null, r.channel(),
                 RecipientType.TEACHER, r.subject(), r.content(), CommunicationReason.SALARY_PAID,
@@ -267,8 +284,7 @@ public class CommunicationEventListener {
         String label = (event.label() != null && !event.label().isBlank()) ? event.label() : "une évaluation";
         Map<String, String> vars = Map.of(
                 "ecole", schoolName(event.tenantId()), "classe", className, "evaluation", label, "date", date);
-        String defaultBody = "Une évaluation (" + label + ") est programmée le " + date
-                + " pour la classe " + className + ".";
+        String defaultBody = "Évaluation (" + label + ") prévue le " + date + " pour la classe " + className + ".";
 
         Resolved r = resolve(event.tenantId(), CommunicationReason.EXAM, "Évaluation programmée", defaultBody, vars);
         List<RecipientTarget> targets = students.stream()
@@ -305,11 +321,12 @@ public class CommunicationEventListener {
         if (hasPhone) {
             // Bref : la connexion se fait par numéro de téléphone, pas par l'identifiant généré
             // (prenom.nom) — l'afficher n'aurait fait qu'induire en erreur sur la façon de se connecter.
+            // Corps raccourci (§retour comptable, points 9/17) pour tenir en un seul segment SMS même
+            // avec le préfixe école, malgré le lien de connexion difficilement compressible.
             Map<String, String> smsVars = Map.of(
                     "nom", fullName, "ecole", schoolName(event.tenantId()),
                     "mot_de_passe", password, "lien", loginUrl);
-            String smsBody = "Bienvenue " + fullName + ". Connectez-vous avec votre numéro et le mot de "
-                    + "passe " + password + " : " + loginUrl;
+            String smsBody = "Connexion avec votre numéro, mot de passe " + password + " : " + loginUrl;
             Resolved r = resolve(event.tenantId(), CommunicationReason.ACCOUNT_CREATED,
                     "Votre compte a été créé", smsBody, smsVars);
             communicationUseCase.send(new SendCommunicationCommand(event.tenantId(), null, CommunicationChannel.SMS,
@@ -419,18 +436,27 @@ public class CommunicationEventListener {
     /**
      * Alerte par SMS le(s) compte(s) SCHOOL_ADMIN de l'école (« fondateur ») dès qu'un paiement est
      * reçu, en plus de la notification au parent — décision produit : pas encore de numéro de
-     * fondateur dédié dans les paramètres du tenant, on utilise le compte administrateur (§communication).
+     * fondateur dédié dans les paramètres du tenant, on utilise le compte administrateur
+     * (§communication). Alerte aussi le comptable/caissier qui a physiquement encaissé
+     * ({@code collectedByUserId}, canal CASH uniquement), pas seulement les SCHOOL_ADMIN — son
+     * numéro peut être différent (point 2, retour comptable). Un même numéro n'est jamais alerté deux
+     * fois (ex. le SCHOOL_ADMIN encaisse lui-même).
      */
-    private void notifyFounder(Long tenantId, String studentName, String amount) {
-        List<RecipientTarget> targets = schoolStaffDirectory.findSchoolAdminContacts(tenantId).stream()
-                .map(gn.lacaeducation.iam.SchoolStaffDirectory.SchoolAdminContact::phone)
-                .filter(phone -> phone != null && !phone.isBlank())
-                .map(phone -> new RecipientTarget(null, phone))
-                .toList();
-        if (targets.isEmpty()) {
-            log.debug("Aucun compte SCHOOL_ADMIN joignable par SMS pour le tenant {}; alerte fondateur ignorée", tenantId);
+    private void notifyFounder(Long tenantId, String studentName, String amount, Long collectedByUserId) {
+        java.util.LinkedHashMap<String, String> byPhone = new java.util.LinkedHashMap<>();
+        schoolStaffDirectory.findSchoolAdminContacts(tenantId).forEach(c -> {
+            if (c.phone() != null && !c.phone().isBlank()) byPhone.putIfAbsent(c.phone(), c.phone());
+        });
+        if (collectedByUserId != null) {
+            userPublicInfoProvider.findUser(collectedByUserId).ifPresent(u -> {
+                if (u.phone() != null && !u.phone().isBlank()) byPhone.putIfAbsent(u.phone(), u.phone());
+            });
+        }
+        if (byPhone.isEmpty()) {
+            log.debug("Aucun compte SCHOOL_ADMIN/comptable joignable par SMS pour le tenant {}; alerte fondateur ignorée", tenantId);
             return;
         }
+        List<RecipientTarget> targets = byPhone.values().stream().map(phone -> new RecipientTarget(null, phone)).toList();
         String school = schoolName(tenantId);
         String content = "[" + school + "] Paiement de " + amount + " reçu pour " + studentName + ".";
         communicationUseCase.send(new SendCommunicationCommand(tenantId, null, CommunicationChannel.SMS,
