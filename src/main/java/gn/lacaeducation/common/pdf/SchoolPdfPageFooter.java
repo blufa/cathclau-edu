@@ -70,12 +70,32 @@ public class SchoolPdfPageFooter extends PdfPageEventHelper {
         cb.restoreState();
 
         Font f = FontFactory.getFont(FontFactory.HELVETICA, 7.5f, SchoolPdfHeader.GREY);
+        com.lowagie.text.pdf.BaseFont bf = f.getCalculatedBaseFont(false);
+        float centerX = (left + right) / 2f;
+        float centerWidth = schoolName.isBlank() ? 0f : bf.getWidthPoint(schoolName, f.getCalculatedSize());
+        String pageText = "Page " + writer.getPageNumber();
+        float rightWidth = bf.getWidthPoint(pageText, f.getCalculatedSize());
+        float gap = 10f;
+        // Zone disponible à gauche, bornée par le nom centré ET la pagination — un contact trop long
+        // ne doit chevaucher ni l'un ni l'autre plutôt que de se superposer visuellement.
+        float leftZoneEnd = Math.min(centerX - centerWidth / 2f, right - rightWidth) - gap;
+        float leftZone = leftZoneEnd - left;
+
         String leftText = contact.isBlank() ? generatedOn : generatedOn + "   —   " + contact;
+        if (bf.getWidthPoint(leftText, f.getCalculatedSize()) > leftZone) {
+            leftText = generatedOn;
+        }
+        if (bf.getWidthPoint(leftText, f.getCalculatedSize()) > leftZone) {
+            while (leftText.length() > 3 && bf.getWidthPoint(leftText + "…", f.getCalculatedSize()) > leftZone) {
+                leftText = leftText.substring(0, leftText.length() - 1);
+            }
+            leftText = leftText + "…";
+        }
+
         ColumnText.showTextAligned(cb, Element.ALIGN_LEFT, new Phrase(leftText, f), left, y, 0);
         if (!schoolName.isBlank()) {
-            ColumnText.showTextAligned(cb, Element.ALIGN_CENTER, new Phrase(schoolName, f), (left + right) / 2f, y, 0);
+            ColumnText.showTextAligned(cb, Element.ALIGN_CENTER, new Phrase(schoolName, f), centerX, y, 0);
         }
-        ColumnText.showTextAligned(cb, Element.ALIGN_RIGHT,
-                new Phrase("Page " + writer.getPageNumber(), f), right, y, 0);
+        ColumnText.showTextAligned(cb, Element.ALIGN_RIGHT, new Phrase(pageText, f), right, y, 0);
     }
 }

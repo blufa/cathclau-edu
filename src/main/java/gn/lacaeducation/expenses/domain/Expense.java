@@ -10,7 +10,12 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
-/** A school expense following the approval workflow DRAFT → SUBMITTED → APPROVED/REJECTED → PAID. */
+/**
+ * Une ligne de dépense au sein d'une {@link MonthlyExpenseSheet} : un article, son montant, et si sa
+ * dépense était nécessaire — plus de circuit d'approbation séparé (§retour comptable, point 31) :
+ * chaque ligne saisie correspond à un montant déjà dépensé, verrouillée dès que la fiche mensuelle
+ * parente est clôturée.
+ */
 @Getter
 @Setter
 @Builder
@@ -19,23 +24,12 @@ import java.time.LocalDateTime;
 public class Expense {
     private Long id;
     private Long tenantId;
-    private Long categoryId;
-    private Long supplierId;
-    /** Ligne d'un budget annuel (AnnualBudget) sur laquelle imputer la dépense — son montant
-     * "réalisé" se met alors à jour automatiquement au paiement (voir AnnualBudgetService). */
-    private Long budgetLineId;
+    /** Fiche de dépense mensuelle à laquelle cette ligne appartient. */
+    private Long sheetId;
     private String label;
     private BigDecimal amount;
-    private String currency;
+    /** Coché si la dépense était nécessaire (vs. confort/optionnel) — filtre de lecture pour la direction. */
+    private boolean necessary;
     private LocalDate expenseDate;
-    private ExpensePaymentMode paymentMode;
-    private String reference;
-    private String justificationUrl;
-    private ExpenseStatus status;
-    private String rejectionReason;
-    private Long decidedBy;
     private LocalDateTime createdAt;
-    private LocalDateTime submittedAt;
-    private LocalDateTime approvedAt;
-    private LocalDateTime paidAt;
 }

@@ -29,10 +29,10 @@ public class PlatformOnboardingListener {
 
     private final CommunicationUseCase communicationUseCase;
 
-    @Value("${app.platform.verification-url:https://app.lacaeducation.gn/verify-email}")
+    @Value("${app.platform.verification-url:https://ecole.jeccamtech.com/verify-email}")
     private String verificationUrl;
 
-    @Value("${app.platform.login-url:https://app.lacaeducation.gn/login}")
+    @Value("${app.platform.login-url:https://ecole.jeccamtech.com/login}")
     private String loginUrl;
 
     @TransactionalEventListener

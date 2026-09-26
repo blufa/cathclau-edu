@@ -42,4 +42,11 @@ public class StudentDirectoryService {
         if (q.length() < 2) return List.of();
         return directory.searchSchools(q);
     }
+
+    /** Suggestions de "dernière classe" déjà saisies sur la plateforme (§retour comptable). */
+    public List<String> searchPreviousClasses(String query) {
+        String q = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
+        if (q.length() < 1) return List.of();
+        return directory.searchPreviousClasses(q);
+    }
 }

@@ -31,4 +31,9 @@ public class Exemption {
     private Long validatedBy;
     private boolean active;
     private LocalDateTime createdAt;
+    /** Vrai si cette exonération représente un avantage personnel (enfant de membre du personnel) —
+     * la facture correspondante est alors marquée {@code DiscountSource.STAFF_BENEFIT} plutôt que
+     * {@code EXEMPTION}, pour que la retenue sur salaire (§payroll,
+     * {@code SalaryFeeDeductionService}) continue de fonctionner malgré l'octroi manuel. */
+    private boolean staffBenefit;
 }

@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
 @Component
 @RequiredArgsConstructor
@@ -19,7 +20,12 @@ class StudentFeePaymentApiAdapter implements StudentFeePaymentApi {
     }
 
     @Override
-    public BigDecimal outstandingStaffBenefitRemainder(Long studentId) {
-        return invoiceUseCase.outstandingStaffBenefitRemainder(studentId);
+    public BigDecimal outstandingStaffBenefitRemainder(Long studentId, LocalDate periodStart, String periodLabel) {
+        return invoiceUseCase.outstandingStaffBenefitRemainder(studentId, periodStart, periodLabel);
+    }
+
+    @Override
+    public void applyStaffBenefitRemainderPayment(Long studentId, LocalDate periodStart, String periodLabel, BigDecimal amount) {
+        invoiceUseCase.applyStaffBenefitRemainderPayment(studentId, periodStart, periodLabel, amount);
     }
 }

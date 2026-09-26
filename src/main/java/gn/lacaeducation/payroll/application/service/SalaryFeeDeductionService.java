@@ -5,7 +5,9 @@ import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.payroll.application.port.in.SalaryFeeDeductionUseCase;
 import gn.lacaeducation.payroll.application.port.out.SalaryFeeDeductionRuleRepository;
+import gn.lacaeducation.payroll.domain.EmployeeType;
 import gn.lacaeducation.payroll.domain.SalaryFeeDeductionRule;
+import gn.lacaeducation.staff.EmployeePublicInfoProvider;
 import gn.lacaeducation.staff.TeacherPublicInfoProvider;
 import gn.lacaeducation.students.ParentAccessProvider;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.List;
 
 @Service
@@ -23,8 +26,19 @@ public class SalaryFeeDeductionService implements SalaryFeeDeductionUseCase {
 
     private final SalaryFeeDeductionRuleRepository repo;
     private final TeacherPublicInfoProvider teacherProvider;
+    private final EmployeePublicInfoProvider employeeProvider;
     private final ParentAccessProvider parentAccessProvider;
     private final StudentFeePaymentApi studentFeePaymentApi;
+
+    /** Résout le compte utilisateur du salarié dans le bon référentiel — enseignant ou personnel
+     * administratif/direction/support (§retour comptable : la retenue scolarité ne doit pas se limiter
+     * aux enseignants). */
+    private Long resolveUserId(EmployeeType employeeType, Long staffId) {
+        if (employeeType == EmployeeType.TEACHER) {
+            return teacherProvider.findUserIdByTeacherId(staffId).orElse(null);
+        }
+        return employeeProvider.findUserIdByEmployeeId(staffId).orElse(null);
+    }
 
     @Override
     public SalaryFeeDeductionRule create(Long tenantId, RuleCommand c) {
@@ -60,8 +74,8 @@ public class SalaryFeeDeductionService implements SalaryFeeDeductionUseCase {
 
     @Override
     @Transactional(readOnly = true)
-    public FeeDeduction computeFeeDeduction(Long tenantId, Long teacherId) {
-        Long userId = teacherProvider.findUserIdByTeacherId(teacherId).orElse(null);
+    public FeeDeduction computeFeeDeduction(Long tenantId, EmployeeType employeeType, Long staffId) {
+        Long userId = resolveUserId(employeeType, staffId);
         if (userId == null) {
             return new FeeDeduction(BigDecimal.ZERO, null, 0);
         }
@@ -88,8 +102,8 @@ public class SalaryFeeDeductionService implements SalaryFeeDeductionUseCase {
     }
 
     @Override
-    public void applyDeductionAsInvoicePayment(Long tenantId, Long teacherId) {
-        Long userId = teacherProvider.findUserIdByTeacherId(teacherId).orElse(null);
+    public void applyDeductionAsInvoicePayment(Long tenantId, EmployeeType employeeType, Long staffId) {
+        Long userId = resolveUserId(employeeType, staffId);
         if (userId == null) return;
         List<Long> childIds = parentAccessProvider.findChildStudentIdsWithValidatedEnrollment(userId);
         if (childIds.isEmpty()) return;
@@ -114,13 +128,14 @@ public class SalaryFeeDeductionService implements SalaryFeeDeductionUseCase {
 
     @Override
     @Transactional(readOnly = true)
-    public StaffBenefitRemainderDeduction computeStaffBenefitRemainder(Long tenantId, Long teacherId) {
-        Long userId = teacherProvider.findUserIdByTeacherId(teacherId).orElse(null);
+    public StaffBenefitRemainderDeduction computeStaffBenefitRemainder(Long tenantId, EmployeeType employeeType, Long staffId,
+                                                                        LocalDate periodStart, String periodLabel) {
+        Long userId = resolveUserId(employeeType, staffId);
         if (userId == null) return new StaffBenefitRemainderDeduction(BigDecimal.ZERO, 0);
         BigDecimal total = BigDecimal.ZERO;
         int concerned = 0;
         for (Long studentId : parentAccessProvider.findChildStudentIdsWithValidatedEnrollment(userId)) {
-            BigDecimal remainder = studentFeePaymentApi.outstandingStaffBenefitRemainder(studentId);
+            BigDecimal remainder = studentFeePaymentApi.outstandingStaffBenefitRemainder(studentId, periodStart, periodLabel);
             if (remainder != null && remainder.signum() > 0) {
                 total = total.add(remainder);
                 concerned++;
@@ -130,13 +145,14 @@ public class SalaryFeeDeductionService implements SalaryFeeDeductionUseCase {
     }
 
     @Override
-    public void applyStaffBenefitRemainderAsInvoicePayment(Long tenantId, Long teacherId) {
-        Long userId = teacherProvider.findUserIdByTeacherId(teacherId).orElse(null);
+    public void applyStaffBenefitRemainderAsInvoicePayment(Long tenantId, EmployeeType employeeType, Long staffId,
+                                                            LocalDate periodStart, String periodLabel) {
+        Long userId = resolveUserId(employeeType, staffId);
         if (userId == null) return;
         for (Long studentId : parentAccessProvider.findChildStudentIdsWithValidatedEnrollment(userId)) {
-            BigDecimal remainder = studentFeePaymentApi.outstandingStaffBenefitRemainder(studentId);
+            BigDecimal remainder = studentFeePaymentApi.outstandingStaffBenefitRemainder(studentId, periodStart, periodLabel);
             if (remainder != null && remainder.signum() > 0) {
-                studentFeePaymentApi.applyMonthlyPayment(tenantId, studentId, remainder);
+                studentFeePaymentApi.applyStaffBenefitRemainderPayment(studentId, periodStart, periodLabel, remainder);
             }
         }
     }

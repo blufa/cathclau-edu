@@ -10,6 +10,10 @@ import gn.lacaeducation.communication.domain.CommunicationChannel;
 import gn.lacaeducation.communication.domain.RecipientType;
 import gn.lacaeducation.iam.SchoolStaffDirectory;
 import gn.lacaeducation.iam.SchoolStaffDirectory.SchoolAdminContact;
+import gn.lacaeducation.iam.UserPublicInfoProvider;
+import gn.lacaeducation.iam.UserPublicInfoProvider.UserPublicInfo;
+import gn.lacaeducation.billing.application.event.InvoicePaymentAppliedEvent;
+import gn.lacaeducation.payments.PayerDirectory;
 import gn.lacaeducation.payments.PaymentDataProvider;
 import gn.lacaeducation.payments.PaymentPublicInfo;
 import gn.lacaeducation.payments.application.event.PaymentSucceededEvent;
@@ -39,13 +43,16 @@ class CommunicationEventListenerTest {
     @Mock MessageTemplateRepository templateRepository;
     @Mock StudentDataProvider studentDataProvider;
     @Mock PaymentDataProvider paymentDataProvider;
+    @Mock PayerDirectory payerDirectory;
     @Mock AcademicsDataProvider academicsDataProvider;
     @Mock TenantInfoProvider tenantInfoProvider;
     @Mock SchoolStaffDirectory schoolStaffDirectory;
+    @Mock UserPublicInfoProvider userPublicInfoProvider;
 
     private CommunicationEventListener listener() {
         return new CommunicationEventListener(communicationUseCase, templateRepository, studentDataProvider,
-                paymentDataProvider, academicsDataProvider, tenantInfoProvider, schoolStaffDirectory);
+                paymentDataProvider, payerDirectory, academicsDataProvider, tenantInfoProvider, schoolStaffDirectory,
+                userPublicInfoProvider);
     }
 
     private final StudentPublicInfo student = new StudentPublicInfo(
@@ -98,5 +105,91 @@ class CommunicationEventListenerTest {
         listener().onPaymentSucceeded(new PaymentSucceededEvent(10L, 7L, 1L, null, new BigDecimal("50000"), null));
 
         verify(communicationUseCase, times(0)).send(any());
+    }
+
+    /**
+     * Un encaissement guichet (canal CASH) doit aussi alerter le comptable/caissier qui a
+     * physiquement encaissé, pas seulement le(s) compte(s) SCHOOL_ADMIN — son numéro peut être
+     * différent (§retour comptable, point 2).
+     */
+    @Test
+    void onPaymentSucceeded_alsoNotifiesCollectorWhenDifferentFromSchoolAdmin() {
+        when(studentDataProvider.findStudent(7L)).thenReturn(Optional.of(student));
+        when(studentDataProvider.hasPlatformAccessOptIn(7L)).thenReturn(true);
+        when(paymentDataProvider.findPayment(1L))
+                .thenReturn(Optional.of(new PaymentPublicInfo(1L, "PAY-1", new BigDecimal("50000"), "CASH", null, null)));
+        when(studentDataProvider.findParentsByStudent(7L))
+                .thenReturn(List.of(new ParentPublicInfo(1L, "Mariama", "Bah", null, "621000000")));
+        when(schoolStaffDirectory.findSchoolAdminContacts(10L))
+                .thenReturn(List.of(new SchoolAdminContact("622000000", "Directeur École")));
+        when(userPublicInfoProvider.findUser(99L))
+                .thenReturn(Optional.of(new UserPublicInfo(99L, "Fatoumata", "Camara", "628000000")));
+        when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.of(
+                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
+        when(templateRepository.findByTenantIdAndReason(any(), any())).thenReturn(Optional.empty());
+
+        listener().onPaymentSucceeded(new PaymentSucceededEvent(10L, 7L, 1L, null, new BigDecimal("50000"), 99L));
+
+        ArgumentCaptor<SendCommunicationCommand> captor = ArgumentCaptor.forClass(SendCommunicationCommand.class);
+        verify(communicationUseCase, times(2)).send(captor.capture());
+
+        SendCommunicationCommand founderCmd = captor.getAllValues().stream()
+                .filter(c -> c.recipientType() == RecipientType.GROUP).findFirst().orElseThrow();
+        assertThat(founderCmd.recipients()).extracting("destination")
+                .containsExactlyInAnyOrder("622000000", "628000000");
+    }
+
+    // ── onInvoicePaymentApplied (§retour comptable, point 1 : école + libellé + classe + reste à
+    // payer détaillé, pas seulement le solde de la facture réglée) ────────────────────────────────────
+
+    @Test
+    void onInvoicePaymentApplied_includesSchoolClassAndFeeLabel_andEnumeratesOtherUnpaidInvoices() {
+        when(studentDataProvider.findStudent(7L)).thenReturn(Optional.of(student));
+        when(studentDataProvider.hasPlatformAccessOptIn(7L)).thenReturn(true);
+        when(studentDataProvider.findParentsByStudent(7L))
+                .thenReturn(List.of(new ParentPublicInfo(1L, "Mariama", "Bah", null, "621000000")));
+        when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.of(
+                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
+        when(templateRepository.findByTenantIdAndReason(any(), any())).thenReturn(Optional.empty());
+        when(schoolStaffDirectory.findSchoolAdminContacts(10L)).thenReturn(List.of());
+        when(payerDirectory.invoiceFeeInfo(50L)).thenReturn(Optional.of(
+                new PayerDirectory.InvoiceFeeInfo("Mensualité", "Novembre 2026", null, null, null)));
+        when(payerDirectory.className(7L)).thenReturn(Optional.of("7ème A"));
+        when(payerDirectory.unpaidInvoices(7L)).thenReturn(List.of(
+                new PayerDirectory.UnpaidInvoiceInfo("Cantine", new BigDecimal("20000"))));
+
+        listener().onInvoicePaymentApplied(new InvoicePaymentAppliedEvent(
+                10L, 7L, 50L, "FAC-1", new BigDecimal("50000"), BigDecimal.ZERO, null));
+
+        ArgumentCaptor<SendCommunicationCommand> captor = ArgumentCaptor.forClass(SendCommunicationCommand.class);
+        verify(communicationUseCase).send(captor.capture());
+        String content = captor.getValue().content();
+        assertThat(content).startsWith("École Test");
+        assertThat(content).contains("Mensualité Novembre 2026");
+        assertThat(content).contains("Awa Diallo").contains("7ème A");
+        // La mensualité réglée n'efface pas un autre frais encore dû (cantine) du message.
+        assertThat(content).contains("Reste à payer : Cantine (20000 GNF).");
+    }
+
+    @Test
+    void onInvoicePaymentApplied_noOtherUnpaidInvoices_saysNoneRemaining() {
+        when(studentDataProvider.findStudent(7L)).thenReturn(Optional.of(student));
+        when(studentDataProvider.hasPlatformAccessOptIn(7L)).thenReturn(true);
+        when(studentDataProvider.findParentsByStudent(7L))
+                .thenReturn(List.of(new ParentPublicInfo(1L, "Mariama", "Bah", null, "621000000")));
+        when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.of(
+                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
+        when(templateRepository.findByTenantIdAndReason(any(), any())).thenReturn(Optional.empty());
+        when(schoolStaffDirectory.findSchoolAdminContacts(10L)).thenReturn(List.of());
+        when(payerDirectory.invoiceFeeInfo(50L)).thenReturn(Optional.empty());
+        when(payerDirectory.className(7L)).thenReturn(Optional.empty());
+        when(payerDirectory.unpaidInvoices(7L)).thenReturn(List.of());
+
+        listener().onInvoicePaymentApplied(new InvoicePaymentAppliedEvent(
+                10L, 7L, 50L, "FAC-1", new BigDecimal("50000"), BigDecimal.ZERO, null));
+
+        ArgumentCaptor<SendCommunicationCommand> captor = ArgumentCaptor.forClass(SendCommunicationCommand.class);
+        verify(communicationUseCase).send(captor.capture());
+        assertThat(captor.getValue().content()).contains("Aucun reste à payer.");
     }
 }

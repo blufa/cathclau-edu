@@ -3,6 +3,7 @@ package gn.lacaeducation.students.application.service;
 import gn.lacaeducation.common.ConflictException;
 import gn.lacaeducation.common.QuotaExceededException;
 import gn.lacaeducation.platform.TenantQuotaService;
+import gn.lacaeducation.students.application.event.StudentArchivedEvent;
 import gn.lacaeducation.students.application.event.StudentCreatedEvent;
 import gn.lacaeducation.students.application.port.in.StudentUseCase.CreateStudentCommand;
 import gn.lacaeducation.students.application.port.out.StudentDocumentRepository;
@@ -106,7 +107,9 @@ class EleveServiceTest {
     }
 
     @Test
-    void delete_softDeletesStudent() {
+    void delete_softDeletesStudent_andPublishesArchivedEvent() {
+        // §retour comptable : un élève archivé ne doit plus rien devoir — voir StudentArchivedEvent,
+        // consommé côté billing pour annuler ses factures encore dues.
         Student s = Student.builder().id(7L).tenantId(10L).build();
         when(studentRepository.findById(7L)).thenReturn(Optional.of(s));
         when(studentRepository.save(any())).thenAnswer(i -> i.getArgument(0));
@@ -115,6 +118,7 @@ class EleveServiceTest {
 
         assertThat(s.getDeletedAt()).isNotNull();
         verify(studentRepository).save(s);
+        verify(eventPublisher).publishEvent(new StudentArchivedEvent(10L, 7L));
     }
 
     @Test

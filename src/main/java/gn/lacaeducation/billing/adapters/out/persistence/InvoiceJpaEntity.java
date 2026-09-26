@@ -33,4 +33,8 @@ public class InvoiceJpaEntity {
     @Convert(converter = InstallmentMonthsConverter.class)
     @Column(name = "paid_months")
     private List<String> paidMonths;
+    /** Utilisateur ayant physiquement encaissé le dernier paiement appliqué à cette facture (canal
+     * CASH uniquement) — affiché en pied de facture PDF ("Encaissé par"). Null tant qu'aucun paiement
+     * guichet n'a encore été appliqué. */
+    @Column(name = "collected_by_user_id") private Long collectedByUserId;
 }

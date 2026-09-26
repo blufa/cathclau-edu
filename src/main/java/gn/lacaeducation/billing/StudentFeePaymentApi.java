@@ -1,6 +1,7 @@
 package gn.lacaeducation.billing;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
 /**
  * API publique du module billing : permet à un autre module qui perçoit déjà de l'argent au nom de
@@ -15,9 +16,18 @@ public interface StudentFeePaymentApi {
      * ou si l'élève n'a aucune facture de mensualité éligible. */
     void applyMonthlyPayment(Long tenantId, Long studentId, BigDecimal amount);
 
-    /** Solde total restant dû sur les factures de mensualité de cet élève dont la remise appliquée est
-     * un avantage personnel PARTIEL (école-employeur) — le « reste » non pris en charge par l'école,
-     * destiné à être retenu automatiquement sur le salaire du parent employé plutôt que facturé au
-     * guichet. 0 si aucune facture éligible. */
-    BigDecimal outstandingStaffBenefitRemainder(Long studentId);
+    /** Solde restant dû, pour le mois de paie {@code periodStart}/{@code periodLabel} uniquement, sur
+     * les factures de cet élève dont la remise appliquée est un avantage personnel PARTIEL
+     * (école-employeur) — le « reste » non pris en charge par l'école, destiné à être retenu
+     * automatiquement sur le salaire du parent employé plutôt que facturé au guichet. Jamais la somme
+     * de tous les mois déjà générés d'avance (§retour comptable, bug corrigé — une mensualité éclatée
+     * en 9 factures dès l'inscription ne doit faire retenir qu'UN mois par fiche de paie). 0 si aucune
+     * facture éligible pour ce mois. */
+    BigDecimal outstandingStaffBenefitRemainder(Long studentId, LocalDate periodStart, String periodLabel);
+
+    /** Applique {@code amount} comme paiement sur la facture avantage personnel correspondant
+     * précisément à ce mois de paie (même portée que {@link #outstandingStaffBenefitRemainder}) —
+     * jamais une répartition générique la plus ancienne d'abord (voir {@link #applyMonthlyPayment}),
+     * qui risquerait de solder le mauvais mois. */
+    void applyStaffBenefitRemainderPayment(Long studentId, LocalDate periodStart, String periodLabel, BigDecimal amount);
 }

@@ -9,9 +9,12 @@ import java.time.LocalDate;
 import java.util.List;
 
 public interface ExemptionUseCase {
-    /** {@code feeTypes} : un seul type, plusieurs, ou vide/null = tous les frais. */
+    /** {@code feeTypes} : un seul type, plusieurs, ou vide/null = tous les frais. {@code staffBenefit} :
+     * vrai si cet octroi représente un avantage personnel (enfant de membre du personnel) — voir
+     * {@link gn.lacaeducation.billing.domain.Exemption#isStaffBenefit()}. */
     record GrantExemptionCommand(Long studentId, ExemptionType type, BigDecimal percentage, BigDecimal amount,
-                                 List<FeeType> feeTypes, String reason, LocalDate startDate, LocalDate endDate) {}
+                                 List<FeeType> feeTypes, String reason, LocalDate startDate, LocalDate endDate,
+                                 Boolean staffBenefit) {}
 
     /** Accorde une exonération (traçée : responsable = {@code validatedBy}). */
     Exemption grant(Long tenantId, GrantExemptionCommand command, Long validatedBy);
@@ -27,7 +30,7 @@ public interface ExemptionUseCase {
      * TOTAL/PARTIAL applicables (jamais cumulées entre elles) ; {@code exceptionalAmount} = la somme
      * des remises EXCEPTIONAL applicables (montants fixes, décisions ponctuelles documentées —
      * cumulables entre elles et avec le pourcentage). */
-    record ApplicableExemption(BigDecimal percentage, String percentageReason,
+    record ApplicableExemption(BigDecimal percentage, String percentageReason, boolean staffBenefit,
                                BigDecimal exceptionalAmount, String exceptionalReason) {}
 
     ApplicableExemption computeApplicable(Long studentId, FeeType feeType);
