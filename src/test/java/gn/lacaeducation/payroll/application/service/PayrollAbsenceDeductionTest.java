@@ -60,7 +60,7 @@ class PayrollAbsenceDeductionTest {
         savedLines = new ArrayList<>();
         when(salaryAdvanceUseCase.applyDeduction(any(), any(), any(), any()))
                 .thenReturn(new SalaryAdvanceUseCase.AdvanceDeductionResult(BigDecimal.ZERO, null));
-        when(salaryFeeDeductionUseCase.computeStaffBenefitRemainder(any(), any()))
+        when(salaryFeeDeductionUseCase.computeStaffBenefitRemainder(any(), any(), any(), any(), any()))
                 .thenReturn(new SalaryFeeDeductionUseCase.StaffBenefitRemainderDeduction(BigDecimal.ZERO, 0));
 
         // payslipRepo.save : assigne un id au premier passage, renvoie l'entité.
@@ -75,7 +75,7 @@ class PayrollAbsenceDeductionTest {
         when(lineRepo.save(any())).thenAnswer(i -> { savedLines.add(i.getArgument(0)); return i.getArgument(0); });
         when(lineRepo.findByPayslipId(anyLong())).thenAnswer(i -> savedLines);
         // Aucune retenue de frais scolaires dans ce scénario.
-        lenient().when(salaryFeeDeductionUseCase.computeFeeDeduction(anyLong(), anyLong()))
+        lenient().when(salaryFeeDeductionUseCase.computeFeeDeduction(anyLong(), any(), anyLong()))
                 .thenReturn(new FeeDeduction(BigDecimal.ZERO, null, 0));
     }
 

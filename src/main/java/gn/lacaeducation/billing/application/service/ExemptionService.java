@@ -53,6 +53,7 @@ public class ExemptionService implements ExemptionUseCase {
                 .percentage(percentage).amount(amount).feeTypes(c.feeTypes()).reason(c.reason())
                 .startDate(c.startDate()).endDate(c.endDate()).validatedBy(validatedBy)
                 .active(true).createdAt(LocalDateTime.now())
+                .staffBenefit(c.staffBenefit() != null && c.staffBenefit())
                 .build());
     }
 
@@ -88,6 +89,7 @@ public class ExemptionService implements ExemptionUseCase {
 
         BigDecimal bestPercentage = BigDecimal.ZERO;
         String percentageReason = null;
+        boolean bestIsStaffBenefit = false;
         BigDecimal exceptionalTotal = BigDecimal.ZERO;
         List<String> exceptionalReasons = new java.util.ArrayList<>();
         for (Exemption e : active) {
@@ -101,9 +103,10 @@ public class ExemptionService implements ExemptionUseCase {
             } else if (e.getPercentage() != null && e.getPercentage().compareTo(bestPercentage) > 0) {
                 bestPercentage = e.getPercentage();
                 percentageReason = e.getReason();
+                bestIsStaffBenefit = e.isStaffBenefit();
             }
         }
-        return new ApplicableExemption(bestPercentage, percentageReason,
+        return new ApplicableExemption(bestPercentage, percentageReason, bestIsStaffBenefit,
                 exceptionalTotal, exceptionalReasons.isEmpty() ? null : String.join(", ", exceptionalReasons));
     }
 }

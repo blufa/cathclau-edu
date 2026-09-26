@@ -116,7 +116,7 @@ public final class SchoolPdfHeader {
         logoCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
         Image logo = loadLogo(info.logo());
         if (logo != null) {
-            logo.scaleToFit(46, 46);
+            logo.scaleToFit(66, 66);
             logo.setAlignment(Element.ALIGN_MIDDLE);
             logoCell.addElement(logo);
         }

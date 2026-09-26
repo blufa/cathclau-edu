@@ -34,7 +34,7 @@ class ExemptionServiceTest {
         when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
 
         Exemption e = service.grant(1L, new GrantExemptionCommand(
-                9L, ExemptionType.TOTAL, null, null, null, "Orphelin", null, null), 42L);
+                9L, ExemptionType.TOTAL, null, null, null, "Orphelin", null, null, null), 42L);
 
         assertThat(e.getPercentage()).isEqualByComparingTo("100");
         assertThat(e.getValidatedBy()).isEqualTo(42L);
@@ -44,21 +44,21 @@ class ExemptionServiceTest {
     @Test
     void grant_partialWithoutPercentage_throws() {
         assertThatThrownBy(() -> service.grant(1L, new GrantExemptionCommand(
-                9L, ExemptionType.PARTIAL, null, null, null, "x", null, null), 42L))
+                9L, ExemptionType.PARTIAL, null, null, null, "x", null, null, null), 42L))
                 .isInstanceOf(BusinessRuleException.class);
     }
 
     @Test
     void grant_exceptionalWithoutAmount_throws() {
         assertThatThrownBy(() -> service.grant(1L, new GrantExemptionCommand(
-                9L, ExemptionType.EXCEPTIONAL, null, null, null, "geste", null, null), 42L))
+                9L, ExemptionType.EXCEPTIONAL, null, null, null, "geste", null, null, null), 42L))
                 .isInstanceOf(BusinessRuleException.class);
     }
 
     @Test
     void grant_blankReason_throws() {
         assertThatThrownBy(() -> service.grant(1L, new GrantExemptionCommand(
-                9L, ExemptionType.TOTAL, null, null, null, "  ", null, null), 42L))
+                9L, ExemptionType.TOTAL, null, null, null, "  ", null, null, null), 42L))
                 .isInstanceOf(BusinessRuleException.class);
     }
 

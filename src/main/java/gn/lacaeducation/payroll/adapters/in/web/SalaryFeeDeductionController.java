@@ -4,6 +4,7 @@ import gn.lacaeducation.common.TenantContext;
 import gn.lacaeducation.payroll.application.port.in.SalaryFeeDeductionUseCase;
 import gn.lacaeducation.payroll.application.port.in.SalaryFeeDeductionUseCase.FeeDeduction;
 import gn.lacaeducation.payroll.application.port.in.SalaryFeeDeductionUseCase.RuleCommand;
+import gn.lacaeducation.payroll.domain.EmployeeType;
 import gn.lacaeducation.payroll.domain.SalaryFeeDeductionRule;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -61,7 +62,8 @@ public class SalaryFeeDeductionController {
     @Operation(summary = "Retenue de frais scolaires calculée pour un employé (aperçu avant paie)")
     @PreAuthorize("hasAuthority('paie:manage')")
     @GetMapping("/preview")
-    public FeeDeduction preview(@RequestParam Long teacherId) {
-        return useCase.computeFeeDeduction(TenantContext.get(), teacherId);
+    public FeeDeduction preview(@RequestParam Long teacherId,
+                                 @RequestParam(required = false, defaultValue = "TEACHER") EmployeeType employeeType) {
+        return useCase.computeFeeDeduction(TenantContext.get(), employeeType, teacherId);
     }
 }

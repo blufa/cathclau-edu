@@ -45,4 +45,8 @@ public class Invoice {
      * mois sont couverts, pas seulement un solde global. Vide/null pour une facture d'un seul mois
      * (le periodLabel suffit alors). Alimenté par InvoiceUseCase#applyPayment. */
     private List<String> paidMonths;
+    /** Utilisateur ayant physiquement encaissé le dernier paiement appliqué à cette facture (canal
+     * CASH uniquement) — affiché en pied de facture PDF ("Encaissé par"). Null tant qu'aucun paiement
+     * guichet n'a encore été appliqué. */
+    private Long collectedByUserId;
 }

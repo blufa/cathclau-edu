@@ -54,4 +54,11 @@ class ParentAccessProviderAdapter implements ParentAccessProvider {
                 .distinct()
                 .toList();
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.Optional<Long> findUserIdByParentId(Long parentId) {
+        if (parentId == null) return java.util.Optional.empty();
+        return parentRepository.findById(parentId).map(gn.lacaeducation.students.domain.Parent::getUserId);
+    }
 }

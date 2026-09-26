@@ -19,4 +19,9 @@ public interface EmployeePublicInfoProvider {
     /** Résout la fiche personnel liée à un compte utilisateur (pour reconnaître un enfant de membre du
      * personnel non-enseignant — §billing, avantage personnel — au même titre qu'un enfant d'enseignant). */
     Optional<Long> findEmployeeIdByUserId(Long userId);
+
+    /** Compte utilisateur lié à une fiche personnel non-enseignant (pour la paie : retrouver ses enfants
+     * scolarisés — symétrique de {@code TeacherPublicInfoProvider#findUserIdByTeacherId} pour les
+     * salariés administratifs/direction/support). */
+    Optional<Long> findUserIdByEmployeeId(Long employeeId);
 }

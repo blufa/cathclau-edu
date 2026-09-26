@@ -15,6 +15,6 @@ class UserPublicInfoProviderAdapter implements UserPublicInfoProvider {
     @Override
     public Optional<UserPublicInfo> findUser(Long userId) {
         if (userId == null) return Optional.empty();
-        return jpa.findById(userId).map(u -> new UserPublicInfo(u.getId(), u.getFirstName(), u.getLastName()));
+        return jpa.findById(userId).map(u -> new UserPublicInfo(u.getId(), u.getFirstName(), u.getLastName(), u.getPhone()));
     }
 }

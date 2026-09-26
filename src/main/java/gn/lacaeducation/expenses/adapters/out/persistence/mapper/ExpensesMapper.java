@@ -1,17 +1,15 @@
 package gn.lacaeducation.expenses.adapters.out.persistence.mapper;
 
 import gn.lacaeducation.expenses.adapters.out.persistence.AnnualBudgetJpaEntity;
-import gn.lacaeducation.expenses.adapters.out.persistence.BudgetJpaEntity;
 import gn.lacaeducation.expenses.adapters.out.persistence.BudgetLineJpaEntity;
-import gn.lacaeducation.expenses.adapters.out.persistence.ExpenseCategoryJpaEntity;
 import gn.lacaeducation.expenses.adapters.out.persistence.ExpenseJpaEntity;
-import gn.lacaeducation.expenses.adapters.out.persistence.SupplierJpaEntity;
+import gn.lacaeducation.expenses.adapters.out.persistence.MonthlyExpenseSheetJpaEntity;
+import gn.lacaeducation.expenses.adapters.out.persistence.RevenueLineJpaEntity;
 import gn.lacaeducation.expenses.domain.AnnualBudget;
-import gn.lacaeducation.expenses.domain.Budget;
 import gn.lacaeducation.expenses.domain.BudgetLine;
 import gn.lacaeducation.expenses.domain.Expense;
-import gn.lacaeducation.expenses.domain.ExpenseCategory;
-import gn.lacaeducation.expenses.domain.Supplier;
+import gn.lacaeducation.expenses.domain.MonthlyExpenseSheet;
+import gn.lacaeducation.expenses.domain.RevenueLine;
 import org.mapstruct.Mapper;
 
 @Mapper(componentModel = "spring")
@@ -19,14 +17,11 @@ public interface ExpensesMapper {
     Expense toDomain(ExpenseJpaEntity e);
     ExpenseJpaEntity toEntity(Expense d);
 
-    Supplier toDomain(SupplierJpaEntity e);
-    SupplierJpaEntity toEntity(Supplier d);
+    MonthlyExpenseSheet toDomain(MonthlyExpenseSheetJpaEntity e);
+    MonthlyExpenseSheetJpaEntity toEntity(MonthlyExpenseSheet d);
 
-    ExpenseCategory toDomain(ExpenseCategoryJpaEntity e);
-    ExpenseCategoryJpaEntity toEntity(ExpenseCategory d);
-
-    Budget toDomain(BudgetJpaEntity e);
-    BudgetJpaEntity toEntity(Budget d);
+    RevenueLine toDomain(RevenueLineJpaEntity e);
+    RevenueLineJpaEntity toEntity(RevenueLine d);
 
     AnnualBudget toDomain(AnnualBudgetJpaEntity e);
     AnnualBudgetJpaEntity toEntity(AnnualBudget d);

@@ -1,5 +1,6 @@
 package gn.lacaeducation.payments;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -19,6 +20,9 @@ public interface PayerDirectory {
      * (Djomy), et iam de platform (événements) — une dépendance directe payments → iam boucle.
      */
     Optional<String> operatorName(Long userId);
+    /** Téléphone de l'agent ayant encaissé, imprimé sous son nom dans le bloc signature du reçu
+     * (§retour comptable) — distinct du téléphone de l'école affiché en en-tête. */
+    Optional<String> operatorPhone(Long userId);
     /** Libellé de l'année scolaire courante du tenant (ex. « 2025-2026 »), imprimé sur le reçu officiel. */
     Optional<String> currentAcademicYearLabel(Long tenantId);
 
@@ -36,4 +40,25 @@ public interface PayerDirectory {
 
     /** Nature du frais couvert par une facture (pour l'observation « Inscription »/« Mensualité » du reçu). */
     Optional<InvoiceFeeInfo> invoiceFeeInfo(Long invoiceId);
+
+    /** Une facture encore due (impayée ou partielle) d'un élève — libellé lisible (ex. « Mensualité —
+     * Novembre 2026 ») et solde restant, pour énumérer le « reste à payer » dans le SMS de confirmation
+     * d'encaissement (§retour comptable, point 1) sans se limiter à la seule facture réglée. */
+    record UnpaidInvoiceInfo(String label, java.math.BigDecimal remaining) {}
+
+    /** Toutes les factures encore dues de l'élève sur l'année scolaire courante du tenant (une
+     * facture sans année renseignée reste incluse plutôt que silencieusement perdue), triées par date
+     * d'émission croissante. Vide si tout est réglé. Volontairement limité à l'année courante — une
+     * dette d'une année révolue ne doit pas gonfler le "reste à payer" affiché sur un reçu du moment
+     * (§retour comptable). */
+    List<UnpaidInvoiceInfo> unpaidInvoices(Long studentId);
+
+    /** Une facture de l'élève — quel que soit son statut (sauf annulée) — pour le tableau complet du
+     * reçu de paiement (§retour comptable) : le parent voit d'un coup d'œil toutes les factures de son
+     * enfant, réglées ou non, pas seulement celle(s) couvertes par le paiement en cours. */
+    record InvoiceRowInfo(String reference, java.math.BigDecimal amount, String label, boolean paid) {}
+
+    /** Toutes les factures non annulées de l'élève sur l'année scolaire courante du tenant (même
+     * portée que {@link #unpaidInvoices}), triées par date d'émission croissante. */
+    List<InvoiceRowInfo> studentInvoices(Long studentId);
 }

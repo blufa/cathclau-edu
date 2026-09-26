@@ -149,7 +149,8 @@ public class PaymentService implements PaymentUseCase {
         eventPublisher.publishEvent(new PaymentSucceededEvent(p.getTenantId(), p.getStudentId(),
                 p.getId(), null, p.getAmount(), p.getCollectedByUserId()));
         eventPublisher.publishEvent(new GroupedInvoiceSettlementEvent(
-                p.getTenantId(), p.getStudentId(), p.getId(), deserializeShares(p.getGroupLines())));
+                p.getTenantId(), p.getStudentId(), p.getId(), deserializeShares(p.getGroupLines()),
+                p.getCollectedByUserId()));
     }
 
     private String serializeShares(List<PaymentUseCase.InvoiceShare> shares, Long fallbackStudentId) {

@@ -30,4 +30,5 @@ class ExemptionJpaEntity {
     @Column(name = "validated_by") private Long validatedBy;
     @Column(nullable = false) private boolean active;
     @Column(name = "created_at", nullable = false) private LocalDateTime createdAt;
+    @Column(name = "staff_benefit", nullable = false) private boolean staffBenefit;
 }
