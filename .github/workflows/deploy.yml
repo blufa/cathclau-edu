@@ -73,5 +73,9 @@ jobs:
             cd /opt/lacaeducation
             ENV=${{ needs.setup.outputs.env }}
             docker compose --env-file .env.$ENV -p laca-$ENV pull backend
-            docker compose --env-file .env.$ENV -p laca-$ENV up -d backend
+            # --force-recreate : sans ça, `up -d` peut garder l'ancien conteneur même si le tag pointe
+            # maintenant vers une image différente (vécu en vrai — pull réussi, mais conteneur jamais
+            # recréé, resté sur l'ancienne image jusqu'à intervention manuelle). Touche dev ET prod,
+            # à chaque déploiement, silencieusement — jamais juste un problème ponctuel du correctif CORS.
+            docker compose --env-file .env.$ENV -p laca-$ENV up -d --force-recreate backend
             docker image prune -f
