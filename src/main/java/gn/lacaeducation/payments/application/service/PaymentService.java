@@ -100,11 +100,15 @@ public class PaymentService implements PaymentUseCase {
                 .distinct()
                 .toList();
 
+        // Encaissement hors-ligne (desktop) rejoué à la synchro : `paidAt` porte l'heure RÉELLE vue par
+        // le caissier au moment de l'encaissement, pas celle — potentiellement bien plus tardive — de
+        // cet appel réseau (§retour comptable). Un encaissement en ligne classique n'a jamais ce champ.
+        LocalDateTime paidAt = c.paidAt() != null ? c.paidAt() : LocalDateTime.now();
         Payment payment = repo.save(Payment.builder()
                 .tenantId(c.tenantId()).studentId(c.studentId()).studentIds(distinctStudentIds).invoiceId(null)
                 .academicYearId(c.academicYearId())
                 .reference(reference).amount(total).channel(c.channel()).type(PaymentType.COMPLETE)
-                .status(PaymentStatus.INITIATED).paidAt(LocalDateTime.now())
+                .status(PaymentStatus.INITIATED).paidAt(paidAt)
                 .coveredMonths(c.coverageLabel()).monthsCount(c.monthsCount()).remainingAfter(c.remainingAfter())
                 .groupLines(serializeShares(c.shares(), c.studentId())).collectedByUserId(c.collectedByUserId())
                 .idempotencyKey(c.idempotencyKey())
@@ -114,7 +118,7 @@ public class PaymentService implements PaymentUseCase {
             // Guichet : argent déjà reçu → confirmation immédiate, reçu groupé + répartition tout de suite.
             payment.transitionTo(PaymentStatus.PENDING);
             payment.transitionTo(PaymentStatus.SUCCEEDED);
-            payment.setPaidAt(LocalDateTime.now());
+            payment.setPaidAt(paidAt);
             Payment saved = repo.save(payment);
             settleGroup(saved);
             log.info("Paiement groupé guichet {} : {} échéance(s), total={}, élève id={}",
