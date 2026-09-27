@@ -43,8 +43,12 @@ public class SecurityConfig {
     @Value("${app.jwt.secret}")
     private String jwtSecret;
 
-    /** Comma-separated list of origins allowed to call the API (the SPA front-end). */
-    @Value("${app.cors.allowed-origins:http://localhost:5173,http://localhost:3000,http://localhost:4200}")
+    /** Comma-separated list of origins allowed to call the API (the SPA front-end). Includes the
+     * desktop app's (Tauri) own browser origins — tauri://localhost (macOS/Linux) and
+     * http://tauri.localhost (Windows, WebView2 requires an http(s) origin, no custom scheme) — never
+     * FRONT_URL, so the desktop login/"Network Error" case must be covered explicitly here, in
+     * addition to (never instead of) the deployed override in deploy/docker-compose.yml. */
+    @Value("${app.cors.allowed-origins:http://localhost:5173,http://localhost:3000,http://localhost:4200,tauri://localhost,http://tauri.localhost}")
     private String allowedOrigins;
 
     @Bean
