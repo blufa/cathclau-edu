@@ -47,8 +47,13 @@ services:
       # Création du SUPER_ADMIN au 1er démarrage (le seed de test est exclu hors dev).
       BOOTSTRAP_SUPERADMIN_EMAIL: ${SUPER_ADMIN_EMAIL}
       BOOTSTRAP_SUPERADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD}
-      # CORS + liens email pointant vers le front de cet environnement.
-      APP_CORS_ALLOWED_ORIGINS: ${FRONT_URL}
+      # CORS + liens email pointant vers le front de cet environnement. En plus de FRONT_URL (le seul
+      # nécessaire pour la version web), l'appli desktop (Tauri) appelle l'API depuis une origine
+      # navigateur à elle — tauri://localhost sur macOS/Linux, http://tauri.localhost sur Windows
+      # (WebView2 n'accepte pas les schemes custom) — jamais FRONT_URL. Sans ces deux origines
+      # explicitement whitelistées ici, le login desktop échoue avec "Network Error" (le préflight CORS
+      # est rejeté en 403 "Invalid CORS request" avant même d'atteindre /auth/login).
+      APP_CORS_ALLOWED_ORIGINS: ${FRONT_URL},tauri://localhost,http://tauri.localhost
       VERIFICATION_URL: ${FRONT_URL}/verify-email
       APP_PLATFORM_VERIFICATION_URL: ${FRONT_URL}/verify-email
       APP_PLATFORM_LOGIN_URL: ${FRONT_URL}/login
