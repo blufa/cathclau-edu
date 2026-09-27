@@ -26,6 +26,7 @@ import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 import static gn.lacaeducation.common.pdf.AdminDocumentLayout.*;
@@ -38,8 +39,10 @@ import static gn.lacaeducation.common.pdf.AdminDocumentLayout.*;
  * bloc de signature du comptable (nom de l'encaisseur, sans cadre — voir
  * {@link #comptableSignatureBlock}). A4 (au lieu d'A5) et bloc d'identification compact : garantissent
  * que le reçu tient sur une seule page quel que soit le nombre de factures listées (§retour comptable —
- * même raisonnement que {@code OpenPdfInvoiceGenerator}). La date de règlement n'apparaît plus qu'au
- * pied de page ("Généré le ..."), retirée d'ici pour ne pas la dupliquer.
+ * même raisonnement que {@code OpenPdfInvoiceGenerator}). La "Date de paiement" (bloc compact,
+ * {@code payment.getPaidAt()}) est distincte du "Généré le ..." du pied de page (date de PRODUCTION du
+ * fichier PDF, pas de l'encaissement) — un encaissement fait hors-ligne un jour puis synchronisé/réimprimé
+ * un autre jour aurait sinon affiché une date de paiement fausse (§retour comptable).
  * Mise en page partagée avec la facture et la fiche de paie via {@link AdminDocumentLayout}.
  */
 @Component
@@ -72,12 +75,16 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
             header(doc, info, academicYearLabel);
             titleBox(doc, "REÇU DE PAIEMENT OFFICIEL");
 
-            // Bloc compact (deux champs par ligne, pas de "Date" — déjà au pied de page "Généré le...")
-            // au lieu d'un champ par ligne, pour libérer de la place verticale (§retour comptable).
+            // Bloc compact (deux champs par ligne) au lieu d'un champ par ligne, pour libérer de la
+            // place verticale (§retour comptable). "Date de paiement" (encaissement réel, distincte du
+            // "Généré le..." du pied de page) réintégrée : indispensable pour un encaissement hors-ligne
+            // synchronisé/réimprimé en différé.
             doc.add(compactFields(
                     new String[]{"Année scolaire", safe(academicYearLabel)},
                     new String[]{"N° reçu", safe(receipt.getReference())},
-                    new String[]{"Mode de paiement", channelLabel(payment)}));
+                    new String[]{"Mode de paiement", channelLabel(payment)},
+                    new String[]{"Date de paiement", payment.getPaidAt() != null
+                            ? payment.getPaidAt().format(DateTimeFormatter.ofPattern("dd/MM/yyyy 'à' HH'h'mm")) : "-"}));
 
             // Fratrie (§payments) : un paiement groupé peut couvrir plusieurs enfants — un bloc + un
             // sous-tableau de frais par enfant plutôt qu'un bloc élève unique, dans l'ordre où ils

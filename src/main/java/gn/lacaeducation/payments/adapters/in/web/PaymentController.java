@@ -36,16 +36,24 @@ public class PaymentController {
                                java.util.List<PaymentUseCase.InvoiceShare> shares, Long academicYearId,
                                /** Clé d'idempotence fournie par le client (mode hors-ligne, encaissement rejoué
                                 *  après une coupure réseau) — voir {@link PaymentUseCase.GroupPaymentCommand}. */
-                               String idempotencyKey) {}
+                               String idempotencyKey,
+                               /** Encaissement hors-ligne (desktop) rejoué à la synchro (§retour comptable) : qui a
+                                *  RÉELLEMENT encaissé (peut différer de l'utilisateur du JWT courant, si la synchro
+                                *  se fait sous une session différente) et QUAND (l'heure réelle vue par le caissier,
+                                *  pas celle de cet appel réseau tardif). {@code null} pour un encaissement en ligne
+                                *  classique — retombe alors sur le JWT courant / "maintenant", comme avant. */
+                               Long collectedByUserId,
+                               java.time.LocalDateTime paidAt) {}
 
     @Operation(summary = "Paiement groupé de plusieurs mois / de l'année entière — un paiement, un reçu. "
             + "Les canaux guichet sont immédiats ; Djomy retourne une redirectUrl pour une transaction en ligne unique.")
     @PreAuthorize("hasAuthority('paiement:create')")
     @PostMapping("/group") public ResponseEntity<InitiateResponse> group(@RequestBody GroupRequest r, @AuthenticationPrincipal Jwt jwt) {
+        Long collectedByUserId = r.collectedByUserId() != null ? r.collectedByUserId() : currentUserId(jwt);
         Payment payment = useCase.initiateGroup(new PaymentUseCase.GroupPaymentCommand(
                 r.tenantId(), r.studentId(), r.channel(), r.payerNumber(),
-                r.coverageLabel(), r.monthsCount(), r.remainingAfter(), r.shares(), currentUserId(jwt), r.academicYearId(),
-                r.idempotencyKey()));
+                r.coverageLabel(), r.monthsCount(), r.remainingAfter(), r.shares(), collectedByUserId, r.academicYearId(),
+                r.idempotencyKey(), r.paidAt()));
         String redirectUrl = transactionUseCase.findByPaymentId(payment.getId()).stream()
                 .map(PaymentTransaction::getRedirectUrl)
                 .filter(u -> u != null && !u.isBlank())

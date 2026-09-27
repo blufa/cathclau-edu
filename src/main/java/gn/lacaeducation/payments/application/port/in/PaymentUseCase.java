@@ -37,7 +37,13 @@ public interface PaymentUseCase {
                                Long academicYearId,
                                /** Clé d'idempotence fournie par le client (mode hors-ligne) : rejouer avec la même clé
                                 *  après une coupure réseau renvoie le paiement déjà créé au lieu d'en créer un second. */
-                               String idempotencyKey) {}
+                               String idempotencyKey,
+                               /** Date/heure RÉELLE de l'encaissement (§retour comptable, poste desktop hors-ligne) —
+                                *  {@code null} pour un encaissement en ligne classique (retombe alors sur "maintenant").
+                                *  Sans ce champ, un encaissement fait hors-ligne un jour puis synchronisé un autre jour
+                                *  se voyait daté du moment de la synchro, faussant le reçu et les rapports de caisse
+                                *  journaliers (`dailyCollectionsReport`). */
+                               java.time.LocalDateTime paidAt) {}
     Payment initiateGroup(GroupPaymentCommand command);
 
     /**
