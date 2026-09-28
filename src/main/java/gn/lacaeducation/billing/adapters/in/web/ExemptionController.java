@@ -36,15 +36,18 @@ public class ExemptionController {
         return ResponseEntity.created(URI.create("/api/v1/billing/exemptions/" + e.getId())).body(e);
     }
 
+    // Lecture ouverte aussi au comptable (comptabilite:manage) — pas seulement à la direction
+    // (frais:manage) : sert par ex. au badge "Exonéré" de la liste des élèves (§students), que le
+    // comptable doit voir sans avoir la main sur l'octroi/la révocation (restés frais:manage ci-dessous).
     @Operation(summary = "Lister les exonérations du tenant (archive complète)")
-    @PreAuthorize("hasAuthority('frais:manage')")
+    @PreAuthorize("hasAnyAuthority('frais:manage', 'comptabilite:manage')")
     @GetMapping
     public List<Exemption> list() {
         return useCase.findByTenant(TenantContext.get());
     }
 
     @Operation(summary = "Historique des exonérations d'un élève")
-    @PreAuthorize("hasAuthority('frais:manage')")
+    @PreAuthorize("hasAnyAuthority('frais:manage', 'comptabilite:manage')")
     @GetMapping("/student/{studentId}")
     public List<Exemption> byStudent(@PathVariable Long studentId) {
         return useCase.findByStudent(studentId);

@@ -44,7 +44,7 @@ public class InvoiceController {
     }
     @Operation(summary = "Générer une facture par mois (échéance) d'un frais MENSUEL pour un élève")
     @PreAuthorize("hasAuthority('facture:create')")
-    @PostMapping("/generate-monthly") public ResponseEntity<List<Invoice>> generateMonthly(@RequestBody GenerateMonthlyRequest r) {
+    @PostMapping("/generate-monthly") public ResponseEntity<InvoiceUseCase.GenerateMonthlyResult> generateMonthly(@RequestBody GenerateMonthlyRequest r) {
         return ResponseEntity.ok(useCase.generateMonthly(new InvoiceUseCase.GenerateMonthlyCommand(r.tenantId(), r.studentId(), r.feeId(), r.academicYearId())));
     }
     @Operation(summary = "Consulter une facture par son ID")

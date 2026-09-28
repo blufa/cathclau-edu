@@ -48,7 +48,7 @@ public class TransportInvoiceListener {
         for (SchoolFee fee : fees) {
             try {
                 List<Invoice> created = invoiceUseCase.generateMonthly(
-                        new GenerateMonthlyCommand(event.tenantId(), event.studentId(), fee.getId(), null));
+                        new GenerateMonthlyCommand(event.tenantId(), event.studentId(), fee.getId(), null)).created();
                 log.info("{} facture(s) transport générée(s) pour l'élève id={} frais id={} (ligne id={})",
                         created.size(), event.studentId(), fee.getId(), event.routeId());
             } catch (BusinessRuleException ex) {

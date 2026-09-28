@@ -64,6 +64,23 @@ jobs:
     needs: [setup, build-push]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      # Sans cette étape, deploy/docker-compose.yml du repo n'était JAMAIS copié sur le VPS — le
+      # pull/up ci-dessous tournait toujours contre l'ancien fichier posé là manuellement à l'origine,
+      # peu importe les changements commités (vécu en vrai : l'ajout des origines CORS Tauri restait
+      # sans effet malgré un déploiement "réussi"). Même fichier sert aussi le service frontend (voir
+      # deploy.yml du dépôt frontend) — une seule source de vérité, celle du repo backend.
+      - name: Synchroniser deploy/docker-compose.yml vers le VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: "deploy/docker-compose.yml"
+          target: "/opt/lacaeducation"
+          strip_components: 1
+
       - uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -73,5 +90,9 @@ jobs:
             cd /opt/lacaeducation
             ENV=${{ needs.setup.outputs.env }}
             docker compose --env-file .env.$ENV -p laca-$ENV pull backend
-            docker compose --env-file .env.$ENV -p laca-$ENV up -d backend
+            # --force-recreate : sans ça, `up -d` peut garder l'ancien conteneur même si le tag pointe
+            # maintenant vers une image différente (vécu en vrai — pull réussi, mais conteneur jamais
+            # recréé, resté sur l'ancienne image jusqu'à intervention manuelle). Touche dev ET prod,
+            # à chaque déploiement, silencieusement — jamais juste un problème ponctuel du correctif CORS.
+            docker compose --env-file .env.$ENV -p laca-$ENV up -d --force-recreate backend
             docker image prune -f
