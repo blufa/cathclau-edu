@@ -114,18 +114,25 @@ class SchoolBillingStatsProviderAdapterTest {
     }
 
     @Test
-    void subsidyStats_countsExemptionsAndFamilyDiscountsAndFullySettledStudents() {
+    void subsidyStats_countsExemptionsAndExemptionDiscountsAndFullySettledStudents() {
         when(exemptionRepository.findByTenantId(9L)).thenReturn(List.of(
                 Exemption.builder().type(ExemptionType.TOTAL).active(true).build(),
                 Exemption.builder().type(ExemptionType.PARTIAL).active(true).build(),
                 Exemption.builder().type(ExemptionType.PARTIAL).active(false).build()));
 
-        Invoice familyDiscounted = Invoice.builder().studentId(1L).feeId(300L)
+        Invoice exemptionDiscounted = Invoice.builder().studentId(1L).feeId(300L)
                 .totalAmount(new BigDecimal("100000")).discountAmount(new BigDecimal("10000"))
-                .discountReason("Réduction familiale : 2e enfant").status(InvoiceStatus.PAID).build();
+                .discountReason("Exonération : cas social").discountSource(gn.lacaeducation.billing.domain.DiscountSource.EXEMPTION)
+                .status(InvoiceStatus.PAID).build();
+        // Remise manuelle SANS discountSource (ex. ajustement ponctuel via le PATCH générique) — ne
+        // doit jamais compter comme une remise d'exonération, seul discountSource fait foi.
         Invoice manualAdjustment = Invoice.builder().studentId(2L).feeId(300L)
                 .totalAmount(new BigDecimal("100000")).discountAmount(new BigDecimal("5000"))
                 .discountReason("Geste commercial").status(InvoiceStatus.PAID).build();
+        // Remise "paiement anticipé" réellement appliquée (EarlyPaymentDiscountRule) — comptée à part.
+        Invoice earlyPaymentDiscounted = Invoice.builder().studentId(1L).feeId(300L)
+                .totalAmount(new BigDecimal("50000")).discountAmount(new BigDecimal("2500"))
+                .discountReason("Remise paiement anticipé : Paiement annuel (5%)").status(InvoiceStatus.PAID).build();
         // Student 1 : all MONTHLY invoices PAID (2 months) -> fully settled.
         Invoice monthly1 = Invoice.builder().studentId(1L).feeId(300L)
                 .totalAmount(new BigDecimal("50000")).status(InvoiceStatus.PAID).build();
@@ -134,7 +141,7 @@ class SchoolBillingStatsProviderAdapterTest {
                 .totalAmount(new BigDecimal("50000")).status(InvoiceStatus.UNPAID).build();
 
         when(invoiceRepository.findByTenantIdAndAcademicYearId(9L, 1L))
-                .thenReturn(List.of(familyDiscounted, manualAdjustment, monthly1, monthly2Unpaid));
+                .thenReturn(List.of(exemptionDiscounted, manualAdjustment, earlyPaymentDiscounted, monthly1, monthly2Unpaid));
         when(schoolFeeRepository.findByTenantId(9L)).thenReturn(List.of(
                 SchoolFee.builder().id(300L).type(FeeType.MONTHLY).build()));
 
@@ -143,23 +150,24 @@ class SchoolBillingStatsProviderAdapterTest {
         assertThat(stats.activeExemptionsCount()).isEqualTo(2);
         assertThat(stats.totalExemptions()).isEqualTo(1);
         assertThat(stats.partialExemptions()).isEqualTo(1);
-        assertThat(stats.familyDiscountAmount()).isEqualByComparingTo("10000");
-        assertThat(stats.familyDiscountInvoiceCount()).isEqualTo(1);
-        assertThat(stats.familyDiscountInvoicePaidCount()).isEqualTo(1);
+        assertThat(stats.exemptionDiscountAmount()).isEqualByComparingTo("10000");
+        assertThat(stats.exemptionDiscountInvoiceCount()).isEqualTo(1);
+        assertThat(stats.exemptionDiscountInvoicePaidCount()).isEqualTo(1);
         assertThat(stats.studentsFullySettledMonthlyFees()).isEqualTo(1);
-        // 5% of (familyDiscounted 100000 + monthly1 50000) = 7500
-        assertThat(stats.estimatedEarlyPaymentSavings()).isEqualByComparingTo("7500.00");
+        assertThat(stats.earlyPaymentDiscountApplied()).isEqualByComparingTo("2500");
     }
 
     @Test
-    void subsidyStats_familyDiscountInvoiceCount_distinguishesPaidFromUnpaid() {
+    void subsidyStats_exemptionDiscountInvoiceCount_distinguishesPaidFromUnpaid() {
         when(exemptionRepository.findByTenantId(9L)).thenReturn(List.of());
         Invoice paidDiscounted = Invoice.builder().studentId(1L).feeId(300L)
                 .totalAmount(new BigDecimal("100000")).discountAmount(new BigDecimal("10000"))
-                .discountReason("Réduction familiale : 3e enfant").status(InvoiceStatus.PAID).build();
+                .discountReason("Exonération : 3e enfant").discountSource(gn.lacaeducation.billing.domain.DiscountSource.EXEMPTION)
+                .status(InvoiceStatus.PAID).build();
         Invoice unpaidDiscounted = Invoice.builder().studentId(1L).feeId(300L)
                 .totalAmount(new BigDecimal("100000")).discountAmount(new BigDecimal("10000"))
-                .discountReason("Réduction familiale : 3e enfant").status(InvoiceStatus.UNPAID).build();
+                .discountReason("Exonération : 3e enfant").discountSource(gn.lacaeducation.billing.domain.DiscountSource.EXEMPTION)
+                .status(InvoiceStatus.UNPAID).build();
         when(invoiceRepository.findByTenantIdAndAcademicYearId(9L, 1L))
                 .thenReturn(List.of(paidDiscounted, unpaidDiscounted));
         when(schoolFeeRepository.findByTenantId(9L)).thenReturn(List.of(
@@ -167,8 +175,8 @@ class SchoolBillingStatsProviderAdapterTest {
 
         SubsidyStats stats = adapter.subsidyStats(9L, 1L);
 
-        assertThat(stats.familyDiscountInvoiceCount()).isEqualTo(2);
-        assertThat(stats.familyDiscountInvoicePaidCount()).isEqualTo(1);
+        assertThat(stats.exemptionDiscountInvoiceCount()).isEqualTo(2);
+        assertThat(stats.exemptionDiscountInvoicePaidCount()).isEqualTo(1);
     }
 
     @Test

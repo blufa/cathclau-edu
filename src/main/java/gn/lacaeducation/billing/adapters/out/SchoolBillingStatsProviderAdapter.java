@@ -31,8 +31,9 @@ import java.util.stream.Collectors;
 class SchoolBillingStatsProviderAdapter implements SchoolBillingStatsProvider {
 
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
-    private static final String FAMILY_DISCOUNT_REASON_PREFIX = "Réduction familiale : ";
-    private static final BigDecimal EARLY_PAYMENT_ESTIMATE_RATE = BigDecimal.valueOf(0.05);
+    // Préfixe exact posé par InvoiceService#applyEarlyPaymentDiscount — sert à isoler cette remise
+    // précise parmi toutes les remises possibles sur une facture (discountReason est un texte libre).
+    private static final String EARLY_PAYMENT_DISCOUNT_REASON_PREFIX = "Remise paiement anticipé : ";
 
     private final InvoiceRepository invoiceRepository;
     private final SchoolFeeRepository schoolFeeRepository;
@@ -101,16 +102,26 @@ class SchoolBillingStatsProviderAdapter implements SchoolBillingStatsProvider {
 
         List<Invoice> yearInvoices = excludeCancelled(invoiceRepository.findByTenantIdAndAcademicYearId(tenantId, academicYearId));
 
-        List<Invoice> familyDiscountInvoices = yearInvoices.stream()
-                .filter(i -> i.getDiscountReason() != null && i.getDiscountReason().startsWith(FAMILY_DISCOUNT_REASON_PREFIX))
+        // Remises réellement déduites via une exonération/avantage personnel (discountSource non nul) —
+        // seul mécanisme de remise manuel effectivement utilisé aujourd'hui, voir doc du champ.
+        List<Invoice> exemptionDiscountedInvoices = yearInvoices.stream()
+                .filter(i -> i.getDiscountSource() != null)
                 .toList();
-        BigDecimal familyDiscountAmount = familyDiscountInvoices.stream()
+        BigDecimal exemptionDiscountAmount = exemptionDiscountedInvoices.stream()
                 .map(Invoice::getDiscountAmount)
                 .filter(a -> a != null)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        long familyDiscountInvoicePaidCount = familyDiscountInvoices.stream()
+        long exemptionDiscountInvoicePaidCount = exemptionDiscountedInvoices.stream()
                 .filter(i -> i.getStatus() == InvoiceStatus.PAID)
                 .count();
+
+        // Remise "paiement anticipé" réellement appliquée (§billing, EarlyPaymentDiscountRule) — plus
+        // une estimation depuis que ce mécanisme existe pour de vrai (voir applyEarlyPaymentDiscount).
+        BigDecimal earlyPaymentDiscountApplied = yearInvoices.stream()
+                .filter(i -> i.getDiscountReason() != null && i.getDiscountReason().startsWith(EARLY_PAYMENT_DISCOUNT_REASON_PREFIX))
+                .map(Invoice::getDiscountAmount)
+                .filter(a -> a != null)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         Map<Long, FeeType> feeIdToType = schoolFeeRepository.findByTenantId(tenantId).stream()
                 .collect(Collectors.toMap(SchoolFee::getId, SchoolFee::getType, (a, b) -> a));
@@ -123,19 +134,9 @@ class SchoolBillingStatsProviderAdapter implements SchoolBillingStatsProvider {
                 .filter(e -> e.getValue().stream().allMatch(i -> i.getStatus() == InvoiceStatus.PAID))
                 .toList();
 
-        BigDecimal fullySettledMonthlyTotal = fullySettled.stream()
-                .flatMap(e -> e.getValue().stream())
-                .map(Invoice::getTotalAmount)
-                .filter(a -> a != null)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        BigDecimal estimatedEarlyPaymentSavings = fullySettledMonthlyTotal
-                .multiply(EARLY_PAYMENT_ESTIMATE_RATE)
-                .setScale(2, RoundingMode.HALF_UP);
-
-        return new SubsidyStats(exemptions.size(), totalExemptions, partialExemptions, familyDiscountAmount,
-                familyDiscountInvoices.size(), familyDiscountInvoicePaidCount,
-                fullySettled.size(), estimatedEarlyPaymentSavings);
+        return new SubsidyStats(exemptions.size(), totalExemptions, partialExemptions, exemptionDiscountAmount,
+                exemptionDiscountedInvoices.size(), exemptionDiscountInvoicePaidCount,
+                fullySettled.size(), earlyPaymentDiscountApplied);
     }
 
     @Override

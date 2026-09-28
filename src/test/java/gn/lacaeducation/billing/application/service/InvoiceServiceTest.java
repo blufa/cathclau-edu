@@ -69,7 +69,7 @@ class InvoiceServiceTest {
         when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
 
         var invoices = service().generateMonthly(
-                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 3L, 99L));
+                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 3L, 99L)).created();
 
         assertThat(invoices).hasSize(1);
         Invoice inv = invoices.get(0);
@@ -97,7 +97,7 @@ class InvoiceServiceTest {
         when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
 
         var invoices = service().generateMonthly(
-                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 3L, 99L));
+                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 3L, 99L)).created();
 
         assertThat(invoices).hasSize(1);
         assertThat(invoices.get(0).getDiscountReason()).contains("Exonération transport");
@@ -118,7 +118,7 @@ class InvoiceServiceTest {
         when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
 
         var invoices = service().generateMonthly(
-                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 3L, null));
+                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 3L, null)).created();
 
         assertThat(invoices).hasSize(1);
         assertThat(invoices.get(0).getAcademicYearId()).isEqualTo(42L);
@@ -314,7 +314,7 @@ class InvoiceServiceTest {
         when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
 
         var invoices = service().generateMonthly(
-                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 3L, 99L));
+                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 3L, 99L)).created();
 
         assertThat(invoices).hasSize(3);
         assertThat(invoices).extracting(Invoice::getTotalAmount)
@@ -337,7 +337,7 @@ class InvoiceServiceTest {
         when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
 
         var invoices = service().generateMonthly(
-                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 3L, 99L));
+                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 3L, 99L)).created();
 
         assertThat(invoices).hasSize(1);
         assertThat(invoices.get(0).getTotalAmount()).isEqualByComparingTo("300");
@@ -484,6 +484,92 @@ class InvoiceServiceTest {
         verify(repo, never()).save(any());
     }
 
+    @Test
+    void applyEarlyPaymentDiscount_neverTouchesExemptedTranches() {
+        // Régression : un élève avec une exonération 100% ("prise en charge totale") sur TOUTES ses
+        // tranches de scolarité ne doit jamais voir cette exonération remplacée par la remise paiement
+        // anticipé — sinon il passerait de 0 à devoir 95% du tarif plein dès que le comptable coche
+        // toute la scolarité pour encaisser (bug vécu en vrai, voir retour comptable).
+        gn.lacaeducation.billing.domain.SchoolFee fee = gn.lacaeducation.billing.domain.SchoolFee.builder()
+                .id(3L).tenantId(1L).type(gn.lacaeducation.billing.domain.FeeType.MONTHLY).build();
+        when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(fee));
+
+        Invoice exempted1 = Invoice.builder().id(1L).feeId(3L).totalAmount(new BigDecimal("300.00"))
+                .paidAmount(BigDecimal.ZERO).discountAmount(new BigDecimal("300.00"))
+                .discountReason("Exonération : prise en charge totale")
+                .discountSource(gn.lacaeducation.billing.domain.DiscountSource.EXEMPTION)
+                .remainingBalance(BigDecimal.ZERO).status(InvoiceStatus.UNPAID).build();
+        Invoice exempted2 = Invoice.builder().id(2L).feeId(3L).totalAmount(new BigDecimal("300.00"))
+                .paidAmount(BigDecimal.ZERO).discountAmount(new BigDecimal("300.00"))
+                .discountReason("Exonération : prise en charge totale")
+                .discountSource(gn.lacaeducation.billing.domain.DiscountSource.EXEMPTION)
+                .remainingBalance(BigDecimal.ZERO).status(InvoiceStatus.UNPAID).build();
+        when(repo.findByStudentId(7L)).thenReturn(java.util.List.of(exempted1, exempted2));
+
+        var updated = service().applyEarlyPaymentDiscount(7L, 3L);
+
+        assertThat(updated).hasSize(2);
+        assertThat(updated).extracting(Invoice::getDiscountAmount)
+                .allMatch(d -> d.compareTo(new BigDecimal("300.00")) == 0);
+        assertThat(updated).extracting(Invoice::getDiscountSource)
+                .allMatch(s -> s == gn.lacaeducation.billing.domain.DiscountSource.EXEMPTION);
+        assertThat(updated).extracting(Invoice::getRemainingBalance).allMatch(b -> b.signum() == 0);
+        verify(earlyPaymentDiscountUseCase, never()).computeApplicable(any(), any());
+        verify(repo, never()).save(any());
+    }
+
+    @Test
+    void applyEarlyPaymentDiscount_appliesOnlyToNonExemptedTranches_whenMixed() {
+        // Même famille de bug que ci-dessus, mais avec seulement UNE tranche exonérée sur trois : la
+        // remise paiement anticipé doit porter uniquement sur les deux tranches encore au tarif plein,
+        // jamais sur la tranche exonérée.
+        gn.lacaeducation.billing.domain.SchoolFee fee = gn.lacaeducation.billing.domain.SchoolFee.builder()
+                .id(3L).tenantId(1L).type(gn.lacaeducation.billing.domain.FeeType.MONTHLY).build();
+        when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(fee));
+
+        Invoice exempted = Invoice.builder().id(1L).feeId(3L).totalAmount(new BigDecimal("300.00"))
+                .paidAmount(BigDecimal.ZERO).discountAmount(new BigDecimal("300.00"))
+                .discountReason("Exonération : prise en charge totale")
+                .discountSource(gn.lacaeducation.billing.domain.DiscountSource.EXEMPTION)
+                .remainingBalance(BigDecimal.ZERO).status(InvoiceStatus.UNPAID).build();
+        Invoice plain1 = Invoice.builder().id(2L).feeId(3L).totalAmount(new BigDecimal("300.00")).paidAmount(BigDecimal.ZERO).status(InvoiceStatus.UNPAID).build();
+        Invoice plain2 = Invoice.builder().id(3L).feeId(3L).totalAmount(new BigDecimal("300.00")).paidAmount(BigDecimal.ZERO).status(InvoiceStatus.UNPAID).build();
+        when(repo.findByStudentId(7L)).thenReturn(java.util.List.of(exempted, plain1, plain2));
+        when(repo.findById(2L)).thenReturn(Optional.of(plain1));
+        when(repo.findById(3L)).thenReturn(Optional.of(plain2));
+        when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(earlyPaymentDiscountUseCase.computeApplicable(1L, gn.lacaeducation.billing.domain.FeeType.MONTHLY))
+                .thenReturn(new gn.lacaeducation.billing.application.port.in.EarlyPaymentDiscountUseCase.ApplicableDiscount(
+                        new BigDecimal("10"), "Paiement annuel"));
+
+        var updated = service().applyEarlyPaymentDiscount(7L, 3L);
+
+        assertThat(updated).hasSize(3);
+        Invoice updatedExempted = updated.stream().filter(i -> i.getId().equals(1L)).findFirst().orElseThrow();
+        assertThat(updatedExempted.getDiscountAmount()).isEqualByComparingTo("300.00");
+        assertThat(updatedExempted.getDiscountSource()).isEqualTo(gn.lacaeducation.billing.domain.DiscountSource.EXEMPTION);
+        // Base annuelle = 600 (les deux tranches au tarif plein uniquement) → remise 10% = 60.
+        BigDecimal discountOnPlain = updated.stream().filter(i -> i.getId() != 1L)
+                .map(Invoice::getDiscountAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertThat(discountOnPlain).isEqualByComparingTo("60.00");
+    }
+
+    @Test
+    void removeEarlyPaymentDiscount_neverTouchesExemptedTranches() {
+        Invoice exempted = Invoice.builder().id(1L).feeId(3L).totalAmount(new BigDecimal("300.00"))
+                .paidAmount(BigDecimal.ZERO).discountAmount(new BigDecimal("300.00"))
+                .discountReason("Exonération : prise en charge totale")
+                .discountSource(gn.lacaeducation.billing.domain.DiscountSource.EXEMPTION)
+                .remainingBalance(BigDecimal.ZERO).status(InvoiceStatus.UNPAID).build();
+        when(repo.findByStudentId(7L)).thenReturn(java.util.List.of(exempted));
+
+        var result = service().removeEarlyPaymentDiscount(7L, 3L);
+
+        assertThat(result).containsExactly(exempted);
+        assertThat(result.get(0).getDiscountAmount()).isEqualByComparingTo("300.00");
+        verify(repo, never()).save(any());
+    }
+
     // ── Réduction familiale / avantage personnel sur create() (§billing — pas seulement les
     // mensualités via generateMonthly, désormais tous les types de frais : inscription, transport,
     // cantine, examen — voir InvoiceService#computeApplicableDiscount) ──────────────────────────────
@@ -541,7 +627,12 @@ class InvoiceServiceTest {
     }
 
     @Test
-    void generateMonthly_staffBenefitExemption_appliesOnInstallment() {
+    void generateMonthly_staffBenefitExemption100Percent_skipsInvoiceCreation_reportsAsExemptedPeriod() {
+        // Une échéance entièrement couverte par un avantage personnel/une exonération ne doit JAMAIS
+        // produire une facture à 0 GNF (§billing, retour comptable) — sans quoi elle risquait de se
+        // retrouver cochée par erreur dans un encaissement groupé et de déclencher la remise "paiement
+        // anticipé", qui REMPLACE (au lieu de s'y ajouter) la remise existante et effacerait donc
+        // l'exonération. Elle doit apparaître uniquement dans `exemptedPeriods`.
         when(enrollmentQueryPort.hasActiveEnrollment(7L)).thenReturn(true);
         when(installmentRepository.findByFeeId(3L)).thenReturn(java.util.List.of(
                 gn.lacaeducation.billing.domain.Installment.builder()
@@ -549,15 +640,39 @@ class InvoiceServiceTest {
         when(repo.existsByStudentIdAndInstallmentId(7L, 1L)).thenReturn(false);
         when(exemptionUseCase.computeApplicable(7L, gn.lacaeducation.billing.domain.FeeType.MONTHLY))
                 .thenReturn(new ApplicableExemption(new BigDecimal("100"), "Direction — 100%", true, BigDecimal.ZERO, null));
-        when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
 
-        var invoices = service().generateMonthly(
+        var result = service().generateMonthly(
                 new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 3L, 99L));
 
-        Invoice inv = invoices.get(0);
-        assertThat(inv.getDiscountAmount()).isEqualByComparingTo("100.00");
-        assertThat(inv.getRemainingBalance()).isEqualByComparingTo("0.00");
-        assertThat(inv.getDiscountReason()).contains("Direction — 100%");
+        assertThat(result.created()).isEmpty();
+        assertThat(result.exemptedPeriods()).hasSize(1);
+        var exempted = result.exemptedPeriods().get(0);
+        assertThat(exempted.installmentId()).isEqualTo(1L);
+        assertThat(exempted.periodLabel()).isEqualTo("Septembre");
+        assertThat(exempted.discountReason()).contains("Direction — 100%");
+        verify(repo, never()).save(any());
+    }
+
+    @Test
+    void generateMonthly_partialExemption_stillCreatesInvoiceWithRemainingBalance() {
+        // Contre-exemple : une exonération PARTIELLE (donc un reste à payer non nul) doit continuer à
+        // produire une vraie facture, comme avant — seule une couverture à 100% est concernée par le
+        // saut de génération ci-dessus.
+        when(enrollmentQueryPort.hasActiveEnrollment(7L)).thenReturn(true);
+        when(installmentRepository.findByFeeId(3L)).thenReturn(java.util.List.of(
+                gn.lacaeducation.billing.domain.Installment.builder()
+                        .id(1L).feeId(3L).label("Septembre").amount(new BigDecimal("100")).build()));
+        when(repo.existsByStudentIdAndInstallmentId(7L, 1L)).thenReturn(false);
+        when(exemptionUseCase.computeApplicable(7L, gn.lacaeducation.billing.domain.FeeType.MONTHLY))
+                .thenReturn(new ApplicableExemption(new BigDecimal("30"), "Prise en charge partielle", false, BigDecimal.ZERO, null));
+        when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
+
+        var result = service().generateMonthly(
+                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 3L, 99L));
+
+        assertThat(result.exemptedPeriods()).isEmpty();
+        assertThat(result.created()).hasSize(1);
+        assertThat(result.created().get(0).getRemainingBalance()).isEqualByComparingTo("70.00");
     }
 
     // ── Exonération (§8) : TOTAL/PARTIAL déterminent le pourcentage, EXCEPTIONAL (montant fixe)

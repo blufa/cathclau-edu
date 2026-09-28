@@ -69,7 +69,7 @@ public class EnrollmentBillingService implements EnrollmentBillingUseCase {
         if (hasInstallments) {
             // generateMonthly() est déjà idempotent par échéance et applique déjà les remises.
             invoices = invoiceUseCase.generateMonthly(
-                    new InvoiceUseCase.GenerateMonthlyCommand(tenantId, studentId, fee.getId(), academicYearId));
+                    new InvoiceUseCase.GenerateMonthlyCommand(tenantId, studentId, fee.getId(), academicYearId)).created();
         } else if (!invoiceUseCase.existsByStudentIdAndFeeId(studentId, fee.getId())) {
             String reference = generateReference(tenantId);
             invoices = List.of(invoiceUseCase.create(new InvoiceUseCase.CreateInvoiceCommand(

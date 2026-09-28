@@ -163,7 +163,7 @@ public class InvoiceService implements InvoiceUseCase {
         return inv;
     }
 
-    @Override public List<Invoice> generateMonthly(GenerateMonthlyCommand c) {
+    @Override public GenerateMonthlyResult generateMonthly(GenerateMonthlyCommand c) {
         // Un élève non inscrit (aucune inscription en cours) ne peut pas payer la mensualité.
         // Une inscription PENDING suffit : on peut payer l'inscription + les premiers mois en même temps.
         if (!enrollmentQueryPort.hasActiveEnrollment(c.studentId())) {
@@ -191,6 +191,7 @@ public class InvoiceService implements InvoiceUseCase {
         boolean monthlySplit = enrollmentQueryPort.hasMonthlyPaymentOptIn(c.studentId(), academicYearId);
 
         List<Invoice> created = new ArrayList<>();
+        List<ExemptedPeriod> exempted = new ArrayList<>();
         for (gn.lacaeducation.billing.domain.Installment installment : months) {
             List<String> installmentMonths = installment.getMonths();
             if (monthlySplit && installmentMonths != null && installmentMonths.size() > 1) {
@@ -203,27 +204,38 @@ public class InvoiceService implements InvoiceUseCase {
                     if (repo.existsByStudentIdAndInstallmentIdAndPeriodLabel(c.studentId(), installment.getId(), label)) {
                         continue;
                     }
-                    created.add(buildAndSaveInvoice(c, academicYearId, installment.getId(), label, perMonth, discount));
+                    buildAndSaveInvoice(c, academicYearId, installment.getId(), label, perMonth, discount, created, exempted);
                 }
             } else {
                 // Idempotence : on ne recrée pas la facture d'une échéance déjà facturée pour cet élève.
                 if (repo.existsByStudentIdAndInstallmentId(c.studentId(), installment.getId())) {
                     continue;
                 }
-                created.add(buildAndSaveInvoice(c, academicYearId, installment.getId(), installment.getLabel(),
-                        installment.getAmount(), discount));
+                buildAndSaveInvoice(c, academicYearId, installment.getId(), installment.getLabel(),
+                        installment.getAmount(), discount, created, exempted);
             }
         }
-        log.info("Génération mensuelle : {} facture(s) créée(s) pour l'élève id={} frais id={}",
-                created.size(), c.studentId(), c.feeId());
-        return created;
+        log.info("Génération mensuelle : {} facture(s) créée(s), {} échéance(s) exonérée(s) à 100% pour l'élève id={} frais id={}",
+                created.size(), exempted.size(), c.studentId(), c.feeId());
+        return new GenerateMonthlyResult(created, exempted);
     }
 
-    private Invoice buildAndSaveInvoice(GenerateMonthlyCommand c, Long academicYearId, Long installmentId,
+    /** Ajoute soit une Invoice réelle à {@code created}, soit — quand l'échéance est entièrement
+     * couverte par une exonération/avantage personnel (discountSource non nul, net dû = 0) — une
+     * {@link ExemptedPeriod} à {@code exempted} : aucune facture à 0 GNF n'est jamais créée, pour
+     * qu'elle ne puisse jamais se retrouver cochée par erreur dans un encaissement groupé (§billing,
+     * retour comptable — voir aussi la garde équivalente dans applyEarlyPaymentDiscount).
+     */
+    private void buildAndSaveInvoice(GenerateMonthlyCommand c, Long academicYearId, Long installmentId,
                                         String periodLabel, BigDecimal baseAmount,
-                                        ApplicableInvoiceDiscount discountInfo) {
+                                        ApplicableInvoiceDiscount discountInfo,
+                                        List<Invoice> created, List<ExemptedPeriod> exempted) {
         var discount = resolveDiscount(baseAmount, discountInfo);
         BigDecimal net = baseAmount.subtract(discount.amount());
+        if (discount.source() != null && net.signum() <= 0) {
+            exempted.add(new ExemptedPeriod(installmentId, periodLabel, discount.reason()));
+            return;
+        }
         String reference = generateReference(c.tenantId());
         Invoice inv = repo.save(Invoice.builder()
                 .tenantId(c.tenantId()).studentId(c.studentId()).feeId(c.feeId())
@@ -235,7 +247,7 @@ public class InvoiceService implements InvoiceUseCase {
                 .installmentId(installmentId).periodLabel(periodLabel).build());
         eventPublisher.publishEvent(new InvoiceGeneratedEvent(c.tenantId(), c.studentId(), inv.getId(), inv.getReference()));
         eventPublisher.publishEvent(new InvoiceIssuedEvent(inv.getId(), c.studentId(), c.tenantId()));
-        return inv;
+        created.add(inv);
     }
 
     /** Référence facture lisible et unique : &lt;PREFIXE_ECOLE&gt;-FAC-&lt;année&gt;-&lt;suffixe&gt;. */
@@ -458,13 +470,26 @@ public class InvoiceService implements InvoiceUseCase {
         if (alreadyStartedPaying || outstanding.size() < 2) {
             return outstanding;
         }
+        // Une tranche déjà couverte par une exonération/avantage personnel (discountSource non nul,
+        // décidé une fois pour toutes par le comptable à l'inscription — voir computeApplicableDiscount)
+        // ne doit JAMAIS être touchée ici : `applyDiscount` REMPLACE la remise existante au lieu de s'y
+        // ajouter, donc lui appliquer la remise paiement anticipé effacerait purement et simplement
+        // l'exonération (bug vécu en vrai : une exonération 100% "prise en charge totale" remplacée par
+        // seulement -5%, l'élève se retrouvant à devoir payer 95% du tarif plein). Base de calcul et
+        // application restreintes aux tranches encore au tarif plein.
+        List<Invoice> eligible = outstanding.stream()
+                .filter(i -> i.getDiscountSource() == null)
+                .toList();
+        if (eligible.size() < 2) {
+            return outstanding;
+        }
         var discount = earlyPaymentDiscountUseCase.computeApplicable(fee.getTenantId(), fee.getType());
         if (discount.percentage() == null || discount.percentage().signum() <= 0) {
             return outstanding;
         }
         // Rien n'ayant encore été payé sur ce frais (garde ci-dessus), le total annuel et le total des
         // tranches restantes sont ici identiques — la remise porte donc sur l'année complète.
-        BigDecimal outstandingTotal = outstanding.stream().map(Invoice::getTotalAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal outstandingTotal = eligible.stream().map(Invoice::getTotalAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
         if (outstandingTotal.signum() <= 0) {
             return outstanding;
         }
@@ -475,22 +500,25 @@ public class InvoiceService implements InvoiceUseCase {
         // remise reste visible partout où discountReason est affiché (reçu, facture, liste des élèves).
         String reason = "Remise paiement anticipé : " + discount.ruleLabel()
                 + " (" + discount.percentage().stripTrailingZeros().toPlainString() + "%)";
-        List<Invoice> updated = new ArrayList<>();
+        java.util.Map<Long, Invoice> updatedById = new java.util.LinkedHashMap<>();
         BigDecimal allocated = BigDecimal.ZERO;
-        for (int i = 0; i < outstanding.size(); i++) {
-            Invoice inv = outstanding.get(i);
-            // Réparti au prorata du montant de chaque tranche restante ; la dernière absorbe l'arrondi
-            // pour que la somme des remises corresponde exactement au total calculé.
-            BigDecimal amount = i == outstanding.size() - 1
+        for (int i = 0; i < eligible.size(); i++) {
+            Invoice inv = eligible.get(i);
+            // Réparti au prorata du montant de chaque tranche restante éligible ; la dernière absorbe
+            // l'arrondi pour que la somme des remises corresponde exactement au total calculé.
+            BigDecimal amount = i == eligible.size() - 1
                     ? totalDiscount.subtract(allocated)
                     : totalDiscount.multiply(inv.getTotalAmount())
                             .divide(outstandingTotal, 2, java.math.RoundingMode.HALF_UP);
             allocated = allocated.add(amount);
-            updated.add(applyDiscount(inv.getId(), amount, reason));
+            updatedById.put(inv.getId(), applyDiscount(inv.getId(), amount, reason));
         }
         log.info("Remise paiement anticipé appliquée : {} facture(s), élève id={} frais id={}, taux={}%, base annuelle={}",
-                updated.size(), studentId, feeId, discount.percentage(), outstandingTotal);
-        return updated;
+                updatedById.size(), studentId, feeId, discount.percentage(), outstandingTotal);
+        // Renvoie la liste complète du frais (tranches remisées + tranches déjà exonérées inchangées) :
+        // le front indexe par id sur cette réponse et doit retrouver TOUTES les factures, pas seulement
+        // celles modifiées ici.
+        return outstanding.stream().map(i -> updatedById.getOrDefault(i.getId(), i)).toList();
     }
 
     @Override
@@ -500,7 +528,12 @@ public class InvoiceService implements InvoiceUseCase {
                 .toList();
         List<Invoice> reverted = new ArrayList<>();
         for (Invoice inv : outstanding) {
-            if (inv.getDiscountAmount() != null && inv.getDiscountAmount().signum() > 0) {
+            // Même garde que dans applyEarlyPaymentDiscount : ne jamais effacer la remise d'une tranche
+            // exonérée/avantage personnel — sa remise ne vient jamais de ce mécanisme, l'annuler ici
+            // supprimerait l'exonération elle-même au lieu de simplement retirer -5%.
+            boolean fromThisMechanism = inv.getDiscountSource() == null
+                    && inv.getDiscountAmount() != null && inv.getDiscountAmount().signum() > 0;
+            if (fromThisMechanism) {
                 reverted.add(applyDiscount(inv.getId(), BigDecimal.ZERO, null));
             } else {
                 reverted.add(inv);

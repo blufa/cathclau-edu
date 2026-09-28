@@ -76,7 +76,8 @@ class EnrollmentBillingServiceTest {
         when(schoolFeeRepository.findByClassId(10L)).thenReturn(List.of(monthlyFee));
         when(installmentRepository.findByFeeId(3L)).thenReturn(List.of(Installment.builder().id(30L).feeId(3L).build()));
         List<Invoice> generated = List.of(Invoice.builder().id(101L).feeId(3L).build(), Invoice.builder().id(102L).feeId(3L).build());
-        when(invoiceUseCase.generateMonthly(any())).thenReturn(generated);
+        when(invoiceUseCase.generateMonthly(any())).thenReturn(
+                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyResult(generated, List.of()));
 
         List<GeneratedFeeInvoices> result = service.generateAllForEnrollment(
                 new GenerateAllFeesCommand(1L, 7L, 10L, 5L, EnrollmentType.NEW, false, null));

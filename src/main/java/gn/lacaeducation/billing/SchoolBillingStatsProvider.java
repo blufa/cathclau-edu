@@ -44,19 +44,22 @@ public interface SchoolBillingStatsProvider {
      * @param activeExemptionsCount  nombre d'exonérations actives (toutes catégories)
      * @param totalExemptions        exonérations totales (100 %) actives
      * @param partialExemptions      exonérations partielles actives
-     * @param familyDiscountAmount   montant réellement déduit des factures via les remises fratrie
-     *                               (seule remise effectivement appliquée aujourd'hui — §recherche)
-     * @param familyDiscountInvoiceCount      nombre de factures (hors annulées) portant une remise fratrie
-     * @param familyDiscountInvoicePaidCount  parmi celles-ci, nombre déjà encaissées (statut PAYEE)
+     * @param exemptionDiscountAmount   montant réellement déduit des factures via une exonération ou un
+     *                                  avantage personnel (§billing, accordé par le comptable à
+     *                                  l'inscription — seul mécanisme de remise manuel effectivement
+     *                                  utilisé aujourd'hui ; la détection automatique par fratrie a été
+     *                                  retirée du calcul, voir InvoiceService#computeApplicableDiscount)
+     * @param exemptionDiscountInvoiceCount      nombre de factures (hors annulées) portant une telle remise
+     * @param exemptionDiscountInvoicePaidCount  parmi celles-ci, nombre déjà encaissées (statut PAYEE)
      * @param studentsFullySettledMonthlyFees  élèves dont toutes les factures MENSUALITE de l'année sont PAYEE
-     * @param estimatedEarlyPaymentSavings     estimation indicative (5 %) — AUCUNE remise réelle n'est
-     *                                         appliquée pour un paiement anticipé aujourd'hui ; ce chiffre
-     *                                         sert uniquement à évaluer l'intérêt d'introduire une telle règle.
+     * @param earlyPaymentDiscountApplied      montant réellement déduit des factures via la remise
+     *                                         "paiement anticipé" (§billing, EarlyPaymentDiscountRule) —
+     *                                         remise réelle, pas une estimation.
      */
     record SubsidyStats(long activeExemptionsCount, long totalExemptions, long partialExemptions,
-                        BigDecimal familyDiscountAmount, long familyDiscountInvoiceCount,
-                        long familyDiscountInvoicePaidCount, int studentsFullySettledMonthlyFees,
-                        BigDecimal estimatedEarlyPaymentSavings) {}
+                        BigDecimal exemptionDiscountAmount, long exemptionDiscountInvoiceCount,
+                        long exemptionDiscountInvoicePaidCount, int studentsFullySettledMonthlyFees,
+                        BigDecimal earlyPaymentDiscountApplied) {}
 
     SubsidyStats subsidyStats(Long tenantId, Long academicYearId);
 

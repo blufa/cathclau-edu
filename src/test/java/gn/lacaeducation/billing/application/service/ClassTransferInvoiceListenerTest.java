@@ -45,7 +45,8 @@ class ClassTransferInvoiceListenerTest {
 
         Invoice newInv1 = Invoice.builder().id(200L).installmentId(1L).totalAmount(new BigDecimal("40.00")).build();
         Invoice newInv2 = Invoice.builder().id(201L).installmentId(2L).totalAmount(new BigDecimal("40.00")).build();
-        when(invoiceUseCase.generateMonthly(any(GenerateMonthlyCommand.class))).thenReturn(List.of(newInv1, newInv2));
+        when(invoiceUseCase.generateMonthly(any(GenerateMonthlyCommand.class)))
+                .thenReturn(new InvoiceUseCase.GenerateMonthlyResult(List.of(newInv1, newInv2), List.of()));
 
         listener.onEnrollmentClassChanged(event);
 
