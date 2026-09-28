@@ -78,7 +78,7 @@ public class ClassTransferInvoiceListener {
         List<Invoice> newInvoices;
         try {
             newInvoices = invoiceUseCase.generateMonthly(
-                    new GenerateMonthlyCommand(newFee.getTenantId(), event.studentId(), newFee.getId(), event.academicYearId()));
+                    new GenerateMonthlyCommand(newFee.getTenantId(), event.studentId(), newFee.getId(), event.academicYearId())).created();
         } catch (RuntimeException ex) {
             log.error("Transfert de classe : échec de génération des mensualités de la nouvelle classe id={} "
                     + "pour l'élève id={} : {}", event.newClassId(), event.studentId(), ex.getMessage(), ex);

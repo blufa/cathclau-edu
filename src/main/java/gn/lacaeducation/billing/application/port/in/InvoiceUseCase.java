@@ -9,8 +9,18 @@ public interface InvoiceUseCase {
     record BulkGenerateCommand(Long tenantId, Long classId, Long feeId, Long academicYearId) {}
     /** Génère une facture par mois (échéance) du frais MENSUALITE pour un élève, idempotent par échéance. */
     record GenerateMonthlyCommand(Long tenantId, Long studentId, Long feeId, Long academicYearId) {}
+    /** Échéance non facturée parce qu'entièrement couverte par une exonération/avantage personnel
+     * (§billing) — aucune Invoice créée pour elle (voir InvoiceService#buildAndSaveInvoice), à afficher
+     * néanmoins comme une ligne "Exonéré 100%" dans le même tableau que les vraies factures, pour que le
+     * comptable ne la confonde jamais avec une échéance simplement pas encore générée. */
+    record ExemptedPeriod(Long installmentId, String periodLabel, String discountReason) {}
+    /** Résultat de {@link #generateMonthly} : les factures réellement créées, et les échéances
+     * couvertes à 100% par une exonération, réévaluées à chaque appel (§billing — "recalcul
+     * automatique" : une exonération accordée ou révoquée en cours d'année est reflétée dès le
+     * prochain appel, sans action manuelle sur les échéances déjà traitées). */
+    record GenerateMonthlyResult(List<Invoice> created, List<ExemptedPeriod> exemptedPeriods) {}
     Invoice create(CreateInvoiceCommand command);
-    List<Invoice> generateMonthly(GenerateMonthlyCommand command);
+    GenerateMonthlyResult generateMonthly(GenerateMonthlyCommand command);
     List<Invoice> generateBulk(BulkGenerateCommand command);
     /** Renvoie l'URL du PDF de la facture, en le générant/uploadant à la demande s'il manque encore. */
     String pdfUrl(Long invoiceId);

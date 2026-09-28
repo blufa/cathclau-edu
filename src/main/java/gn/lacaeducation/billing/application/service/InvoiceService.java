@@ -163,7 +163,7 @@ public class InvoiceService implements InvoiceUseCase {
         return inv;
     }
 
-    @Override public List<Invoice> generateMonthly(GenerateMonthlyCommand c) {
+    @Override public GenerateMonthlyResult generateMonthly(GenerateMonthlyCommand c) {
         // Un élève non inscrit (aucune inscription en cours) ne peut pas payer la mensualité.
         // Une inscription PENDING suffit : on peut payer l'inscription + les premiers mois en même temps.
         if (!enrollmentQueryPort.hasActiveEnrollment(c.studentId())) {
@@ -191,6 +191,7 @@ public class InvoiceService implements InvoiceUseCase {
         boolean monthlySplit = enrollmentQueryPort.hasMonthlyPaymentOptIn(c.studentId(), academicYearId);
 
         List<Invoice> created = new ArrayList<>();
+        List<ExemptedPeriod> exempted = new ArrayList<>();
         for (gn.lacaeducation.billing.domain.Installment installment : months) {
             List<String> installmentMonths = installment.getMonths();
             if (monthlySplit && installmentMonths != null && installmentMonths.size() > 1) {
@@ -203,27 +204,38 @@ public class InvoiceService implements InvoiceUseCase {
                     if (repo.existsByStudentIdAndInstallmentIdAndPeriodLabel(c.studentId(), installment.getId(), label)) {
                         continue;
                     }
-                    created.add(buildAndSaveInvoice(c, academicYearId, installment.getId(), label, perMonth, discount));
+                    buildAndSaveInvoice(c, academicYearId, installment.getId(), label, perMonth, discount, created, exempted);
                 }
             } else {
                 // Idempotence : on ne recrée pas la facture d'une échéance déjà facturée pour cet élève.
                 if (repo.existsByStudentIdAndInstallmentId(c.studentId(), installment.getId())) {
                     continue;
                 }
-                created.add(buildAndSaveInvoice(c, academicYearId, installment.getId(), installment.getLabel(),
-                        installment.getAmount(), discount));
+                buildAndSaveInvoice(c, academicYearId, installment.getId(), installment.getLabel(),
+                        installment.getAmount(), discount, created, exempted);
             }
         }
-        log.info("Génération mensuelle : {} facture(s) créée(s) pour l'élève id={} frais id={}",
-                created.size(), c.studentId(), c.feeId());
-        return created;
+        log.info("Génération mensuelle : {} facture(s) créée(s), {} échéance(s) exonérée(s) à 100% pour l'élève id={} frais id={}",
+                created.size(), exempted.size(), c.studentId(), c.feeId());
+        return new GenerateMonthlyResult(created, exempted);
     }
 
-    private Invoice buildAndSaveInvoice(GenerateMonthlyCommand c, Long academicYearId, Long installmentId,
+    /** Ajoute soit une Invoice réelle à {@code created}, soit — quand l'échéance est entièrement
+     * couverte par une exonération/avantage personnel (discountSource non nul, net dû = 0) — une
+     * {@link ExemptedPeriod} à {@code exempted} : aucune facture à 0 GNF n'est jamais créée, pour
+     * qu'elle ne puisse jamais se retrouver cochée par erreur dans un encaissement groupé (§billing,
+     * retour comptable — voir aussi la garde équivalente dans applyEarlyPaymentDiscount).
+     */
+    private void buildAndSaveInvoice(GenerateMonthlyCommand c, Long academicYearId, Long installmentId,
                                         String periodLabel, BigDecimal baseAmount,
-                                        ApplicableInvoiceDiscount discountInfo) {
+                                        ApplicableInvoiceDiscount discountInfo,
+                                        List<Invoice> created, List<ExemptedPeriod> exempted) {
         var discount = resolveDiscount(baseAmount, discountInfo);
         BigDecimal net = baseAmount.subtract(discount.amount());
+        if (discount.source() != null && net.signum() <= 0) {
+            exempted.add(new ExemptedPeriod(installmentId, periodLabel, discount.reason()));
+            return;
+        }
         String reference = generateReference(c.tenantId());
         Invoice inv = repo.save(Invoice.builder()
                 .tenantId(c.tenantId()).studentId(c.studentId()).feeId(c.feeId())
@@ -235,7 +247,7 @@ public class InvoiceService implements InvoiceUseCase {
                 .installmentId(installmentId).periodLabel(periodLabel).build());
         eventPublisher.publishEvent(new InvoiceGeneratedEvent(c.tenantId(), c.studentId(), inv.getId(), inv.getReference()));
         eventPublisher.publishEvent(new InvoiceIssuedEvent(inv.getId(), c.studentId(), c.tenantId()));
-        return inv;
+        created.add(inv);
     }
 
     /** Référence facture lisible et unique : &lt;PREFIXE_ECOLE&gt;-FAC-&lt;année&gt;-&lt;suffixe&gt;. */
