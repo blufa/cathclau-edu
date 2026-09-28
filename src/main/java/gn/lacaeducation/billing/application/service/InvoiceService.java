@@ -458,13 +458,26 @@ public class InvoiceService implements InvoiceUseCase {
         if (alreadyStartedPaying || outstanding.size() < 2) {
             return outstanding;
         }
+        // Une tranche déjà couverte par une exonération/avantage personnel (discountSource non nul,
+        // décidé une fois pour toutes par le comptable à l'inscription — voir computeApplicableDiscount)
+        // ne doit JAMAIS être touchée ici : `applyDiscount` REMPLACE la remise existante au lieu de s'y
+        // ajouter, donc lui appliquer la remise paiement anticipé effacerait purement et simplement
+        // l'exonération (bug vécu en vrai : une exonération 100% "prise en charge totale" remplacée par
+        // seulement -5%, l'élève se retrouvant à devoir payer 95% du tarif plein). Base de calcul et
+        // application restreintes aux tranches encore au tarif plein.
+        List<Invoice> eligible = outstanding.stream()
+                .filter(i -> i.getDiscountSource() == null)
+                .toList();
+        if (eligible.size() < 2) {
+            return outstanding;
+        }
         var discount = earlyPaymentDiscountUseCase.computeApplicable(fee.getTenantId(), fee.getType());
         if (discount.percentage() == null || discount.percentage().signum() <= 0) {
             return outstanding;
         }
         // Rien n'ayant encore été payé sur ce frais (garde ci-dessus), le total annuel et le total des
         // tranches restantes sont ici identiques — la remise porte donc sur l'année complète.
-        BigDecimal outstandingTotal = outstanding.stream().map(Invoice::getTotalAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal outstandingTotal = eligible.stream().map(Invoice::getTotalAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
         if (outstandingTotal.signum() <= 0) {
             return outstanding;
         }
@@ -475,22 +488,25 @@ public class InvoiceService implements InvoiceUseCase {
         // remise reste visible partout où discountReason est affiché (reçu, facture, liste des élèves).
         String reason = "Remise paiement anticipé : " + discount.ruleLabel()
                 + " (" + discount.percentage().stripTrailingZeros().toPlainString() + "%)";
-        List<Invoice> updated = new ArrayList<>();
+        java.util.Map<Long, Invoice> updatedById = new java.util.LinkedHashMap<>();
         BigDecimal allocated = BigDecimal.ZERO;
-        for (int i = 0; i < outstanding.size(); i++) {
-            Invoice inv = outstanding.get(i);
-            // Réparti au prorata du montant de chaque tranche restante ; la dernière absorbe l'arrondi
-            // pour que la somme des remises corresponde exactement au total calculé.
-            BigDecimal amount = i == outstanding.size() - 1
+        for (int i = 0; i < eligible.size(); i++) {
+            Invoice inv = eligible.get(i);
+            // Réparti au prorata du montant de chaque tranche restante éligible ; la dernière absorbe
+            // l'arrondi pour que la somme des remises corresponde exactement au total calculé.
+            BigDecimal amount = i == eligible.size() - 1
                     ? totalDiscount.subtract(allocated)
                     : totalDiscount.multiply(inv.getTotalAmount())
                             .divide(outstandingTotal, 2, java.math.RoundingMode.HALF_UP);
             allocated = allocated.add(amount);
-            updated.add(applyDiscount(inv.getId(), amount, reason));
+            updatedById.put(inv.getId(), applyDiscount(inv.getId(), amount, reason));
         }
         log.info("Remise paiement anticipé appliquée : {} facture(s), élève id={} frais id={}, taux={}%, base annuelle={}",
-                updated.size(), studentId, feeId, discount.percentage(), outstandingTotal);
-        return updated;
+                updatedById.size(), studentId, feeId, discount.percentage(), outstandingTotal);
+        // Renvoie la liste complète du frais (tranches remisées + tranches déjà exonérées inchangées) :
+        // le front indexe par id sur cette réponse et doit retrouver TOUTES les factures, pas seulement
+        // celles modifiées ici.
+        return outstanding.stream().map(i -> updatedById.getOrDefault(i.getId(), i)).toList();
     }
 
     @Override
@@ -500,7 +516,12 @@ public class InvoiceService implements InvoiceUseCase {
                 .toList();
         List<Invoice> reverted = new ArrayList<>();
         for (Invoice inv : outstanding) {
-            if (inv.getDiscountAmount() != null && inv.getDiscountAmount().signum() > 0) {
+            // Même garde que dans applyEarlyPaymentDiscount : ne jamais effacer la remise d'une tranche
+            // exonérée/avantage personnel — sa remise ne vient jamais de ce mécanisme, l'annuler ici
+            // supprimerait l'exonération elle-même au lieu de simplement retirer -5%.
+            boolean fromThisMechanism = inv.getDiscountSource() == null
+                    && inv.getDiscountAmount() != null && inv.getDiscountAmount().signum() > 0;
+            if (fromThisMechanism) {
                 reverted.add(applyDiscount(inv.getId(), BigDecimal.ZERO, null));
             } else {
                 reverted.add(inv);
