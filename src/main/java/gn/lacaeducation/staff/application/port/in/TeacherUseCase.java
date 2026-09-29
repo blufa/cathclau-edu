@@ -26,7 +26,12 @@ public interface TeacherUseCase {
                                 String phone, String email, String specialization, LocalDate hireDate,
                                 String employmentStatus, String diploma, String remunerationType,
                                 BigDecimal remunerationRate, String teachingAuthorizationNumber, String cnssNumber,
-                                String bankAccount) {}
+                                String bankAccount,
+                                /** Lie un compte de connexion créé APRÈS coup (ex. « Créer un accès » oublié à la
+                                 *  création) — null = ne touche pas au lien existant, jamais utilisé pour le retirer.
+                                 *  Voir StaffSearchController, qui exige ce lien pour proposer cet enseignant au
+                                 *  rattachement parent sur la fiche d'inscription. */
+                                Long userId) {}
     /** Champs modifiables par l'enseignant lui-même — jamais matricule/spécialité/dossier professionnel. */
     record UpdateOwnProfileCommand(String phone, String email) {}
 

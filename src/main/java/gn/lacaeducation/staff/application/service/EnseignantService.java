@@ -95,6 +95,9 @@ public class EnseignantService implements TeacherUseCase {
         t.setRemunerationType(cmd.remunerationType()); t.setRemunerationRate(cmd.remunerationRate());
         t.setTeachingAuthorizationNumber(cmd.teachingAuthorizationNumber()); t.setCnssNumber(cmd.cnssNumber());
         t.setBankAccount(cmd.bankAccount());
+        // Ne lie un compte que s'il est fourni — ne jamais délier un compte déjà existant via une
+        // simple mise à jour de profil (voir javadoc de UpdateTeacherCommand#userId).
+        if (cmd.userId() != null) t.setUserId(cmd.userId());
         return teacherRepository.save(t);
     }
 
