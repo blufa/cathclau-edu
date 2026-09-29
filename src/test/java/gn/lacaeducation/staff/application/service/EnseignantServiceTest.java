@@ -4,6 +4,7 @@ import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.common.ConflictException;
 import gn.lacaeducation.grading.GradingTeacherProvider;
 import gn.lacaeducation.staff.application.port.in.TeacherUseCase.CreateTeacherCommand;
+import gn.lacaeducation.staff.application.port.in.TeacherUseCase.UpdateTeacherCommand;
 import gn.lacaeducation.staff.application.port.out.TeacherRepository;
 import gn.lacaeducation.staff.domain.Teacher;
 import org.junit.jupiter.api.Test;
@@ -46,6 +47,34 @@ class EnseignantServiceTest {
         assertThat(result.getId()).isEqualTo(1L);
         verify(teacherRepository).save(any(Teacher.class));
         verify(eventPublisher).publishEvent(any(gn.lacaeducation.staff.application.event.StaffCreatedEvent.class));
+    }
+
+    @Test
+    void update_withUserId_linksAccount() {
+        // Cas réel : enseignante créée sans cocher « Créer un accès », compte créé après coup — doit
+        // pouvoir être lié à sa fiche existante (sinon elle reste invisible dans StaffSearchController).
+        Teacher existing = Teacher.builder().id(1L).tenantId(10L).firstName("Fatimatou").lastName("Bah")
+                .userId(null).build();
+        when(teacherRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(teacherRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        Teacher result = service.update(1L, new UpdateTeacherCommand(null, "Fatimatou", "Bah",
+                null, null, null, null, null, null, null, null, null, null, null, 99L));
+
+        assertThat(result.getUserId()).isEqualTo(99L);
+    }
+
+    @Test
+    void update_withNullUserId_neverClearsExistingLink() {
+        Teacher existing = Teacher.builder().id(1L).tenantId(10L).firstName("Fatimatou").lastName("Bah")
+                .userId(42L).build();
+        when(teacherRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(teacherRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        Teacher result = service.update(1L, new UpdateTeacherCommand(null, "Fatimatou", "Bah",
+                null, null, null, null, null, null, null, null, null, null, null, null));
+
+        assertThat(result.getUserId()).isEqualTo(42L);
     }
 
     @Test

@@ -21,18 +21,23 @@ class ParentAccessProviderAdapter implements ParentAccessProvider {
     @Transactional(readOnly = true)
     public boolean isParentOfStudent(Long userId, Long studentId) {
         if (userId == null || studentId == null) return false;
-        return parentRepository.findByUserId(userId)
-                .map(parent -> studentParentRepository.findStudentIdsByParentId(parent.getId()).contains(studentId))
-                .orElse(false);
+        return findChildStudentIds(userId).contains(studentId);
     }
 
     @Override
     @Transactional(readOnly = true)
     public java.util.List<Long> findChildStudentIds(Long userId) {
         if (userId == null) return java.util.List.of();
-        return parentRepository.findByUserId(userId)
-                .map(parent -> studentParentRepository.findStudentIdsByParentId(parent.getId()))
-                .orElseGet(java.util.List::of);
+        // findAllByUserId (jamais findByUserId, qui suppose un userId unique) : un même compte peut se
+        // retrouver sur PLUSIEURS fiches Parent (ex. lié séparément à chaque enfant lors de plusieurs
+        // inscriptions "Personnel de l'école" au lieu de réutiliser la même fiche — bug de saisie vécu
+        // en vrai, voir aussi la fiche de duplication à corriger côté création). findByUserId plantait
+        // ici avec "Query did not return a unique result" dès qu'un parent avait 2+ fiches dupliquées —
+        // bloquant, entre autres, toute génération de fiche de paie pour ce salarié (retenue scolarité).
+        return parentRepository.findAllByUserId(userId).stream()
+                .flatMap(parent -> studentParentRepository.findStudentIdsByParentId(parent.getId()).stream())
+                .distinct()
+                .toList();
     }
 
     @Override

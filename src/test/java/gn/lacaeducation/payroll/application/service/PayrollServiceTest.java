@@ -2,6 +2,7 @@ package gn.lacaeducation.payroll.application.service;
 
 import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.attendance.TeacherWorkProvider;
+import gn.lacaeducation.calendar.CalendarDataProvider;
 import gn.lacaeducation.lessons.TeacherTeachingProvider;
 import gn.lacaeducation.payroll.application.port.in.SalaryAdvanceUseCase;
 import gn.lacaeducation.payroll.application.port.in.SalaryFeeDeductionUseCase;
@@ -54,6 +55,7 @@ class PayrollServiceTest {
     @Mock SalaryFeeDeductionUseCase salaryFeeDeductionUseCase;
     @Mock SalaryAdvanceUseCase salaryAdvanceUseCase;
     @Mock AcademicsDataProvider academics;
+    @Mock CalendarDataProvider calendar;
     @Mock org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     @InjectMocks PayrollService payrollService;
@@ -64,6 +66,8 @@ class PayrollServiceTest {
         // éviter une erreur "unnecessary stubbing" sur ces tests-là.
         lenient().when(salaryFeeDeductionUseCase.computeStaffBenefitRemainder(any(), any(), any(), any(), any()))
                 .thenReturn(new SalaryFeeDeductionUseCase.StaffBenefitRemainderDeduction(BigDecimal.ZERO, 0));
+        // Idem : aucun jour férié par défaut, sauf test dédié à computeMonthlyPay_slotCoveredByHoliday*.
+        lenient().when(calendar.paidHolidayDates(any(), any(), any())).thenReturn(List.of());
     }
 
     @Test
@@ -145,15 +149,70 @@ class PayrollServiceTest {
         // Créneau récurrent : samedi 8h-10h (120 min), classe 20 — ex. le professeur d'EPS.
         when(academics.findScheduleByTeacher(5L)).thenReturn(List.of(
                 new gn.lacaeducation.academics.ScheduleSlotPublicInfo(1L, 20L, 3L, 5L, null, "SAMEDI", "08:00", "10:00", null)));
-        // Événement école couvrant le samedi 5 septembre 2026 (journée entière, pas d'heure précisée).
+        // Événement école couvrant le samedi 5 septembre 2026 (journée entière, pas d'heure précisée) —
+        // la direction a explicitement crédité (payé) cet enseignant pour cet événement.
         when(academics.findSchoolEvents(eq(1L), any(), any())).thenReturn(List.of(
                 new gn.lacaeducation.academics.SchoolEventPublicInfo(1L, "Kermesse",
                         java.time.LocalDate.of(2026, 9, 5), java.time.LocalDate.of(2026, 9, 5), null, null)));
+        when(academics.isTeacherCreditedForSchoolEvent(1L, 5L)).thenReturn(true);
 
         PayrollService.MonthlyPay pay = payrollService.computeMonthlyPay(5L, 2026, 9);
 
         assertThat(pay.effectiveMinutes()).isEqualTo(120);
         assertThat(pay.grossPay()).isEqualByComparingTo("20000");
+    }
+
+    /** Régression : un enseignant tout juste ajouté à l'emploi du temps ne doit PAS être crédité
+     * rétroactivement pour un événement école déjà configuré ce mois-ci tant que la direction ne l'a
+     * pas explicitement choisi — sinon "Heures réalisées" apparaît rempli sans qu'aucun cours n'ait
+     * jamais été donné (bug réel vécu : professeur nouvellement créé et placé dans l'emploi du temps). */
+    @Test
+    void computeMonthlyPay_slotCoveredByOtherEvent_teacherNotCredited_doesNotCount() {
+        TeacherCompensation comp = TeacherCompensation.builder().teacherId(5L).tenantId(1L)
+                .payMode(PayMode.HOURLY).hourlyRateNormal(new BigDecimal("10000")).hourlyRateExam(BigDecimal.ZERO)
+                .fixedSalary(BigDecimal.ZERO).build();
+        when(compRepo.findByTeacherId(5L)).thenReturn(Optional.of(comp));
+        when(teachingProvider.realizedMinutesByClass(eq(5L), any(), any())).thenReturn(Map.of());
+        when(workProvider.monthlyLateEarlyByClass(5L, 2026, 9)).thenReturn(Map.of());
+        when(academics.findScheduleByTeacher(5L)).thenReturn(List.of(
+                new gn.lacaeducation.academics.ScheduleSlotPublicInfo(1L, 20L, 3L, 5L, null, "SAMEDI", "08:00", "10:00", null)));
+        when(academics.findSchoolEvents(eq(1L), any(), any())).thenReturn(List.of(
+                new gn.lacaeducation.academics.SchoolEventPublicInfo(1L, "Kermesse",
+                        java.time.LocalDate.of(2026, 9, 5), java.time.LocalDate.of(2026, 9, 5), null, null)));
+        when(academics.isTeacherCreditedForSchoolEvent(1L, 5L)).thenReturn(false);
+
+        PayrollService.MonthlyPay pay = payrollService.computeMonthlyPay(5L, 2026, 9);
+
+        assertThat(pay.effectiveMinutes()).isEqualTo(0);
+        assertThat(pay.grossPay()).isEqualByComparingTo("0");
+    }
+
+    /** Un jour férié (chômé et payé par l'État — calendrier académique §calendar,
+     * {@code AcademicEventType.HOLIDAY}) reste TOUJOURS payé sur les heures touchées, automatiquement,
+     * sans passer par le mécanisme de crédit des SchoolEvent (réservé aux événements décidés par la
+     * direction) — corrige le cas réel d'un enseignant tout juste créé/placé dans l'emploi du temps qui
+     * ne doit PAS être payé pour un jour férié qu'il n'a jamais couvert (voir aussi le test précédent
+     * pour les événements école). */
+    @Test
+    void computeMonthlyPay_slotCoveredByPaidHoliday_alwaysCountsWithoutCreditCheck() {
+        TeacherCompensation comp = TeacherCompensation.builder().teacherId(5L).tenantId(1L)
+                .payMode(PayMode.HOURLY).hourlyRateNormal(new BigDecimal("10000")).hourlyRateExam(BigDecimal.ZERO)
+                .fixedSalary(BigDecimal.ZERO).build();
+        when(compRepo.findByTeacherId(5L)).thenReturn(Optional.of(comp));
+        when(teachingProvider.realizedMinutesByClass(eq(5L), any(), any())).thenReturn(Map.of());
+        when(workProvider.monthlyLateEarlyByClass(5L, 2026, 9)).thenReturn(Map.of());
+        when(academics.findScheduleByTeacher(5L)).thenReturn(List.of(
+                new gn.lacaeducation.academics.ScheduleSlotPublicInfo(1L, 20L, 3L, 5L, null, "SAMEDI", "08:00", "10:00", null)));
+        when(academics.findSchoolEvents(eq(1L), any(), any())).thenReturn(List.of());
+        // Fête de l'indépendance déclarée jour férié dans le calendrier académique (§calendar).
+        when(calendar.paidHolidayDates(eq(1L), any(), any())).thenReturn(
+                List.of(java.time.LocalDate.of(2026, 9, 5)));
+
+        PayrollService.MonthlyPay pay = payrollService.computeMonthlyPay(5L, 2026, 9);
+
+        assertThat(pay.effectiveMinutes()).isEqualTo(120);
+        assertThat(pay.grossPay()).isEqualByComparingTo("20000");
+        org.mockito.Mockito.verify(academics, org.mockito.Mockito.never()).isTeacherCreditedForSchoolEvent(any(), any());
     }
 
     @Test
@@ -223,6 +282,7 @@ class PayrollServiceTest {
         when(academics.findSchoolEvents(eq(1L), any(), any())).thenReturn(List.of(
                 new gn.lacaeducation.academics.SchoolEventPublicInfo(1L, "Kermesse",
                         java.time.LocalDate.of(2026, 9, 5), java.time.LocalDate.of(2026, 9, 5), null, null)));
+        when(academics.isTeacherCreditedForSchoolEvent(1L, 5L)).thenReturn(true);
 
         PayrollService.MonthlyPay pay = payrollService.computeMonthlyPay(5L, 2026, 9);
 

@@ -32,6 +32,18 @@ public class ParentService implements ParentUseCase {
                 return existing.get();
             }
         }
+        // Un compte utilisateur (ex. personnel/enseignant lié comme parent) ne doit porter qu'une seule
+        // fiche Parent : sans ce contrôle, inscrire plusieurs enfants du même personnel crée une fiche
+        // dupliquée à chaque enfant (bug vécu en réel — voir findByUserId/findAllByUserId).
+        if (cmd.userId() != null) {
+            List<Parent> existing = parentRepository.findAllByUserId(cmd.userId());
+            Optional<Parent> sameTenant = existing.stream()
+                    .filter(p -> java.util.Objects.equals(p.getTenantId(), cmd.tenantId()))
+                    .min(java.util.Comparator.comparing(Parent::getId));
+            if (sameTenant.isPresent()) {
+                return sameTenant.get();
+            }
+        }
         return parentRepository.save(Parent.builder()
                 .tenantId(cmd.tenantId()).userId(cmd.userId())
                 .firstName(PersonName.capitalizeFirstName(cmd.firstName()))
@@ -70,7 +82,7 @@ public class ParentService implements ParentUseCase {
     }
 
     private Parent requireByUserId(Long userId) {
-        return parentRepository.findByUserId(userId)
+        return findByUserId(userId)
                 .orElseThrow(() -> new gn.lacaeducation.common.ResourceNotFoundException("Parent (compte)", userId));
     }
 
@@ -78,7 +90,14 @@ public class ParentService implements ParentUseCase {
     public Optional<Parent> findById(Long id) { return parentRepository.findById(id); }
 
     @Override @Transactional(readOnly = true)
-    public Optional<Parent> findByUserId(Long userId) { return parentRepository.findByUserId(userId); }
+    public Optional<Parent> findByUserId(Long userId) {
+        // findAllByUserId (jamais findByUserId côté port, qui plante si des fiches Parent dupliquées
+        // partagent le même compte — cas réel : une fiche recréée à chaque inscription d'enfant au lieu
+        // de réutiliser l'existante). On retient la plus ancienne (id le plus bas) comme fiche "canonique"
+        // pour le profil/portail parent, en attendant une fusion des doublons.
+        return parentRepository.findAllByUserId(userId).stream()
+                .min(java.util.Comparator.comparing(Parent::getId));
+    }
 
     @Override @Transactional(readOnly = true)
     public List<Parent> findByTenantId(Long tenantId) { return parentRepository.findByTenantId(tenantId); }
@@ -125,5 +144,14 @@ public class ParentService implements ParentUseCase {
     public List<Student> findStudentsByParent(Long parentId) {
         return studentParentRepository.findStudentIdsByParentId(parentId).stream()
                 .flatMap(id -> studentRepository.findById(id).stream()).toList();
+    }
+
+    @Override @Transactional(readOnly = true)
+    public List<Student> findStudentsByUserId(Long userId) {
+        return parentRepository.findAllByUserId(userId).stream()
+                .flatMap(p -> studentParentRepository.findStudentIdsByParentId(p.getId()).stream())
+                .distinct()
+                .flatMap(id -> studentRepository.findById(id).stream())
+                .toList();
     }
 }
