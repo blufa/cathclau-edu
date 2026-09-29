@@ -89,9 +89,19 @@ public class InstallmentService implements InstallmentUseCase {
         SchoolFee fee = schoolFeeRepository.findById(feeId)
                 .orElseThrow(() -> new ResourceNotFoundException("SchoolFee", feeId));
 
-        // Pour une MENSUALITE, chaque échéance est un mois autonome (montant complet) : pas de plafond
-        // « somme = total » — le total annuel = montant mensuel × nombre de mois.
-        if (fee.getType() == gn.lacaeducation.billing.domain.FeeType.MONTHLY) {
+        // Pour une MENSUALITE, une CANTINE ou un TRANSPORT réglés en tranches, chaque échéance est un
+        // mois autonome (montant complet), pas une part d'un total à ne jamais dépasser — le "total
+        // annuel" de ces trois-là est juste `montant mensuel × nombre de mois`, jamais un plafond fixe.
+        // Les trois passent par la même génération mensuelle récurrente (voir InvoiceService#generateMonthly,
+        // appelée aussi bien pour MONTHLY que pour CANTEEN — voir StudentInvoicesPanel côté front — et pour
+        // TRANSPORT — voir TransportInvoiceListener) : bug vécu en vrai, configurer les échéances d'un
+        // frais TRANSPORT (ex. 100 000 GNF/mois × plusieurs mois) rejetait dès la 2e échéance avec
+        // "Installments sum ... exceeds fee total amount", alors que ce total n'a jamais eu vocation à
+        // plafonner un frais mensuel récurrent.
+        var type = fee.getType();
+        if (type == gn.lacaeducation.billing.domain.FeeType.MONTHLY
+                || type == gn.lacaeducation.billing.domain.FeeType.CANTEEN
+                || type == gn.lacaeducation.billing.domain.FeeType.TRANSPORT) {
             return;
         }
 
