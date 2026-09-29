@@ -201,7 +201,13 @@ public class PayrollService {
             for (LocalDate d = from; !d.isAfter(to); d = d.plusDays(1)) {
                 if (d.getDayOfWeek() != block.day()) continue;
                 LocalDate date = d;
-                boolean covered = events.stream().anyMatch(ev -> eventCoversSlot(ev, date, block.start(), block.end()));
+                // Jour férié (HOLIDAY, décidé par l'État) : toujours payé. Autre événement école
+                // (kermesse, sortie... décidé par la direction) : payé seulement si la direction a
+                // explicitement crédité cet enseignant pour CET événement (voir SchoolEventService
+                // #setCreditedTeachers) — sinon un enseignant tout juste ajouté à l'emploi du temps se
+                // retrouverait crédité rétroactivement pour un événement passé qu'il n'a jamais couvert.
+                boolean covered = events.stream().anyMatch(ev -> eventCoversSlot(ev, date, block.start(), block.end())
+                        && ("HOLIDAY".equals(ev.type()) || academics.isTeacherCreditedForSchoolEvent(ev.id(), teacherId)));
                 if (covered) result.merge(block.representativeClassId(), block.durationMinutes(), Integer::sum);
             }
         }

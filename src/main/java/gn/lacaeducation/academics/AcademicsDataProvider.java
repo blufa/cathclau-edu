@@ -33,4 +33,7 @@ public interface AcademicsDataProvider {
     /** Événements école (kermesse, match, entraînement...) du tenant dont la période chevauche
      * [from, to] — pour que la paie garde payées les heures des enseignants concernés (§payroll). */
     java.util.List<SchoolEventPublicInfo> findSchoolEvents(Long tenantId, java.time.LocalDate from, java.time.LocalDate to);
+    /** Vrai si la direction a explicitement crédité (payé) cet enseignant pour un événement de type
+     *  OTHER — sans objet pour un HOLIDAY, toujours payé (voir §payroll). */
+    boolean isTeacherCreditedForSchoolEvent(Long schoolEventId, Long teacherId);
 }

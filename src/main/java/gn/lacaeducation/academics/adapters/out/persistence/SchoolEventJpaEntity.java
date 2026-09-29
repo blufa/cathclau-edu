@@ -2,6 +2,7 @@ package gn.lacaeducation.academics.adapters.out.persistence;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -26,4 +27,6 @@ public class SchoolEventJpaEntity {
     @Column(name = "start_time") private LocalTime startTime;
     @Column(name = "end_time") private LocalTime endTime;
     @Column(columnDefinition = "text") private String reason;
+    @Enumerated(jakarta.persistence.EnumType.STRING) @Column(nullable = false)
+    private gn.lacaeducation.academics.domain.SchoolEventType type = gn.lacaeducation.academics.domain.SchoolEventType.OTHER;
 }

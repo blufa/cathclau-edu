@@ -15,6 +15,7 @@ import java.util.Optional;
 class SchoolEventPersistenceAdapter implements SchoolEventRepository {
 
     private final SchoolEventJpaRepository jpaRepo;
+    private final SchoolEventCreditedTeacherJpaRepository creditedTeacherRepo;
     private final AcademicsMapper mapper;
 
     @Override
@@ -40,5 +41,19 @@ class SchoolEventPersistenceAdapter implements SchoolEventRepository {
     @Override
     public void deleteById(Long id) {
         jpaRepo.deleteById(id);
+    }
+
+    @Override
+    public List<Long> findCreditedTeacherIds(Long schoolEventId) {
+        return creditedTeacherRepo.findBySchoolEventId(schoolEventId).stream()
+                .map(SchoolEventCreditedTeacherJpaEntity::getTeacherId).toList();
+    }
+
+    @Override
+    public void replaceCreditedTeachers(Long schoolEventId, List<Long> teacherIds) {
+        creditedTeacherRepo.deleteBySchoolEventId(schoolEventId);
+        for (Long teacherId : teacherIds) {
+            creditedTeacherRepo.save(new SchoolEventCreditedTeacherJpaEntity(null, schoolEventId, teacherId));
+        }
     }
 }

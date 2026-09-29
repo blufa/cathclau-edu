@@ -2,8 +2,11 @@ package gn.lacaeducation.academics.adapters.in.web;
 
 import gn.lacaeducation.academics.application.port.in.GererSchoolEventUseCase;
 import gn.lacaeducation.academics.application.port.in.GererSchoolEventUseCase.CreateSchoolEventCommand;
+import gn.lacaeducation.academics.application.port.in.GererSchoolEventUseCase.TouchedTeacher;
 import gn.lacaeducation.academics.domain.SchoolEvent;
+import gn.lacaeducation.academics.domain.SchoolEventType;
 import gn.lacaeducation.common.TenantContext;
+import org.springframework.web.bind.annotation.PutMapping;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -36,14 +39,30 @@ public class SchoolEventController {
     private final GererSchoolEventUseCase useCase;
 
     public record CreateRequest(String label, LocalDate startDate, LocalDate endDate,
-                                LocalTime startTime, LocalTime endTime, String reason) {}
+                                LocalTime startTime, LocalTime endTime, String reason, SchoolEventType type) {}
+    public record CreditedTeachersRequest(List<Long> teacherIds) {}
 
-    @Operation(summary = "Créer un événement école (les élèves ne suivent pas cours, les enseignants concernés restent payés)")
+    @Operation(summary = "Créer un événement école (les élèves ne suivent pas cours) : jour férié (toujours payé) "
+            + "ou autre événement (kermesse, sortie... la direction choisit ensuite les enseignants payés)")
     @PreAuthorize("hasAuthority('evenement:manage')")
     @PostMapping
     public SchoolEvent create(@RequestBody CreateRequest r) {
         return useCase.create(new CreateSchoolEventCommand(TenantContext.get(), r.label(), r.startDate(), r.endDate(),
-                r.startTime(), r.endTime(), r.reason()));
+                r.startTime(), r.endTime(), r.reason(), r.type()));
+    }
+
+    @Operation(summary = "Lister les enseignants dont un créneau est touché par cet événement, avec leur statut de crédit")
+    @PreAuthorize("hasAuthority('evenement:manage')")
+    @GetMapping("/{id}/enseignants-touches")
+    public List<TouchedTeacher> touchedTeachers(@PathVariable Long id) {
+        return useCase.findTouchedTeachers(id);
+    }
+
+    @Operation(summary = "Choisir les enseignants payés (crédités) pour cet événement (sans objet pour un jour férié)")
+    @PreAuthorize("hasAuthority('evenement:manage')")
+    @PutMapping("/{id}/enseignants-credites")
+    public void setCreditedTeachers(@PathVariable Long id, @RequestBody CreditedTeachersRequest r) {
+        useCase.setCreditedTeachers(id, r.teacherIds());
     }
 
     @Operation(summary = "Lister les événements école du tenant")

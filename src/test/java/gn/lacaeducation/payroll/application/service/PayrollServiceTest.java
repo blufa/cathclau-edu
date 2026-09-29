@@ -145,15 +145,65 @@ class PayrollServiceTest {
         // Créneau récurrent : samedi 8h-10h (120 min), classe 20 — ex. le professeur d'EPS.
         when(academics.findScheduleByTeacher(5L)).thenReturn(List.of(
                 new gn.lacaeducation.academics.ScheduleSlotPublicInfo(1L, 20L, 3L, 5L, null, "SAMEDI", "08:00", "10:00", null)));
-        // Événement école couvrant le samedi 5 septembre 2026 (journée entière, pas d'heure précisée).
+        // Événement école couvrant le samedi 5 septembre 2026 (journée entière, pas d'heure précisée) —
+        // la direction a explicitement crédité (payé) cet enseignant pour cet événement.
         when(academics.findSchoolEvents(eq(1L), any(), any())).thenReturn(List.of(
                 new gn.lacaeducation.academics.SchoolEventPublicInfo(1L, "Kermesse",
-                        java.time.LocalDate.of(2026, 9, 5), java.time.LocalDate.of(2026, 9, 5), null, null)));
+                        java.time.LocalDate.of(2026, 9, 5), java.time.LocalDate.of(2026, 9, 5), null, null, "OTHER")));
+        when(academics.isTeacherCreditedForSchoolEvent(1L, 5L)).thenReturn(true);
 
         PayrollService.MonthlyPay pay = payrollService.computeMonthlyPay(5L, 2026, 9);
 
         assertThat(pay.effectiveMinutes()).isEqualTo(120);
         assertThat(pay.grossPay()).isEqualByComparingTo("20000");
+    }
+
+    /** Régression : un enseignant tout juste ajouté à l'emploi du temps ne doit PAS être crédité
+     * rétroactivement pour un événement école déjà configuré ce mois-ci tant que la direction ne l'a
+     * pas explicitement choisi — sinon "Heures réalisées" apparaît rempli sans qu'aucun cours n'ait
+     * jamais été donné (bug réel vécu : professeur nouvellement créé et placé dans l'emploi du temps). */
+    @Test
+    void computeMonthlyPay_slotCoveredByOtherEvent_teacherNotCredited_doesNotCount() {
+        TeacherCompensation comp = TeacherCompensation.builder().teacherId(5L).tenantId(1L)
+                .payMode(PayMode.HOURLY).hourlyRateNormal(new BigDecimal("10000")).hourlyRateExam(BigDecimal.ZERO)
+                .fixedSalary(BigDecimal.ZERO).build();
+        when(compRepo.findByTeacherId(5L)).thenReturn(Optional.of(comp));
+        when(teachingProvider.realizedMinutesByClass(eq(5L), any(), any())).thenReturn(Map.of());
+        when(workProvider.monthlyLateEarlyByClass(5L, 2026, 9)).thenReturn(Map.of());
+        when(academics.findScheduleByTeacher(5L)).thenReturn(List.of(
+                new gn.lacaeducation.academics.ScheduleSlotPublicInfo(1L, 20L, 3L, 5L, null, "SAMEDI", "08:00", "10:00", null)));
+        when(academics.findSchoolEvents(eq(1L), any(), any())).thenReturn(List.of(
+                new gn.lacaeducation.academics.SchoolEventPublicInfo(1L, "Kermesse",
+                        java.time.LocalDate.of(2026, 9, 5), java.time.LocalDate.of(2026, 9, 5), null, null, "OTHER")));
+        when(academics.isTeacherCreditedForSchoolEvent(1L, 5L)).thenReturn(false);
+
+        PayrollService.MonthlyPay pay = payrollService.computeMonthlyPay(5L, 2026, 9);
+
+        assertThat(pay.effectiveMinutes()).isEqualTo(0);
+        assertThat(pay.grossPay()).isEqualByComparingTo("0");
+    }
+
+    /** Un jour férié (HOLIDAY, chômé et payé par l'État) reste TOUJOURS payé sur les heures touchées,
+     * sans qu'un choix de la direction soit nécessaire — contrairement à un événement OTHER. */
+    @Test
+    void computeMonthlyPay_slotCoveredByHoliday_alwaysCountsWithoutCreditCheck() {
+        TeacherCompensation comp = TeacherCompensation.builder().teacherId(5L).tenantId(1L)
+                .payMode(PayMode.HOURLY).hourlyRateNormal(new BigDecimal("10000")).hourlyRateExam(BigDecimal.ZERO)
+                .fixedSalary(BigDecimal.ZERO).build();
+        when(compRepo.findByTeacherId(5L)).thenReturn(Optional.of(comp));
+        when(teachingProvider.realizedMinutesByClass(eq(5L), any(), any())).thenReturn(Map.of());
+        when(workProvider.monthlyLateEarlyByClass(5L, 2026, 9)).thenReturn(Map.of());
+        when(academics.findScheduleByTeacher(5L)).thenReturn(List.of(
+                new gn.lacaeducation.academics.ScheduleSlotPublicInfo(1L, 20L, 3L, 5L, null, "SAMEDI", "08:00", "10:00", null)));
+        when(academics.findSchoolEvents(eq(1L), any(), any())).thenReturn(List.of(
+                new gn.lacaeducation.academics.SchoolEventPublicInfo(1L, "Fête de l'indépendance",
+                        java.time.LocalDate.of(2026, 9, 5), java.time.LocalDate.of(2026, 9, 5), null, null, "HOLIDAY")));
+
+        PayrollService.MonthlyPay pay = payrollService.computeMonthlyPay(5L, 2026, 9);
+
+        assertThat(pay.effectiveMinutes()).isEqualTo(120);
+        assertThat(pay.grossPay()).isEqualByComparingTo("20000");
+        org.mockito.Mockito.verify(academics, org.mockito.Mockito.never()).isTeacherCreditedForSchoolEvent(any(), any());
     }
 
     @Test
@@ -170,7 +220,7 @@ class PayrollServiceTest {
         when(academics.findSchoolEvents(eq(1L), any(), any())).thenReturn(List.of(
                 new gn.lacaeducation.academics.SchoolEventPublicInfo(1L, "Kermesse",
                         java.time.LocalDate.of(2026, 9, 5), java.time.LocalDate.of(2026, 9, 5),
-                        java.time.LocalTime.of(14, 0), java.time.LocalTime.of(18, 0))));
+                        java.time.LocalTime.of(14, 0), java.time.LocalTime.of(18, 0), "OTHER")));
 
         PayrollService.MonthlyPay pay = payrollService.computeMonthlyPay(5L, 2026, 9);
 
@@ -222,7 +272,8 @@ class PayrollServiceTest {
                 new gn.lacaeducation.academics.ScheduleSlotPublicInfo(2L, 21L, 3L, 5L, null, "SAMEDI", "08:00", "12:00", null)));
         when(academics.findSchoolEvents(eq(1L), any(), any())).thenReturn(List.of(
                 new gn.lacaeducation.academics.SchoolEventPublicInfo(1L, "Kermesse",
-                        java.time.LocalDate.of(2026, 9, 5), java.time.LocalDate.of(2026, 9, 5), null, null)));
+                        java.time.LocalDate.of(2026, 9, 5), java.time.LocalDate.of(2026, 9, 5), null, null, "OTHER")));
+        when(academics.isTeacherCreditedForSchoolEvent(1L, 5L)).thenReturn(true);
 
         PayrollService.MonthlyPay pay = payrollService.computeMonthlyPay(5L, 2026, 9);
 

@@ -32,4 +32,8 @@ public class SchoolEvent {
     /** null = couvre toute la journée. */
     private LocalTime endTime;
     private String reason;
+    /** HOLIDAY = toujours payé ; OTHER = la direction choisit les enseignants crédités (voir
+     *  {@code GererSchoolEventUseCase#setCreditedTeachers}). */
+    @Builder.Default
+    private SchoolEventType type = SchoolEventType.OTHER;
 }
