@@ -38,6 +38,7 @@ public class InvoiceService implements InvoiceUseCase {
     private final TenantInfoProvider tenantInfoProvider;
     private final gn.lacaeducation.billing.application.port.in.ExemptionUseCase exemptionUseCase;
     private final gn.lacaeducation.billing.application.port.in.EarlyPaymentDiscountUseCase earlyPaymentDiscountUseCase;
+    private final gn.lacaeducation.billing.application.port.in.StaffChildBenefitUseCase staffChildBenefitUseCase;
     private final PlatformFeeLedgerApi platformFeeLedgerApi;
 
     @Override @org.springframework.transaction.annotation.Transactional(readOnly = true)
@@ -112,6 +113,16 @@ public class InvoiceService implements InvoiceUseCase {
                     ? gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT
                     : gn.lacaeducation.billing.domain.DiscountSource.EXEMPTION;
         }
+        // Enfant du personnel SANS aucune remise (ni exonération manuelle ci-dessus, quel que soit son
+        // rang dans la politique de prise en charge — retour comptable : "quelle qu'en soit le nombre")
+        // sur la scolarité précisément : tagué avantage personnel à 0% quand même, pour que le
+        // prélèvement salarial automatique (SalaryFeeDeductionService#computeStaffBenefitRemainder)
+        // prenne en charge le montant COMPLET, sans action manuelle du comptable facture par facture.
+        // Ne touche jamais un enfant qui a déjà une remise par ailleurs (bestSource non nul).
+        if (bestSource == null && feeType == FeeType.MONTHLY && staffChildBenefitUseCase.isStaffChild(studentId)) {
+            bestReason = "Avantage personnel : enfant du personnel — scolarité prélevée sur le salaire";
+            bestSource = gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT;
+        }
         BigDecimal exceptionalAmount = exemption.exceptionalAmount() != null ? exemption.exceptionalAmount() : BigDecimal.ZERO;
         return new ApplicableInvoiceDiscount(bestPercent, bestReason, bestSource, exceptionalAmount, exemption.exceptionalReason());
     }
@@ -126,12 +137,16 @@ public class InvoiceService implements InvoiceUseCase {
                 .divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
         BigDecimal total = percentPart.add(d.exceptionalAmount());
         if (total.compareTo(grossAmount) > 0) total = grossAmount;
+        // `percentageReason`/`source` sont fiables tels quels (voir computeApplicableDiscount) : jamais
+        // renseignés sans raison valable — y compris à 0% pour un enfant du personnel sans remise, tagué
+        // exprès pour le prélèvement salarial (voir plus haut), donc PAS conditionnés à percentPart > 0
+        // ici (sans quoi ce tag à 0% disparaîtrait silencieusement).
         String reason = java.util.stream.Stream.of(
-                        percentPart.signum() > 0 ? d.percentageReason() : null,
+                        d.percentageReason(),
                         d.exceptionalAmount().signum() > 0 ? "Remise exceptionnelle : " + d.exceptionalReason() : null)
                 .filter(java.util.Objects::nonNull)
                 .collect(java.util.stream.Collectors.joining(" + "));
-        gn.lacaeducation.billing.domain.DiscountSource source = percentPart.signum() > 0 ? d.source() : null;
+        gn.lacaeducation.billing.domain.DiscountSource source = d.source();
         return new DiscountResult(total, reason.isBlank() ? null : reason, source);
     }
 

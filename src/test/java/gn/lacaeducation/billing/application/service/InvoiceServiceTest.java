@@ -42,6 +42,7 @@ class InvoiceServiceTest {
     @Mock TenantInfoProvider tenantInfoProvider;
     @Mock ExemptionUseCase exemptionUseCase;
     @Mock gn.lacaeducation.billing.application.port.in.EarlyPaymentDiscountUseCase earlyPaymentDiscountUseCase;
+    @Mock gn.lacaeducation.billing.application.port.in.StaffChildBenefitUseCase staffChildBenefitUseCase;
     @Mock gn.lacaeducation.platform.PlatformFeeLedgerApi platformFeeLedgerApi;
 
     @BeforeEach
@@ -50,10 +51,11 @@ class InvoiceServiceTest {
         // (lenient — certains tests, ex. applyPayment/*, n'atteignent jamais ce calcul).
         lenient().when(exemptionUseCase.computeApplicable(any(), any()))
                 .thenReturn(new ApplicableExemption(BigDecimal.ZERO, null, false, BigDecimal.ZERO, null));
+        lenient().when(staffChildBenefitUseCase.isStaffChild(any())).thenReturn(false);
     }
 
     InvoiceService service() {
-        return new InvoiceService(repo, schoolFeeRepository, installmentRepository, enrollmentQueryPort, eventPublisher, invoicePdfGenerator, mediaUploadService, tenantInfoProvider, exemptionUseCase, earlyPaymentDiscountUseCase, platformFeeLedgerApi);
+        return new InvoiceService(repo, schoolFeeRepository, installmentRepository, enrollmentQueryPort, eventPublisher, invoicePdfGenerator, mediaUploadService, tenantInfoProvider, exemptionUseCase, earlyPaymentDiscountUseCase, staffChildBenefitUseCase, platformFeeLedgerApi);
 
     }
 
@@ -673,6 +675,77 @@ class InvoiceServiceTest {
         assertThat(result.exemptedPeriods()).isEmpty();
         assertThat(result.created()).hasSize(1);
         assertThat(result.created().get(0).getRemainingBalance()).isEqualByComparingTo("70.00");
+    }
+
+    @Test
+    void generateMonthly_staffChildWithoutAnyExemption_taggedStaffBenefitAtZeroPercent_fullInvoiceCreated() {
+        // Retour comptable : un enfant du personnel qui n'a AUCUNE remise (ex. le cadet, quand seul
+        // l'aîné est couvert par la politique de prise en charge) doit quand même voir sa scolarité
+        // taguée "avantage personnel" — à 0%, donc une vraie facture à plein tarif est bien créée — pour
+        // que le prélèvement salarial automatique (SalaryFeeDeductionService) la prenne en charge sans
+        // action manuelle du comptable, "quelle qu'en soit le nombre" [d'enfants dans ce cas].
+        when(enrollmentQueryPort.hasActiveEnrollment(7L)).thenReturn(true);
+        when(installmentRepository.findByFeeId(3L)).thenReturn(java.util.List.of(
+                gn.lacaeducation.billing.domain.Installment.builder()
+                        .id(1L).feeId(3L).label("Septembre").amount(new BigDecimal("100")).build()));
+        when(repo.existsByStudentIdAndInstallmentId(7L, 1L)).thenReturn(false);
+        when(staffChildBenefitUseCase.isStaffChild(7L)).thenReturn(true);
+        when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
+
+        var result = service().generateMonthly(
+                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 3L, 99L));
+
+        assertThat(result.exemptedPeriods()).isEmpty();
+        assertThat(result.created()).hasSize(1);
+        Invoice inv = result.created().get(0);
+        assertThat(inv.getRemainingBalance()).isEqualByComparingTo("100.00");
+        assertThat(inv.getDiscountAmount()).isEqualByComparingTo("0");
+        assertThat(inv.getDiscountSource()).isEqualTo(gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT);
+        assertThat(inv.getDiscountReason()).contains("enfant du personnel");
+    }
+
+    @Test
+    void generateMonthly_staffChildWithExistingExemption_notOverriddenByZeroPercentTag() {
+        // Un enfant du personnel qui a DÉJÀ une exonération (même non liée au personnel, ex. cas social)
+        // garde cette exonération — le tag "avantage personnel à 0%" ne s'applique qu'en l'absence de
+        // toute autre remise.
+        when(enrollmentQueryPort.hasActiveEnrollment(7L)).thenReturn(true);
+        when(installmentRepository.findByFeeId(3L)).thenReturn(java.util.List.of(
+                gn.lacaeducation.billing.domain.Installment.builder()
+                        .id(1L).feeId(3L).label("Septembre").amount(new BigDecimal("100")).build()));
+        when(repo.existsByStudentIdAndInstallmentId(7L, 1L)).thenReturn(false);
+        when(exemptionUseCase.computeApplicable(7L, gn.lacaeducation.billing.domain.FeeType.MONTHLY))
+                .thenReturn(new ApplicableExemption(new BigDecimal("20"), "Cas social", false, BigDecimal.ZERO, null));
+        when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
+
+        var result = service().generateMonthly(
+                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 3L, 99L));
+
+        Invoice inv = result.created().get(0);
+        assertThat(inv.getDiscountAmount()).isEqualByComparingTo("20.00");
+        assertThat(inv.getDiscountSource()).isEqualTo(gn.lacaeducation.billing.domain.DiscountSource.EXEMPTION);
+        verify(staffChildBenefitUseCase, never()).isStaffChild(any());
+    }
+
+    @Test
+    void generateMonthly_staffChild_onlyTaggedForMonthlyFee_notOtherFeeTypes() {
+        // Le tag "avantage personnel à 0%" ne concerne que la SCOLARITÉ (MONTHLY) — pas les autres
+        // types de frais (transport, cantine, inscription...), où le comptable garde la main.
+        when(enrollmentQueryPort.hasActiveEnrollment(7L)).thenReturn(true);
+        when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(
+                gn.lacaeducation.billing.domain.SchoolFee.builder()
+                        .id(3L).type(gn.lacaeducation.billing.domain.FeeType.TRANSPORT).build()));
+        when(installmentRepository.findByFeeId(3L)).thenReturn(java.util.List.of(
+                gn.lacaeducation.billing.domain.Installment.builder()
+                        .id(1L).feeId(3L).label("Septembre").amount(new BigDecimal("100")).build()));
+        when(repo.existsByStudentIdAndInstallmentId(7L, 1L)).thenReturn(false);
+        when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
+
+        var result = service().generateMonthly(
+                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 3L, 99L));
+
+        assertThat(result.created().get(0).getDiscountSource()).isNull();
+        verify(staffChildBenefitUseCase, never()).isStaffChild(any());
     }
 
     // ── Exonération (§8) : TOTAL/PARTIAL déterminent le pourcentage, EXCEPTIONAL (montant fixe)

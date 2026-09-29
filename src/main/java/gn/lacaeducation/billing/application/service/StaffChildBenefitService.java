@@ -76,13 +76,18 @@ public class StaffChildBenefitService implements StaffChildBenefitUseCase {
 
     @Override
     @Transactional(readOnly = true)
-    public StaffCoverage computeCoverage(Long tenantId, Long studentId, gn.lacaeducation.billing.domain.FeeType feeType) {
+    public boolean isStaffChild(Long studentId) {
         // L'un des parents est-il un membre du personnel — enseignant OU personnel non-enseignant
         // (fiche liée au même compte utilisateur que le parent) ?
-        boolean staffChild = parentAccessProvider.findParentUserIdsByStudent(studentId).stream()
+        return parentAccessProvider.findParentUserIdsByStudent(studentId).stream()
                 .anyMatch(uid -> teacherProvider.findTeacherIdByUserId(uid).isPresent()
                         || employeeProvider.findEmployeeIdByUserId(uid).isPresent());
-        if (!staffChild) {
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public StaffCoverage computeCoverage(Long tenantId, Long studentId, gn.lacaeducation.billing.domain.FeeType feeType) {
+        if (!isStaffChild(studentId)) {
             return new StaffCoverage(BigDecimal.ZERO, null);
         }
         StaffChildBenefitPolicy policy = repo.findByTenantId(tenantId).stream()
