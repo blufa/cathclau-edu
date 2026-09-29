@@ -12,9 +12,11 @@ import java.time.LocalTime;
 /**
  * Événement de l'école (kermesse, match, entraînement...) décidé par le fondateur ou la direction, qui
  * empêche les élèves de suivre le cours sur une période donnée (ils rentrent à la maison). Les
- * enseignants dont un créneau récurrent tombe dans cette période restent payés sur ces heures comme si
- * le cours avait eu lieu — jamais retirées de leurs heures réalisées (voir
- * {@code PayrollService#computeMonthlyPay}).
+ * enseignants dont un créneau récurrent tombe dans cette période ne sont payés sur ces heures que si la
+ * direction les a explicitement crédités pour CET événement (voir
+ * {@code GererSchoolEventUseCase#setCreditedTeachers}, {@code PayrollService#computeMonthlyPay}) —
+ * contrairement à un jour férié (chômé et payé par l'État), qui existe séparément dans le calendrier
+ * académique ({@code AcademicEventType#HOLIDAY}) et reste TOUJOURS payé automatiquement.
  */
 @Getter
 @Setter
@@ -32,8 +34,4 @@ public class SchoolEvent {
     /** null = couvre toute la journée. */
     private LocalTime endTime;
     private String reason;
-    /** HOLIDAY = toujours payé ; OTHER = la direction choisit les enseignants crédités (voir
-     *  {@code GererSchoolEventUseCase#setCreditedTeachers}). */
-    @Builder.Default
-    private SchoolEventType type = SchoolEventType.OTHER;
 }

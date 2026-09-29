@@ -5,7 +5,6 @@ import gn.lacaeducation.academics.application.port.out.EmploiDuTempsRepository;
 import gn.lacaeducation.academics.application.port.out.SchoolEventRepository;
 import gn.lacaeducation.academics.domain.EmploiDuTemps;
 import gn.lacaeducation.academics.domain.SchoolEvent;
-import gn.lacaeducation.academics.domain.SchoolEventType;
 import gn.lacaeducation.academics.domain.valueobject.JourSemaine;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
@@ -50,7 +49,6 @@ public class SchoolEventService implements GererSchoolEventUseCase {
         return repo.save(SchoolEvent.builder()
                 .tenantId(c.tenantId()).label(c.label()).startDate(c.startDate()).endDate(c.endDate())
                 .startTime(c.startTime()).endTime(c.endTime()).reason(c.reason())
-                .type(c.type() != null ? c.type() : SchoolEventType.OTHER)
                 .build());
     }
 
@@ -93,11 +91,8 @@ public class SchoolEventService implements GererSchoolEventUseCase {
 
     @Override
     public void setCreditedTeachers(Long schoolEventId, List<Long> teacherIds) {
-        SchoolEvent event = repo.findById(schoolEventId)
-                .orElseThrow(() -> new ResourceNotFoundException("Événement école", schoolEventId));
-        if (event.getType() == SchoolEventType.HOLIDAY) {
-            throw new BusinessRuleException(
-                    "Un jour férié est toujours payé automatiquement ; aucun choix d'enseignant n'est nécessaire.");
+        if (repo.findById(schoolEventId).isEmpty()) {
+            throw new ResourceNotFoundException("Événement école", schoolEventId);
         }
         repo.replaceCreditedTeachers(schoolEventId, teacherIds == null ? List.of() : teacherIds);
     }

@@ -174,8 +174,7 @@ public class AcademicsDataProviderAdapter implements AcademicsDataProvider {
             Long tenantId, java.time.LocalDate from, java.time.LocalDate to) {
         return schoolEventRepo.findByTenantIdAndDateRangeOverlap(tenantId, from, to).stream()
                 .map(e -> new gn.lacaeducation.academics.SchoolEventPublicInfo(
-                        e.getId(), e.getLabel(), e.getStartDate(), e.getEndDate(), e.getStartTime(), e.getEndTime(),
-                        e.getType() != null ? e.getType().name() : "OTHER"))
+                        e.getId(), e.getLabel(), e.getStartDate(), e.getEndDate(), e.getStartTime(), e.getEndTime()))
                 .toList();
     }
 

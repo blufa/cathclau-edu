@@ -6,7 +6,6 @@ import gn.lacaeducation.academics.application.port.out.EmploiDuTempsRepository;
 import gn.lacaeducation.academics.application.port.out.SchoolEventRepository;
 import gn.lacaeducation.academics.domain.EmploiDuTemps;
 import gn.lacaeducation.academics.domain.SchoolEvent;
-import gn.lacaeducation.academics.domain.SchoolEventType;
 import gn.lacaeducation.academics.domain.valueobject.JourSemaine;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
@@ -39,41 +38,30 @@ class SchoolEventServiceTest {
         when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
 
         SchoolEvent e = service.create(new CreateSchoolEventCommand(1L, "Kermesse", LocalDate.of(2026, 5, 10),
-                LocalDate.of(2026, 5, 10), LocalTime.of(14, 0), LocalTime.of(18, 0), "Kermesse annuelle", null));
+                LocalDate.of(2026, 5, 10), LocalTime.of(14, 0), LocalTime.of(18, 0), "Kermesse annuelle"));
 
         assertThat(e.getLabel()).isEqualTo("Kermesse");
         assertThat(e.getStartTime()).isEqualTo(LocalTime.of(14, 0));
-        assertThat(e.getType()).isEqualTo(SchoolEventType.OTHER);
-    }
-
-    @Test
-    void create_holiday_savesWithHolidayType() {
-        when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
-
-        SchoolEvent e = service.create(new CreateSchoolEventCommand(1L, "Fête de l'indépendance",
-                LocalDate.of(2026, 10, 2), LocalDate.of(2026, 10, 2), null, null, null, SchoolEventType.HOLIDAY));
-
-        assertThat(e.getType()).isEqualTo(SchoolEventType.HOLIDAY);
     }
 
     @Test
     void create_blankLabel_throws() {
         assertThatThrownBy(() -> service.create(new CreateSchoolEventCommand(1L, "  ",
-                LocalDate.of(2026, 5, 10), LocalDate.of(2026, 5, 10), null, null, null, null)))
+                LocalDate.of(2026, 5, 10), LocalDate.of(2026, 5, 10), null, null, null)))
                 .isInstanceOf(BusinessRuleException.class);
     }
 
     @Test
     void create_endDateBeforeStartDate_throws() {
         assertThatThrownBy(() -> service.create(new CreateSchoolEventCommand(1L, "Kermesse",
-                LocalDate.of(2026, 5, 10), LocalDate.of(2026, 5, 9), null, null, null, null)))
+                LocalDate.of(2026, 5, 10), LocalDate.of(2026, 5, 9), null, null, null)))
                 .isInstanceOf(BusinessRuleException.class);
     }
 
     @Test
     void create_endTimeBeforeStartTime_throws() {
         assertThatThrownBy(() -> service.create(new CreateSchoolEventCommand(1L, "Kermesse",
-                LocalDate.of(2026, 5, 10), LocalDate.of(2026, 5, 10), LocalTime.of(18, 0), LocalTime.of(14, 0), null, null)))
+                LocalDate.of(2026, 5, 10), LocalDate.of(2026, 5, 10), LocalTime.of(18, 0), LocalTime.of(14, 0), null)))
                 .isInstanceOf(BusinessRuleException.class);
     }
 
@@ -82,7 +70,7 @@ class SchoolEventServiceTest {
         when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
 
         SchoolEvent e = service.create(new CreateSchoolEventCommand(1L, "Journée sportive",
-                LocalDate.of(2026, 5, 10), LocalDate.of(2026, 5, 10), null, null, null, null));
+                LocalDate.of(2026, 5, 10), LocalDate.of(2026, 5, 10), null, null, null));
 
         assertThat(e.getStartTime()).isNull();
         assertThat(e.getEndTime()).isNull();
@@ -93,7 +81,7 @@ class SchoolEventServiceTest {
         // Événement lundi 13h-18h ; créneau lundi 12h-14h chevauche (12h-14h touche 13h-18h) -> touché.
         SchoolEvent event = SchoolEvent.builder().id(5L).tenantId(1L).label("Kermesse")
                 .startDate(LocalDate.of(2026, 5, 4)).endDate(LocalDate.of(2026, 5, 4))
-                .startTime(LocalTime.of(13, 0)).endTime(LocalTime.of(18, 0)).type(SchoolEventType.OTHER).build();
+                .startTime(LocalTime.of(13, 0)).endTime(LocalTime.of(18, 0)).build();
         when(repo.findById(5L)).thenReturn(Optional.of(event));
         when(repo.findCreditedTeacherIds(5L)).thenReturn(List.of());
         EmploiDuTemps touchedSlot = EmploiDuTemps.builder().id(1L).teacherId(20L).day(JourSemaine.LUNDI)
@@ -111,7 +99,7 @@ class SchoolEventServiceTest {
     @Test
     void findTouchedTeachers_alreadyCredited_reportsCreditedTrue() {
         SchoolEvent event = SchoolEvent.builder().id(5L).tenantId(1L).label("Kermesse")
-                .startDate(LocalDate.of(2026, 5, 4)).endDate(LocalDate.of(2026, 5, 4)).type(SchoolEventType.OTHER).build();
+                .startDate(LocalDate.of(2026, 5, 4)).endDate(LocalDate.of(2026, 5, 4)).build();
         when(repo.findById(5L)).thenReturn(Optional.of(event));
         when(repo.findCreditedTeacherIds(5L)).thenReturn(List.of(20L));
         EmploiDuTemps slot = EmploiDuTemps.builder().id(1L).teacherId(20L).day(JourSemaine.LUNDI)
@@ -124,8 +112,8 @@ class SchoolEventServiceTest {
     }
 
     @Test
-    void setCreditedTeachers_otherEvent_replacesCreditedList() {
-        SchoolEvent event = SchoolEvent.builder().id(5L).type(SchoolEventType.OTHER).build();
+    void setCreditedTeachers_replacesCreditedList() {
+        SchoolEvent event = SchoolEvent.builder().id(5L).build();
         when(repo.findById(5L)).thenReturn(Optional.of(event));
 
         service.setCreditedTeachers(5L, List.of(20L, 21L));
@@ -134,12 +122,11 @@ class SchoolEventServiceTest {
     }
 
     @Test
-    void setCreditedTeachers_holidayEvent_throws() {
-        SchoolEvent event = SchoolEvent.builder().id(5L).type(SchoolEventType.HOLIDAY).build();
-        when(repo.findById(5L)).thenReturn(Optional.of(event));
+    void setCreditedTeachers_unknownEvent_throwsNotFound() {
+        when(repo.findById(99L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.setCreditedTeachers(5L, List.of(20L)))
-                .isInstanceOf(BusinessRuleException.class);
+        assertThatThrownBy(() -> service.setCreditedTeachers(99L, List.of(20L)))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
