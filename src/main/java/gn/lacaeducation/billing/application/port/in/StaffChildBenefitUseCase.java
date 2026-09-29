@@ -25,6 +25,18 @@ public interface StaffChildBenefitUseCase {
     /** Calcule la prise en charge école pour {@code studentId} si un de ses parents est employé (0 % sinon). */
     StaffCoverage computeCoverage(Long tenantId, Long studentId, FeeType feeType);
 
+    /** Un des parents de {@code studentId} est-il enseignant ou personnel de l'école — indépendamment
+     * de toute politique de prise en charge (rang dans la fratrie, pourcentage...). Sert à taguer la
+     * scolarité d'un enfant du personnel SANS remise (voir InvoiceService#computeApplicableDiscount)
+     * pour que le prélèvement salarial automatique la prenne quand même en charge. */
+    boolean isStaffChild(Long studentId);
+
     /** Parmi {@code studentIds}, ceux qui bénéficient d'une prise en charge école non nulle (badge liste des élèves). */
     List<StudentCoverage> computeCoverageBatch(Long tenantId, List<Long> studentIds, FeeType feeType);
+
+    /** Parmi {@code studentIds}, ceux qui sont enfants du personnel SANS aucune remise sur leur
+     * scolarité (ni exonération manuelle, ni prise en charge école) — donc automatiquement tagués
+     * "avantage personnel" à 0% et prélevés sur salaire (voir InvoiceService#computeApplicableDiscount)
+     * — pour un second badge dans la liste des élèves, distinct de {@link #computeCoverageBatch}. */
+    List<Long> findUncoveredStaffChildIds(Long tenantId, List<Long> studentIds);
 }

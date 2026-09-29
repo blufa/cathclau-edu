@@ -60,17 +60,27 @@ public class StaffChildBenefitController {
         useCase.delete(id);
     }
 
+    // Lecture ouverte aussi au comptable (comptabilite:manage) — pas seulement à la direction
+    // (frais:manage) : sert aux badges de la liste des élèves, que le comptable doit voir sans avoir la
+    // main sur la configuration des politiques (restée frais:manage ci-dessus).
     @Operation(summary = "Prise en charge école applicable à un élève (enfant d'employé) pour un frais")
-    @PreAuthorize("hasAuthority('frais:manage')")
+    @PreAuthorize("hasAnyAuthority('frais:manage', 'comptabilite:manage')")
     @GetMapping("/coverage")
     public StaffCoverage coverage(@RequestParam Long studentId, @RequestParam FeeType feeType) {
         return useCase.computeCoverage(TenantContext.get(), studentId, feeType);
     }
 
     @Operation(summary = "Parmi une liste d'élèves, ceux pris en charge (enfants de personnel) pour un frais (pour badge dans la liste des élèves)")
-    @PreAuthorize("hasAuthority('frais:manage')")
+    @PreAuthorize("hasAnyAuthority('frais:manage', 'comptabilite:manage')")
     @GetMapping("/coverage-batch")
     public List<StudentCoverage> coverageBatch(@RequestParam List<Long> studentIds, @RequestParam FeeType feeType) {
         return useCase.computeCoverageBatch(TenantContext.get(), studentIds, feeType);
+    }
+
+    @Operation(summary = "Parmi une liste d'élèves, ceux enfants du personnel SANS remise (scolarité prélevée sur salaire — pour badge distinct dans la liste des élèves)")
+    @PreAuthorize("hasAnyAuthority('frais:manage', 'comptabilite:manage')")
+    @GetMapping("/uncovered-batch")
+    public List<Long> uncoveredBatch(@RequestParam List<Long> studentIds) {
+        return useCase.findUncoveredStaffChildIds(TenantContext.get(), studentIds);
     }
 }

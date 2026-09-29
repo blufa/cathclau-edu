@@ -32,6 +32,7 @@ public class InvoiceController {
     public record DiscountRequest(BigDecimal amount, String reason) {}
     public record BulkGenerateRequest(Long tenantId, Long classId, Long feeId, Long academicYearId) {}
     public record GenerateMonthlyRequest(Long tenantId, Long studentId, Long feeId, Long academicYearId) {}
+    public record GenerateSelectedInstallmentsRequest(Long tenantId, Long studentId, Long feeId, Long academicYearId, List<Long> installmentIds) {}
     @Operation(summary = "Créer une nouvelle facture pour un élève")
     @PreAuthorize("hasAuthority('facture:create')")
     @PostMapping public ResponseEntity<Invoice> create(@RequestBody CreateRequest r) {
@@ -46,6 +47,12 @@ public class InvoiceController {
     @PreAuthorize("hasAuthority('facture:create')")
     @PostMapping("/generate-monthly") public ResponseEntity<InvoiceUseCase.GenerateMonthlyResult> generateMonthly(@RequestBody GenerateMonthlyRequest r) {
         return ResponseEntity.ok(useCase.generateMonthly(new InvoiceUseCase.GenerateMonthlyCommand(r.tenantId(), r.studentId(), r.feeId(), r.academicYearId())));
+    }
+    @Operation(summary = "Générer uniquement les échéances sélectionnées (un ou plusieurs mois choisis) — transport facturé au mois, à la demande")
+    @PreAuthorize("hasAuthority('facture:create')")
+    @PostMapping("/generate-selected-installments") public ResponseEntity<InvoiceUseCase.GenerateMonthlyResult> generateSelectedInstallments(@RequestBody GenerateSelectedInstallmentsRequest r) {
+        return ResponseEntity.ok(useCase.generateSelectedInstallments(
+                new InvoiceUseCase.GenerateMonthlyCommand(r.tenantId(), r.studentId(), r.feeId(), r.academicYearId()), r.installmentIds()));
     }
     @Operation(summary = "Consulter une facture par son ID")
     @GetMapping("/{id}") public ResponseEntity<Invoice> findById(@PathVariable Long id) {
