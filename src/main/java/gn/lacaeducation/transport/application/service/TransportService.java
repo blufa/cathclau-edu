@@ -95,9 +95,12 @@ public class TransportService {
                 .direction(c.direction() != null ? c.direction() : TransportDirection.BOTH)
                 .startDate(c.startDate() != null ? c.startDate() : LocalDate.now())
                 .monthlyFee(fee).status(SubscriptionStatus.ACTIVE).createdAt(LocalDateTime.now()).build());
-        // La facturation passe par billing (frais TRANSPORT configuré avec ses échéances dans Frais
-        // scolaires, comme la scolarité) : ce fait déclenche la génération des factures correspondantes,
-        // pour qu'elles apparaissent tout de suite sous « frais annexes » à l'encaissement.
+        // Volontairement AUCUNE facture générée ici (§billing, retour comptable) : contrairement à la
+        // scolarité, le transport est facturé au mois, à la demande, seulement quand le parent vient
+        // payer — jamais à l'avance pour toute l'année (voir InvoiceUseCase#generateNextInstallment,
+        // appelé depuis la fiche élève). Un mois non payé n'est donc jamais une "échéance en retard".
+        // L'événement reste publié (pas de listener aujourd'hui) pour d'éventuels effets de bord futurs
+        // (ex. notification au parent de la prise en compte de l'abonnement).
         eventPublisher.publishEvent(new TransportSubscriptionCreatedEvent(c.tenantId(), c.studentId(), c.routeId()));
         return saved;
     }

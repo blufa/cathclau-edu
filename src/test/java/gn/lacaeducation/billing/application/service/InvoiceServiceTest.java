@@ -346,6 +346,58 @@ class InvoiceServiceTest {
         assertThat(invoices.get(0).getPeriodLabel()).isEqualTo("Trimestre 1");
     }
 
+    // ── generateNextInstallment (§billing, retour comptable) : transport facturé au mois, à la
+    // demande — jamais toute l'année d'un coup comme generateMonthly ────────────────────────────────
+
+    @Test
+    void generateNextInstallment_generatesOnlyTheEarliestUnbilledOne() {
+        when(enrollmentQueryPort.hasActiveEnrollment(7L)).thenReturn(true);
+        when(installmentRepository.findByFeeId(9L)).thenReturn(java.util.List.of(
+                gn.lacaeducation.billing.domain.Installment.builder()
+                        .id(2L).feeId(9L).label("Octobre").amount(new BigDecimal("30000"))
+                        .dueDate(java.time.LocalDate.of(2026, 10, 5)).build(),
+                gn.lacaeducation.billing.domain.Installment.builder()
+                        .id(1L).feeId(9L).label("Septembre").amount(new BigDecimal("30000"))
+                        .dueDate(java.time.LocalDate.of(2026, 9, 5)).build()));
+        // Septembre déjà facturé (mois précédent), Octobre pas encore : c'est Octobre qui doit sortir.
+        when(repo.existsByStudentIdAndInstallmentId(7L, 1L)).thenReturn(true);
+        when(repo.existsByStudentIdAndInstallmentId(7L, 2L)).thenReturn(false);
+        when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
+
+        var result = service().generateNextInstallment(
+                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 9L, 99L));
+
+        assertThat(result).isPresent();
+        assertThat(result.get().getPeriodLabel()).isEqualTo("Octobre");
+        assertThat(result.get().getTotalAmount()).isEqualByComparingTo("30000");
+    }
+
+    @Test
+    void generateNextInstallment_everythingAlreadyBilled_returnsEmpty() {
+        when(enrollmentQueryPort.hasActiveEnrollment(7L)).thenReturn(true);
+        when(installmentRepository.findByFeeId(9L)).thenReturn(java.util.List.of(
+                gn.lacaeducation.billing.domain.Installment.builder()
+                        .id(1L).feeId(9L).label("Septembre").amount(new BigDecimal("30000"))
+                        .dueDate(java.time.LocalDate.of(2026, 9, 5)).build()));
+        when(repo.existsByStudentIdAndInstallmentId(7L, 1L)).thenReturn(true);
+
+        var result = service().generateNextInstallment(
+                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 9L, 99L));
+
+        assertThat(result).isEmpty();
+        verify(repo, never()).save(any());
+    }
+
+    @Test
+    void generateNextInstallment_noInstallmentsConfigured_throwsBusinessRule() {
+        when(enrollmentQueryPort.hasActiveEnrollment(7L)).thenReturn(true);
+        when(installmentRepository.findByFeeId(9L)).thenReturn(java.util.List.of());
+
+        assertThatThrownBy(() -> service().generateNextInstallment(
+                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 9L, 99L)))
+                .isInstanceOf(gn.lacaeducation.common.BusinessRuleException.class);
+    }
+
     @Test
     void applyPayment_recordsPlatformFeeLedger_whenFeeTypeIsPlatform() {
         // Frais plateforme (§billing) : désormais un frais annexe comme un autre, configuré librement

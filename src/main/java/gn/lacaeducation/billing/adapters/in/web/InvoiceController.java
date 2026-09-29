@@ -47,6 +47,12 @@ public class InvoiceController {
     @PostMapping("/generate-monthly") public ResponseEntity<InvoiceUseCase.GenerateMonthlyResult> generateMonthly(@RequestBody GenerateMonthlyRequest r) {
         return ResponseEntity.ok(useCase.generateMonthly(new InvoiceUseCase.GenerateMonthlyCommand(r.tenantId(), r.studentId(), r.feeId(), r.academicYearId())));
     }
+    @Operation(summary = "Générer UNE SEULE échéance (la plus ancienne pas encore facturée) — transport facturé au mois, à la demande")
+    @PreAuthorize("hasAuthority('facture:create')")
+    @PostMapping("/generate-next-installment") public ResponseEntity<Invoice> generateNextInstallment(@RequestBody GenerateMonthlyRequest r) {
+        return useCase.generateNextInstallment(new InvoiceUseCase.GenerateMonthlyCommand(r.tenantId(), r.studentId(), r.feeId(), r.academicYearId()))
+                .map(ResponseEntity::ok).orElse(ResponseEntity.noContent().build());
+    }
     @Operation(summary = "Consulter une facture par son ID")
     @GetMapping("/{id}") public ResponseEntity<Invoice> findById(@PathVariable Long id) {
         return useCase.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());

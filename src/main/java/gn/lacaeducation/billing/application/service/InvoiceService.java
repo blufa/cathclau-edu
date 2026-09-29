@@ -235,6 +235,38 @@ public class InvoiceService implements InvoiceUseCase {
         return new GenerateMonthlyResult(created, exempted);
     }
 
+    @Override public java.util.Optional<Invoice> generateNextInstallment(GenerateMonthlyCommand c) {
+        if (!enrollmentQueryPort.hasActiveEnrollment(c.studentId())) {
+            throw new BusinessRuleException("L'élève n'est pas inscrit : impossible de générer une échéance. "
+                    + "Inscrivez-le d'abord dans une classe.");
+        }
+        List<gn.lacaeducation.billing.domain.Installment> months = installmentRepository.findByFeeId(c.feeId()).stream()
+                .sorted(java.util.Comparator.comparing(gn.lacaeducation.billing.domain.Installment::getDueDate,
+                        java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())))
+                .toList();
+        if (months.isEmpty()) {
+            throw new BusinessRuleException("Aucune échéance (mois) configurée pour le frais id=" + c.feeId());
+        }
+        gn.lacaeducation.billing.domain.Installment next = months.stream()
+                .filter(m -> !repo.existsByStudentIdAndInstallmentId(c.studentId(), m.getId()))
+                .findFirst()
+                .orElse(null);
+        if (next == null) {
+            log.info("Facturation au mois : plus rien à facturer pour l'élève id={} frais id={}", c.studentId(), c.feeId());
+            return java.util.Optional.empty();
+        }
+        Long academicYearId = resolveAcademicYearId(c.academicYearId(), c.studentId());
+        FeeType feeType = schoolFeeRepository.findById(c.feeId())
+                .map(gn.lacaeducation.billing.domain.SchoolFee::getType).orElse(FeeType.MONTHLY);
+        var discount = computeApplicableDiscount(c.tenantId(), c.studentId(), feeType);
+        List<Invoice> created = new ArrayList<>();
+        List<ExemptedPeriod> exempted = new ArrayList<>();
+        buildAndSaveInvoice(c, academicYearId, next.getId(), next.getLabel(), next.getAmount(), discount, created, exempted);
+        log.info("Facturation au mois : échéance « {} » traitée pour l'élève id={} frais id={} ({})",
+                next.getLabel(), c.studentId(), c.feeId(), created.isEmpty() ? "exonérée à 100%" : "facturée");
+        return created.stream().findFirst();
+    }
+
     /** Ajoute soit une Invoice réelle à {@code created}, soit — quand l'échéance est entièrement
      * couverte par une exonération/avantage personnel (discountSource non nul, net dû = 0) — une
      * {@link ExemptedPeriod} à {@code exempted} : aucune facture à 0 GNF n'est jamais créée, pour
