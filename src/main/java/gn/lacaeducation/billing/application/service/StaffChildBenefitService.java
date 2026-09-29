@@ -29,6 +29,7 @@ public class StaffChildBenefitService implements StaffChildBenefitUseCase {
     private final TeacherPublicInfoProvider teacherProvider;
     private final EmployeePublicInfoProvider employeeProvider;
     private final FamilyProvider familyProvider;
+    private final gn.lacaeducation.billing.application.port.in.ExemptionUseCase exemptionUseCase;
 
     @Override
     public StaffChildBenefitPolicy create(Long tenantId, PolicyCommand c) {
@@ -71,6 +72,19 @@ public class StaffChildBenefitService implements StaffChildBenefitUseCase {
                     return new StudentCoverage(id, c.coveragePercent(), c.policyLabel());
                 })
                 .filter(c -> c.coveragePercent() != null && c.coveragePercent().signum() > 0)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Long> findUncoveredStaffChildIds(Long tenantId, List<Long> studentIds) {
+        return studentIds.stream()
+                .filter(this::isStaffChild)
+                .filter(id -> {
+                    var exemption = exemptionUseCase.computeApplicable(id, gn.lacaeducation.billing.domain.FeeType.MONTHLY);
+                    BigDecimal pct = exemption.percentage() != null ? exemption.percentage() : BigDecimal.ZERO;
+                    return pct.signum() <= 0;
+                })
                 .toList();
     }
 

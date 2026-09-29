@@ -33,4 +33,10 @@ public interface StaffChildBenefitUseCase {
 
     /** Parmi {@code studentIds}, ceux qui bénéficient d'une prise en charge école non nulle (badge liste des élèves). */
     List<StudentCoverage> computeCoverageBatch(Long tenantId, List<Long> studentIds, FeeType feeType);
+
+    /** Parmi {@code studentIds}, ceux qui sont enfants du personnel SANS aucune remise sur leur
+     * scolarité (ni exonération manuelle, ni prise en charge école) — donc automatiquement tagués
+     * "avantage personnel" à 0% et prélevés sur salaire (voir InvoiceService#computeApplicableDiscount)
+     * — pour un second badge dans la liste des élèves, distinct de {@link #computeCoverageBatch}. */
+    List<Long> findUncoveredStaffChildIds(Long tenantId, List<Long> studentIds);
 }

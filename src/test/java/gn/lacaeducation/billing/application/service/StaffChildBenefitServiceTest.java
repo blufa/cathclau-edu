@@ -1,5 +1,7 @@
 package gn.lacaeducation.billing.application.service;
 
+import gn.lacaeducation.billing.application.port.in.ExemptionUseCase;
+import gn.lacaeducation.billing.application.port.in.ExemptionUseCase.ApplicableExemption;
 import gn.lacaeducation.billing.application.port.in.StaffChildBenefitUseCase.StaffCoverage;
 import gn.lacaeducation.billing.application.port.out.StaffChildBenefitPolicyRepository;
 import gn.lacaeducation.billing.domain.FeeType;
@@ -32,6 +34,7 @@ class StaffChildBenefitServiceTest {
     @Mock TeacherPublicInfoProvider teacherProvider;
     @Mock EmployeePublicInfoProvider employeeProvider;
     @Mock FamilyProvider familyProvider;
+    @Mock ExemptionUseCase exemptionUseCase;
     @InjectMocks StaffChildBenefitService service;
 
     private StaffChildBenefitPolicy policyFirstChildFullyCovered() {
@@ -107,5 +110,40 @@ class StaffChildBenefitServiceTest {
 
         assertThat(c.coveragePercent()).isEqualByComparingTo("100");
         assertThat(c.policyLabel()).contains("Personnel");
+    }
+
+    @Test
+    void findUncoveredStaffChildIds_staffChildWithNoExemption_isReturned() {
+        when(parentAccessProvider.findParentUserIdsByStudent(1L)).thenReturn(List.of(50L));
+        when(teacherProvider.findTeacherIdByUserId(50L)).thenReturn(Optional.of(9L));
+        when(exemptionUseCase.computeApplicable(1L, FeeType.MONTHLY))
+                .thenReturn(new ApplicableExemption(BigDecimal.ZERO, null, false, BigDecimal.ZERO, null));
+
+        List<Long> result = service.findUncoveredStaffChildIds(1L, List.of(1L));
+
+        assertThat(result).containsExactly(1L);
+    }
+
+    @Test
+    void findUncoveredStaffChildIds_staffChildWithExistingExemption_isExcluded() {
+        when(parentAccessProvider.findParentUserIdsByStudent(1L)).thenReturn(List.of(50L));
+        when(teacherProvider.findTeacherIdByUserId(50L)).thenReturn(Optional.of(9L));
+        when(exemptionUseCase.computeApplicable(1L, FeeType.MONTHLY))
+                .thenReturn(new ApplicableExemption(new BigDecimal("100"), "Direction", true, BigDecimal.ZERO, null));
+
+        List<Long> result = service.findUncoveredStaffChildIds(1L, List.of(1L));
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    void findUncoveredStaffChildIds_notStaffChild_isExcluded() {
+        when(parentAccessProvider.findParentUserIdsByStudent(1L)).thenReturn(List.of(50L));
+        when(teacherProvider.findTeacherIdByUserId(50L)).thenReturn(Optional.empty());
+        when(employeeProvider.findEmployeeIdByUserId(50L)).thenReturn(Optional.empty());
+
+        List<Long> result = service.findUncoveredStaffChildIds(1L, List.of(1L));
+
+        assertThat(result).isEmpty();
     }
 }
