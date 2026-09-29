@@ -62,9 +62,7 @@ public class ParentController {
     @Operation(summary = "Consulter les enfants (élèves) du parent connecté")
     @GetMapping("/me/children")
     public List<gn.lacaeducation.students.domain.Student> myChildren(@AuthenticationPrincipal Jwt jwt) {
-        return parentUseCase.findByUserId(currentUserId(jwt))
-                .map(p -> parentUseCase.findStudentsByParent(p.getId()))
-                .orElseGet(List::of);
+        return parentUseCase.findStudentsByUserId(currentUserId(jwt));
     }
 
     @Operation(summary = "Mise à jour self-service du profil du parent connecté (tél, email, adresse, profession)")

@@ -38,4 +38,7 @@ public interface ParentUseCase {
     void unlinkStudentFromParent(Long studentId, Long parentId);
     List<Parent> findByStudent(Long studentId);
     List<Student> findStudentsByParent(Long parentId);
+    /** Enfants de toutes les fiches Parent partageant ce compte (voir {@link #findByUserId}) : une
+     *  fiche dupliquée peut porter des liens enfant différents de la fiche "canonique". */
+    List<Student> findStudentsByUserId(Long userId);
 }
