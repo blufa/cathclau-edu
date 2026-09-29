@@ -62,6 +62,51 @@ class InstallmentServiceTest {
     }
 
     @Test
+    void create_transportFee_notCappedByFeeTotal_evenBeyondIt() {
+        // Régression vécue en vrai : configurer les échéances d'un frais TRANSPORT (ex. 100 000
+        // GNF/mois) rejetait dès la 2e échéance ("Installments sum ... exceeds fee total amount"), alors
+        // que le transport, comme la scolarité, est réglé mois par mois (voir TransportInvoiceListener,
+        // qui appelle la même génération mensuelle que MONTHLY) — jamais une somme plafonnée au total du frais.
+        when(schoolFeeRepository.findById(1L)).thenReturn(Optional.of(
+                SchoolFee.builder().id(1L).amount(new BigDecimal("100000.00"))
+                        .type(gn.lacaeducation.billing.domain.FeeType.TRANSPORT).build()));
+        when(repo.save(any(Installment.class))).thenAnswer(i -> i.getArgument(0));
+
+        Installment created = service.create(new CreateInstallmentCommand(
+                1L, "Octobre", new BigDecimal("100000.00"), LocalDate.now().plusDays(30), List.of("2025-10")));
+
+        assertThat(created.getAmount()).isEqualByComparingTo("100000.00");
+    }
+
+    @Test
+    void create_canteenFee_notCappedByFeeTotal_evenBeyondIt() {
+        when(schoolFeeRepository.findById(1L)).thenReturn(Optional.of(
+                SchoolFee.builder().id(1L).amount(new BigDecimal("50000.00"))
+                        .type(gn.lacaeducation.billing.domain.FeeType.CANTEEN).build()));
+        when(repo.save(any(Installment.class))).thenAnswer(i -> i.getArgument(0));
+
+        Installment created = service.create(new CreateInstallmentCommand(
+                1L, "Novembre", new BigDecimal("50000.00"), LocalDate.now().plusDays(30), List.of("2025-11")));
+
+        assertThat(created.getAmount()).isEqualByComparingTo("50000.00");
+    }
+
+    @Test
+    void create_examFee_stillCappedByFeeTotal() {
+        // Contre-exemple : un frais qui n'est PAS réglé en tranches mensuelles récurrentes (ex. EXAM)
+        // doit continuer à respecter le plafond somme = total.
+        when(schoolFeeRepository.findById(1L)).thenReturn(Optional.of(
+                SchoolFee.builder().id(1L).amount(new BigDecimal("100.00"))
+                        .type(gn.lacaeducation.billing.domain.FeeType.EXAM).build()));
+        when(repo.findByFeeId(1L)).thenReturn(List.of(
+                Installment.builder().id(5L).amount(new BigDecimal("80.00")).build()));
+
+        assertThatThrownBy(() -> service.create(new CreateInstallmentCommand(
+                1L, "Tranche 2", new BigDecimal("30.00"), LocalDate.now(), List.of())))
+                .isInstanceOf(BusinessRuleException.class);
+    }
+
+    @Test
     void create_unknownFee_throwsNotFound() {
         when(schoolFeeRepository.findById(1L)).thenReturn(Optional.empty());
 
