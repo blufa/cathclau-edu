@@ -346,34 +346,62 @@ class InvoiceServiceTest {
         assertThat(invoices.get(0).getPeriodLabel()).isEqualTo("Trimestre 1");
     }
 
-    // ── generateNextInstallment (§billing, retour comptable) : transport facturé au mois, à la
-    // demande — jamais toute l'année d'un coup comme generateMonthly ────────────────────────────────
+    // ── generateSelectedInstallments (§billing, retour comptable) : transport facturé au mois, à la
+    // demande, sur les échéances choisies par le comptable (une ou plusieurs) — jamais toute l'année
+    // d'un coup comme generateMonthly, jamais "la plus ancienne non facturée" imposée d'office ────────
 
     @Test
-    void generateNextInstallment_generatesOnlyTheEarliestUnbilledOne() {
+    void generateSelectedInstallments_generatesOnlyTheChosenOne() {
+        // Le comptable choisit précisément le mois en cours (Octobre), même si un mois plus ancien
+        // (Septembre, jamais facturé — l'enfant n'a pas pris le bus ce mois-là) reste non facturé : il
+        // ne doit jamais être forcé de le facturer avant de pouvoir facturer le mois en cours.
         when(enrollmentQueryPort.hasActiveEnrollment(7L)).thenReturn(true);
         when(installmentRepository.findByFeeId(9L)).thenReturn(java.util.List.of(
+                gn.lacaeducation.billing.domain.Installment.builder()
+                        .id(1L).feeId(9L).label("Septembre").amount(new BigDecimal("30000"))
+                        .dueDate(java.time.LocalDate.of(2026, 9, 5)).build(),
+                gn.lacaeducation.billing.domain.Installment.builder()
+                        .id(2L).feeId(9L).label("Octobre").amount(new BigDecimal("30000"))
+                        .dueDate(java.time.LocalDate.of(2026, 10, 5)).build()));
+        when(repo.existsByStudentIdAndInstallmentId(7L, 2L)).thenReturn(false);
+        when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
+
+        var result = service().generateSelectedInstallments(
+                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 9L, 99L),
+                List.of(2L));
+
+        assertThat(result.created()).hasSize(1);
+        assertThat(result.created().get(0).getPeriodLabel()).isEqualTo("Octobre");
+        verify(repo, never()).existsByStudentIdAndInstallmentId(7L, 1L);
+    }
+
+    @Test
+    void generateSelectedInstallments_multipleMonthsAtOnce_forAParentPayingInAdvance() {
+        when(enrollmentQueryPort.hasActiveEnrollment(7L)).thenReturn(true);
+        when(installmentRepository.findByFeeId(9L)).thenReturn(java.util.List.of(
+                gn.lacaeducation.billing.domain.Installment.builder()
+                        .id(1L).feeId(9L).label("Septembre").amount(new BigDecimal("30000"))
+                        .dueDate(java.time.LocalDate.of(2026, 9, 5)).build(),
                 gn.lacaeducation.billing.domain.Installment.builder()
                         .id(2L).feeId(9L).label("Octobre").amount(new BigDecimal("30000"))
                         .dueDate(java.time.LocalDate.of(2026, 10, 5)).build(),
                 gn.lacaeducation.billing.domain.Installment.builder()
-                        .id(1L).feeId(9L).label("Septembre").amount(new BigDecimal("30000"))
-                        .dueDate(java.time.LocalDate.of(2026, 9, 5)).build()));
-        // Septembre déjà facturé (mois précédent), Octobre pas encore : c'est Octobre qui doit sortir.
-        when(repo.existsByStudentIdAndInstallmentId(7L, 1L)).thenReturn(true);
-        when(repo.existsByStudentIdAndInstallmentId(7L, 2L)).thenReturn(false);
+                        .id(3L).feeId(9L).label("Novembre").amount(new BigDecimal("30000"))
+                        .dueDate(java.time.LocalDate.of(2026, 11, 5)).build()));
+        when(repo.existsByStudentIdAndInstallmentId(any(), any())).thenReturn(false);
         when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
 
-        var result = service().generateNextInstallment(
-                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 9L, 99L));
+        var result = service().generateSelectedInstallments(
+                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 9L, 99L),
+                List.of(1L, 2L, 3L));
 
-        assertThat(result).isPresent();
-        assertThat(result.get().getPeriodLabel()).isEqualTo("Octobre");
-        assertThat(result.get().getTotalAmount()).isEqualByComparingTo("30000");
+        assertThat(result.created()).hasSize(3);
+        assertThat(result.created()).extracting(Invoice::getPeriodLabel)
+                .containsExactlyInAnyOrder("Septembre", "Octobre", "Novembre");
     }
 
     @Test
-    void generateNextInstallment_everythingAlreadyBilled_returnsEmpty() {
+    void generateSelectedInstallments_alreadyBilledOne_isSilentlySkipped_idempotent() {
         when(enrollmentQueryPort.hasActiveEnrollment(7L)).thenReturn(true);
         when(installmentRepository.findByFeeId(9L)).thenReturn(java.util.List.of(
                 gn.lacaeducation.billing.domain.Installment.builder()
@@ -381,20 +409,19 @@ class InvoiceServiceTest {
                         .dueDate(java.time.LocalDate.of(2026, 9, 5)).build()));
         when(repo.existsByStudentIdAndInstallmentId(7L, 1L)).thenReturn(true);
 
-        var result = service().generateNextInstallment(
-                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 9L, 99L));
+        var result = service().generateSelectedInstallments(
+                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 9L, 99L),
+                List.of(1L));
 
-        assertThat(result).isEmpty();
+        assertThat(result.created()).isEmpty();
         verify(repo, never()).save(any());
     }
 
     @Test
-    void generateNextInstallment_noInstallmentsConfigured_throwsBusinessRule() {
-        when(enrollmentQueryPort.hasActiveEnrollment(7L)).thenReturn(true);
-        when(installmentRepository.findByFeeId(9L)).thenReturn(java.util.List.of());
-
-        assertThatThrownBy(() -> service().generateNextInstallment(
-                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 9L, 99L)))
+    void generateSelectedInstallments_noSelection_throwsBusinessRule() {
+        assertThatThrownBy(() -> service().generateSelectedInstallments(
+                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 9L, 99L),
+                List.of()))
                 .isInstanceOf(gn.lacaeducation.common.BusinessRuleException.class);
     }
 

@@ -235,25 +235,21 @@ public class InvoiceService implements InvoiceUseCase {
         return new GenerateMonthlyResult(created, exempted);
     }
 
-    @Override public java.util.Optional<Invoice> generateNextInstallment(GenerateMonthlyCommand c) {
+    @Override public GenerateMonthlyResult generateSelectedInstallments(GenerateMonthlyCommand c, List<Long> installmentIds) {
         if (!enrollmentQueryPort.hasActiveEnrollment(c.studentId())) {
             throw new BusinessRuleException("L'élève n'est pas inscrit : impossible de générer une échéance. "
                     + "Inscrivez-le d'abord dans une classe.");
         }
-        List<gn.lacaeducation.billing.domain.Installment> months = installmentRepository.findByFeeId(c.feeId()).stream()
-                .sorted(java.util.Comparator.comparing(gn.lacaeducation.billing.domain.Installment::getDueDate,
-                        java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())))
-                .toList();
-        if (months.isEmpty()) {
-            throw new BusinessRuleException("Aucune échéance (mois) configurée pour le frais id=" + c.feeId());
+        if (installmentIds == null || installmentIds.isEmpty()) {
+            throw new BusinessRuleException("Aucune échéance sélectionnée.");
         }
-        gn.lacaeducation.billing.domain.Installment next = months.stream()
-                .filter(m -> !repo.existsByStudentIdAndInstallmentId(c.studentId(), m.getId()))
-                .findFirst()
-                .orElse(null);
-        if (next == null) {
-            log.info("Facturation au mois : plus rien à facturer pour l'élève id={} frais id={}", c.studentId(), c.feeId());
-            return java.util.Optional.empty();
+        java.util.Set<Long> requested = new java.util.HashSet<>(installmentIds);
+        List<gn.lacaeducation.billing.domain.Installment> selected = installmentRepository.findByFeeId(c.feeId()).stream()
+                .filter(m -> requested.contains(m.getId()))
+                .toList();
+        if (selected.isEmpty()) {
+            throw new BusinessRuleException("Aucune échéance (mois) configurée pour le frais id=" + c.feeId()
+                    + " ne correspond à la sélection.");
         }
         Long academicYearId = resolveAcademicYearId(c.academicYearId(), c.studentId());
         FeeType feeType = schoolFeeRepository.findById(c.feeId())
@@ -261,10 +257,15 @@ public class InvoiceService implements InvoiceUseCase {
         var discount = computeApplicableDiscount(c.tenantId(), c.studentId(), feeType);
         List<Invoice> created = new ArrayList<>();
         List<ExemptedPeriod> exempted = new ArrayList<>();
-        buildAndSaveInvoice(c, academicYearId, next.getId(), next.getLabel(), next.getAmount(), discount, created, exempted);
-        log.info("Facturation au mois : échéance « {} » traitée pour l'élève id={} frais id={} ({})",
-                next.getLabel(), c.studentId(), c.feeId(), created.isEmpty() ? "exonérée à 100%" : "facturée");
-        return created.stream().findFirst();
+        for (gn.lacaeducation.billing.domain.Installment installment : selected) {
+            // Idempotent : une échéance déjà facturée (ex. cliquée deux fois, ou déjà réglée un mois
+            // précédent) est silencieusement ignorée plutôt que de produire une erreur ou un doublon.
+            if (repo.existsByStudentIdAndInstallmentId(c.studentId(), installment.getId())) continue;
+            buildAndSaveInvoice(c, academicYearId, installment.getId(), installment.getLabel(), installment.getAmount(), discount, created, exempted);
+        }
+        log.info("Facturation au mois : {} facture(s) créée(s), {} échéance(s) exonérée(s) à 100% pour l'élève id={} frais id={} (sélection : {})",
+                created.size(), exempted.size(), c.studentId(), c.feeId(), installmentIds);
+        return new GenerateMonthlyResult(created, exempted);
     }
 
     /** Ajoute soit une Invoice réelle à {@code created}, soit — quand l'échéance est entièrement
