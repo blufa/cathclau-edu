@@ -7,5 +7,6 @@ import java.util.Optional;
 interface ParentJpaRepository extends JpaRepository<ParentJpaEntity, Long> {
     List<ParentJpaEntity> findByTenantId(Long tenantId);
     Optional<ParentJpaEntity> findByUserId(Long userId);
+    List<ParentJpaEntity> findAllByUserId(Long userId);
     Optional<ParentJpaEntity> findByIdempotencyKey(String idempotencyKey);
 }

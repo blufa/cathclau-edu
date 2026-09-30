@@ -145,10 +145,15 @@ public class PayrollService {
         Long tenantId = comp != null && comp.getTenantId() != null ? comp.getTenantId() : TenantContext.get();
 
         Map<Long, Integer> realizedByClass = new HashMap<>(dedupedRealizedByClass(teacherId, from, to));
-        // Événement école (kermesse, match, entraînement... §academics) qui a empêché le cours sur une
-        // période : les heures des créneaux concernés restent payées comme si le cours avait eu lieu —
-        // jamais retirées des heures réalisées, même si aucune séance n'a été (et ne sera jamais) marquée
-        // « réalisée » au cahier de textes pour ces créneaux (les élèves étant rentrés à la maison).
+        // Jour férié (chômé et payé par l'État, calendrier académique §calendar) : TOUJOURS payé sur les
+        // heures touchées, automatiquement, sans action de la direction.
+        for (var e : paidHolidayCoveredMinutesByClass(teacherId, tenantId, from, to).entrySet()) {
+            realizedByClass.merge(e.getKey(), e.getValue(), Integer::sum);
+        }
+        // Événement école (kermesse, match, entraînement... §academics, décidé par la direction) qui a
+        // empêché le cours sur une période : les heures des créneaux concernés ne restent payées que si
+        // la direction a explicitement crédité cet enseignant pour CET événement (voir
+        // SchoolEventService#setCreditedTeachers) — jamais automatique, contrairement à un jour férié.
         for (var e : eventCoveredMinutesByClass(teacherId, tenantId, from, to).entrySet()) {
             realizedByClass.merge(e.getKey(), e.getValue(), Integer::sum);
         }
@@ -187,10 +192,12 @@ public class PayrollService {
 
     /**
      * Minutes des créneaux récurrents d'un enseignant qui tombent dans un événement école (kermesse,
-     * match, entraînement... §academics, décidé par la direction) sur [from, to] : les élèves sont
-     * rentrés à la maison, mais l'enseignant reste payé sur ces heures comme si le cours avait eu lieu —
-     * voir {@link #computeMonthlyPay}. Regroupées par bloc d'emploi du temps (voir {@link #scheduleBlocks})
-     * pour ne compter qu'une seule fois les blocs concurrents (§5.6 enseignant exceptionnel).
+     * match, entraînement... §academics, décidé par la direction) sur [from, to] : payées seulement si
+     * la direction a explicitement crédité cet enseignant pour CET événement précis (voir
+     * SchoolEventService#setCreditedTeachers) — sinon un enseignant tout juste ajouté à l'emploi du
+     * temps se retrouverait crédité rétroactivement pour un événement passé qu'il n'a jamais couvert.
+     * Regroupées par bloc d'emploi du temps (voir {@link #scheduleBlocks}) pour ne compter qu'une seule
+     * fois les blocs concurrents (§5.6 enseignant exceptionnel).
      */
     private Map<Long, Integer> eventCoveredMinutesByClass(Long teacherId, Long tenantId, LocalDate from, LocalDate to) {
         if (tenantId == null) return Map.of();
@@ -201,8 +208,30 @@ public class PayrollService {
             for (LocalDate d = from; !d.isAfter(to); d = d.plusDays(1)) {
                 if (d.getDayOfWeek() != block.day()) continue;
                 LocalDate date = d;
-                boolean covered = events.stream().anyMatch(ev -> eventCoversSlot(ev, date, block.start(), block.end()));
+                boolean covered = events.stream().anyMatch(ev -> eventCoversSlot(ev, date, block.start(), block.end())
+                        && academics.isTeacherCreditedForSchoolEvent(ev.id(), teacherId));
                 if (covered) result.merge(block.representativeClassId(), block.durationMinutes(), Integer::sum);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Minutes des créneaux récurrents d'un enseignant qui tombent un jour férié (chômé et payé par
+     * l'État — calendrier académique §calendar, {@code AcademicEventType.HOLIDAY}) sur [from, to] :
+     * TOUJOURS payées, automatiquement, contrairement à un événement école décidé par la direction (voir
+     * {@link #eventCoveredMinutesByClass}). Un jour férié n'est jamais saisi comme un {@code SchoolEvent}.
+     */
+    private Map<Long, Integer> paidHolidayCoveredMinutesByClass(Long teacherId, Long tenantId, LocalDate from, LocalDate to) {
+        if (tenantId == null) return Map.of();
+        List<LocalDate> holidays = calendar.paidHolidayDates(tenantId, from, to);
+        if (holidays.isEmpty()) return Map.of();
+        Set<LocalDate> holidaySet = new HashSet<>(holidays);
+        Map<Long, Integer> result = new HashMap<>();
+        for (ScheduleBlock block : scheduleBlocks(teacherId)) {
+            for (LocalDate d = from; !d.isAfter(to); d = d.plusDays(1)) {
+                if (d.getDayOfWeek() != block.day()) continue;
+                if (holidaySet.contains(d)) result.merge(block.representativeClassId(), block.durationMinutes(), Integer::sum);
             }
         }
         return result;

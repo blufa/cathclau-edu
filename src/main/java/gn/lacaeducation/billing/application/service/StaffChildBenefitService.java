@@ -29,6 +29,7 @@ public class StaffChildBenefitService implements StaffChildBenefitUseCase {
     private final TeacherPublicInfoProvider teacherProvider;
     private final EmployeePublicInfoProvider employeeProvider;
     private final FamilyProvider familyProvider;
+    private final gn.lacaeducation.billing.application.port.in.ExemptionUseCase exemptionUseCase;
 
     @Override
     public StaffChildBenefitPolicy create(Long tenantId, PolicyCommand c) {
@@ -76,13 +77,31 @@ public class StaffChildBenefitService implements StaffChildBenefitUseCase {
 
     @Override
     @Transactional(readOnly = true)
-    public StaffCoverage computeCoverage(Long tenantId, Long studentId, gn.lacaeducation.billing.domain.FeeType feeType) {
+    public List<Long> findUncoveredStaffChildIds(Long tenantId, List<Long> studentIds) {
+        return studentIds.stream()
+                .filter(this::isStaffChild)
+                .filter(id -> {
+                    var exemption = exemptionUseCase.computeApplicable(id, gn.lacaeducation.billing.domain.FeeType.MONTHLY);
+                    BigDecimal pct = exemption.percentage() != null ? exemption.percentage() : BigDecimal.ZERO;
+                    return pct.signum() <= 0;
+                })
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isStaffChild(Long studentId) {
         // L'un des parents est-il un membre du personnel — enseignant OU personnel non-enseignant
         // (fiche liée au même compte utilisateur que le parent) ?
-        boolean staffChild = parentAccessProvider.findParentUserIdsByStudent(studentId).stream()
+        return parentAccessProvider.findParentUserIdsByStudent(studentId).stream()
                 .anyMatch(uid -> teacherProvider.findTeacherIdByUserId(uid).isPresent()
                         || employeeProvider.findEmployeeIdByUserId(uid).isPresent());
-        if (!staffChild) {
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public StaffCoverage computeCoverage(Long tenantId, Long studentId, gn.lacaeducation.billing.domain.FeeType feeType) {
+        if (!isStaffChild(studentId)) {
             return new StaffCoverage(BigDecimal.ZERO, null);
         }
         StaffChildBenefitPolicy policy = repo.findByTenantId(tenantId).stream()

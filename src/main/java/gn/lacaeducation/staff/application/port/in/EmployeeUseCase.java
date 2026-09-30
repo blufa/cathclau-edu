@@ -18,7 +18,12 @@ public interface EmployeeUseCase {
                                  BigDecimal baseSalary, String cnssNumber, String bankAccount,
                                  /** Fiche Teacher de la même personne si elle enseigne aussi (§payroll,
                                   * fiche de paie combinée) — null si elle n'enseigne pas. */
-                                 Long linkedTeacherId) {}
+                                 Long linkedTeacherId,
+                                 /** Lie un compte de connexion créé APRÈS coup (ex. « Créer un accès » oublié à la
+                                  *  création) — null = ne touche pas au lien existant, jamais utilisé pour le
+                                  *  retirer. Voir StaffSearchController, qui exige ce lien pour proposer ce
+                                  *  personnel au rattachement parent sur la fiche d'inscription. */
+                                 Long userId) {}
 
     Employee create(CreateEmployeeCommand command);
     Employee update(Long id, UpdateEmployeeCommand command);

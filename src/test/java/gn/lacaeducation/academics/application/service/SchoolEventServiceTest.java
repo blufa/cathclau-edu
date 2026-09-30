@@ -1,9 +1,14 @@
 package gn.lacaeducation.academics.application.service;
 
 import gn.lacaeducation.academics.application.port.in.GererSchoolEventUseCase.CreateSchoolEventCommand;
+import gn.lacaeducation.academics.application.port.in.GererSchoolEventUseCase.TouchedTeacher;
+import gn.lacaeducation.academics.application.port.out.EmploiDuTempsRepository;
 import gn.lacaeducation.academics.application.port.out.SchoolEventRepository;
+import gn.lacaeducation.academics.domain.EmploiDuTemps;
 import gn.lacaeducation.academics.domain.SchoolEvent;
+import gn.lacaeducation.academics.domain.valueobject.JourSemaine;
 import gn.lacaeducation.common.BusinessRuleException;
+import gn.lacaeducation.common.ResourceNotFoundException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -12,16 +17,20 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class SchoolEventServiceTest {
 
     @Mock SchoolEventRepository repo;
+    @Mock EmploiDuTempsRepository emploiDuTempsRepo;
     @InjectMocks SchoolEventService service;
 
     @Test
@@ -65,5 +74,66 @@ class SchoolEventServiceTest {
 
         assertThat(e.getStartTime()).isNull();
         assertThat(e.getEndTime()).isNull();
+    }
+
+    @Test
+    void findTouchedTeachers_slotOverlapsEventTime_isTouched() {
+        // Événement lundi 13h-18h ; créneau lundi 12h-14h chevauche (12h-14h touche 13h-18h) -> touché.
+        SchoolEvent event = SchoolEvent.builder().id(5L).tenantId(1L).label("Kermesse")
+                .startDate(LocalDate.of(2026, 5, 4)).endDate(LocalDate.of(2026, 5, 4))
+                .startTime(LocalTime.of(13, 0)).endTime(LocalTime.of(18, 0)).build();
+        when(repo.findById(5L)).thenReturn(Optional.of(event));
+        when(repo.findCreditedTeacherIds(5L)).thenReturn(List.of());
+        EmploiDuTemps touchedSlot = EmploiDuTemps.builder().id(1L).teacherId(20L).day(JourSemaine.LUNDI)
+                .startTime(LocalTime.of(12, 0)).endTime(LocalTime.of(14, 0)).build();
+        EmploiDuTemps untouchedSlot = EmploiDuTemps.builder().id(2L).teacherId(21L).day(JourSemaine.LUNDI)
+                .startTime(LocalTime.of(8, 0)).endTime(LocalTime.of(10, 0)).build();
+        when(emploiDuTempsRepo.search(null, null, null, null)).thenReturn(List.of(touchedSlot, untouchedSlot));
+
+        List<TouchedTeacher> result = service.findTouchedTeachers(5L);
+
+        assertThat(result).extracting(TouchedTeacher::teacherId).containsExactly(20L);
+        assertThat(result.get(0).credited()).isFalse();
+    }
+
+    @Test
+    void findTouchedTeachers_alreadyCredited_reportsCreditedTrue() {
+        SchoolEvent event = SchoolEvent.builder().id(5L).tenantId(1L).label("Kermesse")
+                .startDate(LocalDate.of(2026, 5, 4)).endDate(LocalDate.of(2026, 5, 4)).build();
+        when(repo.findById(5L)).thenReturn(Optional.of(event));
+        when(repo.findCreditedTeacherIds(5L)).thenReturn(List.of(20L));
+        EmploiDuTemps slot = EmploiDuTemps.builder().id(1L).teacherId(20L).day(JourSemaine.LUNDI)
+                .startTime(LocalTime.of(8, 0)).endTime(LocalTime.of(10, 0)).build();
+        when(emploiDuTempsRepo.search(null, null, null, null)).thenReturn(List.of(slot));
+
+        List<TouchedTeacher> result = service.findTouchedTeachers(5L);
+
+        assertThat(result).containsExactly(new TouchedTeacher(20L, true));
+    }
+
+    @Test
+    void setCreditedTeachers_replacesCreditedList() {
+        SchoolEvent event = SchoolEvent.builder().id(5L).build();
+        when(repo.findById(5L)).thenReturn(Optional.of(event));
+
+        service.setCreditedTeachers(5L, List.of(20L, 21L));
+
+        verify(repo).replaceCreditedTeachers(5L, List.of(20L, 21L));
+    }
+
+    @Test
+    void setCreditedTeachers_unknownEvent_throwsNotFound() {
+        when(repo.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.setCreditedTeachers(99L, List.of(20L)))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void findTouchedTeachers_unknownEvent_throwsNotFound() {
+        when(repo.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.findTouchedTeachers(99L))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 }

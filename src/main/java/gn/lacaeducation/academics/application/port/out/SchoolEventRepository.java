@@ -13,4 +13,8 @@ public interface SchoolEventRepository {
     /** Événements du tenant dont la période [startDate, endDate] chevauche [from, to]. */
     List<SchoolEvent> findByTenantIdAndDateRangeOverlap(Long tenantId, LocalDate from, LocalDate to);
     void deleteById(Long id);
+    /** Enseignants explicitement crédités (payés) par la direction pour un événement de type OTHER. */
+    List<Long> findCreditedTeacherIds(Long schoolEventId);
+    /** Remplace la liste des enseignants crédités pour cet événement. */
+    void replaceCreditedTeachers(Long schoolEventId, List<Long> teacherIds);
 }

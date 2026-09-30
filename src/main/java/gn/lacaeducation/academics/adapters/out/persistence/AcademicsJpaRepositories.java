@@ -115,3 +115,9 @@ interface SchoolEventJpaRepository extends JpaRepository<SchoolEventJpaEntity, L
     List<SchoolEventJpaEntity> findByTenantIdAndDateRangeOverlap(
             @Param("tenantId") Long tenantId, @Param("from") LocalDate from, @Param("to") LocalDate to);
 }
+
+interface SchoolEventCreditedTeacherJpaRepository extends JpaRepository<SchoolEventCreditedTeacherJpaEntity, Long> {
+    List<SchoolEventCreditedTeacherJpaEntity> findBySchoolEventId(Long schoolEventId);
+    boolean existsBySchoolEventIdAndTeacherId(Long schoolEventId, Long teacherId);
+    void deleteBySchoolEventId(Long schoolEventId);
+}

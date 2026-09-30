@@ -50,6 +50,9 @@ public class EmployeeService implements EmployeeUseCase {
         e.setCnssNumber(c.cnssNumber());
         e.setBankAccount(c.bankAccount());
         e.setLinkedTeacherId(c.linkedTeacherId());
+        // Ne lie un compte que s'il est fourni — ne jamais délier un compte déjà existant via une
+        // simple mise à jour de profil (voir javadoc de UpdateEmployeeCommand#userId).
+        if (c.userId() != null) e.setUserId(c.userId());
         return repo.save(e);
     }
 

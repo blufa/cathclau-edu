@@ -21,6 +21,12 @@ public interface InvoiceUseCase {
     record GenerateMonthlyResult(List<Invoice> created, List<ExemptedPeriod> exemptedPeriods) {}
     Invoice create(CreateInvoiceCommand command);
     GenerateMonthlyResult generateMonthly(GenerateMonthlyCommand command);
+    /** Génère UNIQUEMENT les échéances demandées (pas forcément toutes celles configurées comme
+     * {@link #generateMonthly}) — idempotent, celles déjà facturées sont silencieusement ignorées. Sert
+     * au transport (§billing, retour comptable) : facturé au mois, à la demande, jamais d'avance pour
+     * toute l'année — le comptable choisit un seul mois (le cas courant) ou plusieurs à la fois (un
+     * parent qui avance 3-4 mois), jamais une saisie manuelle de montant. */
+    GenerateMonthlyResult generateSelectedInstallments(GenerateMonthlyCommand command, List<Long> installmentIds);
     List<Invoice> generateBulk(BulkGenerateCommand command);
     /** Renvoie l'URL du PDF de la facture, en le générant/uploadant à la demande s'il manque encore. */
     String pdfUrl(Long invoiceId);

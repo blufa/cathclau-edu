@@ -24,6 +24,7 @@ public class AcademicsDataProviderAdapter implements AcademicsDataProvider {
     private final AnneeScolaireJpaRepository anneeRepo;
     private final NiveauJpaRepository niveauRepo;
     private final SchoolEventJpaRepository schoolEventRepo;
+    private final SchoolEventCreditedTeacherJpaRepository schoolEventCreditedTeacherRepo;
     @Override
     public Optional<ClassPublicInfo> findClass(Long classId) {
         return classeRepo.findById(classId).map(this::toClassPublicInfo);
@@ -175,6 +176,11 @@ public class AcademicsDataProviderAdapter implements AcademicsDataProvider {
                 .map(e -> new gn.lacaeducation.academics.SchoolEventPublicInfo(
                         e.getId(), e.getLabel(), e.getStartDate(), e.getEndDate(), e.getStartTime(), e.getEndTime()))
                 .toList();
+    }
+
+    @Override
+    public boolean isTeacherCreditedForSchoolEvent(Long schoolEventId, Long teacherId) {
+        return schoolEventCreditedTeacherRepo.existsBySchoolEventIdAndTeacherId(schoolEventId, teacherId);
     }
 
     private ScheduleSlotPublicInfo toSlot(EmploiDuTempsJpaEntity e) {

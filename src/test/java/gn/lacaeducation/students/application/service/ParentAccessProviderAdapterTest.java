@@ -13,7 +13,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
@@ -28,7 +27,7 @@ class ParentAccessProviderAdapterTest {
 
     @Test
     void isParentOfStudent_linkedChild_returnsTrue() {
-        when(parentRepository.findByUserId(7L)).thenReturn(Optional.of(Parent.builder().id(3L).build()));
+        when(parentRepository.findAllByUserId(7L)).thenReturn(List.of(Parent.builder().id(3L).build()));
         when(studentParentRepository.findStudentIdsByParentId(3L)).thenReturn(List.of(10L, 11L));
 
         assertThat(adapter.isParentOfStudent(7L, 11L)).isTrue();
@@ -36,7 +35,7 @@ class ParentAccessProviderAdapterTest {
 
     @Test
     void isParentOfStudent_otherChild_returnsFalse() {
-        when(parentRepository.findByUserId(7L)).thenReturn(Optional.of(Parent.builder().id(3L).build()));
+        when(parentRepository.findAllByUserId(7L)).thenReturn(List.of(Parent.builder().id(3L).build()));
         when(studentParentRepository.findStudentIdsByParentId(3L)).thenReturn(List.of(10L, 11L));
 
         assertThat(adapter.isParentOfStudent(7L, 99L)).isFalse();
@@ -44,7 +43,7 @@ class ParentAccessProviderAdapterTest {
 
     @Test
     void isParentOfStudent_notAParent_returnsFalse() {
-        when(parentRepository.findByUserId(7L)).thenReturn(Optional.empty());
+        when(parentRepository.findAllByUserId(7L)).thenReturn(List.of());
 
         assertThat(adapter.isParentOfStudent(7L, 11L)).isFalse();
     }
@@ -56,7 +55,7 @@ class ParentAccessProviderAdapterTest {
 
     @Test
     void findChildStudentIdsWithValidatedEnrollment_excludesChildrenWithoutValidatedEnrollment() {
-        when(parentRepository.findByUserId(7L)).thenReturn(Optional.of(Parent.builder().id(3L).build()));
+        when(parentRepository.findAllByUserId(7L)).thenReturn(List.of(Parent.builder().id(3L).build()));
         when(studentParentRepository.findStudentIdsByParentId(3L)).thenReturn(List.of(10L, 11L));
         when(enrollmentRepository.findByStudentId(10L)).thenReturn(
                 List.of(Enrollment.builder().studentId(10L).status(EnrollmentStatus.VALIDATED).build()));
@@ -68,8 +67,23 @@ class ParentAccessProviderAdapterTest {
 
     @Test
     void findChildStudentIdsWithValidatedEnrollment_notAParent_returnsEmpty() {
-        when(parentRepository.findByUserId(7L)).thenReturn(Optional.empty());
+        when(parentRepository.findAllByUserId(7L)).thenReturn(List.of());
 
         assertThat(adapter.findChildStudentIdsWithValidatedEnrollment(7L)).isEmpty();
+    }
+
+    @Test
+    void findChildStudentIds_duplicateParentRowsSharingUserId_aggregatesAcrossAll() {
+        // Cas réel : personnel de l'école lié comme parent via une fiche différente à chaque enfant
+        // inscrit, toutes partageant le même userId (au lieu de réutiliser la même fiche Parent).
+        when(parentRepository.findAllByUserId(7L)).thenReturn(List.of(
+                Parent.builder().id(3L).userId(7L).build(),
+                Parent.builder().id(5L).userId(7L).build(),
+                Parent.builder().id(9L).userId(7L).build()));
+        when(studentParentRepository.findStudentIdsByParentId(3L)).thenReturn(List.of(10L));
+        when(studentParentRepository.findStudentIdsByParentId(5L)).thenReturn(List.of(11L));
+        when(studentParentRepository.findStudentIdsByParentId(9L)).thenReturn(List.of(12L));
+
+        assertThat(adapter.findChildStudentIds(7L)).containsExactlyInAnyOrder(10L, 11L, 12L);
     }
 }
