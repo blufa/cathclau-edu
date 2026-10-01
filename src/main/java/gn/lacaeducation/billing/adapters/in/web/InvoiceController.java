@@ -111,16 +111,19 @@ public class InvoiceController {
     @Operation(summary = "Appliquer une remise / bourse à une facture (recalcule le reste à payer)")
     @PreAuthorize("hasAuthority('facture:update')")
     @PatchMapping("/{id}/discount") public ResponseEntity<Invoice> applyDiscount(@PathVariable Long id, @RequestBody DiscountRequest r) { return ResponseEntity.ok(useCase.applyDiscount(id, r.amount(), r.reason())); }
+    // facture:create (pas facture:update) : ce n'est pas une correction administrative d'une facture
+    // existante, mais une étape normale du processus d'encaissement — le comptable l'applique
+    // lui-même juste avant de faire payer toutes les tranches restantes en une fois (§billing).
     @Operation(summary = "Appliquer la remise pour paiement annuel complet sur les factures restantes d'un frais (§billing) — "
             + "à appeler juste avant un paiement groupé couvrant toutes les tranches restantes")
-    @PreAuthorize("hasAuthority('facture:update')")
+    @PreAuthorize("hasAuthority('facture:create')")
     @PostMapping("/early-payment-discount")
     public List<Invoice> applyEarlyPaymentDiscount(@RequestParam Long studentId, @RequestParam Long feeId) {
         return useCase.applyEarlyPaymentDiscount(studentId, feeId);
     }
     @Operation(summary = "Annuler la remise pour paiement annuel complet précédemment appliquée (§billing) — "
             + "à appeler dès que la sélection ne couvre plus toutes les tranches restantes")
-    @PreAuthorize("hasAuthority('facture:update')")
+    @PreAuthorize("hasAuthority('facture:create')")
     @DeleteMapping("/early-payment-discount")
     public List<Invoice> removeEarlyPaymentDiscount(@RequestParam Long studentId, @RequestParam Long feeId) {
         return useCase.removeEarlyPaymentDiscount(studentId, feeId);
