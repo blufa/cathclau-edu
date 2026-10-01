@@ -22,6 +22,7 @@ import gn.lacaeducation.payments.application.port.out.ReceiptPdfGenerator;
 import gn.lacaeducation.payments.domain.Payment;
 import gn.lacaeducation.payments.domain.Receipt;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayOutputStream;
@@ -47,6 +48,7 @@ import static gn.lacaeducation.common.pdf.AdminDocumentLayout.*;
  */
 @Component
 @RequiredArgsConstructor
+@Slf4j
 class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
 
     private final TenantInfoProvider tenantInfoProvider;
@@ -252,9 +254,16 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
         List<Long> invoiceIds = !groupLines.isEmpty()
                 ? groupLines.stream().map(GroupLine::invoiceId).toList()
                 : (payment.getInvoiceId() != null ? List.of(payment.getInvoiceId()) : List.of());
+        // Log temporaire de diagnostic (voir plus bas) : vérifie que le JSON brut de groupLines est
+        // bien exploité (ni vide, ni resté non parsé) avant même de regarder le détail par facture.
+        log.info("Reçu paiement id={} : groupLines brut={} -> {} ligne(s) -> invoiceIds={}",
+                payment.getId(), payment.getGroupLines(), groupLines.size(), invoiceIds);
         java.util.Map<String, BigDecimal> totalByReason = new java.util.LinkedHashMap<>();
         for (Long id : invoiceIds) {
             var info = payerDirectory.invoiceFeeInfo(id).orElse(null);
+            // Log temporaire de diagnostic (§retour comptable, "rien ne s'affiche" malgré une facture
+            // réellement réduite) — à retirer une fois la cause confirmée en conditions réelles.
+            log.info("Reçu paiement id={} : facture id={} -> invoiceFeeInfo={}", payment.getId(), id, info);
             if (info == null || info.discountAmount() == null || info.discountAmount().signum() <= 0) continue;
             String reason = info.discountReason() != null && !info.discountReason().isBlank()
                     ? info.discountReason() : "Remise";

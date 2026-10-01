@@ -125,6 +125,42 @@ class OpenPdfReceiptGeneratorTest {
         assertThat(new String(pdf, 0, 5)).isEqualTo("%PDF-");
     }
 
+    /**
+     * Régression réelle (§retour comptable) : le chemin RÉELLEMENT utilisé par l'écran d'encaissement
+     * ({@code StudentInvoicesPanel#collect}) passe TOUJOURS par un paiement GROUPÉ ({@code
+     * PaymentService#initiateGroup}), même pour une seule facture — {@code invoiceId} reste alors
+     * {@code null} sur le {@code Payment}, et seul {@code groupLines} (JSON réel, pas mocké) porte la
+     * référence de facture. Les tests ci-dessus, qui mockent `objectMapper` et utilisent `invoiceId`
+     * directement, ne couvraient JAMAIS ce chemin — exactement celui qui ne montrait rien en pratique.
+     * Appelle {@code discountNotes} par réflexion pour vérifier le contenu réel, pas seulement
+     * l'absence d'exception (aucune bibliothèque d'extraction de texte PDF dans le projet).
+     */
+    @Test
+    void discountNotes_groupedPaymentWithRealGroupLinesJson_findsInvoiceDiscountViaGroupLines() throws Exception {
+        tools.jackson.databind.ObjectMapper realMapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        OpenPdfReceiptGenerator realGenerator = new OpenPdfReceiptGenerator(tenantInfoProvider, payerDirectory, realMapper);
+        // Même forme que PaymentService#serializeShares (GroupedInvoiceSettlementEvent.Share) : un champ
+        // `paidMonths` de plus que le `GroupLine` interne du générateur — c'est ce décalage qu'il fallait
+        // vérifier ne casse pas le parsing (champ inconnu, pas un champ manquant).
+        String groupLines = """
+                [{"invoiceId":2,"studentId":7,"amount":10000,"paidMonths":["2026-10"]}]
+                """;
+        Payment grouped = Payment.builder().id(1L).tenantId(10L).studentId(7L).invoiceId(null)
+                .groupLines(groupLines).amount(new BigDecimal("10000")).channel(PaymentChannel.CASH)
+                .collectedByUserId(99L).build();
+        when(payerDirectory.invoiceFeeInfo(2L)).thenReturn(Optional.of(new PayerDirectory.InvoiceFeeInfo(
+                "Mensualité", "Octobre 2026", new BigDecimal("10000"),
+                "Exonération : Meilleur élève (100%)", null)));
+
+        var method = OpenPdfReceiptGenerator.class.getDeclaredMethod("discountNotes", Payment.class);
+        method.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        List<String> notes = (List<String>) method.invoke(realGenerator, grouped);
+
+        assertThat(notes).hasSize(1);
+        assertThat(notes.get(0)).contains("Meilleur élève").contains("100%").contains("10 000");
+    }
+
     /** Régression : un reçu A5 avec le tableau complet des factures de l'élève débordait sur une 2e
      * page dès qu'il y avait plus de quelques lignes (§retour comptable — "quelle que soit la taille
      * du tableau, une seule page"). A4 + bloc d'identification compact doivent absorber une année
