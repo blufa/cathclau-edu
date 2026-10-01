@@ -20,4 +20,9 @@ public interface ParentRepository {
     List<Parent> findByTenantId(Long tenantId);
     void deleteById(Long id);
     boolean existsById(Long id);
+
+    /** Suggestions prénom/nom/adresse déjà saisis pour d'autres parents du tenant (§retour comptable). */
+    List<String> suggestFirstNames(Long tenantId, String query, int limit);
+    List<String> suggestLastNames(Long tenantId, String query, int limit);
+    List<String> suggestAddresses(Long tenantId, String query, int limit);
 }

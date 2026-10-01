@@ -27,6 +27,15 @@ class ParentPersistenceAdapter implements ParentRepository, StudentParentReposit
     @Override public List<Parent> findByTenantId(Long t) { return parentRepo.findByTenantId(t).stream().map(mapper::toDomain).toList(); }
     @Override public void deleteById(Long id) { parentRepo.deleteById(id); }
     @Override public boolean existsById(Long id) { return parentRepo.existsById(id); }
+    @Override public List<String> suggestFirstNames(Long t, String q, int limit) {
+        return parentRepo.suggestFirstNames(t, q, org.springframework.data.domain.PageRequest.of(0, limit));
+    }
+    @Override public List<String> suggestLastNames(Long t, String q, int limit) {
+        return parentRepo.suggestLastNames(t, q, org.springframework.data.domain.PageRequest.of(0, limit));
+    }
+    @Override public List<String> suggestAddresses(Long t, String q, int limit) {
+        return parentRepo.suggestAddresses(t, q, org.springframework.data.domain.PageRequest.of(0, limit));
+    }
 
     @Override public StudentParent save(StudentParent sp) { return mapper.toDomain(studentParentRepo.save(mapper.toEntity(sp))); }
     @Override public List<Parent> findParentsByStudentId(Long sid) {

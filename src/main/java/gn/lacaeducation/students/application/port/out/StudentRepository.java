@@ -19,4 +19,9 @@ public interface StudentRepository {
     boolean existsById(Long id);
     long countByTenantId(Long tenantId);
     boolean existsByTenantIdAndStudentNumber(Long tenantId, String studentNumber);
+
+    /** Suggestions prénom/nom/adresse déjà saisis pour d'autres élèves du tenant (§retour comptable). */
+    List<String> suggestFirstNames(Long tenantId, String query, int limit);
+    List<String> suggestLastNames(Long tenantId, String query, int limit);
+    List<String> suggestAddresses(Long tenantId, String query, int limit);
 }
