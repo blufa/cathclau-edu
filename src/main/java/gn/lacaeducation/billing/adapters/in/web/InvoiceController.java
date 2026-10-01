@@ -55,10 +55,12 @@ public class InvoiceController {
                 new InvoiceUseCase.GenerateMonthlyCommand(r.tenantId(), r.studentId(), r.feeId(), r.academicYearId()), r.installmentIds()));
     }
     @Operation(summary = "Consulter une facture par son ID")
+    @PreAuthorize("hasAuthority('facture:read') or hasRole('PARENT') or hasRole('STUDENT')")
     @GetMapping("/{id}") public ResponseEntity<Invoice> findById(@PathVariable Long id) {
         return useCase.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
     @Operation(summary = "Récupérer l'URL du PDF de la facture — généré à la demande si absent")
+    @PreAuthorize("hasAuthority('facture:read') or hasRole('PARENT') or hasRole('STUDENT')")
     @GetMapping("/{id}/pdf") public ResponseEntity<java.util.Map<String, String>> pdf(@PathVariable Long id) {
         if (useCase.findById(id).isEmpty()) {
             return ResponseEntity.notFound().build();
@@ -67,6 +69,7 @@ public class InvoiceController {
     }
 
     @Operation(summary = "Diffuser les octets du PDF de la facture (inline) — indépendant de la livraison Cloudinary")
+    @PreAuthorize("hasAuthority('facture:read') or hasRole('PARENT') or hasRole('STUDENT')")
     @GetMapping("/{id}/pdf/download") public ResponseEntity<byte[]> pdfDownload(@PathVariable Long id) {
         if (useCase.findById(id).isEmpty()) {
             return ResponseEntity.notFound().build();
@@ -77,17 +80,21 @@ public class InvoiceController {
                 .body(useCase.pdfBytes(id));
     }
     @Operation(summary = "Consulter une facture par son numéro de référence")
+    @PreAuthorize("hasAuthority('facture:read') or hasRole('PARENT') or hasRole('STUDENT')")
     @GetMapping("/reference/{reference}") public ResponseEntity<Invoice> findByReference(@PathVariable String reference) {
         return useCase.findByReference(reference).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
     @Operation(summary = "Lister les factures d'un élève")
+    @PreAuthorize("hasAuthority('facture:read') or hasRole('PARENT') or hasRole('STUDENT')")
     @GetMapping("/student/{studentId}") public List<Invoice> findByStudent(@PathVariable Long studentId,
             @AuthenticationPrincipal Jwt jwt) { assertParentScope(jwt, studentId); return useCase.findByStudentId(studentId); }
     @Operation(summary = "Lister les factures d'un établissement — passer academicYearId pour limiter à une année scolaire (recommandé : un appel sans filtre mélange toutes les années créées)")
+    @PreAuthorize("hasAuthority('facture:read')")
     @GetMapping("/tenant/{tenantId}") public List<Invoice> findByTenant(@PathVariable Long tenantId, @RequestParam(required = false) Long academicYearId) {
         return academicYearId != null ? useCase.findByTenantIdAndAcademicYearId(tenantId, academicYearId) : useCase.findByTenantId(tenantId);
     }
     @Operation(summary = "Lister les factures d'un établissement filtrées par statut de paiement")
+    @PreAuthorize("hasAuthority('facture:read')")
     @GetMapping("/tenant/{tenantId}/status/{status}") public List<Invoice> findByStatus(@PathVariable Long tenantId, @PathVariable InvoiceStatus status) { return useCase.findByTenantIdAndStatus(tenantId, status); }
     @Operation(summary = "Appliquer un montant de paiement à une facture")
     @PreAuthorize("hasAuthority('paiement:create')")
@@ -102,30 +109,30 @@ public class InvoiceController {
         return ResponseEntity.ok(useCase.applyPayment(id, r.amount(), true, null, collectedByUserId));
     }
     @Operation(summary = "Appliquer une remise / bourse à une facture (recalcule le reste à payer)")
-    @PreAuthorize("hasAuthority('facture:create')")
+    @PreAuthorize("hasAuthority('facture:update')")
     @PatchMapping("/{id}/discount") public ResponseEntity<Invoice> applyDiscount(@PathVariable Long id, @RequestBody DiscountRequest r) { return ResponseEntity.ok(useCase.applyDiscount(id, r.amount(), r.reason())); }
     @Operation(summary = "Appliquer la remise pour paiement annuel complet sur les factures restantes d'un frais (§billing) — "
             + "à appeler juste avant un paiement groupé couvrant toutes les tranches restantes")
-    @PreAuthorize("hasAuthority('facture:create')")
+    @PreAuthorize("hasAuthority('facture:update')")
     @PostMapping("/early-payment-discount")
     public List<Invoice> applyEarlyPaymentDiscount(@RequestParam Long studentId, @RequestParam Long feeId) {
         return useCase.applyEarlyPaymentDiscount(studentId, feeId);
     }
     @Operation(summary = "Annuler la remise pour paiement annuel complet précédemment appliquée (§billing) — "
             + "à appeler dès que la sélection ne couvre plus toutes les tranches restantes")
-    @PreAuthorize("hasAuthority('facture:create')")
+    @PreAuthorize("hasAuthority('facture:update')")
     @DeleteMapping("/early-payment-discount")
     public List<Invoice> removeEarlyPaymentDiscount(@RequestParam Long studentId, @RequestParam Long feeId) {
         return useCase.removeEarlyPaymentDiscount(studentId, feeId);
     }
     @Operation(summary = "Avancer le recouvrement d'une étape (relance 1 → relance 2 → exclusion)")
-    @PreAuthorize("hasAuthority('facture:create')")
+    @PreAuthorize("hasAuthority('facture:update')")
     @PatchMapping("/{id}/recovery/advance") public ResponseEntity<Invoice> advanceRecovery(@PathVariable Long id) { return ResponseEntity.ok(useCase.advanceRecovery(id)); }
     @Operation(summary = "Positionner l'étape de recouvrement")
-    @PreAuthorize("hasAuthority('facture:create')")
+    @PreAuthorize("hasAuthority('facture:update')")
     @PatchMapping("/{id}/recovery") public ResponseEntity<Invoice> setRecovery(@PathVariable Long id, @RequestParam gn.lacaeducation.billing.domain.RecoveryStage stage) { return ResponseEntity.ok(useCase.setRecoveryStage(id, stage)); }
     @Operation(summary = "Annuler une facture")
-    @PreAuthorize("hasAuthority('facture:create')")
+    @PreAuthorize("hasAuthority('facture:update')")
     @DeleteMapping("/{id}/cancel") public ResponseEntity<Void> cancel(@PathVariable Long id) { useCase.cancel(id); return ResponseEntity.noContent().build(); }
     @Operation(summary = "Supprimer une facture")
     @PreAuthorize("hasAuthority('facture:delete')")

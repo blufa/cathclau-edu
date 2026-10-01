@@ -29,32 +29,32 @@ public class ExemptionController {
     private final ExemptionUseCase useCase;
 
     @Operation(summary = "Accorder une exonération à un élève (direction uniquement)")
-    @PreAuthorize("hasAuthority('frais:manage')")
+    @PreAuthorize("hasAuthority('regle_facturation:create')")
     @PostMapping
     public ResponseEntity<Exemption> grant(@RequestBody GrantExemptionCommand cmd, @AuthenticationPrincipal Jwt jwt) {
         Exemption e = useCase.grant(TenantContext.get(), cmd, currentUserId(jwt));
         return ResponseEntity.created(URI.create("/api/v1/billing/exemptions/" + e.getId())).body(e);
     }
 
-    // Lecture ouverte aussi au comptable (comptabilite:manage) — pas seulement à la direction
-    // (frais:manage) : sert par ex. au badge "Exonéré" de la liste des élèves (§students), que le
-    // comptable doit voir sans avoir la main sur l'octroi/la révocation (restés frais:manage ci-dessous).
+    // Lecture ouverte aussi au comptable : regle_facturation:read, accordé en lecture seule — sert par
+    // ex. au badge "Exonéré" de la liste des élèves (§students), que le comptable doit voir sans avoir
+    // la main sur l'octroi/la révocation (regle_facturation:create/delete ci-dessous).
     @Operation(summary = "Lister les exonérations du tenant (archive complète)")
-    @PreAuthorize("hasAnyAuthority('frais:manage', 'comptabilite:manage')")
+    @PreAuthorize("hasAuthority('regle_facturation:read')")
     @GetMapping
     public List<Exemption> list() {
         return useCase.findByTenant(TenantContext.get());
     }
 
     @Operation(summary = "Historique des exonérations d'un élève")
-    @PreAuthorize("hasAnyAuthority('frais:manage', 'comptabilite:manage')")
+    @PreAuthorize("hasAuthority('regle_facturation:read')")
     @GetMapping("/student/{studentId}")
     public List<Exemption> byStudent(@PathVariable Long studentId) {
         return useCase.findByStudent(studentId);
     }
 
     @Operation(summary = "Révoquer une exonération (archivée, jamais supprimée)")
-    @PreAuthorize("hasAuthority('frais:manage')")
+    @PreAuthorize("hasAuthority('regle_facturation:delete')")
     @PatchMapping("/{id}/revoquer")
     public Exemption revoke(@PathVariable Long id) {
         return useCase.revoke(id);

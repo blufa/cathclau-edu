@@ -31,7 +31,7 @@ public class StaffChildBenefitController {
     private final StaffChildBenefitUseCase useCase;
 
     @Operation(summary = "Créer une politique de prise en charge des enfants du personnel")
-    @PreAuthorize("hasAuthority('frais:manage')")
+    @PreAuthorize("hasAuthority('avantage_personnel:create')")
     @PostMapping
     public ResponseEntity<StaffChildBenefitPolicy> create(@RequestBody PolicyCommand cmd) {
         StaffChildBenefitPolicy p = useCase.create(TenantContext.get(), cmd);
@@ -39,46 +39,46 @@ public class StaffChildBenefitController {
     }
 
     @Operation(summary = "Lister les politiques du tenant")
-    @PreAuthorize("hasAuthority('frais:manage')")
+    @PreAuthorize("hasAuthority('avantage_personnel:read')")
     @GetMapping
     public List<StaffChildBenefitPolicy> list() {
         return useCase.findByTenant(TenantContext.get());
     }
 
     @Operation(summary = "Modifier une politique")
-    @PreAuthorize("hasAuthority('frais:manage')")
+    @PreAuthorize("hasAuthority('avantage_personnel:update')")
     @PutMapping("/{id}")
     public StaffChildBenefitPolicy update(@PathVariable Long id, @RequestBody PolicyCommand cmd) {
         return useCase.update(id, cmd);
     }
 
     @Operation(summary = "Supprimer une politique")
-    @PreAuthorize("hasAuthority('frais:manage')")
+    @PreAuthorize("hasAuthority('avantage_personnel:delete')")
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {
         useCase.delete(id);
     }
 
-    // Lecture ouverte aussi au comptable (comptabilite:manage) — pas seulement à la direction
-    // (frais:manage) : sert aux badges de la liste des élèves, que le comptable doit voir sans avoir la
-    // main sur la configuration des politiques (restée frais:manage ci-dessus).
+    // Lecture ouverte aussi au comptable : avantage_personnel:read, accordé en lecture seule — sert aux
+    // badges de la liste des élèves, que le comptable doit voir sans avoir la main sur la configuration
+    // des politiques (avantage_personnel:create/update/delete ci-dessus).
     @Operation(summary = "Prise en charge école applicable à un élève (enfant d'employé) pour un frais")
-    @PreAuthorize("hasAnyAuthority('frais:manage', 'comptabilite:manage')")
+    @PreAuthorize("hasAuthority('avantage_personnel:read')")
     @GetMapping("/coverage")
     public StaffCoverage coverage(@RequestParam Long studentId, @RequestParam FeeType feeType) {
         return useCase.computeCoverage(TenantContext.get(), studentId, feeType);
     }
 
     @Operation(summary = "Parmi une liste d'élèves, ceux pris en charge (enfants de personnel) pour un frais (pour badge dans la liste des élèves)")
-    @PreAuthorize("hasAnyAuthority('frais:manage', 'comptabilite:manage')")
+    @PreAuthorize("hasAuthority('avantage_personnel:read')")
     @GetMapping("/coverage-batch")
     public List<StudentCoverage> coverageBatch(@RequestParam List<Long> studentIds, @RequestParam FeeType feeType) {
         return useCase.computeCoverageBatch(TenantContext.get(), studentIds, feeType);
     }
 
     @Operation(summary = "Parmi une liste d'élèves, ceux enfants du personnel SANS remise (scolarité prélevée sur salaire — pour badge distinct dans la liste des élèves)")
-    @PreAuthorize("hasAnyAuthority('frais:manage', 'comptabilite:manage')")
+    @PreAuthorize("hasAuthority('avantage_personnel:read')")
     @GetMapping("/uncovered-batch")
     public List<Long> uncoveredBatch(@RequestParam List<Long> studentIds) {
         return useCase.findUncoveredStaffChildIds(TenantContext.get(), studentIds);
