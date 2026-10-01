@@ -96,7 +96,7 @@ class ParentServiceTest {
         });
 
         CreateParentCommand cmd = new CreateParentCommand(10L, null, "Awa", "Diallo", "620000000",
-                null, null, null, "key-1");
+                null, null, null, "key-1", null, null);
 
         Parent first = service.create(cmd);
         Parent second = service.create(cmd);
@@ -114,7 +114,7 @@ class ParentServiceTest {
         when(parentRepository.findAllByUserId(77L)).thenReturn(List.of(existing));
 
         CreateParentCommand cmd = new CreateParentCommand(10L, 77L, "Fama", "Millimouno", "620000001",
-                null, null, null, null);
+                null, null, null, null, null, null);
 
         Parent result = service.create(cmd);
 
@@ -133,12 +133,56 @@ class ParentServiceTest {
         });
 
         CreateParentCommand cmd = new CreateParentCommand(10L, 77L, "Fama", "Millimouno", "620000001",
-                null, null, null, null);
+                null, null, null, null, null, null);
 
         Parent result = service.create(cmd);
 
         assertThat(result.getId()).isEqualTo(15L);
         verify(parentRepository, times(1)).save(any(Parent.class));
+    }
+
+    @Test
+    void create_sameStaffLinkSameTenant_reusesExistingParent_doesNotDuplicate() {
+        // Personnel SANS compte (ex. pas de smartphone Android) inscrivant un 2e enfant : le même lien
+        // direct (staffType/staffId) ne doit pas créer une 2e fiche Parent.
+        Parent existing = Parent.builder().id(4L).tenantId(10L)
+                .linkedStaffType(gn.lacaeducation.students.domain.StaffLinkType.TEACHER).linkedStaffId(55L).build();
+        when(parentRepository.findAllByLinkedStaff(gn.lacaeducation.students.domain.StaffLinkType.TEACHER, 55L))
+                .thenReturn(List.of(existing));
+
+        CreateParentCommand cmd = new CreateParentCommand(10L, null, "Fama", "Millimouno", "620000001",
+                null, null, null, null, gn.lacaeducation.students.domain.StaffLinkType.TEACHER, 55L);
+
+        Parent result = service.create(cmd);
+
+        assertThat(result.getId()).isEqualTo(4L);
+        verify(parentRepository, never()).save(any(Parent.class));
+    }
+
+    @Test
+    void update_withUserId_linksAccountWithoutClearingOnNull() {
+        Parent existing = Parent.builder().id(1L).firstName("Awa").lastName("Diallo").userId(null).build();
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(parentRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        Parent result = service.update(1L, new gn.lacaeducation.students.application.port.in.ParentUseCase.UpdateParentCommand(
+                "Awa", "Diallo", "620000000", null, null, null, 99L, null, null));
+
+        assertThat(result.getUserId()).isEqualTo(99L);
+    }
+
+    @Test
+    void update_withStaffLink_linksDirectlyWithoutAccount() {
+        Parent existing = Parent.builder().id(1L).firstName("Fama").lastName("Millimouno").build();
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(parentRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        Parent result = service.update(1L, new gn.lacaeducation.students.application.port.in.ParentUseCase.UpdateParentCommand(
+                "Fama", "Millimouno", "620000001", null, null, null, null,
+                gn.lacaeducation.students.domain.StaffLinkType.EMPLOYEE, 42L));
+
+        assertThat(result.getLinkedStaffType()).isEqualTo(gn.lacaeducation.students.domain.StaffLinkType.EMPLOYEE);
+        assertThat(result.getLinkedStaffId()).isEqualTo(42L);
     }
 
     @Test

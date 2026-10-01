@@ -44,12 +44,24 @@ public class ParentService implements ParentUseCase {
                 return sameTenant.get();
             }
         }
+        // Même garde anti-duplication pour le personnel lié DIRECTEMENT (sans compte) : inscrire
+        // plusieurs enfants du même enseignant/employé sans compte ne doit pas créer une fiche par
+        // enfant (même bug réel que pour userId, voir findAllByLinkedStaff).
+        if (cmd.staffType() != null && cmd.staffId() != null) {
+            Optional<Parent> sameTenant = parentRepository.findAllByLinkedStaff(cmd.staffType(), cmd.staffId()).stream()
+                    .filter(p -> java.util.Objects.equals(p.getTenantId(), cmd.tenantId()))
+                    .min(java.util.Comparator.comparing(Parent::getId));
+            if (sameTenant.isPresent()) {
+                return sameTenant.get();
+            }
+        }
         return parentRepository.save(Parent.builder()
                 .tenantId(cmd.tenantId()).userId(cmd.userId())
                 .firstName(PersonName.capitalizeFirstName(cmd.firstName()))
                 .lastName(PersonName.upperCaseLastName(cmd.lastName()))
                 .phone(cmd.phone()).email(cmd.email())
-                .occupation(cmd.occupation()).address(cmd.address()).idempotencyKey(cmd.idempotencyKey()).build());
+                .occupation(cmd.occupation()).address(cmd.address()).idempotencyKey(cmd.idempotencyKey())
+                .linkedStaffType(cmd.staffType()).linkedStaffId(cmd.staffId()).build());
     }
 
     @Override
@@ -60,6 +72,13 @@ public class ParentService implements ParentUseCase {
         p.setLastName(PersonName.upperCaseLastName(cmd.lastName()));
         p.setPhone(cmd.phone());
         p.setEmail(cmd.email()); p.setOccupation(cmd.occupation()); p.setAddress(cmd.address());
+        // Ne lie un compte/un personnel que s'il est fourni — ne jamais délier via une simple mise à
+        // jour de profil (voir javadoc de UpdateParentCommand#userId).
+        if (cmd.userId() != null) p.setUserId(cmd.userId());
+        if (cmd.staffType() != null && cmd.staffId() != null) {
+            p.setLinkedStaffType(cmd.staffType());
+            p.setLinkedStaffId(cmd.staffId());
+        }
         return parentRepository.save(p);
     }
 

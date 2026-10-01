@@ -12,10 +12,20 @@ public interface ParentUseCase {
                                String email, String occupation, String address,
                                /** Clé d'idempotence fournie par le client (mode hors-ligne) : rejouer avec la même
                                 *  clé après une coupure réseau renvoie le parent déjà créé au lieu d'en créer un second. */
-                               String idempotencyKey) {}
+                               String idempotencyKey,
+                               /** Lien direct vers une fiche Teacher/Employee, SANS compte de connexion — pour le
+                                *  personnel qui ne veut/ne peut pas en avoir un (ex. pas de smartphone Android).
+                                *  Null si non applicable (lien par compte, ou pas de personnel). */
+                               StaffLinkType staffType, Long staffId) {}
     record UpdateParentCommand(String firstName, String lastName,
                                @NotBlank(message = "Le numéro de téléphone est obligatoire") String phone,
-                               String email, String occupation, String address) {}
+                               String email, String occupation, String address,
+                               /** Lie un compte de connexion créé APRÈS coup (ex. « Créer un accès » oublié à la
+                                *  création) — null = ne touche pas au lien existant, jamais utilisé pour le retirer
+                                *  (même garde que TeacherUseCase/EmployeeUseCase#UpdateXCommand). */
+                               Long userId,
+                               /** Même principe pour le lien direct personnel sans compte. */
+                               StaffLinkType staffType, Long staffId) {}
     /** Champs modifiables par le parent lui-même (portail parent §12) — jamais son nom. */
     record UpdateProfileCommand(@NotBlank(message = "Le numéro de téléphone est obligatoire") String phone,
                                 String email, String address, String occupation) {}

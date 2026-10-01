@@ -34,15 +34,20 @@ public class ParentStaffLinkController {
 
     public record StaffLinkInfo(String staffType, Long staffId) {}
 
-    @Operation(summary = "Indique si ce parent est lié à un membre du personnel (enseignant ou employé)")
+    @Operation(summary = "Indique si ce parent est lié à un membre du personnel (enseignant ou employé) — par compte partagé OU par lien direct sans compte")
     @PreAuthorize("hasAuthority('parent:manage')")
     @GetMapping("/{id}/staff-link")
     public ResponseEntity<StaffLinkInfo> staffLink(@PathVariable Long id) {
         Long userId = parentAccessProvider.findUserIdByParentId(id).orElse(null);
-        if (userId == null) return ResponseEntity.ok(null);
-        return teacherProvider.findTeacherIdByUserId(userId)
-                .map(tid -> new StaffLinkInfo("TEACHER", tid))
-                .or(() -> employeeProvider.findEmployeeIdByUserId(userId).map(eid -> new StaffLinkInfo("EMPLOYEE", eid)))
+        if (userId != null) {
+            var viaAccount = teacherProvider.findTeacherIdByUserId(userId)
+                    .map(tid -> new StaffLinkInfo("TEACHER", tid))
+                    .or(() -> employeeProvider.findEmployeeIdByUserId(userId).map(eid -> new StaffLinkInfo("EMPLOYEE", eid)));
+            if (viaAccount.isPresent()) return ResponseEntity.ok(viaAccount.get());
+        }
+        // Personnel sans compte (ex. pas de smartphone Android) : lien direct sur la fiche Parent.
+        return parentAccessProvider.findDirectStaffLinkByParentId(id)
+                .map(link -> new StaffLinkInfo(link.staffType(), link.staffId()))
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.ok(null));
     }
