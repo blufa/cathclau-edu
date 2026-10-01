@@ -55,4 +55,25 @@ public class StudentDirectoryController {
     public List<String> searchPreviousClasses(@RequestParam(required = false) String q) {
         return service.searchPreviousClasses(q);
     }
+
+    @Operation(summary = "Suggest first names already used by another student/parent of this tenant")
+    @GetMapping("/first-names")
+    @PreAuthorize("hasAuthority('eleve:read')")
+    public List<String> suggestFirstNames(@RequestParam(required = false) String q) {
+        return service.suggestFirstNames(q);
+    }
+
+    @Operation(summary = "Suggest last names already used by another student/parent of this tenant")
+    @GetMapping("/last-names")
+    @PreAuthorize("hasAuthority('eleve:read')")
+    public List<String> suggestLastNames(@RequestParam(required = false) String q) {
+        return service.suggestLastNames(q);
+    }
+
+    @Operation(summary = "Suggest addresses already used by another student/parent of this tenant")
+    @GetMapping("/addresses")
+    @PreAuthorize("hasAuthority('eleve:read')")
+    public List<String> suggestAddresses(@RequestParam(required = false) String q) {
+        return service.suggestAddresses(q);
+    }
 }

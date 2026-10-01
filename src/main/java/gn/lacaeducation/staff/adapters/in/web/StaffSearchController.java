@@ -17,10 +17,11 @@ import java.util.List;
 
 /**
  * Recherche croisée enseignant/personnel par nom (§retour comptable, refonte inscription, point 25) —
- * pour proposer "Lier comme parent" lors de l'inscription, avec pré-remplissage nom/téléphone. Le
- * {@code userId} renvoyé est celui à réutiliser tel quel pour le nouveau compte {@code Parent}, faute
- * de quoi la détection automatique de l'avantage personnel (voir {@code StaffChildBenefitService})
- * ne fonctionnerait pas pour ce parent.
+ * pour proposer "Lier comme parent" lors de l'inscription, avec pré-remplissage nom/téléphone.
+ * Retourne AUSSI le personnel SANS compte de connexion (ex. pas de smartphone Android) : {@code
+ * userId} est alors null, et l'appelant doit lier directement via {@code staffType}/{@code staffId}
+ * (voir {@code ParentUseCase.CreateParentCommand}) plutôt que par compte partagé — les deux chemins
+ * alimentent la détection de l'avantage personnel (voir {@code StaffChildBenefitService#isStaffChild}).
  */
 @Tag(name = "Staff Search", description = "Recherche croisée enseignant/personnel par nom")
 @RestController
@@ -42,11 +43,11 @@ public class StaffSearchController {
         Long tenantId = TenantContext.get();
         List<StaffSearchResult> results = new ArrayList<>();
         teacherUseCase.findByTenantId(tenantId).stream()
-                .filter(t -> t.getUserId() != null && matches(t.getFirstName(), t.getLastName(), needle))
+                .filter(t -> matches(t.getFirstName(), t.getLastName(), needle))
                 .forEach(t -> results.add(new StaffSearchResult(t.getUserId(), "TEACHER", t.getId(),
                         fullName(t.getFirstName(), t.getLastName()), t.getPhone())));
         employeeUseCase.findByTenant(tenantId).stream()
-                .filter(e -> e.getUserId() != null && matches(e.getFirstName(), e.getLastName(), needle))
+                .filter(e -> matches(e.getFirstName(), e.getLastName(), needle))
                 .forEach(e -> results.add(new StaffSearchResult(e.getUserId(), "EMPLOYEE", e.getId(),
                         fullName(e.getFirstName(), e.getLastName()), e.getPhone())));
         return results;

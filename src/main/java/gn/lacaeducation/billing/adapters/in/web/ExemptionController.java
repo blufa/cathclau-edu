@@ -17,8 +17,12 @@ import java.net.URI;
 import java.util.List;
 
 /**
- * Exonérations / remises exceptionnelles (§8). Accord réservé à la direction (traçabilité du
- * responsable). Jamais supprimées — seulement révoquées (archivage).
+ * Exonérations / remises exceptionnelles (§8) — OCTROI à un élève précis, opération courante faite
+ * par le comptable/la secrétaire à l'inscription ou à l'encaissement (exoneration:create/read) ; à
+ * distinguer de la configuration du CATALOGUE des types d'exonération (ExemptionRuleController,
+ * regle_facturation:*, réservée à l'administrateur école/direction). Jamais supprimées — seulement
+ * révoquées (archivage), qui reste une correction réservée à l'administrateur école/direction
+ * (exoneration:delete).
  */
 @Tag(name = "Exemptions", description = "Exonérations et remises exceptionnelles (§8)")
 @RestController
@@ -28,33 +32,30 @@ public class ExemptionController {
 
     private final ExemptionUseCase useCase;
 
-    @Operation(summary = "Accorder une exonération à un élève (direction uniquement)")
-    @PreAuthorize("hasAuthority('frais:manage')")
+    @Operation(summary = "Accorder une exonération à un élève")
+    @PreAuthorize("hasAuthority('exoneration:create')")
     @PostMapping
     public ResponseEntity<Exemption> grant(@RequestBody GrantExemptionCommand cmd, @AuthenticationPrincipal Jwt jwt) {
         Exemption e = useCase.grant(TenantContext.get(), cmd, currentUserId(jwt));
         return ResponseEntity.created(URI.create("/api/v1/billing/exemptions/" + e.getId())).body(e);
     }
 
-    // Lecture ouverte aussi au comptable (comptabilite:manage) — pas seulement à la direction
-    // (frais:manage) : sert par ex. au badge "Exonéré" de la liste des élèves (§students), que le
-    // comptable doit voir sans avoir la main sur l'octroi/la révocation (restés frais:manage ci-dessous).
     @Operation(summary = "Lister les exonérations du tenant (archive complète)")
-    @PreAuthorize("hasAnyAuthority('frais:manage', 'comptabilite:manage')")
+    @PreAuthorize("hasAuthority('exoneration:read')")
     @GetMapping
     public List<Exemption> list() {
         return useCase.findByTenant(TenantContext.get());
     }
 
     @Operation(summary = "Historique des exonérations d'un élève")
-    @PreAuthorize("hasAnyAuthority('frais:manage', 'comptabilite:manage')")
+    @PreAuthorize("hasAuthority('exoneration:read')")
     @GetMapping("/student/{studentId}")
     public List<Exemption> byStudent(@PathVariable Long studentId) {
         return useCase.findByStudent(studentId);
     }
 
     @Operation(summary = "Révoquer une exonération (archivée, jamais supprimée)")
-    @PreAuthorize("hasAuthority('frais:manage')")
+    @PreAuthorize("hasAuthority('exoneration:delete')")
     @PatchMapping("/{id}/revoquer")
     public Exemption revoke(@PathVariable Long id) {
         return useCase.revoke(id);

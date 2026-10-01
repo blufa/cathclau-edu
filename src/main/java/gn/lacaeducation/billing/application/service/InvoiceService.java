@@ -108,7 +108,11 @@ public class InvoiceService implements InvoiceUseCase {
         gn.lacaeducation.billing.domain.DiscountSource bestSource = null;
         if (exemptionPercent.compareTo(bestPercent) > 0) {
             bestPercent = exemptionPercent;
-            bestReason = (exemption.staffBenefit() ? "Avantage personnel : " : "Exonération : ") + exemption.percentageReason();
+            // Pourcentage intégré au libellé (même principe que la remise paiement anticipé juste au-dessus
+            // dans ce fichier) — sans lui, le reçu/la facture n'affichaient que le nom de l'exonération et
+            // le montant déduit, jamais le taux lui-même (§retour comptable).
+            bestReason = (exemption.staffBenefit() ? "Avantage personnel : " : "Exonération : ") + exemption.percentageReason()
+                    + " (" + bestPercent.stripTrailingZeros().toPlainString() + "%)";
             bestSource = exemption.staffBenefit()
                     ? gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT
                     : gn.lacaeducation.billing.domain.DiscountSource.EXEMPTION;

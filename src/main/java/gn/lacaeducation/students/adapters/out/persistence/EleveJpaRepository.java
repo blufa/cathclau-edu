@@ -51,4 +51,20 @@ interface EleveJpaRepository extends JpaRepository<EleveJpaEntity, Long> {
                                  @Param("status") EnrollmentStatus status,
                                  @Param("notEnrolled") boolean notEnrolled,
                                  Pageable pageable);
+
+    /**
+     * Suggestions de prénom/nom/adresse déjà saisis pour d'autres élèves du même tenant (§retour
+     * comptable : fratries, adresses d'un même quartier) — {@code q} déjà en minuscules.
+     */
+    @Query("SELECT DISTINCT s.firstName FROM EleveJpaEntity s WHERE s.tenantId = :tenantId "
+            + "AND LOWER(s.firstName) LIKE CONCAT('%', CAST(:q AS string), '%') ORDER BY s.firstName")
+    List<String> suggestFirstNames(@Param("tenantId") Long tenantId, @Param("q") String q, Pageable pageable);
+
+    @Query("SELECT DISTINCT s.lastName FROM EleveJpaEntity s WHERE s.tenantId = :tenantId "
+            + "AND LOWER(s.lastName) LIKE CONCAT('%', CAST(:q AS string), '%') ORDER BY s.lastName")
+    List<String> suggestLastNames(@Param("tenantId") Long tenantId, @Param("q") String q, Pageable pageable);
+
+    @Query("SELECT DISTINCT s.address FROM EleveJpaEntity s WHERE s.tenantId = :tenantId AND s.address IS NOT NULL "
+            + "AND LOWER(s.address) LIKE CONCAT('%', CAST(:q AS string), '%') ORDER BY s.address")
+    List<String> suggestAddresses(@Param("tenantId") Long tenantId, @Param("q") String q, Pageable pageable);
 }

@@ -28,6 +28,15 @@ class ElevePersistenceAdapter implements StudentRepository, StudentDocumentRepos
     @Override public boolean existsById(Long id) { return eleveRepo.existsById(id); }
     @Override public long countByTenantId(Long t) { return eleveRepo.countByTenantId(t); }
     @Override public boolean existsByTenantIdAndStudentNumber(Long t, String num) { return eleveRepo.existsByTenantIdAndStudentNumber(t, num); }
+    @Override public List<String> suggestFirstNames(Long t, String q, int limit) {
+        return eleveRepo.suggestFirstNames(t, q, org.springframework.data.domain.PageRequest.of(0, limit));
+    }
+    @Override public List<String> suggestLastNames(Long t, String q, int limit) {
+        return eleveRepo.suggestLastNames(t, q, org.springframework.data.domain.PageRequest.of(0, limit));
+    }
+    @Override public List<String> suggestAddresses(Long t, String q, int limit) {
+        return eleveRepo.suggestAddresses(t, q, org.springframework.data.domain.PageRequest.of(0, limit));
+    }
 
     @Override public StudentDocument save(StudentDocument d) { return mapper.toDomain(docRepo.save(mapper.toEntity(d))); }
     @Override public List<StudentDocument> findByStudentId(Long sid) { return docRepo.findByStudentId(sid).stream().map(mapper::toDomain).toList(); }

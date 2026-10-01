@@ -20,4 +20,7 @@ class ParentJpaEntity {
     private String address;
     private String photo;
     @Column(name = "idempotency_key") private String idempotencyKey;
+    @Enumerated(EnumType.STRING) @Column(name = "linked_staff_type")
+    private gn.lacaeducation.students.domain.StaffLinkType linkedStaffType;
+    @Column(name = "linked_staff_id") private Long linkedStaffId;
 }

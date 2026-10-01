@@ -34,8 +34,12 @@ public class TransportSubscriptionController {
         return service.subscriptions(TenantContext.get(), routeId, studentId);
     }
 
+    // Action courante du comptable/secrétaire à l'inscription ou à l'encaissement (choisir le bus) —
+    // jamais la configuration des lignes/arrêts (transport:manage, restée admin/direction/secrétaire,
+    // déjà détentrice de transport:manage depuis V149). abonnement_transport:create est un privilège
+    // plus étroit, accordé en plus pour ce seul geste.
     @Operation(summary = "Abonner un élève à une ligne")
-    @PreAuthorize("hasAuthority('transport:manage')")
+    @PreAuthorize("hasAnyAuthority('transport:manage', 'abonnement_transport:create')")
     @PostMapping
     public TransportSubscription subscribe(@RequestBody SubscribeRequest r) {
         return service.subscribe(new SubscribeCommand(TenantContext.get(), r.routeId(), r.stopId(), r.studentId(),

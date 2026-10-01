@@ -26,4 +26,16 @@ public interface ParentAccessProvider {
      * introuvable) — pour vérifier si ce parent correspond aussi à un membre du personnel (même
      * {@code userId} partagé que {@code Teacher}/{@code Employee}, voir refonte inscription §25). */
     java.util.Optional<Long> findUserIdByParentId(Long parentId);
+
+    /** Lien direct vers une fiche Teacher/Employee, SANS compte de connexion — pour le personnel qui ne
+     *  veut/ne peut pas en avoir un (ex. pas de smartphone Android). {@code staffType} vaut "TEACHER"
+     *  ou "EMPLOYEE". Alternative à {@link #findUserIdByParentId} pour la détection "enfant du
+     *  personnel" (voir {@code StaffChildBenefitService#isStaffChild}). */
+    record DirectStaffLink(String staffType, Long staffId) {}
+
+    /** Liens directs personnel (sans compte) de TOUTES les fiches Parent de cet élève — vide si aucune. */
+    java.util.List<DirectStaffLink> findDirectStaffLinksByStudent(Long studentId);
+
+    /** Lien direct personnel (sans compte) de CETTE fiche Parent précise — vide si aucun. */
+    java.util.Optional<DirectStaffLink> findDirectStaffLinkByParentId(Long parentId);
 }

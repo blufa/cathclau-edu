@@ -30,7 +30,7 @@ public class FamilyDiscountController {
     private final FamilyDiscountUseCase useCase;
 
     @Operation(summary = "Créer une règle de réduction familiale")
-    @PreAuthorize("hasAuthority('frais:manage')")
+    @PreAuthorize("hasAuthority('regle_facturation:create')")
     @PostMapping
     public ResponseEntity<FamilyDiscountRule> create(@RequestBody RuleCommand cmd) {
         FamilyDiscountRule r = useCase.create(TenantContext.get(), cmd);
@@ -38,21 +38,21 @@ public class FamilyDiscountController {
     }
 
     @Operation(summary = "Lister les règles de réduction familiale du tenant")
-    @PreAuthorize("hasAuthority('frais:manage')")
+    @PreAuthorize("hasAuthority('regle_facturation:read')")
     @GetMapping
     public List<FamilyDiscountRule> list() {
         return useCase.findByTenant(TenantContext.get());
     }
 
     @Operation(summary = "Modifier une règle")
-    @PreAuthorize("hasAuthority('frais:manage')")
+    @PreAuthorize("hasAuthority('regle_facturation:update')")
     @PutMapping("/{id}")
     public FamilyDiscountRule update(@PathVariable Long id, @RequestBody RuleCommand cmd) {
         return useCase.update(id, cmd);
     }
 
     @Operation(summary = "Supprimer une règle")
-    @PreAuthorize("hasAuthority('frais:manage')")
+    @PreAuthorize("hasAuthority('regle_facturation:delete')")
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {
@@ -60,14 +60,14 @@ public class FamilyDiscountController {
     }
 
     @Operation(summary = "Réduction familiale applicable à un élève pour un frais donné")
-    @PreAuthorize("hasAuthority('frais:manage')")
+    @PreAuthorize("hasAuthority('regle_facturation:read')")
     @GetMapping("/applicable")
     public ApplicableDiscount applicable(@RequestParam Long studentId, @RequestParam FeeType feeType) {
         return useCase.computeApplicable(TenantContext.get(), studentId, feeType);
     }
 
     @Operation(summary = "Parmi une liste d'élèves, ceux qui sont le cadet exonéré d'une fratrie nombreuse (pour badge dans la liste des élèves)")
-    @PreAuthorize("hasAuthority('frais:manage')")
+    @PreAuthorize("hasAuthority('regle_facturation:read')")
     @GetMapping("/eligible-youngest")
     public List<Long> eligibleYoungest(@RequestParam List<Long> studentIds) {
         return useCase.eligibleYoungest(TenantContext.get(), studentIds);

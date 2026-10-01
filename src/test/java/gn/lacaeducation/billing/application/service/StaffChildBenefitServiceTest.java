@@ -113,6 +113,21 @@ class StaffChildBenefitServiceTest {
     }
 
     @Test
+    void computeCoverage_staffChildViaDirectLinkWithoutAccount_isCovered() {
+        // Personnel SANS compte de connexion (ex. pas de smartphone Android) : lié directement sur la
+        // fiche Parent (voir ParentAccessProvider#findDirectStaffLinksByStudent), aucun userId partagé.
+        when(parentAccessProvider.findParentUserIdsByStudent(1L)).thenReturn(List.of());
+        when(parentAccessProvider.findDirectStaffLinksByStudent(1L))
+                .thenReturn(List.of(new ParentAccessProvider.DirectStaffLink("TEACHER", 9L)));
+        when(repo.findByTenantId(1L)).thenReturn(List.of(policyFirstChildFullyCovered()));
+        when(familyProvider.findSiblings(1L)).thenReturn(List.of(new ChildInfo(1L, LocalDate.of(2012, 1, 1))));
+
+        StaffCoverage c = service.computeCoverage(1L, 1L, FeeType.MONTHLY);
+
+        assertThat(c.coveragePercent()).isEqualByComparingTo("100");
+    }
+
+    @Test
     void findUncoveredStaffChildIds_staffChildWithNoExemption_isReturned() {
         when(parentAccessProvider.findParentUserIdsByStudent(1L)).thenReturn(List.of(50L));
         when(teacherProvider.findTeacherIdByUserId(50L)).thenReturn(Optional.of(9L));

@@ -29,7 +29,7 @@ public class EarlyPaymentDiscountController {
     private final EarlyPaymentDiscountUseCase useCase;
 
     @Operation(summary = "Créer une règle de remise pour paiement annuel complet")
-    @PreAuthorize("hasAuthority('frais:manage')")
+    @PreAuthorize("hasAuthority('regle_facturation:create')")
     @PostMapping
     public ResponseEntity<EarlyPaymentDiscountRule> create(@RequestBody RuleCommand cmd) {
         EarlyPaymentDiscountRule r = useCase.create(TenantContext.get(), cmd);
@@ -37,21 +37,21 @@ public class EarlyPaymentDiscountController {
     }
 
     @Operation(summary = "Lister les règles de remise pour paiement annuel complet du tenant")
-    @PreAuthorize("hasAuthority('frais:manage')")
+    @PreAuthorize("hasAuthority('regle_facturation:read')")
     @GetMapping
     public List<EarlyPaymentDiscountRule> list() {
         return useCase.findByTenant(TenantContext.get());
     }
 
     @Operation(summary = "Modifier une règle")
-    @PreAuthorize("hasAuthority('frais:manage')")
+    @PreAuthorize("hasAuthority('regle_facturation:update')")
     @PutMapping("/{id}")
     public EarlyPaymentDiscountRule update(@PathVariable Long id, @RequestBody RuleCommand cmd) {
         return useCase.update(id, cmd);
     }
 
     @Operation(summary = "Supprimer une règle")
-    @PreAuthorize("hasAuthority('frais:manage')")
+    @PreAuthorize("hasAuthority('regle_facturation:delete')")
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {

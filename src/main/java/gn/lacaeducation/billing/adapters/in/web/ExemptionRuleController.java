@@ -30,7 +30,7 @@ public class ExemptionRuleController {
     private final ExemptionRuleUseCase useCase;
 
     @Operation(summary = "Créer un type d'exonération")
-    @PreAuthorize("hasAuthority('frais:manage')")
+    @PreAuthorize("hasAuthority('regle_facturation:create')")
     @PostMapping
     public ResponseEntity<ExemptionRule> create(@RequestBody RuleCommand cmd) {
         ExemptionRule r = useCase.create(TenantContext.get(), cmd);
@@ -38,21 +38,21 @@ public class ExemptionRuleController {
     }
 
     @Operation(summary = "Lister les types d'exonération du tenant")
-    @PreAuthorize("hasAuthority('frais:manage')")
+    @PreAuthorize("hasAuthority('regle_facturation:read')")
     @GetMapping
     public List<ExemptionRule> list() {
         return useCase.findByTenant(TenantContext.get());
     }
 
     @Operation(summary = "Modifier un type d'exonération")
-    @PreAuthorize("hasAuthority('frais:manage')")
+    @PreAuthorize("hasAuthority('regle_facturation:update')")
     @PutMapping("/{id}")
     public ExemptionRule update(@PathVariable Long id, @RequestBody RuleCommand cmd) {
         return useCase.update(id, cmd);
     }
 
     @Operation(summary = "Supprimer un type d'exonération")
-    @PreAuthorize("hasAuthority('frais:manage')")
+    @PreAuthorize("hasAuthority('regle_facturation:delete')")
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {
