@@ -66,4 +66,24 @@ class ParentAccessProviderAdapter implements ParentAccessProvider {
         if (parentId == null) return java.util.Optional.empty();
         return parentRepository.findById(parentId).map(gn.lacaeducation.students.domain.Parent::getUserId);
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.List<DirectStaffLink> findDirectStaffLinksByStudent(Long studentId) {
+        if (studentId == null) return java.util.List.of();
+        return studentParentRepository.findParentsByStudentId(studentId).stream()
+                .filter(parent -> parent.getLinkedStaffType() != null && parent.getLinkedStaffId() != null)
+                .map(parent -> new DirectStaffLink(parent.getLinkedStaffType().name(), parent.getLinkedStaffId()))
+                .distinct()
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.Optional<DirectStaffLink> findDirectStaffLinkByParentId(Long parentId) {
+        if (parentId == null) return java.util.Optional.empty();
+        return parentRepository.findById(parentId)
+                .filter(parent -> parent.getLinkedStaffType() != null && parent.getLinkedStaffId() != null)
+                .map(parent -> new DirectStaffLink(parent.getLinkedStaffType().name(), parent.getLinkedStaffId()));
+    }
 }

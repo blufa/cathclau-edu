@@ -12,6 +12,10 @@ public interface ParentRepository {
      * dupliquées partagent le même compte, voir la garde équivalente côté appelants), renvoie TOUTES
      * les fiches partageant ce compte, sans lever d'exception. */
     List<Parent> findAllByUserId(Long userId);
+    /** Fiches Parent déjà liées DIRECTEMENT (sans compte) à ce membre du personnel — même garde
+     *  anti-duplication que {@link #findAllByUserId} (inscrire plusieurs enfants du même personnel
+     *  sans compte ne doit pas créer une fiche Parent par enfant). */
+    List<Parent> findAllByLinkedStaff(gn.lacaeducation.students.domain.StaffLinkType staffType, Long staffId);
     Optional<Parent> findByIdempotencyKey(String idempotencyKey);
     List<Parent> findByTenantId(Long tenantId);
     void deleteById(Long id);

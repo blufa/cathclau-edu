@@ -91,11 +91,14 @@ public class StaffChildBenefitService implements StaffChildBenefitUseCase {
     @Override
     @Transactional(readOnly = true)
     public boolean isStaffChild(Long studentId) {
-        // L'un des parents est-il un membre du personnel — enseignant OU personnel non-enseignant
-        // (fiche liée au même compte utilisateur que le parent) ?
-        return parentAccessProvider.findParentUserIdsByStudent(studentId).stream()
+        // L'un des parents est-il un membre du personnel — enseignant OU personnel non-enseignant —
+        // soit par compte utilisateur partagé, soit par lien direct (sans compte, voir
+        // ParentAccessProvider#findDirectStaffLinksByStudent — ex. personnel sans smartphone Android) ?
+        boolean viaAccount = parentAccessProvider.findParentUserIdsByStudent(studentId).stream()
                 .anyMatch(uid -> teacherProvider.findTeacherIdByUserId(uid).isPresent()
                         || employeeProvider.findEmployeeIdByUserId(uid).isPresent());
+        if (viaAccount) return true;
+        return !parentAccessProvider.findDirectStaffLinksByStudent(studentId).isEmpty();
     }
 
     @Override
