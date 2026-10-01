@@ -124,9 +124,8 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
                 }
             }
 
-            String discountNote = discountNote(payment);
-            if (discountNote != null) {
-                Paragraph discount = new Paragraph(discountNote, font(FontFactory.HELVETICA, 9, GREY));
+            for (String line : discountNotes(payment)) {
+                Paragraph discount = new Paragraph(line, font(FontFactory.HELVETICA, 9, GREY));
                 discount.setSpacingBefore(4f);
                 doc.add(discount);
             }
@@ -239,24 +238,31 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
     }
 
     /**
-     * Remise totale (ex. paiement anticipé) portée par les factures réglées par ce paiement — visible
-     * sur le reçu même si elle a été calculée et appliquée automatiquement avant l'encaissement.
+     * Remise(s) (exonération, avantage personnel, paiement anticipé…) portée(s) par les factures
+     * réglées par ce paiement — une ligne PAR MOTIF DISTINCT (nom de l'exonération/règle, pourcentage
+     * déjà intégré au libellé — voir {@code InvoiceService#computeApplicableDiscount} /
+     * {@code #applyEarlyPaymentDiscount} —, et montant réellement déduit), visible sur le reçu même
+     * quand la remise a été calculée et appliquée automatiquement avant l'encaissement. Un même
+     * paiement peut, rarement, couvrir des factures à motifs différents (ex. exonération modifiée
+     * entre deux générations) : les agréger sous un seul motif masquerait alors une partie de la
+     * remise réellement appliquée (§retour comptable).
      */
-    private String discountNote(Payment payment) {
+    private List<String> discountNotes(Payment payment) {
         List<GroupLine> groupLines = parseGroupLines(payment.getGroupLines());
         List<Long> invoiceIds = !groupLines.isEmpty()
                 ? groupLines.stream().map(GroupLine::invoiceId).toList()
                 : (payment.getInvoiceId() != null ? List.of(payment.getInvoiceId()) : List.of());
-        BigDecimal total = BigDecimal.ZERO;
-        String reason = null;
+        java.util.Map<String, BigDecimal> totalByReason = new java.util.LinkedHashMap<>();
         for (Long id : invoiceIds) {
             var info = payerDirectory.invoiceFeeInfo(id).orElse(null);
             if (info == null || info.discountAmount() == null || info.discountAmount().signum() <= 0) continue;
-            total = total.add(info.discountAmount());
-            if (reason == null) reason = info.discountReason();
+            String reason = info.discountReason() != null && !info.discountReason().isBlank()
+                    ? info.discountReason() : "Remise";
+            totalByReason.merge(reason, info.discountAmount(), BigDecimal::add);
         }
-        if (total.signum() <= 0) return null;
-        return "Remise appliquée : -" + money(total) + " GNF" + (reason != null && !reason.isBlank() ? " (" + reason + ")" : "");
+        return totalByReason.entrySet().stream()
+                .map(e -> "Remise appliquée : -" + money(e.getValue()) + " GNF (" + e.getKey() + ")")
+                .toList();
     }
 
     /**

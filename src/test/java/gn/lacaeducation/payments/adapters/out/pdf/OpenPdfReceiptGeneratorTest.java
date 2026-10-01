@@ -107,6 +107,24 @@ class OpenPdfReceiptGeneratorTest {
         assertThat(new String(pdf, 0, 5)).isEqualTo("%PDF-");
     }
 
+    /** §retour comptable : le nom de l'exonération ET son pourcentage doivent apparaître sur le reçu,
+     * pas seulement le montant déduit — un paiement groupé (deux factures) couvrant deux motifs de
+     * remise DIFFÉRENTS ne doit produire ni exception ni agrégation silencieuse sous un seul motif
+     * (voir {@code discountNotes}, qui groupe désormais par motif exact). */
+    @Test
+    void generate_invoicesWithDifferentDiscountReasons_producesValidPdfWithoutMergingReasons() {
+        when(payerDirectory.studentInvoices(7L)).thenReturn(List.of());
+        when(payerDirectory.unpaidInvoices(7L)).thenReturn(List.of());
+        when(payerDirectory.invoiceFeeInfo(2L)).thenReturn(Optional.of(new PayerDirectory.InvoiceFeeInfo(
+                "Mensualité", "Octobre 2026", new BigDecimal("10000"),
+                "Exonération : Meilleur élève (100%)", null)));
+
+        byte[] pdf = generator().generate(receipt(), payment());
+
+        assertThat(pdf).isNotEmpty();
+        assertThat(new String(pdf, 0, 5)).isEqualTo("%PDF-");
+    }
+
     /** Régression : un reçu A5 avec le tableau complet des factures de l'élève débordait sur une 2e
      * page dès qu'il y avait plus de quelques lignes (§retour comptable — "quelle que soit la taille
      * du tableau, une seule page"). A4 + bloc d'identification compact doivent absorber une année
