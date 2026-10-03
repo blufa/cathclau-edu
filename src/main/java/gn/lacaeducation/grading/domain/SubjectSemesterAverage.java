@@ -26,8 +26,9 @@ import java.util.Map;
  * FINAL (examen de fin de période) n'entre dans aucun de ces trois calculs — catégorie hors barème
  * semestriel standard.
  * <p>
- * <b>Primaire/maternelle</b> : moyenne pondérée simple sur toutes les évaluations de la période, sans
- * distinction cours/composition ni regroupement mensuel — {@code Σ(coef×note)/Σcoef}.
+ * <b>Primaire/maternelle</b> (§retour pédagogique) : moyenne simple (NON pondérée par coefficient,
+ * contrairement au Secondaire) des seules compositions (EXAM) du trimestre — {@code Σnote/nombre de
+ * compositions} ; les interrogations/devoirs (QUIZ/HOMEWORK) ne comptent pas pour ce cycle.
  */
 public final class SubjectSemesterAverage {
 
@@ -55,7 +56,10 @@ public final class SubjectSemesterAverage {
         }
 
         if (cycleGroup == CycleGroup.PRIMAIRE) {
-            BigDecimal simple = weightedAverage(noted);
+            List<WeightedNote> compositions = noted.stream()
+                    .filter(n -> n.assessment.getType() == AssessmentType.EXAM)
+                    .toList();
+            BigDecimal simple = simpleAverage(compositions);
             return new Result(simple, null, null);
         }
 
@@ -93,6 +97,17 @@ public final class SubjectSemesterAverage {
         }
         if (monthCount == 0) return null;
         return sum.divide(BigDecimal.valueOf(monthCount), SCALE, ROUNDING);
+    }
+
+    /** {@code Σ(note) / nombre de notes} — jamais pondérée par coefficient (Primaire, §retour
+     * pédagogique) ; {@code null} si vide. */
+    private static BigDecimal simpleAverage(List<WeightedNote> notes) {
+        if (notes.isEmpty()) return null;
+        BigDecimal sum = BigDecimal.ZERO;
+        for (WeightedNote n : notes) {
+            sum = sum.add(n.value);
+        }
+        return sum.divide(BigDecimal.valueOf(notes.size()), SCALE, ROUNDING);
     }
 
     /** {@code Σ(coefficient × note) / Σ(coefficient)}, coefficient absent = 1 ; {@code null} si vide. */
