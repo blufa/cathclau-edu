@@ -32,8 +32,10 @@ public class LessonController {
                                 String title, String content, String homework, Integer durationMinutes,
                                 LessonStatus status) {}
 
-    /** Durée réellement effectuée (optionnelle) — corrige la durée planifiée au moment de la réalisation. */
-    public record MarkDoneRequest(Integer durationMinutes) {}
+    /** Durée réellement effectuée (optionnelle) — corrige la durée planifiée au moment de la réalisation.
+     * {@code confirmedWithoutCheckin} : la personne qui valide a vu qu'aucun pointage enseignant ne
+     * correspond à cette séance et confirme malgré tout (§retour fondateurs, contrôle anti-fraude). */
+    public record MarkDoneRequest(Integer durationMinutes, Boolean confirmedWithoutCheckin) {}
 
     @Operation(summary = "Lister les séances (filtres classe / matière / enseignant)")
     @GetMapping
@@ -73,7 +75,7 @@ public class LessonController {
     @PreAuthorize("hasAuthority('cahier:manage')")
     @PatchMapping("/{id}/done")
     public LessonEntry markDone(@PathVariable Long id, @RequestBody(required = false) MarkDoneRequest r) {
-        return service.markDone(id, r != null ? r.durationMinutes() : null);
+        return service.markDone(id, r != null ? r.durationMinutes() : null, r != null ? r.confirmedWithoutCheckin() : null);
     }
 
     @Operation(summary = "Remettre la séance en planifié")

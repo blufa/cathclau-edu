@@ -9,6 +9,7 @@ import gn.lacaeducation.iam.application.event.PermissionsModifiedEvent;
 import gn.lacaeducation.iam.application.event.RoleAssignedEvent;
 import gn.lacaeducation.iam.application.event.UserLoggedInEvent;
 import gn.lacaeducation.iam.application.event.UserPermissionsModifiedEvent;
+import gn.lacaeducation.lessons.application.event.LessonValidatedWithoutCheckinEvent;
 import gn.lacaeducation.payments.application.event.CashCollectedWithoutOpenSessionEvent;
 import gn.lacaeducation.payments.application.event.CashierSessionClosedEvent;
 import gn.lacaeducation.payments.application.event.PaymentRefundedEvent;
@@ -208,6 +209,13 @@ public class AuditEventListener {
     public void onCashCollectedWithoutOpenSession(CashCollectedWithoutOpenSessionEvent event) {
         save(event.tenantId(), event.cashierId(), "CASH_COLLECTED_WITHOUT_OPEN_SESSION", "Payment", event.paymentId(),
                 "amount=" + event.amount());
+    }
+
+    @TransactionalEventListener
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onLessonValidatedWithoutCheckin(LessonValidatedWithoutCheckinEvent event) {
+        save(event.tenantId(), null, "LESSON_VALIDATED_WITHOUT_CHECKIN", "LessonEntry", event.lessonId(),
+                "teacherId=" + event.teacherId() + ";lessonDate=" + event.lessonDate());
     }
 
     private void save(Long tenantId, Long utilisateurId, String action, String ressource,
