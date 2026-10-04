@@ -208,6 +208,39 @@ class CommunicationEventListenerTest {
         assertThat(cmd.content()).contains("Fatoumata Camara").contains("50000").contains("SANS avoir ouvert");
     }
 
+    // ── onUndeclaredAttendance (§retour fondateurs, détecteur B1) ───────────────────────────────────
+
+    @Test
+    void onUndeclaredAttendance_alertsSchoolAdminOnly() {
+        when(studentDataProvider.findStudent(7L)).thenReturn(Optional.of(student));
+        when(schoolStaffDirectory.findSchoolAdminContacts(10L))
+                .thenReturn(List.of(new SchoolAdminContact("622000000", "Directeur École")));
+        when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.of(
+                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
+
+        listener().onUndeclaredAttendance(new gn.lacaeducation.attendance.application.event.UndeclaredAttendanceEvent(
+                10L, 7L, java.time.LocalDate.of(2026, 10, 4)));
+
+        ArgumentCaptor<SendCommunicationCommand> captor = ArgumentCaptor.forClass(SendCommunicationCommand.class);
+        verify(communicationUseCase).send(captor.capture());
+        SendCommunicationCommand cmd = captor.getValue();
+        assertThat(cmd.channel()).isEqualTo(CommunicationChannel.SMS);
+        assertThat(cmd.reason()).isEqualTo(CommunicationReason.SECURITY_ALERT);
+        assertThat(cmd.recipients()).extracting("destination").containsExactly("622000000");
+        assertThat(cmd.content()).contains("Awa Diallo").contains("2026-10-04").contains("SANS inscription déclarée");
+    }
+
+    @Test
+    void onUndeclaredAttendance_noSchoolAdminPhone_skipsWithoutError() {
+        when(studentDataProvider.findStudent(7L)).thenReturn(Optional.of(student));
+        when(schoolStaffDirectory.findSchoolAdminContacts(10L)).thenReturn(List.of());
+
+        listener().onUndeclaredAttendance(new gn.lacaeducation.attendance.application.event.UndeclaredAttendanceEvent(
+                10L, 7L, java.time.LocalDate.of(2026, 10, 4)));
+
+        verify(communicationUseCase, times(0)).send(any());
+    }
+
     // ── onInvoicePaymentApplied (§retour comptable : contenu bref — montant payé + reste à payer
     // total, toutes factures confondues, pas seulement le solde de la facture réglée) ───────────────
 

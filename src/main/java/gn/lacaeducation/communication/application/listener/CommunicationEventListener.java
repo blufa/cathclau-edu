@@ -2,6 +2,7 @@ package gn.lacaeducation.communication.application.listener;
 
 import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.attendance.application.event.StudentAbsentEvent;
+import gn.lacaeducation.attendance.application.event.UndeclaredAttendanceEvent;
 import gn.lacaeducation.billing.application.event.EcheanceDepasseeEvent;
 import gn.lacaeducation.billing.application.event.InvoicePaymentAppliedEvent;
 import gn.lacaeducation.communication.application.port.in.CommunicationUseCase;
@@ -226,6 +227,26 @@ public class CommunicationEventListener {
                 + " a encaissé " + event.amount() + " GNF au guichet SANS avoir ouvert de session de caisse. "
                 + "Vérifiez cet encaissement.";
         notifySchoolAdmins(event.tenantId(), "Encaissement sans session de caisse", content);
+    }
+
+    /**
+     * Détecteur B1 (§retour fondateurs) : un élève présent/en retard aujourd'hui sans inscription
+     * active déclarée est le signal direct du vol décrit par les fondateurs (élève reçu et payé en
+     * main à main, jamais déclaré dans le système). Alerte immédiate, le fautif potentiel (comptable
+     * ou secrétaire ayant encaissé hors système) n'étant jamais identifiable à ce stade ne peut pas
+     * être exclu par construction — mais ce n'est de toute façon pas lui qui saisit la présence
+     * (l'enseignant, sans intérêt financier à mentir).
+     */
+    @TransactionalEventListener
+    @Async
+    public void onUndeclaredAttendance(UndeclaredAttendanceEvent event) {
+        String studentName = studentDataProvider.findStudent(event.studentId())
+                .map(this::fullName)
+                .orElse("Élève #" + event.studentId());
+        String content = "École " + schoolName(event.tenantId()) + " : " + studentName
+                + " a été présent(e) en classe le " + event.date() + " SANS inscription déclarée dans le "
+                + "système. Vérifiez si cet élève a été inscrit/encaissé hors système.";
+        notifySchoolAdmins(event.tenantId(), "Présence sans inscription déclarée", content);
     }
 
     /**

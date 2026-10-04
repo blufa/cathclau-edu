@@ -1,5 +1,6 @@
 package gn.lacaeducation.audit.application.listener;
 
+import gn.lacaeducation.attendance.application.event.UndeclaredAttendanceEvent;
 import gn.lacaeducation.audit.application.port.in.AuditLogUseCase;
 import gn.lacaeducation.audit.application.port.in.AuditLogUseCase.RecordAuditCommand;
 import gn.lacaeducation.billing.application.event.ExemptionGrantedEvent;
@@ -216,6 +217,13 @@ public class AuditEventListener {
     public void onLessonValidatedWithoutCheckin(LessonValidatedWithoutCheckinEvent event) {
         save(event.tenantId(), null, "LESSON_VALIDATED_WITHOUT_CHECKIN", "LessonEntry", event.lessonId(),
                 "teacherId=" + event.teacherId() + ";lessonDate=" + event.lessonDate());
+    }
+
+    @TransactionalEventListener
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onUndeclaredAttendance(UndeclaredAttendanceEvent event) {
+        save(event.tenantId(), null, "UNDECLARED_ATTENDANCE", "Student", event.studentId(),
+                "date=" + event.date());
     }
 
     private void save(Long tenantId, Long utilisateurId, String action, String ressource,
