@@ -1,5 +1,6 @@
 package gn.lacaeducation.billing.application.service;
 
+import gn.lacaeducation.billing.application.event.ExemptionGrantedEvent;
 import gn.lacaeducation.billing.application.port.in.ExemptionUseCase;
 import gn.lacaeducation.billing.application.port.out.ExemptionRepository;
 import gn.lacaeducation.billing.domain.Exemption;
@@ -8,6 +9,7 @@ import gn.lacaeducation.billing.domain.FeeType;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +24,7 @@ import java.util.List;
 public class ExemptionService implements ExemptionUseCase {
 
     private final ExemptionRepository repo;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     public Exemption grant(Long tenantId, GrantExemptionCommand c, Long validatedBy) {
@@ -48,13 +51,18 @@ public class ExemptionService implements ExemptionUseCase {
         if (c.startDate() != null && c.endDate() != null && c.endDate().isBefore(c.startDate())) {
             throw new BusinessRuleException("La date de fin doit être postérieure à la date de début.");
         }
-        return repo.save(Exemption.builder()
+        Exemption saved = repo.save(Exemption.builder()
                 .tenantId(tenantId).studentId(c.studentId()).type(c.type())
                 .percentage(percentage).amount(amount).feeTypes(c.feeTypes()).reason(c.reason())
                 .startDate(c.startDate()).endDate(c.endDate()).validatedBy(validatedBy)
                 .active(true).createdAt(LocalDateTime.now())
                 .staffBenefit(c.staffBenefit() != null && c.staffBenefit())
                 .build());
+        // §retour fondateurs (contrôle anti-fraude) : trace qui a accordé quelle remise, à qui et
+        // pourquoi — consommé par le journal d'audit.
+        eventPublisher.publishEvent(new ExemptionGrantedEvent(tenantId, saved.getId(), saved.getStudentId(),
+                saved.getType().name(), saved.getPercentage(), saved.getAmount(), saved.getReason(), validatedBy));
+        return saved;
     }
 
     @Override

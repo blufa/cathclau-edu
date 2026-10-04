@@ -5,7 +5,6 @@ import gn.lacaeducation.grading.application.port.out.AssessmentRepository;
 import gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort;
 import gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort.ClassSubjectInfo;
 import gn.lacaeducation.grading.application.port.out.GradeRepository;
-import gn.lacaeducation.grading.application.port.out.GradingScaleRepository;
 import gn.lacaeducation.grading.application.port.out.ReportCardRepository;
 import gn.lacaeducation.grading.domain.Assessment;
 import gn.lacaeducation.grading.domain.AssessmentType;
@@ -38,9 +37,6 @@ class GradeCalculationServiceTest {
     @Mock GradeRepository gradeRepository;
     @Mock ReportCardRepository reportCardRepository;
     @Mock ClassSubjectQueryPort classSubjectQueryPort;
-    @Mock GradingScaleRepository gradingScaleRepository;
-    @Mock gn.lacaeducation.grading.application.port.out.EliminatoryRuleRepository eliminatoryRuleRepository;
-    @Mock gn.lacaeducation.grading.application.port.out.DecisionRuleRepository decisionRuleRepository;
     @Mock AcademicsDataProvider academicsDataProvider;
     @Mock ApplicationEventPublisher eventPublisher;
     @InjectMocks GradeCalculationService service;
@@ -186,49 +182,94 @@ class GradeCalculationServiceTest {
         assertThat(rcCaptor.getAllValues().get(0).getOverallAverage()).isEqualByComparingTo("13.75");
     }
 
+    /**
+     * Primaire (§retour pédagogique) : seules les compositions (EXAM) comptent pour la moyenne de
+     * matière, en moyenne simple — jamais pondérée par le coefficient de l'évaluation, contrairement
+     * au Secondaire. Le barème est désormais toujours le standard par défaut (plus de surcharge par
+     * tenant) : avec une moyenne de 13, l'honneur attendu est "Passable" (assezBienMin=14).
+     */
     @Test
-    void generateForStudent_primaire_usesSimpleWeightedAverage_noCoursCompoSplit() {
-        Long tenantId = 7L, classId = 1L, periodId = 2L, studentId = 10L, subjectId = 100L;
-        // Cycle primaire : aucun type/date requis, seule la note et le coefficient d'évaluation comptent.
-        Assessment a1 = Assessment.builder().id(1L).tenantId(tenantId).classId(classId).periodId(periodId)
-                .subjectId(subjectId).coefficient(BigDecimal.valueOf(1)).build();
-        when(assessmentRepository.findByClassIdAndPeriodId(classId, periodId)).thenReturn(List.of(a1));
+    void generateForStudent_primaire_usesSimpleAverageOfCompositionsOnly() {
+        Long classId = 1L, periodId = 2L, studentId = 10L, subjectId = 100L;
+        // Une interrogation (QUIZ, ignorée en primaire) et deux compositions (EXAM, seules comptées).
+        Assessment quiz = Assessment.builder().id(1L).classId(classId).periodId(periodId)
+                .subjectId(subjectId).type(AssessmentType.QUIZ).coefficient(BigDecimal.valueOf(5)).build();
+        Assessment exam1 = Assessment.builder().id(2L).classId(classId).periodId(periodId)
+                .subjectId(subjectId).type(AssessmentType.EXAM).coefficient(BigDecimal.valueOf(3)).build();
+        Assessment exam2 = Assessment.builder().id(3L).classId(classId).periodId(periodId)
+                .subjectId(subjectId).type(AssessmentType.EXAM).coefficient(BigDecimal.valueOf(1)).build();
+        when(assessmentRepository.findByClassIdAndPeriodId(classId, periodId)).thenReturn(List.of(quiz, exam1, exam2));
         when(classSubjectQueryPort.findByClassId(classId))
                 .thenReturn(List.of(new ClassSubjectInfo(subjectId, BigDecimal.valueOf(1), 5L)));
-        when(gradeRepository.findByAssessmentId(1L))
-                .thenReturn(List.of(Grade.builder().assessmentId(1L).studentId(studentId).value(BigDecimal.valueOf(13)).build()));
+        when(gradeRepository.findByAssessmentId(1L)).thenReturn(List.of(
+                Grade.builder().assessmentId(1L).studentId(studentId).value(BigDecimal.valueOf(20)).build()));
+        when(gradeRepository.findByAssessmentId(2L)).thenReturn(List.of(
+                Grade.builder().assessmentId(2L).studentId(studentId).value(BigDecimal.valueOf(12)).build()));
+        when(gradeRepository.findByAssessmentId(3L)).thenReturn(List.of(
+                Grade.builder().assessmentId(3L).studentId(studentId).value(BigDecimal.valueOf(14)).build()));
         when(reportCardRepository.findByStudentIdAndPeriodId(studentId, periodId)).thenReturn(Optional.empty());
         when(reportCardRepository.save(any())).thenAnswer(i -> { ReportCard r = i.getArgument(0); if (r.getId() == null) r.setId(99L); return r; });
         when(reportCardRepository.saveLine(any())).thenAnswer(i -> i.getArgument(0));
         when(reportCardRepository.findByClassIdAndPeriodId(classId, periodId)).thenReturn(List.of());
         when(reportCardRepository.findById(any())).thenAnswer(i -> Optional.of(ReportCard.builder().id(99L).build()));
-
         when(academicsDataProvider.findClass(classId)).thenReturn(Optional.of(
                 new gn.lacaeducation.academics.ClassPublicInfo(classId, "CM2 A", "CM2", "NORMALE", null, null, "PRIMAIRE")));
-        gn.lacaeducation.grading.domain.GradingScale primaryScale = gn.lacaeducation.grading.domain.GradingScale.builder()
-                .tenantId(tenantId).cycleGroup(gn.lacaeducation.grading.domain.CycleGroup.PRIMAIRE)
-                .passThreshold(BigDecimal.valueOf(5)).passableMin(BigDecimal.valueOf(5))
-                .assezBienMin(BigDecimal.valueOf(8)).bienMin(BigDecimal.valueOf(11)).tresBienMin(BigDecimal.valueOf(12))
-                .build();
-        when(gradingScaleRepository.findByTenantIdAndCycleGroup(tenantId, gn.lacaeducation.grading.domain.CycleGroup.PRIMAIRE))
-                .thenReturn(Optional.of(primaryScale));
 
         service.generateForStudent(studentId, classId, periodId);
 
-        org.mockito.Mockito.verify(gradingScaleRepository)
-                .findByTenantIdAndCycleGroup(tenantId, gn.lacaeducation.grading.domain.CycleGroup.PRIMAIRE);
         ArgumentCaptor<ReportCardLine> lineCaptor = ArgumentCaptor.forClass(ReportCardLine.class);
         org.mockito.Mockito.verify(reportCardRepository, atLeastOnce()).saveLine(lineCaptor.capture());
         ReportCardLine line = lineCaptor.getAllValues().get(0);
+        // (12 + 14) / 2 = 13.00 — le QUIZ à 20 (coefficient 5) n'intervient pas du tout.
         assertThat(line.getSubjectAverage()).isEqualByComparingTo("13.00");
         assertThat(line.getCoursAverage()).isNull();
         assertThat(line.getCompoAverage()).isNull();
 
         ArgumentCaptor<ReportCard> rcCaptor = ArgumentCaptor.forClass(ReportCard.class);
         org.mockito.Mockito.verify(reportCardRepository, atLeastOnce()).save(rcCaptor.capture());
-        // Avec le barème primaire (Très Bien dès 12), une moyenne de 13 doit être "Très Bien" — le
-        // barème par défaut du secondaire (Très Bien dès 18) donnerait "Passable".
-        assertThat(rcCaptor.getAllValues().get(rcCaptor.getAllValues().size() - 1).getHonor()).isEqualTo("Très Bien");
+        ReportCard rc = rcCaptor.getAllValues().get(rcCaptor.getAllValues().size() - 1);
+        assertThat(rc.getOverallAverage()).isEqualByComparingTo("13.00");
+        assertThat(rc.getHonor()).isEqualTo("Passable");
+    }
+
+    /**
+     * Primaire (§retour pédagogique) : la moyenne générale est la moyenne SIMPLE des moyennes de
+     * matière (Σ/nombre de matières) — jamais pondérée par le coefficient de la matière
+     * (ClasseMatiere), contrairement au Secondaire. Deux matières à coefficients très différents (1 et
+     * 10) doivent peser pareil dans la moyenne générale.
+     */
+    @Test
+    void generateForStudent_primaire_overallAverageIgnoresSubjectCoefficients() {
+        Long classId = 1L, periodId = 2L, studentId = 10L;
+        Long subjectA = 100L, subjectB = 101L;
+        Assessment examA = Assessment.builder().id(1L).classId(classId).periodId(periodId)
+                .subjectId(subjectA).type(AssessmentType.EXAM).coefficient(BigDecimal.ONE).build();
+        Assessment examB = Assessment.builder().id(2L).classId(classId).periodId(periodId)
+                .subjectId(subjectB).type(AssessmentType.EXAM).coefficient(BigDecimal.ONE).build();
+        when(assessmentRepository.findByClassIdAndPeriodId(classId, periodId)).thenReturn(List.of(examA, examB));
+        // Coefficients de matière très déséquilibrés (1 vs 10) : ne doivent avoir AUCUN effet en primaire.
+        when(classSubjectQueryPort.findByClassId(classId)).thenReturn(List.of(
+                new ClassSubjectInfo(subjectA, BigDecimal.valueOf(1), 5L),
+                new ClassSubjectInfo(subjectB, BigDecimal.valueOf(10), 6L)));
+        when(gradeRepository.findByAssessmentId(1L)).thenReturn(List.of(
+                Grade.builder().assessmentId(1L).studentId(studentId).value(BigDecimal.valueOf(10)).build()));
+        when(gradeRepository.findByAssessmentId(2L)).thenReturn(List.of(
+                Grade.builder().assessmentId(2L).studentId(studentId).value(BigDecimal.valueOf(16)).build()));
+        when(reportCardRepository.findByStudentIdAndPeriodId(studentId, periodId)).thenReturn(Optional.empty());
+        when(reportCardRepository.save(any())).thenAnswer(i -> { ReportCard r = i.getArgument(0); if (r.getId() == null) r.setId(99L); return r; });
+        when(reportCardRepository.saveLine(any())).thenAnswer(i -> i.getArgument(0));
+        when(reportCardRepository.findByClassIdAndPeriodId(classId, periodId)).thenReturn(List.of());
+        when(reportCardRepository.findById(any())).thenAnswer(i -> Optional.of(ReportCard.builder().id(99L).build()));
+        when(academicsDataProvider.findClass(classId)).thenReturn(Optional.of(
+                new gn.lacaeducation.academics.ClassPublicInfo(classId, "CM2 A", "CM2", "NORMALE", null, null, "PRIMAIRE")));
+
+        service.generateForStudent(studentId, classId, periodId);
+
+        ArgumentCaptor<ReportCard> rcCaptor = ArgumentCaptor.forClass(ReportCard.class);
+        org.mockito.Mockito.verify(reportCardRepository, atLeastOnce()).save(rcCaptor.capture());
+        ReportCard rc = rcCaptor.getAllValues().get(rcCaptor.getAllValues().size() - 1);
+        // (10 + 16) / 2 = 13.00 — une pondération par coefficient (1×10 + 10×16)/11 = 15.45 serait fausse.
+        assertThat(rc.getOverallAverage()).isEqualByComparingTo("13.00");
     }
 
     /**

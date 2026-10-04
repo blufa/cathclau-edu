@@ -36,8 +36,6 @@ class AssessmentServiceTest {
 
     @Mock AssessmentRepository repo;
     @Mock AcademicsDataProvider academicsDataProvider;
-    @Mock gn.lacaeducation.grading.application.port.out.AssessmentSessionSettingsRepository sessionSettingsRepository;
-    @Mock gn.lacaeducation.grading.application.port.out.AssessmentTypeConfigRepository assessmentTypeConfigRepository;
     @Mock StudentDataProvider studentDataProvider;
     @Mock GradeRepository gradeRepository;
     @Mock gn.lacaeducation.grading.application.port.out.AssessmentPlanPdfGenerator planPdfGenerator;

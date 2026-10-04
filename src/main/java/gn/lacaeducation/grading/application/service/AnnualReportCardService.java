@@ -3,16 +3,9 @@ package gn.lacaeducation.grading.application.service;
 import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.academics.PeriodPublicInfo;
 import gn.lacaeducation.grading.application.port.in.AnnualReportCardUseCase;
-import gn.lacaeducation.grading.application.port.out.DecisionRuleRepository;
-import gn.lacaeducation.grading.application.port.out.EliminatoryRuleRepository;
-import gn.lacaeducation.grading.application.port.out.GradingScaleRepository;
 import gn.lacaeducation.grading.application.port.out.ReportCardRepository;
 import gn.lacaeducation.grading.domain.AnnualReportCard;
 import gn.lacaeducation.grading.domain.AnnualReportCardLine;
-import gn.lacaeducation.grading.domain.DecisionRule;
-import gn.lacaeducation.grading.domain.DecisionRuleEngine;
-import gn.lacaeducation.grading.domain.EliminatoryRule;
-import gn.lacaeducation.grading.domain.EliminatoryRuleEvaluator;
 import gn.lacaeducation.grading.domain.GradingScale;
 import gn.lacaeducation.grading.domain.ReportCard;
 import gn.lacaeducation.grading.domain.ReportCardLine;
@@ -24,10 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.math.RoundingMode;
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -51,9 +42,6 @@ public class AnnualReportCardService implements AnnualReportCardUseCase {
 
     private final ReportCardRepository reportCardRepository;
     private final AcademicsDataProvider academicsDataProvider;
-    private final GradingScaleRepository gradingScaleRepository;
-    private final EliminatoryRuleRepository eliminatoryRuleRepository;
-    private final DecisionRuleRepository decisionRuleRepository;
     private final StudentDataProvider studentDataProvider;
     private final gn.lacaeducation.grading.application.port.out.AnnualReportCardPdfGenerator pdfGenerator;
 
@@ -82,15 +70,12 @@ public class AnnualReportCardService implements AnnualReportCardUseCase {
         gn.lacaeducation.grading.domain.CycleGroup cycleGroup = academicsDataProvider.findClass(classId)
                 .map(c -> gn.lacaeducation.grading.domain.CycleGroup.fromSchoolCycle(c.schoolCycle()))
                 .orElse(gn.lacaeducation.grading.domain.CycleGroup.SECONDAIRE);
-        GradingScale scale = gradingScaleRepository.findByTenantIdAndCycleGroup(tenantId, cycleGroup)
-                .orElseGet(() -> GradingScale.defaults(cycleGroup));
-        List<EliminatoryRule> eliminatoryRules = eliminatoryRuleRepository.findByTenantId(tenantId);
-        List<DecisionRule> decisionRules = decisionRuleRepository.findByTenantId(tenantId);
+        GradingScale scale = GradingScale.defaults(cycleGroup);
 
         List<AnnualReportCard> results = new ArrayList<>();
         for (Long studentId : studentIds) {
             results.add(build(studentId, classId, academicYearId, s1Id, s2Id,
-                    s1ByStudent.get(studentId), s2ByStudent.get(studentId), scale, eliminatoryRules, decisionRules));
+                    s1ByStudent.get(studentId), s2ByStudent.get(studentId), scale));
         }
         rankAndStats(results);
         return results;
@@ -141,8 +126,7 @@ public class AnnualReportCardService implements AnnualReportCardUseCase {
     }
 
     private AnnualReportCard build(Long studentId, Long classId, Long academicYearId, Long s1Id, Long s2Id,
-                                   ReportCard s1, ReportCard s2, GradingScale scale,
-                                   List<EliminatoryRule> eliminatoryRules, List<DecisionRule> decisionRules) {
+                                   ReportCard s1, ReportCard s2, GradingScale scale) {
         Map<Long, ReportCardLine> s1Lines = s1 == null ? Map.of()
                 : reportCardRepository.findLines(s1.getId()).stream()
                         .collect(Collectors.toMap(ReportCardLine::getSubjectId, l -> l, (a, b) -> a));
@@ -155,7 +139,6 @@ public class AnnualReportCardService implements AnnualReportCardUseCase {
         subjectIds.addAll(s2Lines.keySet());
 
         List<AnnualReportCardLine> lines = new ArrayList<>();
-        Map<Long, BigDecimal> subjectAnnualAverages = new LinkedHashMap<>();
         for (Long subjectId : subjectIds) {
             ReportCardLine l1 = s1Lines.get(subjectId);
             ReportCardLine l2 = s2Lines.get(subjectId);
@@ -173,16 +156,12 @@ public class AnnualReportCardService implements AnnualReportCardUseCase {
                     .s2Average(l2 != null ? l2.getSubjectAverage() : null)
                     .annualAverage(annualAverage)
                     .build());
-            if (annualAverage != null) subjectAnnualAverages.put(subjectId, annualAverage);
         }
 
         BigDecimal overallAverage = average(s1 != null ? s1.getOverallAverage() : null,
                 s2 != null ? s2.getOverallAverage() : null);
 
         String decision = scale.decisionFor(overallAverage);
-        decision = EliminatoryRuleEvaluator.resolveDecision(decision, subjectAnnualAverages, eliminatoryRules);
-        String ruleDecision = DecisionRuleEngine.evaluate(overallAverage, subjectAnnualAverages, decisionRules, LocalDate.now());
-        if (ruleDecision != null) decision = ruleDecision;
 
         return AnnualReportCard.builder()
                 .studentId(studentId).classId(classId).academicYearId(academicYearId)

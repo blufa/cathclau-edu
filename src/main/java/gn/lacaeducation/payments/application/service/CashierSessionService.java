@@ -3,6 +3,7 @@ package gn.lacaeducation.payments.application.service;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.common.TenantContext;
+import gn.lacaeducation.payments.application.event.CashierSessionClosedEvent;
 import gn.lacaeducation.payments.application.port.out.CashierSessionRepository;
 import gn.lacaeducation.payments.application.port.out.PaymentRepository;
 import gn.lacaeducation.payments.domain.CashierSession;
@@ -11,6 +12,7 @@ import gn.lacaeducation.payments.domain.Payment;
 import gn.lacaeducation.payments.domain.PaymentChannel;
 import gn.lacaeducation.payments.domain.PaymentStatus;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,11 +21,15 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * Rapprochement de caisse (§angles morts comptables) : un comptable ouvre sa caisse au début du
- * service, encaisse des paiements CASH au guichet, puis la clôture en indiquant le comptant physique
- * compté — le système calcule l'écart avec ce qu'il a lui-même enregistré. Même logique que
- * {@code accounting.BankReconciliationService} (solde théorique vs réel), mais sans ligne d'éléments en
- * suspens : la comparaison est directe.
+ * Rapprochement de caisse (§angles morts comptables, §retour fondateurs) : un comptable ouvre sa
+ * caisse au début du service, encaisse des paiements au guichet (espèces, Orange Money ou virement
+ * — {@link PaymentChannel#isDeskManual()}), puis la clôture en indiquant le comptant physique
+ * compté — le système calcule l'écart avec ce qu'il a lui-même enregistré. Volontairement PAS limité
+ * au seul canal CASH : un paiement Orange Money ou virement reçu "à la main" par le comptable (pas
+ * via une passerelle en ligne) est tout aussi facile à ne jamais déclarer qu'une espèce — il doit
+ * donc compter dans le total à rapprocher, pas seulement l'argent liquide. Même logique que
+ * {@code accounting.BankReconciliationService} (solde théorique vs réel), mais sans ligne d'éléments
+ * en suspens : la comparaison est directe.
  */
 @Service
 @Transactional
@@ -32,6 +38,7 @@ public class CashierSessionService {
 
     private final CashierSessionRepository repo;
     private final PaymentRepository paymentRepo;
+    private final ApplicationEventPublisher eventPublisher;
 
     public CashierSession open(Long tenantId, Long cashierId) {
         if (repo.findOpenByCashierId(cashierId).isPresent()) {
@@ -57,11 +64,18 @@ public class CashierSessionService {
         session.setDiscrepancy(count.subtract(systemTotal));
         session.setNotes(notes);
         session.setStatus(CashierSessionStatus.CLOSED);
-        return repo.save(session);
+        CashierSession saved = repo.save(session);
+        // §retour fondateurs (contrôle anti-fraude) : toujours publié, même écart nul — l'absence de
+        // trace serait elle-même suspecte. L'alerte SMS au fondateur (communication) ne se déclenche
+        // que si discrepancy != 0, voir le listener consommateur.
+        eventPublisher.publishEvent(new CashierSessionClosedEvent(saved.getTenantId(), saved.getCashierId(),
+                saved.getId(), saved.getSystemTotal(), saved.getPhysicalCount(), saved.getDiscrepancy()));
+        return saved;
     }
 
-    /** Total CASH réussi encaissé par ce comptable depuis l'ouverture, à afficher en temps réel pendant
-     * qu'une session reste ouverte (sans la clôturer). */
+    /** Total guichet (espèces + Orange Money + virement manuels, voir la Javadoc de la classe) réussi
+     * encaissé par ce comptable depuis l'ouverture, à afficher en temps réel pendant qu'une session
+     * reste ouverte (sans la clôturer). */
     @Transactional(readOnly = true)
     public BigDecimal runningTotal(CashierSession session) {
         return computeSystemTotal(session.getCashierId(), session.getOpenedAt(), LocalDateTime.now());
@@ -83,7 +97,10 @@ public class CashierSessionService {
     private BigDecimal computeSystemTotal(Long cashierId, LocalDateTime from, LocalDateTime to) {
         List<Payment> payments = paymentRepo.findByCollectedByUserIdAndPaidAtBetween(cashierId, from, to);
         return payments.stream()
-                .filter(p -> p.getChannel() == PaymentChannel.CASH && p.getStatus() == PaymentStatus.SUCCEEDED)
+                // isDeskManual() (espèces, Orange Money, virement) — pas seulement CASH, voir la Javadoc
+                // de la classe (§retour fondateurs) : tout ce que le comptable encaisse "à la main" doit
+                // être rapproché, pas seulement l'argent liquide.
+                .filter(p -> p.getChannel() != null && p.getChannel().isDeskManual() && p.getStatus() == PaymentStatus.SUCCEEDED)
                 .map(Payment::getAmount).filter(a -> a != null)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }

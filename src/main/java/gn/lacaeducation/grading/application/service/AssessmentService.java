@@ -5,10 +5,8 @@ import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.grading.application.event.AssessmentScheduledEvent;
 import gn.lacaeducation.grading.application.port.in.AssessmentUseCase;
 import gn.lacaeducation.grading.application.port.out.AssessmentRepository;
-import gn.lacaeducation.grading.application.port.out.AssessmentSessionSettingsRepository;
 import gn.lacaeducation.grading.application.port.out.GradeRepository;
 import gn.lacaeducation.grading.domain.Assessment;
-import gn.lacaeducation.grading.domain.AssessmentSessionSettings;
 import gn.lacaeducation.grading.domain.Grade;
 import gn.lacaeducation.students.StudentDataProvider;
 import gn.lacaeducation.students.StudentPublicInfo;
@@ -24,8 +22,6 @@ import java.util.Optional;
 public class AssessmentService implements AssessmentUseCase {
     private final AssessmentRepository repo;
     private final AcademicsDataProvider academicsDataProvider;
-    private final AssessmentSessionSettingsRepository sessionSettingsRepository;
-    private final gn.lacaeducation.grading.application.port.out.AssessmentTypeConfigRepository assessmentTypeConfigRepository;
     private final StudentDataProvider studentDataProvider;
     private final GradeRepository gradeRepository;
     private final gn.lacaeducation.grading.application.port.out.AssessmentPlanPdfGenerator planPdfGenerator;
@@ -37,20 +33,17 @@ public class AssessmentService implements AssessmentUseCase {
 
         // Le front n'envoie pas le tenant : on le résout depuis le contexte (multi-tenant).
         Long tenantId = c.tenantId() != null ? c.tenantId() : gn.lacaeducation.common.TenantContext.get();
-        // Coefficient : celui saisi, sinon le coefficient par défaut du type configurable choisi (§3).
-        BigDecimal coefficient = c.coefficient();
-        if (coefficient == null && c.assessmentTypeId() != null) {
-            coefficient = assessmentTypeConfigRepository.findById(c.assessmentTypeId())
-                    .map(gn.lacaeducation.grading.domain.AssessmentTypeConfig::getDefaultCoefficient)
-                    .orElse(null);
-        }
+        // Coefficient : celui saisi, sinon 1 par défaut — standard, non paramétrable par établissement
+        // (§retour pédagogique, plus de catalogue de types d'évaluation personnalisés).
+        BigDecimal coefficient = c.coefficient() != null ? c.coefficient() : BigDecimal.ONE;
         Assessment saved = repo.save(Assessment.builder().tenantId(tenantId).classId(c.classId()).subjectId(c.subjectId())
                 .teacherId(c.teacherId()).periodId(c.periodId()).type(c.type()).assessmentTypeId(c.assessmentTypeId())
                 .label(c.label()).date(c.date()).coefficient(coefficient).maxScore(c.maxScore()).build());
-        // Durée de la séance comptabilisée : paramétrable par établissement selon le type d'évaluation.
-        Integer sessionMinutes = sessionSettingsRepository.findByTenantId(tenantId)
-                .orElseGet(AssessmentSessionSettings::defaults)
-                .minutesFor(saved.getType());
+        // Durée de la séance comptabilisée : standard par type d'évaluation (§retour pédagogique, plus
+        // de réglage par établissement — voir AssessmentType#sessionMinutes).
+        Integer sessionMinutes = saved.getType() != null
+                ? saved.getType().sessionMinutes()
+                : gn.lacaeducation.grading.domain.AssessmentType.HOMEWORK.sessionMinutes();
         eventPublisher.publishEvent(new AssessmentScheduledEvent(saved.getTenantId(), saved.getId(),
                 saved.getClassId(), saved.getSubjectId(), saved.getTeacherId(), saved.getLabel(),
                 saved.getDate(), sessionMinutes));
@@ -102,10 +95,7 @@ public class AssessmentService implements AssessmentUseCase {
                 .map(c -> c.levelLabel() != null && !c.levelLabel().isBlank() ? c.label() + " (" + c.levelLabel() + ")" : c.label())
                 .orElse(null);
         String subjectName = academicsDataProvider.subjectLabels(java.util.Set.of(a.getSubjectId())).get(a.getSubjectId());
-        String typeLabel = a.getAssessmentTypeId() != null
-                ? assessmentTypeConfigRepository.findById(a.getAssessmentTypeId())
-                        .map(gn.lacaeducation.grading.domain.AssessmentTypeConfig::getLabel).orElse(a.getType().name())
-                : a.getType().name();
+        String typeLabel = a.getType().name();
         Map<Long, BigDecimal> gradeByStudent = gradeRepository.findByAssessmentId(assessmentId).stream()
                 .collect(java.util.stream.Collectors.toMap(Grade::getStudentId, Grade::getValue, (x, y) -> x));
         List<gn.lacaeducation.grading.application.port.out.AssessmentGradeSheetPdfGenerator.StudentGradeRow> rows =

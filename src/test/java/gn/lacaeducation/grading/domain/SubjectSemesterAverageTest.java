@@ -176,18 +176,35 @@ class SubjectSemesterAverageTest {
     }
 
     @Test
-    void primaire_isSimpleWeightedAverageAcrossAllTypes_noCoursCompoSplit() {
+    void primaire_isSimpleAverageOfCompositionsOnly_quizExcluded() {
+        // Primaire (§retour pédagogique) : seules les compositions (EXAM) comptent, en moyenne SIMPLE
+        // (jamais pondérée par le coefficient de l'évaluation, contrairement au Secondaire).
         Assessment quiz = assessment(AssessmentType.QUIZ, "2026-10-05", "1");
-        Assessment compo = assessment(AssessmentType.EXAM, "2026-12-01", "3");
-        List<Assessment> assessments = List.of(quiz, compo);
-        List<Grade> grades = List.of(grade(quiz, "10"), grade(compo, "14"));
+        Assessment compo1 = assessment(AssessmentType.EXAM, "2026-12-01", "3");
+        Assessment compo2 = assessment(AssessmentType.EXAM, "2026-12-15", "1");
+        List<Assessment> assessments = List.of(quiz, compo1, compo2);
+        List<Grade> grades = List.of(grade(quiz, "20"), grade(compo1, "10"), grade(compo2, "16"));
 
         SubjectSemesterAverage.Result r = SubjectSemesterAverage.compute(CycleGroup.PRIMAIRE, assessments, grades);
 
-        // (10×1 + 14×3) / (1+3) = 52/4 = 13.00, aucune séparation mensuelle ni cours/compo.
+        // (10 + 16) / 2 = 13.00 — le quiz à 20 (coefficient 1) n'intervient pas du tout, et le
+        // coefficient 3 de la première composition n'a aucun effet (moyenne simple, pas pondérée).
         assertThat(r.finalValue()).isEqualByComparingTo("13.00");
         assertThat(r.coursValue()).isNull();
         assertThat(r.compoValue()).isNull();
+    }
+
+    @Test
+    void primaire_noCompositions_onlyQuiz_returnsNull() {
+        // Aucune composition dans la période : rien d'exploitable pour la moyenne de matière primaire,
+        // même si des interrogations ont bien été notées.
+        Assessment quiz = assessment(AssessmentType.QUIZ, "2026-10-05", "1");
+        List<Assessment> assessments = List.of(quiz);
+        List<Grade> grades = List.of(grade(quiz, "20"));
+
+        SubjectSemesterAverage.Result r = SubjectSemesterAverage.compute(CycleGroup.PRIMAIRE, assessments, grades);
+
+        assertThat(r.finalValue()).isNull();
     }
 
     @Test

@@ -3,6 +3,7 @@ package gn.lacaeducation.lessons.application.service;
 import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.academics.ClassSubjectPublicInfo;
 import gn.lacaeducation.common.BusinessRuleException;
+import gn.lacaeducation.lessons.application.event.LessonValidatedWithoutCheckinEvent;
 import gn.lacaeducation.lessons.application.port.out.LessonRepository;
 import gn.lacaeducation.lessons.domain.LessonEntry;
 import gn.lacaeducation.lessons.domain.LessonStatus;
@@ -13,10 +14,12 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.InjectMocks;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -28,6 +31,7 @@ class LessonServiceTest {
     @Mock LessonRepository repo;
     @Mock StudentDataProvider studentDataProvider;
     @Mock AcademicsDataProvider academics;
+    @Mock ApplicationEventPublisher eventPublisher;
     @InjectMocks LessonService service;
 
     @Test
@@ -155,6 +159,40 @@ class LessonServiceTest {
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("professeur principal");
         verify(repo, never()).save(any());
+    }
+
+    // ── markDone (§retour fondateurs : trace d'audit quand validée sans pointage enseignant) ───────
+
+    @Test
+    void markDone_withoutConfirmedWithoutCheckin_publishesNoEvent() {
+        LessonEntry existing = LessonEntry.builder().id(10L).tenantId(1L).teacherId(3L)
+                .lessonDate(LocalDate.now()).status(LessonStatus.PLANNED).build();
+        when(repo.findById(10L)).thenReturn(Optional.of(existing));
+        when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        LessonEntry result = service.markDone(10L, 45);
+
+        assertThat(result.getStatus()).isEqualTo(LessonStatus.DONE);
+        assertThat(result.getDurationMinutes()).isEqualTo(45);
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void markDone_confirmedWithoutCheckin_publishesAuditEvent() {
+        LessonEntry existing = LessonEntry.builder().id(10L).tenantId(1L).teacherId(3L)
+                .lessonDate(LocalDate.of(2026, 10, 1)).status(LessonStatus.PLANNED).build();
+        when(repo.findById(10L)).thenReturn(Optional.of(existing));
+        when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        service.markDone(10L, null, true);
+
+        ArgumentCaptor<LessonValidatedWithoutCheckinEvent> captor =
+                ArgumentCaptor.forClass(LessonValidatedWithoutCheckinEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        assertThat(captor.getValue().tenantId()).isEqualTo(1L);
+        assertThat(captor.getValue().lessonId()).isEqualTo(10L);
+        assertThat(captor.getValue().teacherId()).isEqualTo(3L);
+        assertThat(captor.getValue().lessonDate()).isEqualTo(LocalDate.of(2026, 10, 1));
     }
 
     @Test
