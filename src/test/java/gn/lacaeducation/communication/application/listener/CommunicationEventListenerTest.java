@@ -241,6 +241,39 @@ class CommunicationEventListenerTest {
         verify(communicationUseCase, times(0)).send(any());
     }
 
+    // ── onAccountantAnomalyDetected (§retour fondateurs, détecteur B3) ──────────────────────────────
+
+    @Test
+    void onAccountantAnomalyDetected_alertsSchoolAdminOnly() {
+        when(schoolStaffDirectory.findSchoolAdminContacts(10L))
+                .thenReturn(List.of(new SchoolAdminContact("622000000", "Directeur École")));
+        when(userPublicInfoProvider.findUser(99L))
+                .thenReturn(Optional.of(new UserPublicInfo(99L, "Fatoumata", "Camara", "628000000")));
+        when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.of(
+                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
+
+        listener().onAccountantAnomalyDetected(new gn.lacaeducation.audit.application.event.AccountantAnomalyDetectedEvent(
+                10L, 99L, "CASH_DISCREPANCY", new BigDecimal("900000"), new BigDecimal("7500")));
+
+        ArgumentCaptor<SendCommunicationCommand> captor = ArgumentCaptor.forClass(SendCommunicationCommand.class);
+        verify(communicationUseCase).send(captor.capture());
+        SendCommunicationCommand cmd = captor.getValue();
+        assertThat(cmd.channel()).isEqualTo(CommunicationChannel.SMS);
+        assertThat(cmd.reason()).isEqualTo(CommunicationReason.SECURITY_ALERT);
+        assertThat(cmd.recipients()).extracting("destination").containsExactly("622000000");
+        assertThat(cmd.content()).contains("Fatoumata Camara").contains("900000").contains("7500");
+    }
+
+    @Test
+    void onAccountantAnomalyDetected_noSchoolAdminPhone_skipsWithoutError() {
+        when(schoolStaffDirectory.findSchoolAdminContacts(10L)).thenReturn(List.of());
+
+        listener().onAccountantAnomalyDetected(new gn.lacaeducation.audit.application.event.AccountantAnomalyDetectedEvent(
+                10L, 99L, "EXEMPTION_VOLUME", new BigDecimal("20"), new BigDecimal("2.5")));
+
+        verify(communicationUseCase, times(0)).send(any());
+    }
+
     // ── onInvoicePaymentApplied (§retour comptable : contenu bref — montant payé + reste à payer
     // total, toutes factures confondues, pas seulement le solde de la facture réglée) ───────────────
 

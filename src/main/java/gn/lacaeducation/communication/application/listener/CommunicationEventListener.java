@@ -3,6 +3,7 @@ package gn.lacaeducation.communication.application.listener;
 import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.attendance.application.event.StudentAbsentEvent;
 import gn.lacaeducation.attendance.application.event.UndeclaredAttendanceEvent;
+import gn.lacaeducation.audit.application.event.AccountantAnomalyDetectedEvent;
 import gn.lacaeducation.billing.application.event.EcheanceDepasseeEvent;
 import gn.lacaeducation.billing.application.event.InvoicePaymentAppliedEvent;
 import gn.lacaeducation.communication.application.port.in.CommunicationUseCase;
@@ -247,6 +248,31 @@ public class CommunicationEventListener {
                 + " a été présent(e) en classe le " + event.date() + " SANS inscription déclarée dans le "
                 + "système. Vérifiez si cet élève a été inscrit/encaissé hors système.";
         notifySchoolAdmins(event.tenantId(), "Présence sans inscription déclarée", content);
+    }
+
+    /**
+     * Détecteur B3 (§retour fondateurs) : un comptable dépasse nettement la moyenne de ses pairs du
+     * même établissement sur un indicateur (écarts de caisse, volume d'exonérations) — publié
+     * uniquement à la création/réouverture de l'alerte (voir AccountantAnomalyAlertService), jamais
+     * à chaque réévaluation hebdomadaire d'une alerte déjà active, pour éviter la lassitude aux
+     * alertes. Le comptable concerné n'est JAMAIS destinataire.
+     */
+    @TransactionalEventListener
+    @Async
+    public void onAccountantAnomalyDetected(AccountantAnomalyDetectedEvent event) {
+        String cashierName = userPublicInfoProvider.findUser(event.cashierId())
+                .map(u -> ((u.firstName() != null ? u.firstName() : "") + " " + (u.lastName() != null ? u.lastName() : "")).trim())
+                .filter(n -> !n.isBlank())
+                .orElse("Comptable #" + event.cashierId());
+        String label = event.type().equals("CASH_DISCREPANCY")
+                ? "écarts de caisse cumulés (" + event.metricValue() + " GNF manquants, moyenne des pairs "
+                        + event.peerAverage() + " GNF)"
+                : "nombre d'exonérations accordées (" + event.metricValue() + ", moyenne des pairs "
+                        + event.peerAverage() + ")";
+        String content = "École " + schoolName(event.tenantId()) + " : " + cashierName
+                + " se démarque nettement de ses collègues sur les " + label + " (30 derniers jours). "
+                + "Vérifiez son activité récente.";
+        notifySchoolAdmins(event.tenantId(), "Écart statistique comptable", content);
     }
 
     /**
