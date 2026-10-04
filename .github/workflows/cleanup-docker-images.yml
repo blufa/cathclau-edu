@@ -1,0 +1,66 @@
+name: Nettoyage des images Docker (GHCR) — mode liste seulement
+
+# §quota de stockage GitHub (gratuit, limité) : deploy.yml tague une NOUVELLE image à chaque
+# déploiement (ghcr.io/.../lacaeducation-backend:<sha>, en plus de :dev ou :prod sur le même
+# digest) sans jamais supprimer les anciennes — elles s'accumulent indéfiniment.
+#
+# MODE LISTE SEULEMENT (dry-run) — ne supprime RIEN pour l'instant : affiche chaque jour ce qui
+# SERAIT supprimé (tout sauf les KEEP_COUNT versions les plus récentes), avec ses vrais tags
+# GHCR (dev/prod/sha), pour vérifier pendant quelques jours qu'aucune version actuellement taguée
+# "dev" ou "prod" n'apparaît jamais dans la liste "À SUPPRIMER" avant d'activer la suppression
+# réelle (voir le commentaire en bas de fichier).
+on:
+  schedule:
+    - cron: "0 4 * * *" # tous les jours à 4h UTC, après le nettoyage des artefacts du frontend
+  workflow_dispatch:
+
+permissions:
+  packages: read
+
+jobs:
+  list-only:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PACKAGE: lacaeducation-backend
+      OWNER: ${{ github.repository_owner }}
+      KEEP_COUNT: 20
+    steps:
+      - name: Lister les versions du paquet et simuler le nettoyage (aucune suppression)
+        run: |
+          set -euo pipefail
+
+          # Le paquet peut être rattaché au compte personnel OU à une organisation — on tente
+          # d'abord l'org, puis le compte utilisateur si ça échoue (404).
+          if gh api "orgs/$OWNER/packages/container/$PACKAGE/versions" --paginate > /tmp/versions.json 2>/tmp/err.log; then
+            echo "Paquet trouvé sous l'organisation $OWNER."
+          elif gh api "users/$OWNER/packages/container/$PACKAGE/versions" --paginate > /tmp/versions.json 2>/tmp/err.log; then
+            echo "Paquet trouvé sous le compte utilisateur $OWNER."
+          else
+            echo "::error::Impossible de lister les versions du paquet (ni organisation ni utilisateur) :"
+            cat /tmp/err.log
+            exit 1
+          fi
+
+          total=$(jq 'length' /tmp/versions.json)
+          echo "Total de versions trouvées : $total"
+          echo ""
+
+          jq -r 'sort_by(.created_at) | reverse | to_entries[] | [.key, .value.id, .value.created_at, (.value.metadata.container.tags // [] | join(","))] | @tsv' /tmp/versions.json \
+            | while IFS=$'\t' read -r idx id created tags; do
+                label="À SUPPRIMER"
+                if [ "$idx" -lt "$KEEP_COUNT" ]; then label="GARDÉ (parmi les $KEEP_COUNT plus récentes)"; fi
+                marker=""
+                if [ "$label" = "À SUPPRIMER" ] && { [ "$tags" = "dev" ] || [ "$tags" = "prod" ] || echo ",$tags," | grep -qE ',(dev|prod),'; }; then
+                  marker="  <<< ⚠️ TAGUÉ dev/prod — NE DOIT JAMAIS ÊTRE SUPPRIMÉ, à examiner avant d'activer la vraie suppression"
+                fi
+                printf '%-45s id=%-12s créée le %-25s tags=[%s]%s\n' "$label" "$id" "$created" "$tags" "$marker"
+              done
+
+          echo ""
+          echo "Aucune suppression effectuée (mode liste seulement)."
+
+# Pour activer la suppression réelle une fois la liste ci-dessus vérifiée plusieurs jours de
+# suite (aucune ligne "TAGUÉ dev/prod" dans la section "À SUPPRIMER") : remplacer l'étape
+# ci-dessus par un appel `gh api -X DELETE "orgs|users/$OWNER/packages/container/$PACKAGE/versions/$id"`
+# sur chaque ligne marquée "À SUPPRIMER", en conservant l'exclusion explicite des tags dev/prod.
