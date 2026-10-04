@@ -12,6 +12,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -27,6 +28,7 @@ import static org.mockito.Mockito.when;
 class ExemptionServiceTest {
 
     @Mock ExemptionRepository repo;
+    @Mock ApplicationEventPublisher eventPublisher;
     @InjectMocks ExemptionService service;
 
     @Test
@@ -53,6 +55,24 @@ class ExemptionServiceTest {
         assertThatThrownBy(() -> service.grant(1L, new GrantExemptionCommand(
                 9L, ExemptionType.EXCEPTIONAL, null, null, null, "geste", null, null, null), 42L))
                 .isInstanceOf(BusinessRuleException.class);
+    }
+
+    @Test
+    void grant_publishesExemptionGrantedEvent_forAuditTrail() {
+        when(repo.save(any())).thenAnswer(i -> { Exemption e = i.getArgument(0); e.setId(7L); return e; });
+
+        service.grant(1L, new GrantExemptionCommand(
+                9L, ExemptionType.TOTAL, null, null, null, "Orphelin", null, null, null), 42L);
+
+        var captor = org.mockito.ArgumentCaptor.forClass(gn.lacaeducation.billing.application.event.ExemptionGrantedEvent.class);
+        org.mockito.Mockito.verify(eventPublisher).publishEvent(captor.capture());
+        var event = captor.getValue();
+        assertThat(event.tenantId()).isEqualTo(1L);
+        assertThat(event.exemptionId()).isEqualTo(7L);
+        assertThat(event.studentId()).isEqualTo(9L);
+        assertThat(event.percentage()).isEqualByComparingTo("100");
+        assertThat(event.reason()).isEqualTo("Orphelin");
+        assertThat(event.validatedBy()).isEqualTo(42L);
     }
 
     @Test

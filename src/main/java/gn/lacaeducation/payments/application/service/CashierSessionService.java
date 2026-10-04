@@ -3,6 +3,7 @@ package gn.lacaeducation.payments.application.service;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.common.TenantContext;
+import gn.lacaeducation.payments.application.event.CashierSessionClosedEvent;
 import gn.lacaeducation.payments.application.port.out.CashierSessionRepository;
 import gn.lacaeducation.payments.application.port.out.PaymentRepository;
 import gn.lacaeducation.payments.domain.CashierSession;
@@ -11,6 +12,7 @@ import gn.lacaeducation.payments.domain.Payment;
 import gn.lacaeducation.payments.domain.PaymentChannel;
 import gn.lacaeducation.payments.domain.PaymentStatus;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +34,7 @@ public class CashierSessionService {
 
     private final CashierSessionRepository repo;
     private final PaymentRepository paymentRepo;
+    private final ApplicationEventPublisher eventPublisher;
 
     public CashierSession open(Long tenantId, Long cashierId) {
         if (repo.findOpenByCashierId(cashierId).isPresent()) {
@@ -57,7 +60,13 @@ public class CashierSessionService {
         session.setDiscrepancy(count.subtract(systemTotal));
         session.setNotes(notes);
         session.setStatus(CashierSessionStatus.CLOSED);
-        return repo.save(session);
+        CashierSession saved = repo.save(session);
+        // §retour fondateurs (contrôle anti-fraude) : toujours publié, même écart nul — l'absence de
+        // trace serait elle-même suspecte. L'alerte SMS au fondateur (communication) ne se déclenche
+        // que si discrepancy != 0, voir le listener consommateur.
+        eventPublisher.publishEvent(new CashierSessionClosedEvent(saved.getTenantId(), saved.getCashierId(),
+                saved.getId(), saved.getSystemTotal(), saved.getPhysicalCount(), saved.getDiscrepancy()));
+        return saved;
     }
 
     /** Total CASH réussi encaissé par ce comptable depuis l'ouverture, à afficher en temps réel pendant

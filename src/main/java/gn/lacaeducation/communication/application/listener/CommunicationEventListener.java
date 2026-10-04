@@ -17,6 +17,7 @@ import gn.lacaeducation.iam.application.event.PasswordResetRequestedEvent;
 import gn.lacaeducation.iam.application.event.UserAccountCreatedEvent;
 import gn.lacaeducation.payments.PayerDirectory;
 import gn.lacaeducation.payments.PaymentDataProvider;
+import gn.lacaeducation.payments.application.event.CashierSessionClosedEvent;
 import gn.lacaeducation.payments.application.event.PaymentSucceededEvent;
 import gn.lacaeducation.payroll.application.event.PayslipPaidEvent;
 import gn.lacaeducation.common.TenantInfoProvider;
@@ -185,6 +186,29 @@ public class CommunicationEventListener {
                 notifyFounder(event.tenantId(), fullName(student), amount, restLine, event.collectedByUserId());
             }, () -> log.warn("PaymentSucceededEvent paymentId={} introuvable ; notification paiement ignorée", event.paymentId())),
             () -> log.warn("PaymentSucceededEvent studentId={} introuvable ; notification paiement ignorée", event.studentId()));
+    }
+
+    /**
+     * Alerte le fondateur/SCHOOL_ADMIN par SMS dès qu'une session de caisse se clôture avec un écart
+     * (§retour fondateurs, contrôle anti-fraude comptable) — jamais pour un écart nul (la clôture
+     * reste tracée dans le journal d'audit, mais n'a rien d'alarmant). Le comptable concerné n'est
+     * JAMAIS destinataire de cette alerte (contrairement à {@link #notifyFounder}) : s'il s'agit d'un
+     * vol, le prévenir reviendrait à l'avertir qu'il a été repéré.
+     */
+    @TransactionalEventListener
+    @Async
+    public void onCashierSessionClosed(CashierSessionClosedEvent event) {
+        if (event.discrepancy() == null || event.discrepancy().signum() == 0) return;
+        String cashierName = userPublicInfoProvider.findUser(event.cashierId())
+                .map(u -> ((u.firstName() != null ? u.firstName() : "") + " " + (u.lastName() != null ? u.lastName() : "")).trim())
+                .filter(n -> !n.isBlank())
+                .orElse("Comptable #" + event.cashierId());
+        boolean missing = event.discrepancy().signum() < 0;
+        String content = "École " + schoolName(event.tenantId()) + " : écart de caisse "
+                + (missing ? "NÉGATIF (manquant)" : "positif (excédent)") + " de " + event.discrepancy().abs() + " GNF"
+                + " à la clôture de " + cashierName + " (comptant " + event.physicalCount() + " GNF, système "
+                + event.systemTotal() + " GNF). Vérifiez le rapprochement de caisse.";
+        notifySchoolAdmins(event.tenantId(), "Écart de caisse", content);
     }
 
     /**
@@ -478,6 +502,26 @@ public class CommunicationEventListener {
         String content = paymentSmsBody(studentName, amount, restLine);
         communicationUseCase.send(new SendCommunicationCommand(tenantId, null, CommunicationChannel.SMS,
                 RecipientType.GROUP, "Paiement reçu", content, CommunicationReason.GENERAL, targets));
+    }
+
+    /**
+     * SMS aux seuls comptes SCHOOL_ADMIN de l'école (jamais le comptable/l'auteur de l'action
+     * concernée) — réservé aux alertes de sécurité (§retour fondateurs). Contrairement à
+     * {@link #notifyFounder}, ne reçoit aucun identifiant d'utilisateur à inclure en plus.
+     */
+    private void notifySchoolAdmins(Long tenantId, String subject, String content) {
+        List<String> phones = schoolStaffDirectory.findSchoolAdminContacts(tenantId).stream()
+                .map(gn.lacaeducation.iam.SchoolStaffDirectory.SchoolAdminContact::phone)
+                .filter(p -> p != null && !p.isBlank())
+                .distinct()
+                .toList();
+        if (phones.isEmpty()) {
+            log.debug("Aucun compte SCHOOL_ADMIN joignable par SMS pour le tenant {} ; alerte sécurité ignorée", tenantId);
+            return;
+        }
+        List<RecipientTarget> targets = phones.stream().map(phone -> new RecipientTarget(null, phone)).toList();
+        communicationUseCase.send(new SendCommunicationCommand(tenantId, null, CommunicationChannel.SMS,
+                RecipientType.GROUP, subject, content, CommunicationReason.SECURITY_ALERT, targets));
     }
 
     private String destinationFor(ParentPublicInfo parent, CommunicationChannel channel) {
