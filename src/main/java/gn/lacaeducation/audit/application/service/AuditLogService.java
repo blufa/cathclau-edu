@@ -39,6 +39,13 @@ public class AuditLogService implements AuditLogUseCase {
 
     @Override
     @Transactional(readOnly = true)
+    public Page<AuditLog> searchForCurrentTenant(String action, Long utilisateurId, LocalDateTime from,
+                                                  LocalDateTime to, Pageable pageable) {
+        return repository.searchForCurrentTenant(action, utilisateurId, from, to, pageable);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Page<AuditLog> findPlatformActions(Pageable pageable) {
         return repository.findPlatformActions(pageable);
     }

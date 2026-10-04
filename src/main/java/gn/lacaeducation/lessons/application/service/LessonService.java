@@ -5,11 +5,13 @@ import gn.lacaeducation.academics.ClassSubjectPublicInfo;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.common.TenantContext;
+import gn.lacaeducation.lessons.application.event.LessonValidatedWithoutCheckinEvent;
 import gn.lacaeducation.lessons.application.port.out.LessonRepository;
 import gn.lacaeducation.lessons.domain.LessonEntry;
 import gn.lacaeducation.lessons.domain.LessonStatus;
 import gn.lacaeducation.students.StudentDataProvider;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +33,7 @@ public class LessonService {
     private final LessonRepository repo;
     private final StudentDataProvider studentDataProvider;
     private final AcademicsDataProvider academics;
+    private final ApplicationEventPublisher eventPublisher;
 
     public record CreateLessonCommand(Long tenantId, Long classId, Long subjectId, Long teacherId,
                                       LocalDate lessonDate, String title, String content, String homework,
@@ -121,21 +124,36 @@ public class LessonService {
         return repo.save(l);
     }
 
-    public LessonEntry markDone(Long id) { return markDone(id, null); }
+    public LessonEntry markDone(Long id) { return markDone(id, null, null); }
+
+    public LessonEntry markDone(Long id, Integer realizedDurationMinutes) {
+        return markDone(id, realizedDurationMinutes, null);
+    }
 
     /**
      * Marque la séance réalisée, en corrigeant éventuellement sa durée avec le temps réellement
      * effectué (ex. un professeur en retard rattrape les heures perdues) — c'est cette durée réalisée,
      * jamais la durée planifiée, qui alimente ensuite la masse salariale (§payroll).
+     *
+     * @param confirmedWithoutCheckin la personne qui valide a explicitement reconnu l'absence de
+     *                                pointage enseignant correspondant (§retour fondateurs, contrôle
+     *                                anti-fraude — voir MarkDoneForm côté frontend) ; déclenche une
+     *                                trace d'audit dédiée, jamais un blocage (un override légitime —
+     *                                scanner en panne, admin présent en personne — doit rester possible).
      */
-    public LessonEntry markDone(Long id, Integer realizedDurationMinutes) {
+    public LessonEntry markDone(Long id, Integer realizedDurationMinutes, Boolean confirmedWithoutCheckin) {
         LessonEntry l = load(id);
         if (realizedDurationMinutes != null) {
             if (realizedDurationMinutes < 0) throw new BusinessRuleException("La durée réalisée ne peut pas être négative");
             l.setDurationMinutes(realizedDurationMinutes);
         }
         l.setStatus(LessonStatus.DONE);
-        return repo.save(l);
+        LessonEntry saved = repo.save(l);
+        if (Boolean.TRUE.equals(confirmedWithoutCheckin)) {
+            eventPublisher.publishEvent(new LessonValidatedWithoutCheckinEvent(
+                    saved.getTenantId(), saved.getId(), saved.getTeacherId(), saved.getLessonDate()));
+        }
+        return saved;
     }
 
     public LessonEntry markPlanned(Long id) { return setStatus(id, LessonStatus.PLANNED); }

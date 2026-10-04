@@ -13,9 +13,11 @@ import gn.lacaeducation.iam.SchoolStaffDirectory.SchoolAdminContact;
 import gn.lacaeducation.iam.UserPublicInfoProvider;
 import gn.lacaeducation.iam.UserPublicInfoProvider.UserPublicInfo;
 import gn.lacaeducation.billing.application.event.InvoicePaymentAppliedEvent;
+import gn.lacaeducation.communication.domain.CommunicationReason;
 import gn.lacaeducation.payments.PayerDirectory;
 import gn.lacaeducation.payments.PaymentDataProvider;
 import gn.lacaeducation.payments.PaymentPublicInfo;
+import gn.lacaeducation.payments.application.event.CashierSessionClosedEvent;
 import gn.lacaeducation.payments.application.event.PaymentSucceededEvent;
 import gn.lacaeducation.students.ParentPublicInfo;
 import gn.lacaeducation.students.StudentDataProvider;
@@ -137,6 +139,139 @@ class CommunicationEventListenerTest {
                 .filter(c -> c.recipientType() == RecipientType.GROUP).findFirst().orElseThrow();
         assertThat(founderCmd.recipients()).extracting("destination")
                 .containsExactlyInAnyOrder("622000000", "628000000");
+    }
+
+    // ── onCashierSessionClosed (§retour fondateurs : alerte SMS sur écart de caisse, jamais au
+    // comptable concerné lui-même) ──────────────────────────────────────────────────────────────────
+
+    @Test
+    void onCashierSessionClosed_negativeDiscrepancy_alertsSchoolAdminOnly() {
+        when(schoolStaffDirectory.findSchoolAdminContacts(10L))
+                .thenReturn(List.of(new SchoolAdminContact("622000000", "Directeur École")));
+        when(userPublicInfoProvider.findUser(99L))
+                .thenReturn(Optional.of(new UserPublicInfo(99L, "Fatoumata", "Camara", "628000000")));
+        when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.of(
+                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
+
+        listener().onCashierSessionClosed(new CashierSessionClosedEvent(10L, 99L, 5L,
+                new BigDecimal("50000"), new BigDecimal("30000"), new BigDecimal("-20000")));
+
+        ArgumentCaptor<SendCommunicationCommand> captor = ArgumentCaptor.forClass(SendCommunicationCommand.class);
+        verify(communicationUseCase).send(captor.capture());
+        SendCommunicationCommand cmd = captor.getValue();
+        assertThat(cmd.channel()).isEqualTo(CommunicationChannel.SMS);
+        assertThat(cmd.reason()).isEqualTo(CommunicationReason.SECURITY_ALERT);
+        // Le comptable concerné (99L, tél. 628000000) ne doit JAMAIS recevoir cette alerte, à la
+        // différence de notifyFounder utilisé pour un encaissement normal.
+        assertThat(cmd.recipients()).extracting("destination").containsExactly("622000000");
+        assertThat(cmd.content()).contains("NÉGATIF").contains("20000").contains("Fatoumata Camara");
+    }
+
+    @Test
+    void onCashierSessionClosed_zeroDiscrepancy_sendsNothing() {
+        listener().onCashierSessionClosed(new CashierSessionClosedEvent(10L, 99L, 5L,
+                new BigDecimal("50000"), new BigDecimal("50000"), BigDecimal.ZERO));
+
+        verify(communicationUseCase, times(0)).send(any());
+    }
+
+    @Test
+    void onCashierSessionClosed_noSchoolAdminPhone_skipsWithoutError() {
+        when(schoolStaffDirectory.findSchoolAdminContacts(10L)).thenReturn(List.of());
+
+        listener().onCashierSessionClosed(new CashierSessionClosedEvent(10L, 99L, 5L,
+                new BigDecimal("50000"), new BigDecimal("60000"), new BigDecimal("10000")));
+
+        verify(communicationUseCase, times(0)).send(any());
+    }
+
+    // ── onCashCollectedWithoutOpenSession (§retour fondateurs, détecteur B2) ────────────────────────
+
+    @Test
+    void onCashCollectedWithoutOpenSession_alertsSchoolAdminOnly() {
+        when(schoolStaffDirectory.findSchoolAdminContacts(10L))
+                .thenReturn(List.of(new SchoolAdminContact("622000000", "Directeur École")));
+        when(userPublicInfoProvider.findUser(99L))
+                .thenReturn(Optional.of(new UserPublicInfo(99L, "Fatoumata", "Camara", "628000000")));
+        when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.of(
+                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
+
+        listener().onCashCollectedWithoutOpenSession(
+                new gn.lacaeducation.payments.application.event.CashCollectedWithoutOpenSessionEvent(
+                        10L, 99L, 1L, new BigDecimal("50000")));
+
+        ArgumentCaptor<SendCommunicationCommand> captor = ArgumentCaptor.forClass(SendCommunicationCommand.class);
+        verify(communicationUseCase).send(captor.capture());
+        SendCommunicationCommand cmd = captor.getValue();
+        assertThat(cmd.reason()).isEqualTo(CommunicationReason.SECURITY_ALERT);
+        assertThat(cmd.recipients()).extracting("destination").containsExactly("622000000");
+        assertThat(cmd.content()).contains("Fatoumata Camara").contains("50000").contains("SANS avoir ouvert");
+    }
+
+    // ── onUndeclaredAttendance (§retour fondateurs, détecteur B1) ───────────────────────────────────
+
+    @Test
+    void onUndeclaredAttendance_alertsSchoolAdminOnly() {
+        when(studentDataProvider.findStudent(7L)).thenReturn(Optional.of(student));
+        when(schoolStaffDirectory.findSchoolAdminContacts(10L))
+                .thenReturn(List.of(new SchoolAdminContact("622000000", "Directeur École")));
+        when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.of(
+                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
+
+        listener().onUndeclaredAttendance(new gn.lacaeducation.attendance.application.event.UndeclaredAttendanceEvent(
+                10L, 7L, java.time.LocalDate.of(2026, 10, 4)));
+
+        ArgumentCaptor<SendCommunicationCommand> captor = ArgumentCaptor.forClass(SendCommunicationCommand.class);
+        verify(communicationUseCase).send(captor.capture());
+        SendCommunicationCommand cmd = captor.getValue();
+        assertThat(cmd.channel()).isEqualTo(CommunicationChannel.SMS);
+        assertThat(cmd.reason()).isEqualTo(CommunicationReason.SECURITY_ALERT);
+        assertThat(cmd.recipients()).extracting("destination").containsExactly("622000000");
+        assertThat(cmd.content()).contains("Awa Diallo").contains("2026-10-04").contains("SANS inscription déclarée");
+    }
+
+    @Test
+    void onUndeclaredAttendance_noSchoolAdminPhone_skipsWithoutError() {
+        when(studentDataProvider.findStudent(7L)).thenReturn(Optional.of(student));
+        when(schoolStaffDirectory.findSchoolAdminContacts(10L)).thenReturn(List.of());
+
+        listener().onUndeclaredAttendance(new gn.lacaeducation.attendance.application.event.UndeclaredAttendanceEvent(
+                10L, 7L, java.time.LocalDate.of(2026, 10, 4)));
+
+        verify(communicationUseCase, times(0)).send(any());
+    }
+
+    // ── onAccountantAnomalyDetected (§retour fondateurs, détecteur B3) ──────────────────────────────
+
+    @Test
+    void onAccountantAnomalyDetected_alertsSchoolAdminOnly() {
+        when(schoolStaffDirectory.findSchoolAdminContacts(10L))
+                .thenReturn(List.of(new SchoolAdminContact("622000000", "Directeur École")));
+        when(userPublicInfoProvider.findUser(99L))
+                .thenReturn(Optional.of(new UserPublicInfo(99L, "Fatoumata", "Camara", "628000000")));
+        when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.of(
+                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
+
+        listener().onAccountantAnomalyDetected(new gn.lacaeducation.audit.application.event.AccountantAnomalyDetectedEvent(
+                10L, 99L, "CASH_DISCREPANCY", new BigDecimal("900000"), new BigDecimal("7500")));
+
+        ArgumentCaptor<SendCommunicationCommand> captor = ArgumentCaptor.forClass(SendCommunicationCommand.class);
+        verify(communicationUseCase).send(captor.capture());
+        SendCommunicationCommand cmd = captor.getValue();
+        assertThat(cmd.channel()).isEqualTo(CommunicationChannel.SMS);
+        assertThat(cmd.reason()).isEqualTo(CommunicationReason.SECURITY_ALERT);
+        assertThat(cmd.recipients()).extracting("destination").containsExactly("622000000");
+        assertThat(cmd.content()).contains("Fatoumata Camara").contains("900000").contains("7500");
+    }
+
+    @Test
+    void onAccountantAnomalyDetected_noSchoolAdminPhone_skipsWithoutError() {
+        when(schoolStaffDirectory.findSchoolAdminContacts(10L)).thenReturn(List.of());
+
+        listener().onAccountantAnomalyDetected(new gn.lacaeducation.audit.application.event.AccountantAnomalyDetectedEvent(
+                10L, 99L, "EXEMPTION_VOLUME", new BigDecimal("20"), new BigDecimal("2.5")));
+
+        verify(communicationUseCase, times(0)).send(any());
     }
 
     // ── onInvoicePaymentApplied (§retour comptable : contenu bref — montant payé + reste à payer

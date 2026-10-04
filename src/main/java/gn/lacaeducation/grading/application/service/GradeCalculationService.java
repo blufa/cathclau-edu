@@ -6,7 +6,6 @@ import gn.lacaeducation.grading.application.port.out.AssessmentRepository;
 import gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort;
 import gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort.ClassSubjectInfo;
 import gn.lacaeducation.grading.application.port.out.GradeRepository;
-import gn.lacaeducation.grading.application.port.out.GradingScaleRepository;
 import gn.lacaeducation.grading.application.port.out.ReportCardRepository;
 import gn.lacaeducation.grading.domain.Assessment;
 import gn.lacaeducation.grading.domain.CycleGroup;
@@ -33,13 +32,19 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
- * Core grade-calculation engine.
+ * Core grade-calculation engine — standard et non paramétrable par établissement (§retour
+ * pédagogique) : plus de barème/règles d'élimination/décision personnalisables, uniquement les
+ * valeurs par défaut ({@link GradingScale#defaults(CycleGroup)}).
  *
- * Algorithm (CLAUDE.md §7.4):
+ * Algorithm (CLAUDE.md §7.4) :
  * <pre>
  * subject_average   = voir {@link SubjectSemesterAverage} (formule distincte primaire/secondaire)
- * weighted_subject  = subject_average × subject_coefficient   (from ClasseMatiere / subjects table)
+ * weighted_subject  = subject_average × subject_coefficient   (coefficient forcé à 1 en Primaire —
+ *                     voir buildReportCard — donc weighted_subject = subject_average pour ce cycle)
  * general_average   = Σ(weighted_subject) / Σ(subject_coefficient)
+ *                     — Secondaire : pondérée par les coefficients de matière (ClasseMatiere/subjects)
+ *                     — Primaire   : Σ(subject_average) / nombre de matières notées (coefficients
+ *                       neutralisés, voir ci-dessus)
  * rank              = position of student ordered by general_average desc within class+period (1 = best)
  * </pre>
  */
@@ -55,9 +60,6 @@ public class GradeCalculationService {
     private final GradeRepository gradeRepository;
     private final ReportCardRepository reportCardRepository;
     private final ClassSubjectQueryPort classSubjectQueryPort;
-    private final GradingScaleRepository gradingScaleRepository;
-    private final gn.lacaeducation.grading.application.port.out.EliminatoryRuleRepository eliminatoryRuleRepository;
-    private final gn.lacaeducation.grading.application.port.out.DecisionRuleRepository decisionRuleRepository;
     private final AcademicsDataProvider academicsDataProvider;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -90,14 +92,12 @@ public class GradeCalculationService {
         }
 
         GradingScale scale = resolveScale(assessments);
-        List<gn.lacaeducation.grading.domain.EliminatoryRule> eliminatoryRules = resolveEliminatoryRules(assessments);
-        List<gn.lacaeducation.grading.domain.DecisionRule> decisionRules = resolveDecisionRules(assessments);
 
         // Build intermediate results (average without rank)
         List<ReportCard> reportCards = new ArrayList<>();
         for (Long studentId : studentIds) {
             ReportCardWithLines rcWithLines = buildReportCard(studentId, classId, periodId, assessments,
-                    subjectInfos, scale, eliminatoryRules, decisionRules);
+                    subjectInfos, scale);
             ReportCard saved = persistReportCardWithLines(rcWithLines, periodId);
             reportCards.add(saved);
         }
@@ -119,7 +119,7 @@ public class GradeCalculationService {
         List<ClassSubjectInfo> subjectInfos = classSubjectQueryPort.findByClassId(classId);
 
         ReportCardWithLines rcWithLines = buildReportCard(studentId, classId, periodId, assessments, subjectInfos,
-                resolveScale(assessments), resolveEliminatoryRules(assessments), resolveDecisionRules(assessments));
+                resolveScale(assessments));
         ReportCard saved = persistReportCardWithLines(rcWithLines, periodId);
 
         // Recalculate ranks for the whole class so the new card gets the right rank
@@ -141,9 +141,7 @@ public class GradeCalculationService {
     private ReportCardWithLines buildReportCard(Long studentId, Long classId, Long periodId,
                                                 List<Assessment> assessments,
                                                 List<ClassSubjectInfo> subjectInfos,
-                                                GradingScale scale,
-                                                List<gn.lacaeducation.grading.domain.EliminatoryRule> eliminatoryRules,
-                                                List<gn.lacaeducation.grading.domain.DecisionRule> decisionRules) {
+                                                GradingScale scale) {
 
         CycleGroup cycleGroup = resolveCycleGroup(classId);
 
@@ -182,7 +180,13 @@ public class GradeCalculationService {
             if (subjectAverage == null) {
                 continue; // notes présentes mais sans valeur exploitable (cas dégradé, voir domaine)
             }
-            BigDecimal subjectCoeff = subjectCoeffMap.getOrDefault(subjectId, BigDecimal.ONE);
+            // Primaire (§retour pédagogique) : moyenne générale = simple moyenne des moyennes de
+            // matière (Σ/nombre de matières), jamais pondérée par un coefficient — contrairement au
+            // Secondaire. Forcer le coefficient à 1 ici fait que sumSubjectCoeffs ci-dessous vaut
+            // exactement le nombre de matières notées, sans dupliquer la formule de division plus bas.
+            BigDecimal subjectCoeff = cycleGroup == CycleGroup.PRIMAIRE
+                    ? BigDecimal.ONE
+                    : subjectCoeffMap.getOrDefault(subjectId, BigDecimal.ONE);
             BigDecimal weighted = subjectAverage.multiply(subjectCoeff, MC).setScale(SCALE, RoundingMode.HALF_UP);
 
             Long teacherId = subjectTeacherMap.get(subjectId);
@@ -204,20 +208,9 @@ public class GradeCalculationService {
 
         BigDecimal generalAverage = computeOverallAverage(sumWeighted, sumSubjectCoeffs);
 
-        // Notes éliminatoires (§7) : une moyenne matière sous le seuil impose la décision de la règle.
+        // Décision standard, non paramétrable (§retour pédagogique) : issue uniquement du barème fixe
+        // (voir GradingScale.defaults) — plus de règles d'élimination/décision personnalisables.
         String decision = scale.decisionFor(generalAverage);
-        java.util.Map<Long, BigDecimal> subjectAverages = lines.stream()
-                .filter(l -> l.getSubjectId() != null && l.getSubjectAverage() != null)
-                .collect(Collectors.toMap(ReportCardLine::getSubjectId, ReportCardLine::getSubjectAverage, (a, b) -> a));
-        decision = gn.lacaeducation.grading.domain.EliminatoryRuleEvaluator.resolveDecision(
-                decision, subjectAverages, eliminatoryRules);
-
-        // Moteur de règles de décision paramétrable (§17) : une règle satisfaite impose sa décision.
-        String ruleDecision = gn.lacaeducation.grading.domain.DecisionRuleEngine.evaluate(
-                generalAverage, subjectAverages, decisionRules, java.time.LocalDate.now());
-        if (ruleDecision != null) {
-            decision = ruleDecision;
-        }
 
         ReportCard rc = ReportCard.builder()
                 .studentId(studentId)
@@ -389,38 +382,19 @@ public class GradeCalculationService {
                 .finalValue();
     }
 
-    /** Règles de notes éliminatoires (§7) du tenant des évaluations. */
-    private List<gn.lacaeducation.grading.domain.EliminatoryRule> resolveEliminatoryRules(List<Assessment> assessments) {
-        Long tenantId = assessments.stream()
-                .map(Assessment::getTenantId).filter(java.util.Objects::nonNull).findFirst().orElse(null);
-        return tenantId == null ? List.of() : eliminatoryRuleRepository.findByTenantId(tenantId);
-    }
-
-    /** Règles de décision paramétrables (§17) du tenant des évaluations. */
-    private List<gn.lacaeducation.grading.domain.DecisionRule> resolveDecisionRules(List<Assessment> assessments) {
-        Long tenantId = assessments.stream()
-                .map(Assessment::getTenantId).filter(java.util.Objects::nonNull).findFirst().orElse(null);
-        return tenantId == null ? List.of() : decisionRuleRepository.findByTenantId(tenantId);
-    }
-
     // -------------------------------------------------------------------------
     // Static helpers (package-private for tests)
     // -------------------------------------------------------------------------
 
     /**
-     * Resolves the tenant's grading scale from the assessments' tenant and class, falling back to
-     * defaults. The scale depends on the class's cycle group (primaire/secondaire, §CycleGroup) since
-     * each tenant can configure a distinct mention scale per group.
+     * Barème standard, non paramétrable (§retour pédagogique) : plus de surcharge par tenant — la
+     * seule variable est le groupe de cycle (primaire/secondaire), qui détermine les bornes par
+     * défaut à utiliser (voir {@link GradingScale#defaults(CycleGroup)}).
      */
     private GradingScale resolveScale(List<Assessment> assessments) {
-        Long tenantId = assessments.stream()
-                .map(Assessment::getTenantId).filter(java.util.Objects::nonNull).findFirst().orElse(null);
         Long classId = assessments.stream()
                 .map(Assessment::getClassId).filter(java.util.Objects::nonNull).findFirst().orElse(null);
-        CycleGroup cycleGroup = resolveCycleGroup(classId);
-        if (tenantId == null) return GradingScale.defaults(cycleGroup);
-        return gradingScaleRepository.findByTenantIdAndCycleGroup(tenantId, cycleGroup)
-                .orElseGet(() -> GradingScale.defaults(cycleGroup));
+        return GradingScale.defaults(resolveCycleGroup(classId));
     }
 
     /** Groupe de cycle (primaire/secondaire) de la classe, résolu via son niveau (module academics). */

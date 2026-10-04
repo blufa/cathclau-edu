@@ -3,6 +3,7 @@
         "common",
         "students",
         "staff",
+        "audit::events",
         "attendance::events",
         "calendar::events",
         "grading::events",

@@ -107,6 +107,22 @@ class AuditEventListenerTest {
     }
 
     @Test
+    void onUndeclaredAttendance_recordsStudentAndDate() {
+        // Détecteur B1 (§retour fondateurs) : présence sans inscription déclarée.
+        listener().onUndeclaredAttendance(new gn.lacaeducation.attendance.application.event.UndeclaredAttendanceEvent(
+                10L, 50L, java.time.LocalDate.of(2026, 10, 4)));
+
+        ArgumentCaptor<RecordAuditCommand> captor = ArgumentCaptor.forClass(RecordAuditCommand.class);
+        verify(auditLogUseCase).record(captor.capture());
+        RecordAuditCommand c = captor.getValue();
+        assertThat(c.tenantId()).isEqualTo(10L);
+        assertThat(c.action()).isEqualTo("UNDECLARED_ATTENDANCE");
+        assertThat(c.ressource()).isEqualTo("Student");
+        assertThat(c.ressourceId()).isEqualTo(50L);
+        assertThat(c.details()).contains("2026-10-04");
+    }
+
+    @Test
     void loggingFailure_neverPropagatesToCaller() {
         org.mockito.Mockito.doThrow(new RuntimeException("db down")).when(auditLogUseCase).record(org.mockito.ArgumentMatchers.any());
 
