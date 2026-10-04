@@ -85,10 +85,28 @@ class CashierSessionServiceTest {
     }
 
     @Test
-    void close_ignoresNonCashOrFailedPayments_inSystemTotal() {
+    void close_includesAllDeskManualChannels_notJustCash() {
+        // §retour fondateurs : Orange Money/virement reçus "à la main" au guichet doivent être
+        // rapprochés comme de l'argent liquide — pas seulement le canal CASH.
         when(repo.findById(1L)).thenReturn(Optional.of(openSession()));
         when(paymentRepo.findByCollectedByUserIdAndPaidAtBetween(any(), any(), any())).thenReturn(List.of(
                 Payment.builder().amount(new BigDecimal("50000")).channel(PaymentChannel.ORANGE_MONEY).status(PaymentStatus.SUCCEEDED).build(),
+                Payment.builder().amount(new BigDecimal("30000")).channel(PaymentChannel.BANK_CARD).status(PaymentStatus.SUCCEEDED).build(),
+                Payment.builder().amount(new BigDecimal("10000")).channel(PaymentChannel.CASH).status(PaymentStatus.SUCCEEDED).build()));
+        when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        CashierSession closed = service.close(1L, new BigDecimal("90000"), null);
+
+        assertThat(closed.getSystemTotal()).isEqualByComparingTo("90000");
+    }
+
+    @Test
+    void close_ignoresOnlineChannelsAndFailedPayments_inSystemTotal() {
+        when(repo.findById(1L)).thenReturn(Optional.of(openSession()));
+        when(paymentRepo.findByCollectedByUserIdAndPaidAtBetween(any(), any(), any())).thenReturn(List.of(
+                // MTN_MONEY/WAVE : jamais guichet (voir PaymentChannel#isDeskManual), toujours en ligne
+                // via Djomy — ne doivent jamais compter dans le rapprochement d'un comptable.
+                Payment.builder().amount(new BigDecimal("50000")).channel(PaymentChannel.MTN_MONEY).status(PaymentStatus.SUCCEEDED).build(),
                 Payment.builder().amount(new BigDecimal("20000")).channel(PaymentChannel.CASH).status(PaymentStatus.FAILED).build(),
                 Payment.builder().amount(new BigDecimal("10000")).channel(PaymentChannel.CASH).status(PaymentStatus.SUCCEEDED).build()));
         when(repo.save(any())).thenAnswer(i -> i.getArgument(0));

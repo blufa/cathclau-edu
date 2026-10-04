@@ -185,6 +185,29 @@ class CommunicationEventListenerTest {
         verify(communicationUseCase, times(0)).send(any());
     }
 
+    // ── onCashCollectedWithoutOpenSession (§retour fondateurs, détecteur B2) ────────────────────────
+
+    @Test
+    void onCashCollectedWithoutOpenSession_alertsSchoolAdminOnly() {
+        when(schoolStaffDirectory.findSchoolAdminContacts(10L))
+                .thenReturn(List.of(new SchoolAdminContact("622000000", "Directeur École")));
+        when(userPublicInfoProvider.findUser(99L))
+                .thenReturn(Optional.of(new UserPublicInfo(99L, "Fatoumata", "Camara", "628000000")));
+        when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.of(
+                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
+
+        listener().onCashCollectedWithoutOpenSession(
+                new gn.lacaeducation.payments.application.event.CashCollectedWithoutOpenSessionEvent(
+                        10L, 99L, 1L, new BigDecimal("50000")));
+
+        ArgumentCaptor<SendCommunicationCommand> captor = ArgumentCaptor.forClass(SendCommunicationCommand.class);
+        verify(communicationUseCase).send(captor.capture());
+        SendCommunicationCommand cmd = captor.getValue();
+        assertThat(cmd.reason()).isEqualTo(CommunicationReason.SECURITY_ALERT);
+        assertThat(cmd.recipients()).extracting("destination").containsExactly("622000000");
+        assertThat(cmd.content()).contains("Fatoumata Camara").contains("50000").contains("SANS avoir ouvert");
+    }
+
     // ── onInvoicePaymentApplied (§retour comptable : contenu bref — montant payé + reste à payer
     // total, toutes factures confondues, pas seulement le solde de la facture réglée) ───────────────
 

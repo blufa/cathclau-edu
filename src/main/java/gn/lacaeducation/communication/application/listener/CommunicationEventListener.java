@@ -212,6 +212,23 @@ public class CommunicationEventListener {
     }
 
     /**
+     * Détecteur B2 (§retour fondateurs) : un encaissement guichet sans session de caisse ouverte pour
+     * son collecteur n'a jamais été rapproché — alerte immédiate, jamais au comptable concerné.
+     */
+    @TransactionalEventListener
+    @Async
+    public void onCashCollectedWithoutOpenSession(gn.lacaeducation.payments.application.event.CashCollectedWithoutOpenSessionEvent event) {
+        String cashierName = userPublicInfoProvider.findUser(event.cashierId())
+                .map(u -> ((u.firstName() != null ? u.firstName() : "") + " " + (u.lastName() != null ? u.lastName() : "")).trim())
+                .filter(n -> !n.isBlank())
+                .orElse("Comptable #" + event.cashierId());
+        String content = "École " + schoolName(event.tenantId()) + " : " + cashierName
+                + " a encaissé " + event.amount() + " GNF au guichet SANS avoir ouvert de session de caisse. "
+                + "Vérifiez cet encaissement.";
+        notifySchoolAdmins(event.tenantId(), "Encaissement sans session de caisse", content);
+    }
+
+    /**
      * Notify the parent of each payment applied to a school-fee invoice (§11.1, §retour comptable
      * point 1) : contenu bref — montant payé et solde encore dû (toutes factures confondues, pas
      * seulement celle qui vient d'être réglée : une mensualité soldée ne doit pas faire disparaître un
