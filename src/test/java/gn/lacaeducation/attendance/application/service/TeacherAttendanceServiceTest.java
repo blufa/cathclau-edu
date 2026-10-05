@@ -2,6 +2,7 @@ package gn.lacaeducation.attendance.application.service;
 
 import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.academics.ScheduleSlotPublicInfo;
+import gn.lacaeducation.attendance.application.event.TeacherExitEvent;
 import gn.lacaeducation.attendance.application.port.in.TeacherAttendanceUseCase.LatenessDetailRow;
 import gn.lacaeducation.attendance.application.port.in.TeacherAttendanceUseCase.RecordTeacherAttendanceCommand;
 import gn.lacaeducation.attendance.application.port.in.TeacherAttendanceUseCase.TeacherAttendanceStatsResponse;
@@ -48,6 +49,7 @@ class TeacherAttendanceServiceTest {
     @Mock RecessWindowRepository recessWindowRepository;
     @Mock AttendanceReportPdfGenerator pdfGenerator;
     @Mock TeacherPublicInfoProvider teacherPublicInfoProvider;
+    @Mock org.springframework.context.ApplicationEventPublisher eventPublisher;
     @InjectMocks TeacherAttendanceService service;
 
     private static ScheduleSlotPublicInfo slot(String start, String end) {
@@ -174,6 +176,48 @@ class TeacherAttendanceServiceTest {
 
         assertThat(result.getCheckOutTime()).isNotNull();
         assertThat(result.getSessionEnd()).isEqualTo(java.time.LocalTime.of(10, 0));
+    }
+
+    // §retour fondateurs : même mécanique côté enseignant, mais sans SMS (voir TeacherExitEvent).
+
+    @Test
+    void recordExit_publishesTeacherExitEvent_withMinutesSinceFirstCheckinOfDay() {
+        TeacherCheckin existing = TeacherCheckin.builder().id(9L).teacherId(5L).scheduleSlotId(1L)
+                .checkInTime(java.time.LocalTime.of(8, 5)).lateMinutes(5).createdAt(LocalDateTime.now()).build();
+        when(academics.findScheduleByTeacher(5L)).thenReturn(List.of());
+        when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("08:00", "10:00"));
+        when(checkinRepository.findByTeacherIdAndDateAndSlot(eq(5L), any(), eq(1L))).thenReturn(Optional.of(existing));
+        when(checkinRepository.findByTeacherIdAndDate(eq(5L), any())).thenReturn(List.of(existing));
+        when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        service.recordExit(5L);
+
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(eventPublisher, org.mockito.Mockito.atLeastOnce()).publishEvent(captor.capture());
+        TeacherExitEvent event = captor.getAllValues().stream()
+                .filter(TeacherExitEvent.class::isInstance).map(TeacherExitEvent.class::cast).findFirst().orElseThrow();
+        assertThat(event.checkInTime()).isEqualTo(java.time.LocalTime.of(8, 5));
+        assertThat(event.minutesAtSchool()).isGreaterThanOrEqualTo(0);
+        assertThat(event.teacherId()).isEqualTo(5L);
+    }
+
+    @Test
+    void recordManualExit_noEntryEverRecorded_publishesEventWithZeroMinutes_neverThrows() {
+        when(academics.findScheduleByTeacher(5L)).thenReturn(List.of());
+        when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("08:00", "10:00"));
+        when(checkinRepository.findByTeacherIdAndDateAndSlot(eq(5L), any(), eq(1L))).thenReturn(Optional.empty());
+        when(checkinRepository.findByTeacherIdAndDate(eq(5L), any())).thenReturn(List.of());
+        when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(repo.findByTeacherIdAndDateBetween(eq(5L), any(), any())).thenReturn(List.of());
+
+        service.recordManualExit(5L, LocalDate.now(), java.time.LocalTime.of(9, 30));
+
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(eventPublisher, org.mockito.Mockito.atLeastOnce()).publishEvent(captor.capture());
+        TeacherExitEvent event = captor.getAllValues().stream()
+                .filter(TeacherExitEvent.class::isInstance).map(TeacherExitEvent.class::cast).findFirst().orElseThrow();
+        assertThat(event.checkInTime()).isNull();
+        assertThat(event.minutesAtSchool()).isZero();
     }
 
     @Test

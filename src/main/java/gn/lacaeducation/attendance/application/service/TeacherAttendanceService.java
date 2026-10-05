@@ -1,6 +1,7 @@
 package gn.lacaeducation.attendance.application.service;
 import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.academics.ScheduleSlotPublicInfo;
+import gn.lacaeducation.attendance.application.event.TeacherExitEvent;
 import gn.lacaeducation.attendance.application.port.in.TeacherAttendanceUseCase;
 import gn.lacaeducation.attendance.application.port.out.AttendanceReportPdfGenerator;
 import gn.lacaeducation.attendance.application.port.out.AttendanceSettingsRepository;
@@ -15,6 +16,7 @@ import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.common.TenantContext;
 import gn.lacaeducation.staff.TeacherPublicInfoProvider;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
@@ -28,11 +30,13 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 @Service @Transactional @RequiredArgsConstructor
 public class TeacherAttendanceService implements TeacherAttendanceUseCase {
     private final TeacherAttendanceRepository attendanceRepository;
     private final TeacherCheckinRepository checkinRepository;
     private final AcademicsDataProvider academics;
+    private final ApplicationEventPublisher eventPublisher;
     private final SessionResolver sessionResolver;
     private final AttendanceSettingsRepository settingsRepository;
     private final RecessWindowRepository recessWindowRepository;
@@ -102,7 +106,18 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
         // à l'entrée). Un pointage de sortie existe forcément ici (on vient de le fixer ci-dessus).
         int early = (int) Math.max(0, Duration.between(now, checkin.getSessionEnd()).toMinutes());
         checkin.setEarlyMinutes(early);
-        return checkinRepository.save(checkin);
+        TeacherCheckin saved = checkinRepository.save(checkin);
+
+        // §retour fondateurs : même mécanique que StudentAttendanceService#recordExit (durée depuis
+        // le premier pointage du jour), mais SANS notification SMS — un enseignant n'a pas de parent.
+        LocalTime firstCheckInTime = checkinRepository.findByTeacherIdAndDate(teacherId, today).stream()
+                .map(TeacherCheckin::getCheckInTime).filter(Objects::nonNull)
+                .min(LocalTime::compareTo).orElse(null);
+        int minutesAtSchool = firstCheckInTime != null
+                ? (int) Math.max(0, Duration.between(firstCheckInTime, now).toMinutes()) : 0;
+        eventPublisher.publishEvent(new TeacherExitEvent(TenantContext.get(), teacherId, today,
+                firstCheckInTime, now, minutesAtSchool));
+        return saved;
     }
 
     @Override
@@ -151,6 +166,14 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
         checkin.setEarlyMinutes(early);
         TeacherCheckin saved = checkinRepository.save(checkin);
         upsertDailyAttendance(teacherId, date);
+
+        LocalTime firstCheckInTime = checkinRepository.findByTeacherIdAndDate(teacherId, date).stream()
+                .map(TeacherCheckin::getCheckInTime).filter(Objects::nonNull)
+                .min(LocalTime::compareTo).orElse(null);
+        int minutesAtSchool = firstCheckInTime != null
+                ? (int) Math.max(0, Duration.between(firstCheckInTime, checkOutTime).toMinutes()) : 0;
+        eventPublisher.publishEvent(new TeacherExitEvent(TenantContext.get(), teacherId, date,
+                firstCheckInTime, checkOutTime, minutesAtSchool));
         return saved;
     }
 

@@ -1,6 +1,7 @@
 package gn.lacaeducation.attendance.application.service;
 import gn.lacaeducation.attendance.StudentAttendanceNotifier;
 import gn.lacaeducation.attendance.application.event.StudentAbsentEvent;
+import gn.lacaeducation.attendance.application.event.StudentExitEvent;
 import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.attendance.application.port.in.StudentAttendanceUseCase;
 import gn.lacaeducation.attendance.application.port.out.AttendanceReportPdfGenerator;
@@ -117,7 +118,19 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
         // l'entrée, miroir de TeacherAttendanceService#recordExit).
         int early = (int) Math.max(0, Duration.between(now, checkin.getSessionEnd()).toMinutes());
         checkin.setEarlyMinutes(early);
-        return checkinRepository.save(checkin);
+        StudentCheckin saved = checkinRepository.save(checkin);
+
+        // §retour fondateurs : notifie le parent à la sortie avec la durée passée à l'école — depuis
+        // le PREMIER pointage du jour (pas forcément celui de ce créneau), pour refléter la journée
+        // entière (6h/8h selon l'emploi du temps de l'élève), même si plusieurs créneaux ont été
+        // pointés séparément (ex. sortie/retour de pause).
+        StudentCheckin firstCheckin = checkinRepository.findByStudentIdAndDate(studentId, today).stream()
+                .filter(c -> c.getCheckInTime() != null)
+                .min(Comparator.comparing(StudentCheckin::getCheckInTime)).orElse(saved);
+        int minutesAtSchool = (int) Math.max(0, Duration.between(firstCheckin.getCheckInTime(), now).toMinutes());
+        eventPublisher.publishEvent(new StudentExitEvent(TenantContext.get(), studentId, classId, today,
+                firstCheckin.getCheckInTime(), now, minutesAtSchool));
+        return saved;
     }
 
     @Override
@@ -140,7 +153,20 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
         checkin.setCheckOutTime(checkOutTime);
         int early = (int) Math.max(0, Duration.between(checkOutTime, end).toMinutes());
         checkin.setEarlyMinutes(early);
-        return checkinRepository.save(checkin);
+        StudentCheckin saved = checkinRepository.save(checkin);
+
+        // Même notification que recordExit (§retour fondateurs) — cohérent avec recordManualEntry,
+        // qui notifie déjà lui aussi via upsertDailyAttendance quelle que soit la date saisie.
+        // `checkInTime` peut rester null ici (badge oublié toute la séance, aucune entrée connue) —
+        // contrairement à recordExit, où l'entrée est obligatoire (voir son orElseThrow juste avant).
+        LocalTime firstCheckInTime = checkinRepository.findByStudentIdAndDate(studentId, date).stream()
+                .map(StudentCheckin::getCheckInTime).filter(Objects::nonNull)
+                .min(LocalTime::compareTo).orElse(null);
+        int minutesAtSchool = firstCheckInTime != null
+                ? (int) Math.max(0, Duration.between(firstCheckInTime, checkOutTime).toMinutes()) : 0;
+        eventPublisher.publishEvent(new StudentExitEvent(TenantContext.get(), studentId, classId, date,
+                firstCheckInTime, checkOutTime, minutesAtSchool));
+        return saved;
     }
 
     @Override
