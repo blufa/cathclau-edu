@@ -53,7 +53,7 @@ class OpenPdfReceiptGeneratorTest {
     @Test
     void generate_withMixOfPaidAndUnpaidInvoices_producesValidPdf() {
         lenient().when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.of(
-                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
+                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
         when(payerDirectory.className(7L)).thenReturn(Optional.of("7ème A"));
         when(payerDirectory.studentNumber(7L)).thenReturn(Optional.of("MAT-1"));
         when(payerDirectory.currentAcademicYearLabel(10L)).thenReturn(Optional.of("2025-2026"));
@@ -168,7 +168,7 @@ class OpenPdfReceiptGeneratorTest {
     @Test
     void generate_fullYearOfInvoices_staysOnSinglePage() {
         lenient().when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.of(
-                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
+                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
         when(payerDirectory.className(7L)).thenReturn(Optional.of("7ème A"));
         when(payerDirectory.studentNumber(7L)).thenReturn(Optional.of("MAT-1"));
         when(payerDirectory.currentAcademicYearLabel(10L)).thenReturn(Optional.of("2025-2026"));

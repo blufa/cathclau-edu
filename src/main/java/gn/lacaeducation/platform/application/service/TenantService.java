@@ -112,6 +112,7 @@ public class TenantService implements CreateTenantUseCase, TenantEstablishmentTy
         t.setSchoolName(c.schoolName()); t.setLogo(c.logo()); t.setBrandColor(c.brandColor());
         t.setAddress(c.address()); t.setCity(c.city()); t.setCountry(c.country());
         t.setPhone(c.phone()); t.setEmail(c.email()); t.setWebsite(c.website()); t.setDirector(c.director());
+        t.setFounderPhone(c.founderPhone());
         t.setAccreditationNumber(c.accreditationNumber()); t.setOpeningAuthorization(c.openingAuthorization());
         t.setMotto(c.motto()); t.setSlogan(c.slogan());
         t.setIre(c.ire()); t.setDpeLabel(c.dpeLabel()); t.setSousPrefectureLabel(c.sousPrefectureLabel());

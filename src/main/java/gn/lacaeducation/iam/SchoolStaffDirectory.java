@@ -21,9 +21,10 @@ public interface SchoolStaffDirectory {
     record SchoolAdminContact(String phone, String fullName) {}
 
     /**
-     * Compte(s) SCHOOL_ADMIN de l'école — utilisé pour alerter par SMS le fondateur/administrateur
-     * de chaque paiement reçu (§communication), en l'absence pour l'instant d'un numéro de fondateur
-     * dédié dans les paramètres du tenant.
+     * Compte(s) SCHOOL_ADMIN de l'école — repli utilisé par {@code CommunicationEventListener}
+     * (§communication) pour les alertes fondateur (paiement reçu, écart de caisse…) UNIQUEMENT
+     * quand le tenant n'a pas renseigné de numéro de fondateur dédié ({@code Tenant#founderPhone},
+     * Paramètres de l'école) ; ce numéro dédié est alors utilisé seul, sans retomber ici.
      */
     List<SchoolAdminContact> findSchoolAdminContacts(Long tenantId);
 

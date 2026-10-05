@@ -20,6 +20,9 @@ public record TenantResponse(
     String country,
     String website,
     String director,
+    /** Numéro dédié aux alertes automatiques (fondateur) ; null = alertes envoyées aux comptes
+     * SCHOOL_ADMIN (comportement historique). Voir {@code Tenant#founderPhone}. */
+    String founderPhone,
     String accreditationNumber,
     String openingAuthorization,
     String motto,
@@ -52,7 +55,7 @@ public record TenantResponse(
         return new TenantResponse(
             tenant.getId(), tenant.getSchoolName(), tenant.getSlug(), tenant.getEmail(),
             tenant.getPhone(), tenant.getLogo(), tenant.getBrandColor(), tenant.getAddress(), tenant.getCity(),
-            tenant.getCountry(), tenant.getWebsite(), tenant.getDirector(),
+            tenant.getCountry(), tenant.getWebsite(), tenant.getDirector(), tenant.getFounderPhone(),
             tenant.getAccreditationNumber(), tenant.getOpeningAuthorization(),
             tenant.getMotto(), tenant.getSlogan(),
             tenant.getIre(), tenant.getDpeLabel(), tenant.getSousPrefectureLabel(),
