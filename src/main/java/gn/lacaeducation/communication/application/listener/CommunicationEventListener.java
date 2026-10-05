@@ -3,6 +3,7 @@ package gn.lacaeducation.communication.application.listener;
 import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.attendance.application.event.StudentAbsentEvent;
 import gn.lacaeducation.attendance.application.event.StudentExitEvent;
+import gn.lacaeducation.attendance.application.event.TeacherAbsentEvent;
 import gn.lacaeducation.attendance.application.event.UndeclaredAttendanceEvent;
 import gn.lacaeducation.audit.application.event.AccountantAnomalyDetectedEvent;
 import gn.lacaeducation.billing.application.event.EcheanceDepasseeEvent;
@@ -182,6 +183,45 @@ public class CommunicationEventListener {
         int minutes = minutesAtSchool % 60;
         if (hours == 0) return minutes + "min";
         return minutes == 0 ? hours + "h" : hours + "h" + minutes;
+    }
+
+    /**
+     * Retard ou absence d'un enseignant (§retour fondateurs) : alerte à la fois la direction (pour
+     * qu'elle puisse réagir — prévenir un remplaçant — sans surveiller l'emploi du temps en continu)
+     * ET l'enseignant lui-même (message automatique par défaut ; le bouton manuel existant sur
+     * l'emploi du temps reste disponible si la direction veut personnaliser le message). Jamais de
+     * lien de connexion (même logique de coût que les SMS de pointage élève).
+     */
+    @TransactionalEventListener
+    @Async
+    public void onTeacherAbsent(TeacherAbsentEvent event) {
+        String date = event.date() != null ? event.date().format(DATE_FMT) : "N/A";
+        boolean late = "LATE".equals(event.status());
+        String adminContent;
+        String teacherContent;
+        if (late) {
+            int minutes = event.lateMinutes() != null ? event.lateMinutes() : 0;
+            String time = event.checkInTime() != null ? " à " + event.checkInTime().format(TIME_FMT) : "";
+            adminContent = event.teacherName() + " est en retard (" + minutes + " min)" + time
+                    + " le " + date + " — École " + schoolName(event.tenantId()) + ".";
+            teacherContent = "Bonjour " + event.teacherName() + ", vous êtes en retard pour votre cours ("
+                    + minutes + " min). Merci de nous contacter rapidement.";
+        } else {
+            adminContent = event.teacherName() + " est absent(e) le " + date
+                    + " (aucun pointage détecté) — École " + schoolName(event.tenantId()) + ".";
+            teacherContent = "Bonjour " + event.teacherName() + ", vous êtes signalé(e) absent(e) aujourd'hui. "
+                    + "Merci de nous contacter.";
+        }
+        notifySchoolAdmins(event.tenantId(), late ? "Retard enseignant" : "Absence enseignant", adminContent);
+        if (event.teacherPhone() != null && !event.teacherPhone().isBlank()) {
+            communicationUseCase.send(new SendCommunicationCommand(event.tenantId(), null, CommunicationChannel.SMS,
+                    RecipientType.TEACHER, late ? "Retard" : "Absence", teacherContent,
+                    late ? CommunicationReason.LATE : CommunicationReason.ABSENCE,
+                    List.of(new RecipientTarget(null, event.teacherPhone()))));
+        } else {
+            log.info("Enseignant {} sans téléphone enregistré ; SMS de {} non envoyé à lui-même",
+                    event.teacherId(), late ? "retard" : "absence");
+        }
     }
 
     @TransactionalEventListener

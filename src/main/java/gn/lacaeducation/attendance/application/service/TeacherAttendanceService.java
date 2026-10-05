@@ -181,15 +181,19 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
     public TeacherAttendance markAbsent(Long teacherId, String reason) {
         LocalDate today = LocalDate.now();
         List<TeacherAttendance> existing = attendanceRepository.findByTeacherIdAndDateBetween(teacherId, today, today);
+        TeacherAttendance saved;
         if (!existing.isEmpty()) {
             TeacherAttendance a = existing.get(0);
             a.setStatus(TeacherAttendanceStatus.ABSENT);
             a.setReason(reason != null ? reason : "Absence signalée");
-            return attendanceRepository.save(a);
+            saved = attendanceRepository.save(a);
+        } else {
+            saved = attendanceRepository.save(TeacherAttendance.builder()
+                    .tenantId(TenantContext.get()).teacherId(teacherId).date(today)
+                    .status(TeacherAttendanceStatus.ABSENT).reason(reason != null ? reason : "Absence signalée").build());
         }
-        return attendanceRepository.save(TeacherAttendance.builder()
-                .tenantId(TenantContext.get()).teacherId(teacherId).date(today)
-                .status(TeacherAttendanceStatus.ABSENT).reason(reason != null ? reason : "Absence signalée").build());
+        publishTeacherAlert(teacherId, today, "ABSENT", null, null);
+        return saved;
     }
 
     /** Statut du jour toujours PRESENT depuis un scan (le retard reste représenté par lateMinutes > 0 —
@@ -202,18 +206,35 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
         int dayLate = checkinRepository.findByTeacherIdAndDate(teacherId, today).stream()
                 .mapToInt(c -> c.getLateMinutes() != null ? c.getLateMinutes() : 0).sum();
         List<TeacherAttendance> existing = attendanceRepository.findByTeacherIdAndDateBetween(teacherId, today, today);
+        // §retour fondateurs : alerte uniquement au PREMIER scan du jour (jamais redéclenchée par les
+        // scans suivants, même si le retard cumulé continue d'augmenter pour le reporting RH/paie).
+        boolean firstScanOfDay = existing.isEmpty();
         if (!existing.isEmpty()) {
             TeacherAttendance a = existing.get(0);
             a.setStatus(TeacherAttendanceStatus.PRESENT);
             a.setCheckInTime(firstCheckIn);
             a.setLateMinutes(dayLate);
             attendanceRepository.save(a);
-            return;
+        } else {
+            attendanceRepository.save(TeacherAttendance.builder()
+                    .tenantId(TenantContext.get()).teacherId(teacherId).date(today)
+                    .status(TeacherAttendanceStatus.PRESENT).reason("Scan carte")
+                    .checkInTime(firstCheckIn).lateMinutes(dayLate).build());
         }
-        attendanceRepository.save(TeacherAttendance.builder()
-                .tenantId(TenantContext.get()).teacherId(teacherId).date(today)
-                .status(TeacherAttendanceStatus.PRESENT).reason("Scan carte")
-                .checkInTime(firstCheckIn).lateMinutes(dayLate).build());
+        if (firstScanOfDay && dayLate > 0) {
+            publishTeacherAlert(teacherId, today, "LATE", dayLate, firstCheckIn);
+        }
+    }
+
+    /** Résout nom/téléphone ici (module {@code attendance}) plutôt que de faire dépendre
+     * {@code communication} de {@code staff} pour ce seul besoin — voir Javadoc de
+     * {@link gn.lacaeducation.attendance.application.event.TeacherAbsentEvent}. */
+    private void publishTeacherAlert(Long teacherId, LocalDate date, String status, Integer lateMinutes, LocalTime checkInTime) {
+        var info = teacherPublicInfoProvider.findTeacher(teacherId).orElse(null);
+        String name = info != null ? (info.firstName() + " " + info.lastName()).trim() : "Enseignant #" + teacherId;
+        String phone = info != null ? info.phone() : null;
+        eventPublisher.publishEvent(new gn.lacaeducation.attendance.application.event.TeacherAbsentEvent(
+                TenantContext.get(), teacherId, name, phone, date, status, lateMinutes, checkInTime));
     }
 
     @Override @Transactional(readOnly = true)
