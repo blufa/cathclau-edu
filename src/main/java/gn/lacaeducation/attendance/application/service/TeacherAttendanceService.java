@@ -1,6 +1,7 @@
 package gn.lacaeducation.attendance.application.service;
 import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.academics.ScheduleSlotPublicInfo;
+import gn.lacaeducation.attendance.application.event.TeacherExitEvent;
 import gn.lacaeducation.attendance.application.port.in.TeacherAttendanceUseCase;
 import gn.lacaeducation.attendance.application.port.out.AttendanceReportPdfGenerator;
 import gn.lacaeducation.attendance.application.port.out.AttendanceSettingsRepository;
@@ -15,6 +16,7 @@ import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.common.TenantContext;
 import gn.lacaeducation.staff.TeacherPublicInfoProvider;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
@@ -28,11 +30,13 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 @Service @Transactional @RequiredArgsConstructor
 public class TeacherAttendanceService implements TeacherAttendanceUseCase {
     private final TeacherAttendanceRepository attendanceRepository;
     private final TeacherCheckinRepository checkinRepository;
     private final AcademicsDataProvider academics;
+    private final ApplicationEventPublisher eventPublisher;
     private final SessionResolver sessionResolver;
     private final AttendanceSettingsRepository settingsRepository;
     private final RecessWindowRepository recessWindowRepository;
@@ -102,7 +106,18 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
         // à l'entrée). Un pointage de sortie existe forcément ici (on vient de le fixer ci-dessus).
         int early = (int) Math.max(0, Duration.between(now, checkin.getSessionEnd()).toMinutes());
         checkin.setEarlyMinutes(early);
-        return checkinRepository.save(checkin);
+        TeacherCheckin saved = checkinRepository.save(checkin);
+
+        // §retour fondateurs : même mécanique que StudentAttendanceService#recordExit (durée depuis
+        // le premier pointage du jour), mais SANS notification SMS — un enseignant n'a pas de parent.
+        LocalTime firstCheckInTime = checkinRepository.findByTeacherIdAndDate(teacherId, today).stream()
+                .map(TeacherCheckin::getCheckInTime).filter(Objects::nonNull)
+                .min(LocalTime::compareTo).orElse(null);
+        int minutesAtSchool = firstCheckInTime != null
+                ? (int) Math.max(0, Duration.between(firstCheckInTime, now).toMinutes()) : 0;
+        eventPublisher.publishEvent(new TeacherExitEvent(TenantContext.get(), teacherId, today,
+                firstCheckInTime, now, minutesAtSchool));
+        return saved;
     }
 
     @Override
@@ -151,6 +166,14 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
         checkin.setEarlyMinutes(early);
         TeacherCheckin saved = checkinRepository.save(checkin);
         upsertDailyAttendance(teacherId, date);
+
+        LocalTime firstCheckInTime = checkinRepository.findByTeacherIdAndDate(teacherId, date).stream()
+                .map(TeacherCheckin::getCheckInTime).filter(Objects::nonNull)
+                .min(LocalTime::compareTo).orElse(null);
+        int minutesAtSchool = firstCheckInTime != null
+                ? (int) Math.max(0, Duration.between(firstCheckInTime, checkOutTime).toMinutes()) : 0;
+        eventPublisher.publishEvent(new TeacherExitEvent(TenantContext.get(), teacherId, date,
+                firstCheckInTime, checkOutTime, minutesAtSchool));
         return saved;
     }
 
@@ -158,15 +181,19 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
     public TeacherAttendance markAbsent(Long teacherId, String reason) {
         LocalDate today = LocalDate.now();
         List<TeacherAttendance> existing = attendanceRepository.findByTeacherIdAndDateBetween(teacherId, today, today);
+        TeacherAttendance saved;
         if (!existing.isEmpty()) {
             TeacherAttendance a = existing.get(0);
             a.setStatus(TeacherAttendanceStatus.ABSENT);
             a.setReason(reason != null ? reason : "Absence signalée");
-            return attendanceRepository.save(a);
+            saved = attendanceRepository.save(a);
+        } else {
+            saved = attendanceRepository.save(TeacherAttendance.builder()
+                    .tenantId(TenantContext.get()).teacherId(teacherId).date(today)
+                    .status(TeacherAttendanceStatus.ABSENT).reason(reason != null ? reason : "Absence signalée").build());
         }
-        return attendanceRepository.save(TeacherAttendance.builder()
-                .tenantId(TenantContext.get()).teacherId(teacherId).date(today)
-                .status(TeacherAttendanceStatus.ABSENT).reason(reason != null ? reason : "Absence signalée").build());
+        publishTeacherAlert(teacherId, today, "ABSENT", null, null);
+        return saved;
     }
 
     /** Statut du jour toujours PRESENT depuis un scan (le retard reste représenté par lateMinutes > 0 —
@@ -179,18 +206,35 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
         int dayLate = checkinRepository.findByTeacherIdAndDate(teacherId, today).stream()
                 .mapToInt(c -> c.getLateMinutes() != null ? c.getLateMinutes() : 0).sum();
         List<TeacherAttendance> existing = attendanceRepository.findByTeacherIdAndDateBetween(teacherId, today, today);
+        // §retour fondateurs : alerte uniquement au PREMIER scan du jour (jamais redéclenchée par les
+        // scans suivants, même si le retard cumulé continue d'augmenter pour le reporting RH/paie).
+        boolean firstScanOfDay = existing.isEmpty();
         if (!existing.isEmpty()) {
             TeacherAttendance a = existing.get(0);
             a.setStatus(TeacherAttendanceStatus.PRESENT);
             a.setCheckInTime(firstCheckIn);
             a.setLateMinutes(dayLate);
             attendanceRepository.save(a);
-            return;
+        } else {
+            attendanceRepository.save(TeacherAttendance.builder()
+                    .tenantId(TenantContext.get()).teacherId(teacherId).date(today)
+                    .status(TeacherAttendanceStatus.PRESENT).reason("Scan carte")
+                    .checkInTime(firstCheckIn).lateMinutes(dayLate).build());
         }
-        attendanceRepository.save(TeacherAttendance.builder()
-                .tenantId(TenantContext.get()).teacherId(teacherId).date(today)
-                .status(TeacherAttendanceStatus.PRESENT).reason("Scan carte")
-                .checkInTime(firstCheckIn).lateMinutes(dayLate).build());
+        if (firstScanOfDay && dayLate > 0) {
+            publishTeacherAlert(teacherId, today, "LATE", dayLate, firstCheckIn);
+        }
+    }
+
+    /** Résout nom/téléphone ici (module {@code attendance}) plutôt que de faire dépendre
+     * {@code communication} de {@code staff} pour ce seul besoin — voir Javadoc de
+     * {@link gn.lacaeducation.attendance.application.event.TeacherAbsentEvent}. */
+    private void publishTeacherAlert(Long teacherId, LocalDate date, String status, Integer lateMinutes, LocalTime checkInTime) {
+        var info = teacherPublicInfoProvider.findTeacher(teacherId).orElse(null);
+        String name = info != null ? (info.firstName() + " " + info.lastName()).trim() : "Enseignant #" + teacherId;
+        String phone = info != null ? info.phone() : null;
+        eventPublisher.publishEvent(new gn.lacaeducation.attendance.application.event.TeacherAbsentEvent(
+                TenantContext.get(), teacherId, name, phone, date, status, lateMinutes, checkInTime));
     }
 
     @Override @Transactional(readOnly = true)

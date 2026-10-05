@@ -2,6 +2,8 @@ package gn.lacaeducation.communication.application.listener;
 
 import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.attendance.application.event.StudentAbsentEvent;
+import gn.lacaeducation.attendance.application.event.StudentExitEvent;
+import gn.lacaeducation.attendance.application.event.TeacherAbsentEvent;
 import gn.lacaeducation.attendance.application.event.UndeclaredAttendanceEvent;
 import gn.lacaeducation.audit.application.event.AccountantAnomalyDetectedEvent;
 import gn.lacaeducation.billing.application.event.EcheanceDepasseeEvent;
@@ -59,11 +61,15 @@ public class CommunicationEventListener {
     private final gn.lacaeducation.iam.SchoolStaffDirectory schoolStaffDirectory;
     private final UserPublicInfoProvider userPublicInfoProvider;
 
+    // Valeur Java par défaut IDENTIQUE à celle du SpEL ci-dessous (pas seulement une coïncidence) :
+    // un test unitaire qui instancie ce listener sans contexte Spring (@InjectMocks) ne déclenche
+    // jamais l'injection @Value — le champ resterait sinon null, et Map.of() (utilisé pour "lien")
+    // lève une NullPointerException sur une valeur null, jamais juste un lien absent du SMS.
     @org.springframework.beans.factory.annotation.Value("${app.platform.reset-password-url:https://ecole.jeccamtech.com/reset-password}")
-    private String resetPasswordUrl;
+    private String resetPasswordUrl = "https://ecole.jeccamtech.com/reset-password";
 
     @org.springframework.beans.factory.annotation.Value("${app.platform.login-url:https://ecole.jeccamtech.com/login}")
-    private String loginUrl;
+    private String loginUrl = "https://ecole.jeccamtech.com/login";
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH'h'mm");
@@ -147,14 +153,90 @@ public class CommunicationEventListener {
         });
     }
 
+    /**
+     * Notifie le parent au scan de sortie, avec la durée passée à l'école ce jour (§retour
+     * fondateurs) — aucun lien de connexion ici (décision explicite : message quotidien, fréquent
+     * par élève, le coût d'un 2e segment SMS n'est pas justifié, contrairement au paiement/bulletin).
+     */
+    @TransactionalEventListener
+    @Async
+    public void onStudentExit(StudentExitEvent event) {
+        studentDataProvider.findStudent(event.studentId()).ifPresent(student -> {
+            String className = academicsDataProvider.findClass(event.classId()).map(c -> c.label()).orElse("N/A");
+            String date = event.date() != null ? event.date().format(DATE_FMT) : "N/A";
+            String time = event.checkOutTime() != null ? event.checkOutTime().format(TIME_FMT) : null;
+            String duration = formatDuration(event.minutesAtSchool());
+            Map<String, String> vars = Map.of(
+                    "nom_eleve", fullName(student), "ecole", schoolName(event.tenantId()),
+                    "classe", className, "date", date);
+            String defaultBody = fullName(student) + " est sorti(e)" + (time != null ? " à " + time : "")
+                    + " le " + date + (duration != null ? " — " + duration + " à l'école" : "")
+                    + " (classe " + className + ").";
+            dispatch(event.tenantId(), CommunicationReason.GENERAL, "Sortie confirmée", defaultBody, vars, event.studentId());
+        });
+    }
+
+    /** "1h30" / "45min" — null si la durée est inconnue (aucune entrée pointée ce jour-là). */
+    private String formatDuration(int minutesAtSchool) {
+        if (minutesAtSchool <= 0) return null;
+        int hours = minutesAtSchool / 60;
+        int minutes = minutesAtSchool % 60;
+        if (hours == 0) return minutes + "min";
+        return minutes == 0 ? hours + "h" : hours + "h" + minutes;
+    }
+
+    /**
+     * Retard ou absence d'un enseignant (§retour fondateurs) : alerte à la fois la direction (pour
+     * qu'elle puisse réagir — prévenir un remplaçant — sans surveiller l'emploi du temps en continu)
+     * ET l'enseignant lui-même (message automatique par défaut ; le bouton manuel existant sur
+     * l'emploi du temps reste disponible si la direction veut personnaliser le message). Jamais de
+     * lien de connexion (même logique de coût que les SMS de pointage élève).
+     */
+    @TransactionalEventListener
+    @Async
+    public void onTeacherAbsent(TeacherAbsentEvent event) {
+        String date = event.date() != null ? event.date().format(DATE_FMT) : "N/A";
+        boolean late = "LATE".equals(event.status());
+        String adminContent;
+        String teacherContent;
+        if (late) {
+            int minutes = event.lateMinutes() != null ? event.lateMinutes() : 0;
+            String time = event.checkInTime() != null ? " à " + event.checkInTime().format(TIME_FMT) : "";
+            adminContent = event.teacherName() + " est en retard (" + minutes + " min)" + time
+                    + " le " + date + " — École " + schoolName(event.tenantId()) + ".";
+            teacherContent = "Bonjour " + event.teacherName() + ", vous êtes en retard pour votre cours ("
+                    + minutes + " min). Merci de nous contacter rapidement.";
+        } else {
+            adminContent = event.teacherName() + " est absent(e) le " + date
+                    + " (aucun pointage détecté) — École " + schoolName(event.tenantId()) + ".";
+            teacherContent = "Bonjour " + event.teacherName() + ", vous êtes signalé(e) absent(e) aujourd'hui. "
+                    + "Merci de nous contacter.";
+        }
+        notifySchoolAdmins(event.tenantId(), late ? "Retard enseignant" : "Absence enseignant", adminContent);
+        if (event.teacherPhone() != null && !event.teacherPhone().isBlank()) {
+            communicationUseCase.send(new SendCommunicationCommand(event.tenantId(), null, CommunicationChannel.SMS,
+                    RecipientType.TEACHER, late ? "Retard" : "Absence", teacherContent,
+                    late ? CommunicationReason.LATE : CommunicationReason.ABSENCE,
+                    List.of(new RecipientTarget(null, event.teacherPhone()))));
+        } else {
+            log.info("Enseignant {} sans téléphone enregistré ; SMS de {} non envoyé à lui-même",
+                    event.teacherId(), late ? "retard" : "absence");
+        }
+    }
+
     @TransactionalEventListener
     @Async
     public void onReportCardPublished(ReportCardPublishedEvent event) {
         studentDataProvider.findStudent(event.studentId()).ifPresent(student -> {
             String period = academicsDataProvider.findPeriod(event.periodId()).map(p -> p.label()).orElse("N/A");
             Map<String, String> vars = Map.of(
-                    "nom_eleve", fullName(student), "ecole", schoolName(event.tenantId()), "periode", period);
-            String defaultBody = "Bulletin de " + fullName(student) + " (" + period + ") disponible.";
+                    "nom_eleve", fullName(student), "ecole", schoolName(event.tenantId()), "periode", period,
+                    "lien", loginUrl);
+            // Lien de connexion inclus (§retour fondateurs) : message peu fréquent (une fois par
+            // période), contrairement aux SMS de pointage quotidien où le coût du 2e segment SMS
+            // n'est pas justifié.
+            String defaultBody = "Bulletin de " + fullName(student) + " (" + period + ") disponible. "
+                    + "Consultez-le : " + loginUrl;
             dispatch(event.tenantId(), CommunicationReason.RESULT, "Bulletin disponible", defaultBody, vars, event.studentId());
         });
     }
@@ -179,11 +261,13 @@ public class CommunicationEventListener {
                         "nom_eleve", fullName(student), "ecole", schoolName(event.tenantId()),
                         "montant", amount, "canal", payment.channel() == null ? "" : payment.channel(),
                         "reference", payment.reference() == null ? "" : payment.reference(),
-                        "couverture", coverage, "reste_a_payer", restLine);
+                        "couverture", coverage, "reste_a_payer", restLine, "lien", loginUrl);
                 // Contenu volontairement bref (§retour comptable) : montant payé + reste à payer,
-                // sans détailler les mois couverts ni le canal — même contenu que le SMS envoyé au
-                // comptable (notifyFounder), les deux doivent être identiques.
-                String defaultBody = paymentSmsBody(fullName(student), amount, restLine);
+                // sans détailler les mois couverts ni le canal. Lien ajouté UNIQUEMENT côté parent
+                // (§retour fondateurs — paiement peu fréquent, contrairement au pointage quotidien) :
+                // jamais dans paymentSmsBody lui-même, qui reste aussi le contenu du SMS comptable
+                // (notifyFounder) — inutile de lui faire payer un 2e segment pour un lien qu'il connaît.
+                String defaultBody = paymentSmsBody(fullName(student), amount, restLine) + " " + loginUrl;
                 dispatch(event.tenantId(), CommunicationReason.GENERAL, "Paiement reçu", defaultBody, vars, event.studentId());
                 notifyFounder(event.tenantId(), fullName(student), amount, restLine, event.collectedByUserId());
             }, () -> log.warn("PaymentSucceededEvent paymentId={} introuvable ; notification paiement ignorée", event.paymentId())),

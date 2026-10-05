@@ -4,6 +4,7 @@ import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.academics.ClassPublicInfo;
 import gn.lacaeducation.academics.ScheduleSlotPublicInfo;
 import gn.lacaeducation.attendance.application.event.StudentAbsentEvent;
+import gn.lacaeducation.attendance.application.event.StudentExitEvent;
 import gn.lacaeducation.attendance.application.port.in.StudentAttendanceUseCase.RecordAttendanceCommand;
 import gn.lacaeducation.attendance.application.port.out.AttendanceSettingsRepository;
 import gn.lacaeducation.attendance.application.port.out.ChildPickupRepository;
@@ -20,6 +21,7 @@ import gn.lacaeducation.students.ParentPublicInfo;
 import gn.lacaeducation.students.StudentDataProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -212,6 +214,56 @@ class StudentAttendanceServiceTest {
 
         assertThat(result.getCheckOutTime()).isNotNull();
         assertThat(result.getSessionEnd()).isEqualTo(java.time.LocalTime.of(10, 0));
+    }
+
+    // §retour fondateurs : notification de sortie avec la durée passée à l'école.
+
+    @Test
+    void recordExit_publishesStudentExitEvent_withMinutesSinceFirstCheckinOfDay() {
+        // Deux créneaux pointés ce jour (08:05 le matin, 13:00 l'après-midi — retour de pause) : la
+        // sortie de l'après-midi doit compter depuis le PREMIER pointage (08:05), pas depuis 13:00.
+        StudentCheckin morning = StudentCheckin.builder().id(8L).studentId(10L).classId(20L).scheduleSlotId(0L)
+                .checkInTime(java.time.LocalTime.of(8, 5)).build();
+        StudentCheckin afternoon = StudentCheckin.builder().id(9L).studentId(10L).classId(20L).scheduleSlotId(1L)
+                .checkInTime(java.time.LocalTime.of(13, 0)).build();
+        when(studentDataProvider.findCurrentClassId(10L)).thenReturn(Optional.of(20L));
+        when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
+        when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("13:00", "16:00"));
+        when(checkinRepository.findByStudentIdAndDateAndSlot(eq(10L), any(), eq(1L))).thenReturn(Optional.of(afternoon));
+        when(checkinRepository.findByStudentIdAndDate(eq(10L), any())).thenReturn(List.of(morning, afternoon));
+        when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        service.recordExit(10L, null);
+
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(eventPublisher, org.mockito.Mockito.atLeastOnce()).publishEvent(captor.capture());
+        StudentExitEvent event = captor.getAllValues().stream()
+                .filter(StudentExitEvent.class::isInstance).map(StudentExitEvent.class::cast).findFirst().orElseThrow();
+        assertThat(event.checkInTime()).isEqualTo(java.time.LocalTime.of(8, 5));
+        // 08:05 -> 16:00 (fin de créneau mockée par sessionResolver, "now" réel non contrôlable ici) :
+        // on vérifie seulement que la durée est calculée depuis le premier pointage, pas sa valeur
+        // exacte (now() dépend de l'horloge système dans recordExit).
+        assertThat(event.minutesAtSchool()).isGreaterThanOrEqualTo(0);
+        assertThat(event.studentId()).isEqualTo(10L);
+    }
+
+    @Test
+    void recordManualExit_noEntryEverRecorded_publishesEventWithZeroMinutes_neverThrows() {
+        when(studentDataProvider.findCurrentClassId(10L)).thenReturn(Optional.of(20L));
+        when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
+        when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("08:00", "10:00"));
+        when(checkinRepository.findByStudentIdAndDateAndSlot(eq(10L), any(), eq(1L))).thenReturn(Optional.empty());
+        when(checkinRepository.findByStudentIdAndDate(eq(10L), any())).thenReturn(List.of());
+        when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        service.recordManualExit(10L, LocalDate.now(), java.time.LocalTime.of(9, 30));
+
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(eventPublisher, org.mockito.Mockito.atLeastOnce()).publishEvent(captor.capture());
+        StudentExitEvent event = captor.getAllValues().stream()
+                .filter(StudentExitEvent.class::isInstance).map(StudentExitEvent.class::cast).findFirst().orElseThrow();
+        assertThat(event.checkInTime()).isNull();
+        assertThat(event.minutesAtSchool()).isZero();
     }
 
     @Test
