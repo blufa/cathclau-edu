@@ -60,6 +60,68 @@ class CommunicationEventListenerTest {
     private final StudentPublicInfo student = new StudentPublicInfo(
             7L, 10L, "Awa", "Diallo", null, "620000000", "MAT-1", null, null, null);
 
+    // ── onStudentExit (§retour fondateurs : SMS de sortie avec durée passée à l'école) ──────────────
+
+    @Test
+    void onStudentExit_notifiesParent_withDuration_noLoginLink() {
+        when(studentDataProvider.findStudent(7L)).thenReturn(Optional.of(student));
+        when(studentDataProvider.hasPlatformAccessOptIn(7L)).thenReturn(true);
+        when(academicsDataProvider.findClass(3L)).thenReturn(Optional.of(
+                new gn.lacaeducation.academics.ClassPublicInfo(3L, "6ème A", "Collège", "NORMALE", null, null, null)));
+        when(studentDataProvider.findParentsByStudent(7L))
+                .thenReturn(List.of(new ParentPublicInfo(1L, "Mariama", "Bah", null, "621000000")));
+        when(templateRepository.findByTenantIdAndReason(any(), any())).thenReturn(Optional.empty());
+
+        listener().onStudentExit(new gn.lacaeducation.attendance.application.event.StudentExitEvent(
+                10L, 7L, 3L, java.time.LocalDate.of(2026, 10, 5),
+                java.time.LocalTime.of(8, 5), java.time.LocalTime.of(16, 0), 475));
+
+        ArgumentCaptor<SendCommunicationCommand> captor = ArgumentCaptor.forClass(SendCommunicationCommand.class);
+        verify(communicationUseCase).send(captor.capture());
+        SendCommunicationCommand cmd = captor.getValue();
+        assertThat(cmd.channel()).isEqualTo(CommunicationChannel.SMS);
+        assertThat(cmd.content()).contains("Awa Diallo").contains("7h55").doesNotContain("http");
+    }
+
+    // ── onTeacherAbsent (§retour fondateurs : direction ET enseignant alertés, pas de lien) ────────
+
+    @Test
+    void onTeacherAbsent_late_notifiesAdminAndTeacher_noLoginLink() {
+        when(schoolStaffDirectory.findSchoolAdminContacts(10L))
+                .thenReturn(List.of(new SchoolAdminContact("622000000", "Directeur École")));
+
+        listener().onTeacherAbsent(new gn.lacaeducation.attendance.application.event.TeacherAbsentEvent(
+                10L, 5L, "Awa Diallo", "628000000", java.time.LocalDate.of(2026, 10, 5),
+                "LATE", 15, java.time.LocalTime.of(8, 15)));
+
+        ArgumentCaptor<SendCommunicationCommand> captor = ArgumentCaptor.forClass(SendCommunicationCommand.class);
+        verify(communicationUseCase, times(2)).send(captor.capture());
+
+        SendCommunicationCommand adminCmd = captor.getAllValues().stream()
+                .filter(c -> c.recipientType() == RecipientType.GROUP).findFirst().orElseThrow();
+        assertThat(adminCmd.recipients()).extracting("destination").containsExactly("622000000");
+        assertThat(adminCmd.content()).contains("Awa Diallo").contains("15 min").doesNotContain("http");
+
+        SendCommunicationCommand teacherCmd = captor.getAllValues().stream()
+                .filter(c -> c.recipientType() == RecipientType.TEACHER).findFirst().orElseThrow();
+        assertThat(teacherCmd.recipients()).extracting("destination").containsExactly("628000000");
+        assertThat(teacherCmd.content()).contains("Awa Diallo").doesNotContain("http");
+    }
+
+    @Test
+    void onTeacherAbsent_absent_withoutTeacherPhone_onlyNotifiesAdmin() {
+        when(schoolStaffDirectory.findSchoolAdminContacts(10L))
+                .thenReturn(List.of(new SchoolAdminContact("622000000", "Directeur École")));
+
+        listener().onTeacherAbsent(new gn.lacaeducation.attendance.application.event.TeacherAbsentEvent(
+                10L, 5L, "Awa Diallo", null, java.time.LocalDate.of(2026, 10, 5), "ABSENT", null, null));
+
+        ArgumentCaptor<SendCommunicationCommand> captor = ArgumentCaptor.forClass(SendCommunicationCommand.class);
+        verify(communicationUseCase, times(1)).send(captor.capture());
+        assertThat(captor.getValue().recipientType()).isEqualTo(RecipientType.GROUP);
+        assertThat(captor.getValue().content()).contains("absent(e)");
+    }
+
     @Test
     void onPaymentSucceeded_notifiesParentAndSchoolAdmin() {
         when(studentDataProvider.findStudent(7L)).thenReturn(Optional.of(student));
