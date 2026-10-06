@@ -33,7 +33,10 @@ public interface CreateTenantUseCase {
     record CreatedTenant(Tenant tenant, String temporaryPassword) {}
     record UpdateTenantCommand(String schoolName, String logo, String brandColor,
             String address, String city, String country, String phone, String email,
-            String website, String director, String accreditationNumber, String openingAuthorization,
+            String website, String director,
+            /** Numéro dédié aux alertes automatiques (fondateur) ; voir {@code Tenant#founderPhone}. */
+            String founderPhone,
+            String accreditationNumber, String openingAuthorization,
             String payoutMerchantNumber, String payoutOperator, String payoutAccountName,
             String motto, String slogan, String ire, String dpeLabel, String sousPrefectureLabel,
             /** Format du matricule (jetons {PREFIXE}/{ANNEE}/{NUM}) et nombre de chiffres du numéro

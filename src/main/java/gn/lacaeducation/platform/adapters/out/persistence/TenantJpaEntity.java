@@ -53,6 +53,10 @@ public class TenantJpaEntity {
 
     private String director;
 
+    /** Numéro dédié aux alertes automatiques (fondateur) ; voir {@code Tenant#founderPhone}. */
+    @Column(name = "founder_phone")
+    private String founderPhone;
+
     @Column(name = "accreditation_number")
     private String accreditationNumber;
 
