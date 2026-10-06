@@ -6,6 +6,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -20,15 +22,15 @@ public class InstallmentController {
     public record GenerateTermsRequest(Long feeId, BigDecimal annualTotal, List<TermRequest> terms) {}
     @Operation(summary = "Créer une nouvelle échéance pour un frais scolaire")
     @PreAuthorize("hasAuthority('frais_scolaire:create')")
-    @PostMapping public ResponseEntity<Installment> create(@RequestBody CreateRequest r) {
-        return ResponseEntity.ok(useCase.create(new InstallmentUseCase.CreateInstallmentCommand(r.feeId(), r.label(), r.amount(), r.dueDate(), r.months())));
+    @PostMapping public ResponseEntity<Installment> create(@RequestBody CreateRequest r, @AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok(useCase.create(new InstallmentUseCase.CreateInstallmentCommand(r.feeId(), r.label(), r.amount(), r.dueDate(), r.months()), currentUserId(jwt)));
     }
     @Operation(summary = "Générer des échéances trimestrielles pondérées (ex. 40/30/30) depuis un total annuel")
     @PreAuthorize("hasAuthority('frais_scolaire:create')")
-    @PostMapping("/generate-terms") public List<Installment> generateTerms(@RequestBody GenerateTermsRequest r) {
+    @PostMapping("/generate-terms") public List<Installment> generateTerms(@RequestBody GenerateTermsRequest r, @AuthenticationPrincipal Jwt jwt) {
         List<InstallmentUseCase.TermSpec> terms = r.terms().stream()
                 .map(t -> new InstallmentUseCase.TermSpec(t.label(), t.percentage(), t.dueDate())).toList();
-        return useCase.generateTerms(new InstallmentUseCase.GenerateTermsCommand(r.feeId(), r.annualTotal(), terms));
+        return useCase.generateTerms(new InstallmentUseCase.GenerateTermsCommand(r.feeId(), r.annualTotal(), terms), currentUserId(jwt));
     }
     @Operation(summary = "Modifier une échéance")
     @PreAuthorize("hasAuthority('frais_scolaire:update')")
@@ -45,7 +47,15 @@ public class InstallmentController {
     @GetMapping("/fee/{feeId}") public List<Installment> findByFee(@PathVariable Long feeId) { return useCase.findByFeeId(feeId); }
     @Operation(summary = "Supprimer une échéance")
     @PreAuthorize("hasAuthority('frais_scolaire:delete')")
-    @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id) { useCase.delete(id); return ResponseEntity.noContent().build(); }
+    @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id, @AuthenticationPrincipal Jwt jwt) {
+        useCase.delete(id, currentUserId(jwt));
+        return ResponseEntity.noContent().build();
+    }
+
+    private Long currentUserId(Jwt jwt) {
+        if (jwt == null) return null;
+        try { return Long.parseLong(jwt.getSubject()); } catch (RuntimeException e) { return null; }
+    }
 
     @Operation(summary = "Déclenche immédiatement la vérification des échéances en retard (même traitement "
             + "que le job planifié de 6h) — pour tester une relance sans attendre le lendemain matin")

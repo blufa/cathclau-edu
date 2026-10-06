@@ -26,7 +26,7 @@ class CourseBillingApiImpl implements CourseBillingApi {
     @Override
     public Long createCourseFee(Long tenantId, Long classId, BigDecimal amount, String academicYear, String label) {
         SchoolFee fee = schoolFeeUseCase.create(new SchoolFeeUseCase.CreateFeeCommand(
-                tenantId, classId, null, FeeType.OTHER, amount, academicYear, label));
+                tenantId, classId, null, FeeType.OTHER, amount, academicYear, label), null);
         return fee.getId();
     }
 

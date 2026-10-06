@@ -13,6 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -29,6 +30,7 @@ class InstallmentServiceTest {
 
     @Mock InstallmentRepository repo;
     @Mock SchoolFeeRepository schoolFeeRepository;
+    @Mock ApplicationEventPublisher eventPublisher;
     @InjectMocks InstallmentService service;
 
     private void feeOf(BigDecimal amount) {
@@ -44,7 +46,7 @@ class InstallmentServiceTest {
         when(repo.save(any(Installment.class))).thenAnswer(i -> i.getArgument(0));
 
         Installment created = service.create(new CreateInstallmentCommand(
-                1L, "Tranche 2", new BigDecimal("60.00"), LocalDate.now().plusDays(30), List.of("2025-10", "2025-11")));
+                1L, "Tranche 2", new BigDecimal("60.00"), LocalDate.now().plusDays(30), List.of("2025-10", "2025-11")), 99L);
 
         assertThat(created.getStatus()).isEqualTo(InstallmentStatus.PENDING);
         assertThat(created.getAmount()).isEqualByComparingTo("60.00");
@@ -57,7 +59,7 @@ class InstallmentServiceTest {
                 Installment.builder().id(5L).amount(new BigDecimal("80.00")).build()));
 
         assertThatThrownBy(() -> service.create(new CreateInstallmentCommand(
-                1L, "Tranche 2", new BigDecimal("30.00"), LocalDate.now(), List.of())))
+                1L, "Tranche 2", new BigDecimal("30.00"), LocalDate.now(), List.of()), 99L))
                 .isInstanceOf(BusinessRuleException.class);
     }
 
@@ -73,7 +75,7 @@ class InstallmentServiceTest {
         when(repo.save(any(Installment.class))).thenAnswer(i -> i.getArgument(0));
 
         Installment created = service.create(new CreateInstallmentCommand(
-                1L, "Octobre", new BigDecimal("100000.00"), LocalDate.now().plusDays(30), List.of("2025-10")));
+                1L, "Octobre", new BigDecimal("100000.00"), LocalDate.now().plusDays(30), List.of("2025-10")), 99L);
 
         assertThat(created.getAmount()).isEqualByComparingTo("100000.00");
     }
@@ -86,7 +88,7 @@ class InstallmentServiceTest {
         when(repo.save(any(Installment.class))).thenAnswer(i -> i.getArgument(0));
 
         Installment created = service.create(new CreateInstallmentCommand(
-                1L, "Novembre", new BigDecimal("50000.00"), LocalDate.now().plusDays(30), List.of("2025-11")));
+                1L, "Novembre", new BigDecimal("50000.00"), LocalDate.now().plusDays(30), List.of("2025-11")), 99L);
 
         assertThat(created.getAmount()).isEqualByComparingTo("50000.00");
     }
@@ -102,7 +104,7 @@ class InstallmentServiceTest {
                 Installment.builder().id(5L).amount(new BigDecimal("80.00")).build()));
 
         assertThatThrownBy(() -> service.create(new CreateInstallmentCommand(
-                1L, "Tranche 2", new BigDecimal("30.00"), LocalDate.now(), List.of())))
+                1L, "Tranche 2", new BigDecimal("30.00"), LocalDate.now(), List.of()), 99L))
                 .isInstanceOf(BusinessRuleException.class);
     }
 
@@ -111,7 +113,7 @@ class InstallmentServiceTest {
         when(schoolFeeRepository.findById(1L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.create(new CreateInstallmentCommand(
-                1L, "Tranche", BigDecimal.TEN, LocalDate.now(), List.of())))
+                1L, "Tranche", BigDecimal.TEN, LocalDate.now(), List.of()), 99L))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 }
