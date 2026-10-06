@@ -1,4 +1,7 @@
 package gn.lacaeducation.billing.application.service;
+import gn.lacaeducation.billing.application.event.InstallmentDeletedEvent;
+import gn.lacaeducation.billing.application.event.SchoolFeeCreatedEvent;
+import gn.lacaeducation.billing.application.event.SchoolFeeDeletedEvent;
 import gn.lacaeducation.billing.application.port.in.SchoolFeeUseCase;
 import gn.lacaeducation.billing.application.port.out.InstallmentRepository;
 import gn.lacaeducation.billing.application.port.out.InvoiceRepository;
@@ -8,6 +11,7 @@ import gn.lacaeducation.billing.domain.SchoolFee;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
@@ -17,9 +21,13 @@ public class SchoolFeeService implements SchoolFeeUseCase {
     private final SchoolFeeRepository repo;
     private final InstallmentRepository installmentRepo;
     private final InvoiceRepository invoiceRepo;
-    @Override public SchoolFee create(CreateFeeCommand c) {
-        return repo.save(SchoolFee.builder().tenantId(c.tenantId()).classId(c.classId()).routeId(c.routeId())
+    private final ApplicationEventPublisher eventPublisher;
+    @Override public SchoolFee create(CreateFeeCommand c, Long createdBy) {
+        SchoolFee saved = repo.save(SchoolFee.builder().tenantId(c.tenantId()).classId(c.classId()).routeId(c.routeId())
                 .type(c.type()).amount(c.amount()).academicYear(c.academicYear()).label(c.label()).build());
+        eventPublisher.publishEvent(new SchoolFeeCreatedEvent(saved.getTenantId(), saved.getId(), saved.getLabel(),
+                saved.getType() == null ? null : saved.getType().name(), saved.getAmount(), saved.getAcademicYear(), createdBy));
+        return saved;
     }
     @Override public SchoolFee update(Long id, UpdateFeeCommand c) {
         SchoolFee f = load(id); f.setClassId(c.classId()); f.setRouteId(c.routeId()); f.setType(c.type()); f.setAmount(c.amount());
@@ -57,8 +65,8 @@ public class SchoolFeeService implements SchoolFeeUseCase {
     }
 
     @Override
-    public void delete(Long id) {
-        load(id); // 404 si le frais n'existe pas
+    public void delete(Long id, Long deletedBy) {
+        SchoolFee fee = load(id); // 404 si le frais n'existe pas
         // Un frais déjà facturé à des élèves ne doit jamais être supprimé (données financières réelles) —
         // message métier clair plutôt que de laisser remonter la violation de contrainte SQL brute.
         if (!invoiceRepo.findByFeeId(id).isEmpty()) {
@@ -70,8 +78,11 @@ public class SchoolFeeService implements SchoolFeeUseCase {
         // financières réelles — supprimable sans risque avec le frais.
         for (Installment i : installmentRepo.findByFeeId(id)) {
             installmentRepo.deleteById(i.getId());
+            eventPublisher.publishEvent(new InstallmentDeletedEvent(fee.getTenantId(), i.getId(), id, i.getLabel(), i.getAmount(), null));
         }
         repo.deleteById(id);
+        eventPublisher.publishEvent(new SchoolFeeDeletedEvent(fee.getTenantId(), id, fee.getLabel(),
+                fee.getType() == null ? null : fee.getType().name(), fee.getAmount(), fee.getAcademicYear(), deletedBy));
     }
 
     @Override

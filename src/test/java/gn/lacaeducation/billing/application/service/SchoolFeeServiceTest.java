@@ -13,6 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -30,6 +31,7 @@ class SchoolFeeServiceTest {
     @Mock SchoolFeeRepository repo;
     @Mock InstallmentRepository installmentRepo;
     @Mock InvoiceRepository invoiceRepo;
+    @Mock ApplicationEventPublisher eventPublisher;
     @InjectMocks SchoolFeeService service;
 
     private final SchoolFee fee = SchoolFee.builder().id(168L).tenantId(1L)
@@ -43,7 +45,7 @@ class SchoolFeeServiceTest {
         Installment i2 = Installment.builder().id(2L).feeId(168L).build();
         when(installmentRepo.findByFeeId(168L)).thenReturn(List.of(i1, i2));
 
-        service.delete(168L);
+        service.delete(168L, 99L);
 
         verify(installmentRepo).deleteById(1L);
         verify(installmentRepo).deleteById(2L);
@@ -55,7 +57,7 @@ class SchoolFeeServiceTest {
         when(repo.findById(168L)).thenReturn(Optional.of(fee));
         when(invoiceRepo.findByFeeId(168L)).thenReturn(List.of(Invoice.builder().id(9L).feeId(168L).build()));
 
-        assertThatThrownBy(() -> service.delete(168L)).isInstanceOf(BusinessRuleException.class);
+        assertThatThrownBy(() -> service.delete(168L, 99L)).isInstanceOf(BusinessRuleException.class);
 
         verify(installmentRepo, never()).deleteById(org.mockito.ArgumentMatchers.anyLong());
         verify(repo, never()).deleteById(org.mockito.ArgumentMatchers.anyLong());

@@ -11,12 +11,14 @@ public interface InstallmentUseCase {
     record TermSpec(String label, BigDecimal percentage, LocalDate dueDate) {}
     /** Génère N échéances depuis un total annuel et une répartition en % (ex. 40/30/30). */
     record GenerateTermsCommand(Long feeId, BigDecimal annualTotal, List<TermSpec> terms) {}
-    Installment create(CreateInstallmentCommand command);
-    List<Installment> generateTerms(GenerateTermsCommand command);
+    Installment create(CreateInstallmentCommand command, Long createdBy);
+    List<Installment> generateTerms(GenerateTermsCommand command, Long createdBy);
     Installment update(Long id, UpdateInstallmentCommand command);
     Optional<Installment> findById(Long id);
     List<Installment> findByFeeId(Long feeId);
-    void delete(Long id);
+    /** {@code deletedBy} : qui a supprimé cette échéance/tranche — tracé dans le journal d'audit
+     * (§retour fondateurs, même raisonnement que {@code SchoolFeeUseCase#delete}). */
+    void delete(Long id, Long deletedBy);
     /**
      * Déclenche immédiatement, pour le tenant courant, la vérification des échéances en retard (même
      * traitement que le job planifié quotidien de 6h — utile pour tester une relance sans attendre le

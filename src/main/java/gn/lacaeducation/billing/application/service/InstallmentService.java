@@ -1,4 +1,6 @@
 package gn.lacaeducation.billing.application.service;
+import gn.lacaeducation.billing.application.event.InstallmentCreatedEvent;
+import gn.lacaeducation.billing.application.event.InstallmentDeletedEvent;
 import gn.lacaeducation.billing.application.port.in.InstallmentUseCase;
 import gn.lacaeducation.billing.application.port.out.InstallmentRepository;
 import gn.lacaeducation.billing.application.port.out.SchoolFeeRepository;
@@ -9,6 +11,7 @@ import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.common.TenantContext;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
@@ -19,20 +22,23 @@ public class InstallmentService implements InstallmentUseCase {
     private final InstallmentRepository repo;
     private final SchoolFeeRepository schoolFeeRepository;
     private final OverdueInstallmentProcessor overdueInstallmentProcessor;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     public void checkOverdueNow() {
         overdueInstallmentProcessor.checkOverdueDeadlinesForTenant(TenantContext.get(), java.time.LocalDate.now());
     }
 
-    @Override public Installment create(CreateInstallmentCommand c) {
+    @Override public Installment create(CreateInstallmentCommand c, Long createdBy) {
         validateInstallmentSum(c.feeId(), null, c.amount());
-        return repo.save(Installment.builder()
+        Installment saved = repo.save(Installment.builder()
                 .feeId(c.feeId()).label(c.label()).amount(c.amount())
                 .dueDate(c.dueDate()).status(InstallmentStatus.PENDING).months(c.months()).build());
+        publishCreated(saved, createdBy);
+        return saved;
     }
 
-    @Override public List<Installment> generateTerms(GenerateTermsCommand c) {
+    @Override public List<Installment> generateTerms(GenerateTermsCommand c, Long createdBy) {
         SchoolFee fee = schoolFeeRepository.findById(c.feeId())
                 .orElseThrow(() -> new ResourceNotFoundException("SchoolFee", c.feeId()));
         java.math.BigDecimal total = c.annualTotal() != null && c.annualTotal().signum() > 0
@@ -48,11 +54,20 @@ public class InstallmentService implements InstallmentUseCase {
             java.math.BigDecimal pct = t.percentage() != null ? t.percentage() : java.math.BigDecimal.ZERO;
             java.math.BigDecimal amount = total.multiply(pct)
                     .divide(java.math.BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
-            created.add(repo.save(Installment.builder()
+            Installment saved = repo.save(Installment.builder()
                     .feeId(c.feeId()).label(t.label()).amount(amount).dueDate(t.dueDate())
-                    .status(InstallmentStatus.PENDING).build()));
+                    .status(InstallmentStatus.PENDING).build());
+            publishCreated(saved, createdBy);
+            created.add(saved);
         }
         return created;
+    }
+
+    private void publishCreated(Installment saved, Long createdBy) {
+        SchoolFee fee = schoolFeeRepository.findById(saved.getFeeId()).orElse(null);
+        Long tenantId = fee == null ? null : fee.getTenantId();
+        eventPublisher.publishEvent(new InstallmentCreatedEvent(tenantId, saved.getId(), saved.getFeeId(),
+                saved.getLabel(), saved.getAmount(), saved.getDueDate(), createdBy));
     }
 
     @Override public Installment update(Long id, UpdateInstallmentCommand c) {
@@ -75,8 +90,12 @@ public class InstallmentService implements InstallmentUseCase {
     }
 
     @Override
-    public void delete(Long id) {
+    public void delete(Long id, Long deletedBy) {
+        Installment i = load(id);
+        SchoolFee fee = schoolFeeRepository.findById(i.getFeeId()).orElse(null);
         repo.deleteById(id);
+        eventPublisher.publishEvent(new InstallmentDeletedEvent(fee == null ? null : fee.getTenantId(),
+                id, i.getFeeId(), i.getLabel(), i.getAmount(), deletedBy));
     }
 
     /**
