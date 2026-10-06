@@ -103,7 +103,7 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
                         new String[]{"Matricule", safe(payerDirectory.studentNumber(studentId).orElse(null))},
                         new String[]{"Nom & Prénom", safe(receipt.getStudentName())},
                         new String[]{"Classe", safe(payerDirectory.className(studentId).orElse(null))});
-                studentBlock.setSpacingBefore(8f);
+                studentBlock.setSpacingBefore(5f);
                 doc.add(studentBlock);
                 doc.add(invoicesTable(studentId));
                 totalRow(doc, "Total payé", money(receipt.getAmount()) + " GNF");
@@ -114,7 +114,7 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
                             new String[]{"Élève", safe(payerDirectory.studentName(studentId).orElse(null))},
                             new String[]{"Matricule", safe(payerDirectory.studentNumber(studentId).orElse(null))},
                             new String[]{"Classe", safe(payerDirectory.className(studentId).orElse(null))});
-                    studentBlock.setSpacingBefore(8f);
+                    studentBlock.setSpacingBefore(5f);
                     doc.add(studentBlock);
                     doc.add(invoicesTable(studentId));
                 }
@@ -185,32 +185,53 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
      * Toutes les factures (non annulées) de l'élève — pas seulement celle(s) couvertes par ce
      * paiement — pour que le reçu serve de vue d'ensemble de sa situation (§retour comptable) : Réf.,
      * Montant, Observation (type de frais + période), et une colonne Payé en gras (OUI/NON) donnant
-     * son statut de règlement à cette date.
+     * son statut de règlement à cette date. Lignes compactes (padding réduit, voir
+     * {@link #compactHeaderCell}/{@link #compactCell}) plutôt que {@code AdminDocumentLayout#cell} :
+     * ce tableau grandit avec le nombre de factures de l'élève (mensualités + frais annexes sur
+     * l'année) et était la cause du débordement du reçu sur une deuxième page — jamais touché sur la
+     * facture/fiche de paie, qui n'ont pas ce problème (§retour comptable).
      */
     private PdfPTable invoicesTable(Long studentId) {
         PdfPTable t = dataTable(new float[]{1.1f, 1.1f, 1.4f, 0.6f});
-        headerCell(t, "Réf.");
-        headerCell(t, "Montant");
-        headerCell(t, "Observation");
-        headerCell(t, "Payé");
+        t.setSpacingBefore(6f);
+        compactHeaderCell(t, "Réf.");
+        compactHeaderCell(t, "Montant");
+        compactHeaderCell(t, "Observation");
+        compactHeaderCell(t, "Payé");
 
         List<PayerDirectory.InvoiceRowInfo> invoices = payerDirectory.studentInvoices(studentId);
         for (PayerDirectory.InvoiceRowInfo inv : invoices) {
-            cell(t, inv.reference(), Element.ALIGN_LEFT);
-            cell(t, money(inv.amount()) + " GNF", Element.ALIGN_RIGHT);
-            cell(t, inv.label(), Element.ALIGN_LEFT);
+            compactCell(t, inv.reference(), Element.ALIGN_LEFT);
+            compactCell(t, money(inv.amount()) + " GNF", Element.ALIGN_RIGHT);
+            compactCell(t, inv.label(), Element.ALIGN_LEFT);
             t.addCell(paidCell(inv.paid()));
         }
         return t;
     }
 
-    /** OUI (vert) / NON (rouge) en gras — jamais dans la police neutre de {@link #cell}, pour que le
-     * statut de règlement saute aux yeux sur le reçu papier. */
+    private void compactHeaderCell(PdfPTable t, String label) {
+        PdfPCell c = new PdfPCell(new com.lowagie.text.Phrase(label, font(FontFactory.HELVETICA_BOLD, 8.5f, java.awt.Color.WHITE)));
+        c.setBackgroundColor(DARK);
+        c.setPadding(3.5f);
+        c.setBorderColor(LINE);
+        t.addCell(c);
+    }
+
+    private void compactCell(PdfPTable t, String value, int align) {
+        PdfPCell c = new PdfPCell(new com.lowagie.text.Phrase(value == null ? "-" : value, font(FontFactory.HELVETICA, 8.5f, DARK)));
+        c.setPadding(3.5f);
+        c.setBorderColor(LINE);
+        c.setHorizontalAlignment(align);
+        t.addCell(c);
+    }
+
+    /** OUI (vert) / NON (rouge) en gras — jamais dans la police neutre de {@link #compactCell}, pour
+     * que le statut de règlement saute aux yeux sur le reçu papier. */
     private com.lowagie.text.pdf.PdfPCell paidCell(boolean paid) {
         java.awt.Color color = paid ? new java.awt.Color(20, 120, 40) : new java.awt.Color(170, 30, 30);
         com.lowagie.text.pdf.PdfPCell c = new com.lowagie.text.pdf.PdfPCell(
-                new com.lowagie.text.Phrase(paid ? "OUI" : "NON", font(FontFactory.HELVETICA_BOLD, 9, color)));
-        c.setPadding(6f);
+                new com.lowagie.text.Phrase(paid ? "OUI" : "NON", font(FontFactory.HELVETICA_BOLD, 8.5f, color)));
+        c.setPadding(3.5f);
         c.setBorderColor(LINE);
         c.setHorizontalAlignment(Element.ALIGN_CENTER);
         return c;
@@ -233,7 +254,7 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
         Paragraph rest = new Paragraph();
         rest.add(new Chunk("Reste à payer", boldLabel));
         rest.add(new Chunk(" : " + money(total) + " GNF", font(FontFactory.HELVETICA_BOLD, 9.5f, DARK)));
-        rest.setSpacingBefore(6f);
+        rest.setSpacingBefore(4f);
         doc.add(rest);
     }
 
@@ -291,19 +312,25 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
      * "Tél :" de l'école affiché en en-tête. Le reçu ne doit JAMAIS déborder sur une deuxième page
      * (retour comptable) : une valeur fixe (essayé 80pt, puis 40pt) reste sujette au débordement dès
      * que le tableau de factures au-dessus est long — la hauteur de l'espace est donc calculée à
-     * partir de ce qu'il reste réellement avant le bas de page, plutôt qu'une constante. */
+     * partir de ce qu'il reste réellement avant le bas de page, plutôt qu'une constante. L'espacement
+     * AVANT le libellé lui-même est également réduit quand la place restante est déjà faible : un
+     * `spacingBefore` fixe de 24pt pouvait, à lui seul, faire basculer le libellé (et donc tout le
+     * bloc nom/téléphone qui le suit) sur une deuxième page même quand il ne restait qu'une poignée
+     * de points sur la première — c'est ce qui causait le nom/téléphone imprimés seuls en page 2.
+     */
     private void comptableSignatureBlock(Document doc, PdfWriter writer, Receipt receipt, Long collectedByUserId) {
+        float availableBeforeLabel = writer.getVerticalPosition(true) - doc.bottom();
         Paragraph label = new Paragraph("Signature et Cachet du Comptable",
                 font(FontFactory.HELVETICA_BOLD, 9.5f, DARK));
         label.setAlignment(Element.ALIGN_RIGHT);
-        label.setSpacingBefore(24f);
+        label.setSpacingBefore(availableBeforeLabel > 70f ? 14f : 4f);
         doc.add(label);
         // Place restante avant le bas de page, moins la place nécessaire au nom/téléphone qui suivent
-        // (~26pt pour deux lignes) : l'espace de signature se réduit tout seul si le contenu
+        // (~22pt pour deux lignes) : l'espace de signature se réduit tout seul si le contenu
         // au-dessus était déjà long, au lieu d'imposer une hauteur fixe qui pousserait le nom/téléphone
         // sur une deuxième page.
-        float remaining = writer.getVerticalPosition(true) - doc.bottom() - 26f;
-        float spacerHeight = Math.max(10f, Math.min(40f, remaining));
+        float remaining = writer.getVerticalPosition(true) - doc.bottom() - 22f;
+        float spacerHeight = Math.max(8f, Math.min(30f, remaining));
         Paragraph spacer = new Paragraph(" ", font(FontFactory.HELVETICA, 9.5f, GREY));
         spacer.setSpacingBefore(spacerHeight);
         doc.add(spacer);

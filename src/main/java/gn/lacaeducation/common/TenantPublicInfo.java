@@ -20,4 +20,10 @@ public record TenantPublicInfo(Long id, String schoolName, String email, String 
                                /** Format de matricule défini par l'école (jetons {PREFIXE}/{ANNEE}/{NUM}) et
                                 * nombre de chiffres du numéro séquentiel — null = valeurs par défaut. Voir
                                 * {@link MatriculeFormatter}. */
-                               String matriculeFormat, Integer matriculeDigits) {}
+                               String matriculeFormat, Integer matriculeDigits,
+                               /** Numéro du fondateur/administrateur dédié aux alertes automatiques
+                                * (écart de caisse, exonération suspecte, retard/absence enseignant…) —
+                                * §retour fondateurs. Null = les alertes restent envoyées à tous les
+                                * comptes SCHOOL_ADMIN du tenant (comportement historique), voir
+                                * {@code CommunicationEventListener#notifySchoolAdmins}. */
+                               String founderPhone) {}

@@ -71,7 +71,7 @@ public class TenantController {
     public TenantResponse update(@PathVariable Long id, @Valid @RequestBody UpdateTenantRequest req) {
         return TenantResponse.from(tenantUseCase.update(id, new CreateTenantUseCase.UpdateTenantCommand(
                 req.schoolName(), req.logo(), req.brandColor(), req.address(), req.city(),
-                req.country(), req.phone(), req.email(), req.website(), req.director(),
+                req.country(), req.phone(), req.email(), req.website(), req.director(), req.founderPhone(),
                 req.accreditationNumber(), req.openingAuthorization(),
                 req.payoutMerchantNumber(), req.payoutOperator(), req.payoutAccountName(),
                 req.motto(), req.slogan(), req.ire(), req.dpeLabel(), req.sousPrefectureLabel(),

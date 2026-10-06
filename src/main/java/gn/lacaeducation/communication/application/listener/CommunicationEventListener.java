@@ -622,28 +622,47 @@ public class CommunicationEventListener {
     }
 
     /**
-     * Alerte par SMS le(s) compte(s) SCHOOL_ADMIN de l'école (« fondateur ») dès qu'un paiement est
-     * reçu, en plus de la notification au parent — décision produit : pas encore de numéro de
-     * fondateur dédié dans les paramètres du tenant, on utilise le compte administrateur
-     * (§communication). Alerte aussi le comptable/caissier qui a physiquement encaissé
-     * ({@code collectedByUserId}, canal CASH uniquement), pas seulement les SCHOOL_ADMIN — son
-     * numéro peut être différent (point 2, retour comptable). Un même numéro n'est jamais alerté deux
-     * fois (ex. le SCHOOL_ADMIN encaisse lui-même). Contenu identique au SMS du parent
-     * ({@link #paymentSmsBody}) : le comptable/fondateur doit voir le même montant payé et le même
-     * reste à payer, pas un message différent (§retour comptable).
+     * Numéro(s) à alerter pour les sujets « fondateur » (paiement reçu, écarts de caisse,
+     * exonérations suspectes, présence sans inscription, retard/absence enseignant…) — §retour
+     * fondateurs : « l'alerte n'arrive pas toujours sur le numéro du fondateur ». Si l'école a
+     * renseigné un numéro de fondateur dédié ({@code Tenant#founderPhone}, Paramètres de l'école),
+     * on alerte UNIQUEMENT ce numéro. Sinon, on retombe sur tous les comptes SCHOOL_ADMIN
+     * (comportement historique, nécessaire tant que ce numéro n'est pas configuré).
+     */
+    private List<String> founderAlertPhones(Long tenantId) {
+        String founderPhone = tenantInfoProvider.findTenantInfo(tenantId)
+                .map(TenantPublicInfo::founderPhone)
+                .filter(p -> p != null && !p.isBlank())
+                .orElse(null);
+        if (founderPhone != null) {
+            return List.of(founderPhone);
+        }
+        return schoolStaffDirectory.findSchoolAdminContacts(tenantId).stream()
+                .map(gn.lacaeducation.iam.SchoolStaffDirectory.SchoolAdminContact::phone)
+                .filter(p -> p != null && !p.isBlank())
+                .distinct()
+                .toList();
+    }
+
+    /**
+     * Alerte par SMS le numéro du fondateur (voir {@link #founderAlertPhones}) dès qu'un paiement est
+     * reçu, en plus de la notification au parent. Alerte aussi le comptable/caissier qui a
+     * physiquement encaissé ({@code collectedByUserId}, canal CASH uniquement), pas seulement le
+     * fondateur — son numéro peut être différent (point 2, retour comptable). Un même numéro n'est
+     * jamais alerté deux fois (ex. le fondateur encaisse lui-même). Contenu identique au SMS du
+     * parent ({@link #paymentSmsBody}) : le comptable/fondateur doit voir le même montant payé et le
+     * même reste à payer, pas un message différent (§retour comptable).
      */
     private void notifyFounder(Long tenantId, String studentName, String amount, String restLine, Long collectedByUserId) {
         java.util.LinkedHashMap<String, String> byPhone = new java.util.LinkedHashMap<>();
-        schoolStaffDirectory.findSchoolAdminContacts(tenantId).forEach(c -> {
-            if (c.phone() != null && !c.phone().isBlank()) byPhone.putIfAbsent(c.phone(), c.phone());
-        });
+        founderAlertPhones(tenantId).forEach(phone -> byPhone.putIfAbsent(phone, phone));
         if (collectedByUserId != null) {
             userPublicInfoProvider.findUser(collectedByUserId).ifPresent(u -> {
                 if (u.phone() != null && !u.phone().isBlank()) byPhone.putIfAbsent(u.phone(), u.phone());
             });
         }
         if (byPhone.isEmpty()) {
-            log.debug("Aucun compte SCHOOL_ADMIN/comptable joignable par SMS pour le tenant {}; alerte fondateur ignorée", tenantId);
+            log.debug("Aucun numéro fondateur/SCHOOL_ADMIN/comptable joignable par SMS pour le tenant {}; alerte fondateur ignorée", tenantId);
             return;
         }
         List<RecipientTarget> targets = byPhone.values().stream().map(phone -> new RecipientTarget(null, phone)).toList();
@@ -653,18 +672,14 @@ public class CommunicationEventListener {
     }
 
     /**
-     * SMS aux seuls comptes SCHOOL_ADMIN de l'école (jamais le comptable/l'auteur de l'action
-     * concernée) — réservé aux alertes de sécurité (§retour fondateurs). Contrairement à
+     * SMS au numéro du fondateur (voir {@link #founderAlertPhones} ; jamais le comptable/l'auteur de
+     * l'action concernée) — réservé aux alertes de sécurité (§retour fondateurs). Contrairement à
      * {@link #notifyFounder}, ne reçoit aucun identifiant d'utilisateur à inclure en plus.
      */
     private void notifySchoolAdmins(Long tenantId, String subject, String content) {
-        List<String> phones = schoolStaffDirectory.findSchoolAdminContacts(tenantId).stream()
-                .map(gn.lacaeducation.iam.SchoolStaffDirectory.SchoolAdminContact::phone)
-                .filter(p -> p != null && !p.isBlank())
-                .distinct()
-                .toList();
+        List<String> phones = founderAlertPhones(tenantId);
         if (phones.isEmpty()) {
-            log.debug("Aucun compte SCHOOL_ADMIN joignable par SMS pour le tenant {} ; alerte sécurité ignorée", tenantId);
+            log.debug("Aucun numéro fondateur/SCHOOL_ADMIN joignable par SMS pour le tenant {} ; alerte sécurité ignorée", tenantId);
             return;
         }
         List<RecipientTarget> targets = phones.stream().map(phone -> new RecipientTarget(null, phone)).toList();

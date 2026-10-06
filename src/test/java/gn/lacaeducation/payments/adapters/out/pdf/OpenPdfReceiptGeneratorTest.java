@@ -53,7 +53,7 @@ class OpenPdfReceiptGeneratorTest {
     @Test
     void generate_withMixOfPaidAndUnpaidInvoices_producesValidPdf() {
         lenient().when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.of(
-                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
+                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
         when(payerDirectory.className(7L)).thenReturn(Optional.of("7ème A"));
         when(payerDirectory.studentNumber(7L)).thenReturn(Optional.of("MAT-1"));
         when(payerDirectory.currentAcademicYearLabel(10L)).thenReturn(Optional.of("2025-2026"));
@@ -168,7 +168,7 @@ class OpenPdfReceiptGeneratorTest {
     @Test
     void generate_fullYearOfInvoices_staysOnSinglePage() {
         lenient().when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.of(
-                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
+                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
         when(payerDirectory.className(7L)).thenReturn(Optional.of("7ème A"));
         when(payerDirectory.studentNumber(7L)).thenReturn(Optional.of("MAT-1"));
         when(payerDirectory.currentAcademicYearLabel(10L)).thenReturn(Optional.of("2025-2026"));
@@ -192,6 +192,48 @@ class OpenPdfReceiptGeneratorTest {
         assertThat(pdf).isNotEmpty();
         // Compte les objets "/Type /Page" (pas "/Type /Pages", le nœud racine, toujours présent une
         // fois) — heuristique simple faute de bibliothèque d'extraction de PDF dans le projet.
+        String content = new String(pdf, java.nio.charset.StandardCharsets.ISO_8859_1);
+        long pageObjectCount = java.util.regex.Pattern.compile("/Type\\s*/Page(?!s)\\b")
+                .matcher(content).results().count();
+        assertThat(pageObjectCount).as("nombre de pages du reçu").isEqualTo(1);
+    }
+
+    /** Retour comptable direct : le nom/téléphone du comptable (bloc signature) sortait sur une 2e
+     * page pour un élève avec deux années scolaires de factures (24 mensualités + frais annexes) PLUS
+     * une remise et des frais de plateforme (deux notes supplémentaires en bas de reçu) — un cas plus
+     * chargé que {@link #generate_fullYearOfInvoices_staysOnSinglePage}, qui ne couvrait qu'une année. */
+    @Test
+    void generate_twoYearsOfInvoicesWithDiscountAndPlatformFee_staysOnSinglePage() {
+        lenient().when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.of(
+                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
+        when(payerDirectory.className(7L)).thenReturn(Optional.of("7ème A"));
+        when(payerDirectory.studentNumber(7L)).thenReturn(Optional.of("MAT-1"));
+        when(payerDirectory.currentAcademicYearLabel(10L)).thenReturn(Optional.of("2025-2026"));
+        when(payerDirectory.operatorPhone(99L)).thenReturn(Optional.of("+224614324299"));
+        String[] months = {"Septembre", "Octobre", "Novembre", "Décembre", "Janvier", "Février",
+                "Mars", "Avril", "Mai", "Juin"};
+        List<InvoiceRowInfo> invoices = new java.util.ArrayList<>();
+        for (String year : new String[]{"2024-2025", "2025-2026"}) {
+            for (String month : months) {
+                invoices.add(new InvoiceRowInfo("FAC-" + month + "-" + year,
+                        new BigDecimal("100000"), "Mensualité — " + month + " " + year, true));
+            }
+        }
+        invoices.add(new InvoiceRowInfo("FAC-INS", new BigDecimal("250000"), "Inscription", true));
+        invoices.add(new InvoiceRowInfo("FAC-TRANS", new BigDecimal("300000"), "Transport", false));
+        invoices.add(new InvoiceRowInfo("FAC-CANT", new BigDecimal("400000"), "Cantine", false));
+        invoices.add(new InvoiceRowInfo("FAC-EXAM", new BigDecimal("50000"), "Examen", true));
+        when(payerDirectory.studentInvoices(7L)).thenReturn(invoices);
+        when(payerDirectory.unpaidInvoices(7L)).thenReturn(List.of(
+                new UnpaidInvoiceInfo("Transport", new BigDecimal("300000")),
+                new UnpaidInvoiceInfo("Cantine", new BigDecimal("400000"))));
+        when(payerDirectory.invoiceFeeInfo(2L)).thenReturn(Optional.of(new PayerDirectory.InvoiceFeeInfo(
+                "Mensualité", "Octobre 2026", new BigDecimal("10000"),
+                "Exonération : Avantage personnel (50%)", new BigDecimal("5000"))));
+
+        byte[] pdf = generator().generate(receipt(), payment());
+
+        assertThat(pdf).isNotEmpty();
         String content = new String(pdf, java.nio.charset.StandardCharsets.ISO_8859_1);
         long pageObjectCount = java.util.regex.Pattern.compile("/Type\\s*/Page(?!s)\\b")
                 .matcher(content).results().count();

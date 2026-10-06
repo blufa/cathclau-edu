@@ -133,7 +133,7 @@ class CommunicationEventListenerTest {
         when(schoolStaffDirectory.findSchoolAdminContacts(10L))
                 .thenReturn(List.of(new SchoolAdminContact("622000000", "Directeur École")));
         when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.of(
-                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
+                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
         when(templateRepository.findByTenantIdAndReason(any(), any())).thenReturn(Optional.empty());
 
         listener().onPaymentSucceeded(new PaymentSucceededEvent(10L, 7L, 1L, null, new BigDecimal("50000"), null));
@@ -189,7 +189,7 @@ class CommunicationEventListenerTest {
         when(userPublicInfoProvider.findUser(99L))
                 .thenReturn(Optional.of(new UserPublicInfo(99L, "Fatoumata", "Camara", "628000000")));
         when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.of(
-                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
+                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
         when(templateRepository.findByTenantIdAndReason(any(), any())).thenReturn(Optional.empty());
 
         listener().onPaymentSucceeded(new PaymentSucceededEvent(10L, 7L, 1L, null, new BigDecimal("50000"), 99L));
@@ -213,7 +213,7 @@ class CommunicationEventListenerTest {
         when(userPublicInfoProvider.findUser(99L))
                 .thenReturn(Optional.of(new UserPublicInfo(99L, "Fatoumata", "Camara", "628000000")));
         when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.of(
-                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
+                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
 
         listener().onCashierSessionClosed(new CashierSessionClosedEvent(10L, 99L, 5L,
                 new BigDecimal("50000"), new BigDecimal("30000"), new BigDecimal("-20000")));
@@ -256,7 +256,7 @@ class CommunicationEventListenerTest {
         when(userPublicInfoProvider.findUser(99L))
                 .thenReturn(Optional.of(new UserPublicInfo(99L, "Fatoumata", "Camara", "628000000")));
         when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.of(
-                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
+                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
 
         listener().onCashCollectedWithoutOpenSession(
                 new gn.lacaeducation.payments.application.event.CashCollectedWithoutOpenSessionEvent(
@@ -278,7 +278,7 @@ class CommunicationEventListenerTest {
         when(schoolStaffDirectory.findSchoolAdminContacts(10L))
                 .thenReturn(List.of(new SchoolAdminContact("622000000", "Directeur École")));
         when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.of(
-                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
+                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
 
         listener().onUndeclaredAttendance(new gn.lacaeducation.attendance.application.event.UndeclaredAttendanceEvent(
                 10L, 7L, java.time.LocalDate.of(2026, 10, 4)));
@@ -303,6 +303,21 @@ class CommunicationEventListenerTest {
         verify(communicationUseCase, times(0)).send(any());
     }
 
+    @Test
+    void onUndeclaredAttendance_founderPhoneConfigured_alertsOnlyFounderNotSchoolAdmins() {
+        when(studentDataProvider.findStudent(7L)).thenReturn(Optional.of(student));
+        when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.of(
+                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, "625111111")));
+
+        listener().onUndeclaredAttendance(new gn.lacaeducation.attendance.application.event.UndeclaredAttendanceEvent(
+                10L, 7L, java.time.LocalDate.of(2026, 10, 4)));
+
+        ArgumentCaptor<SendCommunicationCommand> captor = ArgumentCaptor.forClass(SendCommunicationCommand.class);
+        verify(communicationUseCase).send(captor.capture());
+        assertThat(captor.getValue().recipients()).extracting("destination").containsExactly("625111111");
+        verify(schoolStaffDirectory, times(0)).findSchoolAdminContacts(any());
+    }
+
     // ── onAccountantAnomalyDetected (§retour fondateurs, détecteur B3) ──────────────────────────────
 
     @Test
@@ -312,7 +327,7 @@ class CommunicationEventListenerTest {
         when(userPublicInfoProvider.findUser(99L))
                 .thenReturn(Optional.of(new UserPublicInfo(99L, "Fatoumata", "Camara", "628000000")));
         when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.of(
-                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
+                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
 
         listener().onAccountantAnomalyDetected(new gn.lacaeducation.audit.application.event.AccountantAnomalyDetectedEvent(
                 10L, 99L, "CASH_DISCREPANCY", new BigDecimal("900000"), new BigDecimal("7500")));
@@ -346,7 +361,7 @@ class CommunicationEventListenerTest {
         when(studentDataProvider.findParentsByStudent(7L))
                 .thenReturn(List.of(new ParentPublicInfo(1L, "Mariama", "Bah", null, "621000000")));
         when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.of(
-                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
+                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
         when(templateRepository.findByTenantIdAndReason(any(), any())).thenReturn(Optional.empty());
         when(schoolStaffDirectory.findSchoolAdminContacts(10L)).thenReturn(List.of());
         when(payerDirectory.invoiceFeeInfo(50L)).thenReturn(Optional.of(
@@ -374,7 +389,7 @@ class CommunicationEventListenerTest {
         when(studentDataProvider.findParentsByStudent(7L))
                 .thenReturn(List.of(new ParentPublicInfo(1L, "Mariama", "Bah", null, "621000000")));
         when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.of(
-                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
+                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
         when(templateRepository.findByTenantIdAndReason(any(), any())).thenReturn(Optional.empty());
         when(schoolStaffDirectory.findSchoolAdminContacts(10L)).thenReturn(List.of());
         when(payerDirectory.invoiceFeeInfo(50L)).thenReturn(Optional.empty());

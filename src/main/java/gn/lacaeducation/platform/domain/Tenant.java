@@ -29,6 +29,14 @@ public class Tenant {
     private String email;
     private String website;
     private String director;
+    /**
+     * Numéro du fondateur/administrateur dédié à la réception des alertes automatiques (écart de
+     * caisse, exonération suspecte, présence sans inscription, retard/absence enseignant…) —
+     * §retour fondateurs. Distinct de {@code phone} (numéro général de l'école, imprimé sur les
+     * documents/badges). Null = on continue de notifier tous les comptes SCHOOL_ADMIN du tenant
+     * (comportement historique), voir {@code CommunicationEventListener#notifySchoolAdmins}.
+     */
+    private String founderPhone;
     /** Numéro d'agrément de l'établissement (mention légale sur les documents officiels). */
     private String accreditationNumber;
     /** Référence de l'autorisation d'ouverture délivrée par le ministère. */
