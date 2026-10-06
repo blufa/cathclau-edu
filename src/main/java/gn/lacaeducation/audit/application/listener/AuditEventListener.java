@@ -4,7 +4,11 @@ import gn.lacaeducation.attendance.application.event.UndeclaredAttendanceEvent;
 import gn.lacaeducation.audit.application.port.in.AuditLogUseCase;
 import gn.lacaeducation.audit.application.port.in.AuditLogUseCase.RecordAuditCommand;
 import gn.lacaeducation.billing.application.event.ExemptionGrantedEvent;
+import gn.lacaeducation.billing.application.event.InstallmentCreatedEvent;
+import gn.lacaeducation.billing.application.event.InstallmentDeletedEvent;
 import gn.lacaeducation.billing.application.event.InvoiceGeneratedEvent;
+import gn.lacaeducation.billing.application.event.SchoolFeeCreatedEvent;
+import gn.lacaeducation.billing.application.event.SchoolFeeDeletedEvent;
 import gn.lacaeducation.common.TenantContext;
 import gn.lacaeducation.iam.application.event.PermissionsModifiedEvent;
 import gn.lacaeducation.iam.application.event.RoleAssignedEvent;
@@ -192,6 +196,42 @@ public class AuditEventListener {
         save(event.tenantId(), event.validatedBy(), "EXEMPTION_GRANTED", "Exemption", event.exemptionId(),
                 "studentId=" + event.studentId() + ";type=" + event.type() + ";percentage=" + event.percentage()
                         + ";amount=" + event.amount() + ";reason=" + event.reason());
+    }
+
+    // ── Frais scolaires / échéances (« tranches ») — retour fondateurs : un comptable qui signale
+    // "mes frais ont disparu" doit pouvoir vérifier dans /audit-logs quand ils ont été créés/supprimés
+    // et par qui, pour distinguer une suppression faite dans l'application d'une disparition
+    // inexpliquée (manipulation directe de la base, hors de l'application). ──
+
+    @TransactionalEventListener
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onSchoolFeeCreated(SchoolFeeCreatedEvent event) {
+        save(event.tenantId(), event.createdBy(), "SCHOOL_FEE_CREATED", "SchoolFee", event.feeId(),
+                "label=" + event.label() + ";type=" + event.type() + ";amount=" + event.amount()
+                        + ";academicYear=" + event.academicYear());
+    }
+
+    @TransactionalEventListener
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onSchoolFeeDeleted(SchoolFeeDeletedEvent event) {
+        save(event.tenantId(), event.deletedBy(), "SCHOOL_FEE_DELETED", "SchoolFee", event.feeId(),
+                "label=" + event.label() + ";type=" + event.type() + ";amount=" + event.amount()
+                        + ";academicYear=" + event.academicYear());
+    }
+
+    @TransactionalEventListener
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onInstallmentCreated(InstallmentCreatedEvent event) {
+        save(event.tenantId(), event.createdBy(), "INSTALLMENT_CREATED", "Installment", event.installmentId(),
+                "feeId=" + event.feeId() + ";label=" + event.label() + ";amount=" + event.amount()
+                        + ";dueDate=" + event.dueDate());
+    }
+
+    @TransactionalEventListener
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onInstallmentDeleted(InstallmentDeletedEvent event) {
+        save(event.tenantId(), event.deletedBy(), "INSTALLMENT_DELETED", "Installment", event.installmentId(),
+                "feeId=" + event.feeId() + ";label=" + event.label() + ";amount=" + event.amount());
     }
 
     // ── Rapprochement de caisse (§retour fondateurs, point central : un écart doit toujours laisser

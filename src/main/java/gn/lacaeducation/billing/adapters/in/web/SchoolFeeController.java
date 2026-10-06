@@ -7,6 +7,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 import java.util.List;
@@ -18,8 +20,8 @@ public class SchoolFeeController {
     public record UpdateRequest(Long classId, Long routeId, FeeType type, BigDecimal amount, String academicYear, String label) {}
     @Operation(summary = "Créer une nouvelle configuration de frais scolaire")
     @PreAuthorize("hasAuthority('frais_scolaire:create')")
-    @PostMapping public ResponseEntity<SchoolFee> create(@RequestBody CreateRequest r) {
-        return ResponseEntity.ok(useCase.create(new SchoolFeeUseCase.CreateFeeCommand(r.tenantId(), r.classId(), r.routeId(), r.type(), r.amount(), r.academicYear(), r.label())));
+    @PostMapping public ResponseEntity<SchoolFee> create(@RequestBody CreateRequest r, @AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok(useCase.create(new SchoolFeeUseCase.CreateFeeCommand(r.tenantId(), r.classId(), r.routeId(), r.type(), r.amount(), r.academicYear(), r.label()), currentUserId(jwt)));
     }
     @Operation(summary = "Modifier une configuration de frais scolaire existante")
     @PreAuthorize("hasAuthority('frais_scolaire:update')")
@@ -42,5 +44,13 @@ public class SchoolFeeController {
     @GetMapping("/route/{routeId}") public List<SchoolFee> findByRoute(@PathVariable Long routeId) { return useCase.findByRouteId(routeId); }
     @Operation(summary = "Supprimer une configuration de frais scolaire")
     @PreAuthorize("hasAuthority('frais_scolaire:delete')")
-    @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id) { useCase.delete(id); return ResponseEntity.noContent().build(); }
+    @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id, @AuthenticationPrincipal Jwt jwt) {
+        useCase.delete(id, currentUserId(jwt));
+        return ResponseEntity.noContent().build();
+    }
+
+    private Long currentUserId(Jwt jwt) {
+        if (jwt == null) return null;
+        try { return Long.parseLong(jwt.getSubject()); } catch (RuntimeException e) { return null; }
+    }
 }
