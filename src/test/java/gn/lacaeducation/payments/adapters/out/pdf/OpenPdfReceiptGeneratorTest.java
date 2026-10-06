@@ -239,4 +239,29 @@ class OpenPdfReceiptGeneratorTest {
                 .matcher(content).results().count();
         assertThat(pageObjectCount).as("nombre de pages du reçu").isEqualTo(1);
     }
+
+    /**
+     * Retour comptable direct : un reçu de transport encaissé un autre jour que la mensualité listait
+     * bien les deux factures "Payé : OUI" dans son tableau, mais "Total payé" ne reflétait que le
+     * montant de CET encaissement (le transport), jamais la mensualité déjà payée précédemment et
+     * pourtant affichée dans le même tableau — perçu à tort comme "la ligne n'est pas comptée dans le
+     * total". {@code sumPaid} doit désormais sommer TOUTES les factures "Payé : OUI" listées, qu'elles
+     * aient été réglées par CE paiement ou un précédent — exactement ce qui est imprimé sur le reçu,
+     * qu'il soit tout juste généré ou réimprimé plus tard (le tableau n'est jamais figé).
+     */
+    @Test
+    void sumPaid_sumsAllPaidInvoicesListed_notJustThisPaymentsAmount() throws Exception {
+        List<InvoiceRowInfo> invoices = List.of(
+                new InvoiceRowInfo("FAC-MENS", new BigDecimal("500000"), "Mensualité — Octobre 2026", true),
+                new InvoiceRowInfo("FAC-TRANS", new BigDecimal("100000"), "Transport — Octobre 2026", true),
+                new InvoiceRowInfo("FAC-CANT", new BigDecimal("80000"), "Cantine — Novembre 2026", false));
+
+        var method = OpenPdfReceiptGenerator.class.getDeclaredMethod("sumPaid", List.class);
+        method.setAccessible(true);
+        BigDecimal total = (BigDecimal) method.invoke(generator(), invoices);
+
+        // 500 000 (mensualité, déjà payée un autre jour) + 100 000 (transport, payé aujourd'hui) —
+        // PAS seulement les 100 000 du paiement en cours, et PAS les 80 000 non payés de la cantine.
+        assertThat(total).isEqualByComparingTo("600000");
+    }
 }
