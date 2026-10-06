@@ -105,10 +105,12 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
                         new String[]{"Classe", safe(payerDirectory.className(studentId).orElse(null))});
                 studentBlock.setSpacingBefore(5f);
                 doc.add(studentBlock);
-                doc.add(invoicesTable(studentId));
-                totalRow(doc, "Total payé", money(receipt.getAmount()) + " GNF");
+                List<PayerDirectory.InvoiceRowInfo> invoices = payerDirectory.studentInvoices(studentId);
+                doc.add(invoicesTable(invoices));
+                totalRow(doc, "Total payé", money(sumPaid(invoices)) + " GNF");
                 remainingLine(doc, studentId);
             } else {
+                BigDecimal totalPaid = BigDecimal.ZERO;
                 for (Long studentId : studentIds) {
                     PdfPTable studentBlock = compactFields(
                             new String[]{"Élève", safe(payerDirectory.studentName(studentId).orElse(null))},
@@ -116,9 +118,11 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
                             new String[]{"Classe", safe(payerDirectory.className(studentId).orElse(null))});
                     studentBlock.setSpacingBefore(5f);
                     doc.add(studentBlock);
-                    doc.add(invoicesTable(studentId));
+                    List<PayerDirectory.InvoiceRowInfo> invoices = payerDirectory.studentInvoices(studentId);
+                    doc.add(invoicesTable(invoices));
+                    totalPaid = totalPaid.add(sumPaid(invoices));
                 }
-                totalRow(doc, "Total payé", money(receipt.getAmount()) + " GNF");
+                totalRow(doc, "Total payé", money(totalPaid) + " GNF");
                 for (Long studentId : studentIds) {
                     remainingLine(doc, studentId);
                 }
@@ -191,7 +195,7 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
      * l'année) et était la cause du débordement du reçu sur une deuxième page — jamais touché sur la
      * facture/fiche de paie, qui n'ont pas ce problème (§retour comptable).
      */
-    private PdfPTable invoicesTable(Long studentId) {
+    private PdfPTable invoicesTable(List<PayerDirectory.InvoiceRowInfo> invoices) {
         PdfPTable t = dataTable(new float[]{1.1f, 1.1f, 1.4f, 0.6f});
         t.setSpacingBefore(6f);
         compactHeaderCell(t, "Réf.");
@@ -199,7 +203,6 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
         compactHeaderCell(t, "Observation");
         compactHeaderCell(t, "Payé");
 
-        List<PayerDirectory.InvoiceRowInfo> invoices = payerDirectory.studentInvoices(studentId);
         for (PayerDirectory.InvoiceRowInfo inv : invoices) {
             compactCell(t, inv.reference(), Element.ALIGN_LEFT);
             compactCell(t, money(inv.amount()) + " GNF", Element.ALIGN_RIGHT);
@@ -207,6 +210,22 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
             t.addCell(paidCell(inv.paid()));
         }
         return t;
+    }
+
+    /**
+     * Somme des factures marquées "Payé : OUI" dans le tableau ci-dessus (§retour comptable, point 3) :
+     * "Total payé" doit refléter CE QUI EST LISTÉ sur le reçu, pas seulement le montant de cet
+     * encaissement précis — sinon un reçu de transport payé un autre jour que la mensualité montre la
+     * ligne mensualité "Payé : OUI" dans le tableau sans que son montant compte dans le total, ce qui
+     * est exactement ce qui a été signalé comme anormal. S'applique aussi bien au reçu tout juste
+     * généré qu'à un ancien reçu réimprimé plus tard (le tableau étant toujours recalculé en live à
+     * partir de {@code PayerDirectory.studentInvoices}, jamais figé à la date d'émission).
+     */
+    private BigDecimal sumPaid(List<PayerDirectory.InvoiceRowInfo> invoices) {
+        return invoices.stream().filter(PayerDirectory.InvoiceRowInfo::paid)
+                .map(PayerDirectory.InvoiceRowInfo::amount)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private void compactHeaderCell(PdfPTable t, String label) {
