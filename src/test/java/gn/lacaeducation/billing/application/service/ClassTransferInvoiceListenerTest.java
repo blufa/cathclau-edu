@@ -87,19 +87,15 @@ class ClassTransferInvoiceListenerTest {
     }
 
     /**
-     * Régression réelle (§retour comptable) : corriger la classe d'une inscription (ex. 6ème → 7ème)
-     * régénérait les factures de la nouvelle classe SANS annuler les factures ANNEXES (hors
-     * mensualité, ex. "Révision" — type OTHER) de l'ancienne — l'élève se retrouvait avec les deux
-     * jeux de factures actifs. Vérifie que ces factures annexes sont bien annulées, sans tenter de
-     * les régénérer ici (laissé aux mécanismes déjà en place : EnrollmentInvoiceListener pour
-     * l'inscription, bouton "Générer les factures" du comptable pour le reste).
+     * Régression réelle (§retour comptable, transfert testé en conditions réelles) : une version
+     * antérieure annulait aussi les factures ANNEXES (hors mensualité) de l'ancienne classe, mais
+     * sans jamais les régénérer pour la nouvelle — une facture annexe encore impayée disparaissait
+     * purement et simplement au lieu de rester "à régler". Vérifie que ces factures annexes ne sont
+     * plus touchées du tout par un transfert de classe.
      */
     @Test
-    void voidsOldClassAnnexInvoices_otherThanMonthly_withoutRegeneratingThem() {
+    void doesNotTouchAnnexInvoices_otherThanMonthly() {
         when(schoolFeeRepository.findByClassIdAndType(20L, FeeType.MONTHLY)).thenReturn(List.of());
-        SchoolFee oldRevisionFee = SchoolFee.builder().id(30L).tenantId(10L).classId(20L).type(FeeType.OTHER).label("Révision").build();
-        SchoolFee oldEnrollmentFee = SchoolFee.builder().id(31L).tenantId(10L).classId(20L).type(FeeType.ENROLLMENT).build();
-        when(schoolFeeRepository.findByClassId(20L)).thenReturn(List.of(oldRevisionFee, oldEnrollmentFee));
 
         Invoice revisionInvoice = Invoice.builder().id(300L).reference("REF-REV").studentId(7L).feeId(30L).academicYearId(99L)
                 .status(InvoiceStatus.UNPAID).totalAmount(new BigDecimal("50000")).paidAmount(BigDecimal.ZERO).build();
@@ -109,12 +105,9 @@ class ClassTransferInvoiceListenerTest {
 
         listener.onEnrollmentClassChanged(event);
 
-        verify(invoiceUseCase).voidInvoice(300L);
-        verify(invoiceUseCase).voidInvoice(301L);
-        // Aucune tentative de régénération/report de crédit pour ces frais — contrairement aux
-        // mensualités, laissé aux mécanismes déjà en place.
-        verify(invoiceUseCase, never()).generateMonthly(any());
-        verify(invoiceUseCase, never()).applyCredit(any(), any());
+        verify(invoiceUseCase, never()).voidInvoice(300L);
+        verify(invoiceUseCase, never()).voidInvoice(301L);
+        verify(schoolFeeRepository, never()).findByClassId(any());
     }
 
     @Test
