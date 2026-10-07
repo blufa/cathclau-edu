@@ -1,9 +1,12 @@
 package gn.lacaeducation.students.application.service;
 
 import gn.lacaeducation.common.ResourceNotFoundException;
+import gn.lacaeducation.students.application.event.EnrollmentCancelledEvent;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,6 +44,12 @@ public class StudentPurgeService {
 
     @PersistenceContext
     private EntityManager em;
+    // Injection par champ (pas @RequiredArgsConstructor) : pour rester cohérent avec `em` ci-dessus,
+    // qui n'est injecté que par le conteneur (@PersistenceContext) — un constructeur explicite
+    // casserait l'injection par champ de `em` dans les tests (Mockito @InjectMocks privilégierait
+    // alors l'injection par constructeur, laissant `em` à null).
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
 
     public record PurgeResult(Long studentId, Map<String, Integer> deletedByTable, List<String> warnings) {}
 
@@ -99,6 +108,17 @@ public class StudentPurgeService {
         exec(deleted, "student_attendances", "DELETE FROM student_attendances WHERE student_id = :id", studentId);
         exec(deleted, "student_documents", "DELETE FROM student_documents WHERE student_id = :id", studentId);
         exec(deleted, "student_parents", "DELETE FROM student_parents WHERE student_id = :id", studentId);
+
+        // Capturé AVANT la suppression (§retour comptable : l'effectif d'une classe restait gonflé
+        // après une purge) — l'effectif de classe n'est pas recompté à la lecture mais mis en cache
+        // sur school_classes.headcount, recalculé uniquement en réaction à un événement (voir
+        // academics.EnrollmentEventListener) ; la suppression SQL native ci-dessous ne publie rien
+        // toute seule, contrairement au flux normal (InscriptionService#cancel).
+        @SuppressWarnings("unchecked")
+        List<Object[]> enrollmentClassYears = em.createNativeQuery(
+                "SELECT class_id, academic_year_id FROM enrollments WHERE student_id = :id")
+                .setParameter("id", studentId).getResultList();
+
         exec(deleted, "enrollments", "DELETE FROM enrollments WHERE student_id = :id", studentId);
 
         // Référence FROM une classe VERS cet élève (représentant de classe) — ne supprime pas la
@@ -109,6 +129,18 @@ public class StudentPurgeService {
         if (reps > 0) deleted.put("school_classes.class_representative_student_id (mis à NULL)", reps);
 
         exec(deleted, "students", "DELETE FROM students WHERE id = :id", studentId);
+
+        // Même événement que InscriptionService#cancel (tenantId non utilisé par les deux
+        // consommateurs actuels — recalcul d'effectif côté academics, journal d'audit) : chaque classe
+        // où l'élève était inscrit retrouve immédiatement le bon effectif, sans dupliquer la logique
+        // de recalcul ici.
+        for (Object[] row : enrollmentClassYears) {
+            Long classId = row[0] == null ? null : ((Number) row[0]).longValue();
+            Long academicYearId = row[1] == null ? null : ((Number) row[1]).longValue();
+            if (classId != null) {
+                eventPublisher.publishEvent(new EnrollmentCancelledEvent(null, studentId, classId, academicYearId));
+            }
+        }
 
         log.warn("PURGE DÉFINITIVE de l'élève id={} effectuée — {} table(s) nettoyée(s), {} avertissement(s) : {}",
                 studentId, deleted.size(), warnings.size(), warnings);
