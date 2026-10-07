@@ -628,8 +628,27 @@ public class InvoiceService implements InvoiceUseCase {
         return repo.save(inv);
     }
 
-    @Override public void cancel(Long id) { repo.deleteById(id); }
-    @Override public void delete(Long id) { repo.deleteById(id); }
+    /** "Annuler la facture" (écran Factures élèves) : conserve l'historique — même comportement que
+     * {@link #voidInvoice}, jamais une suppression physique (régression réelle corrigée : cette
+     * méthode faisait jusqu'ici un repo.deleteById, perdant irrémédiablement la facture malgré son
+     * nom et malgré le commentaire côté client qui annonçait l'historique conservé). */
+    @Override public void cancel(Long id) { voidInvoice(id); }
+
+    /** Suppression PHYSIQUE d'une facture — uniquement si elle n'a encore reçu aucun paiement
+     * (§retour comptable : permettre de nettoyer une facture générée par erreur, ex. doublon, tant
+     * qu'elle n'est pas encaissée). Avant ce correctif, rien ne l'empêchait côté serveur — seul un
+     * contrôle client (contournable) existait ; une facture déjà payée aurait pu être supprimée sans
+     * trace. Utiliser {@link #cancel} pour une facture déjà encaissée (historique conservé). */
+    @Override public void delete(Long id) {
+        Invoice inv = load(id);
+        BigDecimal paid = inv.getPaidAmount();
+        if (paid != null && paid.signum() > 0) {
+            throw new BusinessRuleException(
+                    "Impossible de supprimer cette facture : un paiement a déjà été encaissé dessus. "
+                            + "Utilisez \"Annuler\" si besoin (conserve l'historique).");
+        }
+        repo.deleteById(id);
+    }
     @Override @Transactional(readOnly=true) public boolean existsById(Long id) { return repo.existsById(id); }
     private Invoice load(Long id) { return repo.findById(id).orElseThrow(() -> new ResourceNotFoundException("Invoice", id)); }
 }
