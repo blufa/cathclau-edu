@@ -50,6 +50,7 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
     private final TenantInfoProvider tenantInfoProvider;
     private final PayerDirectory payerDirectory;
     private final ObjectMapper objectMapper;
+    private final gn.lacaeducation.payments.application.port.out.PaymentRepository paymentRepository;
 
     /** Une part d'un paiement groupé (miroir minimal de {@code GroupedInvoiceSettlementEvent.Share}). */
     private record GroupLine(Long invoiceId, Long studentId, BigDecimal amount) {}
@@ -106,7 +107,7 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
                 studentBlock.setSpacingBefore(3f);
                 doc.add(studentBlock);
                 List<PayerDirectory.InvoiceRowInfo> invoices = payerDirectory.studentInvoices(studentId);
-                doc.add(invoicesTable(invoices));
+                doc.add(invoicesTable(invoices, paidAtByInvoiceId(studentId)));
                 amountBox(doc, "Encaissé aujourd'hui", money(receipt.getAmount()) + " GNF",
                         SchoolPdfHeader.tint(brand, 0.12), DARK);
                 amountBox(doc, "Total payé", money(sumPaidToDate(invoices)) + " GNF", brand, java.awt.Color.WHITE);
@@ -121,7 +122,7 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
                     studentBlock.setSpacingBefore(3f);
                     doc.add(studentBlock);
                     List<PayerDirectory.InvoiceRowInfo> invoices = payerDirectory.studentInvoices(studentId);
-                    doc.add(invoicesTable(invoices));
+                    doc.add(invoicesTable(invoices, paidAtByInvoiceId(studentId)));
                     totalPaidToDate = totalPaidToDate.add(sumPaidToDate(invoices));
                 }
                 amountBox(doc, "Encaissé aujourd'hui", money(receipt.getAmount()) + " GNF",
@@ -192,28 +193,59 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
     /**
      * Toutes les factures (non annulées) de l'élève — pas seulement celle(s) couvertes par ce
      * paiement — pour que le reçu serve de vue d'ensemble de sa situation (§retour comptable) : Réf.,
-     * Montant, Observation (type de frais + période), et une colonne Payé en gras (OUI/NON) donnant
-     * son statut de règlement à cette date. Lignes compactes (padding réduit, voir
-     * {@link #compactHeaderCell}/{@link #compactCell}) plutôt que {@code AdminDocumentLayout#cell} :
-     * ce tableau grandit avec le nombre de factures de l'élève (mensualités + frais annexes sur
-     * l'année) et était la cause du débordement du reçu sur une deuxième page — jamais touché sur la
-     * facture/fiche de paie, qui n'ont pas ce problème (§retour comptable).
+     * Montant, Observation (type de frais + période), Date & heure d'encaissement (dernier paiement
+     * reçu sur CETTE facture précise, "-" si jamais payée), et une colonne Payé en gras (OUI/NON)
+     * donnant son statut de règlement à cette date. Déjà triées par {@link PayerDirectory#studentInvoices}
+     * (inscription, puis mensualité, puis frais annexes — §retour comptable : un nouveau frais annexe
+     * souscrit plus tard s'ajoute donc en bas, jamais au milieu des tranches). Lignes compactes
+     * (padding réduit, voir {@link #compactHeaderCell}/{@link #compactCell}) plutôt que
+     * {@code AdminDocumentLayout#cell} : ce tableau grandit avec le nombre de factures de l'élève
+     * (mensualités + frais annexes sur l'année) et était la cause du débordement du reçu sur une
+     * deuxième page — jamais touché sur la facture/fiche de paie, qui n'ont pas ce problème.
      */
-    private PdfPTable invoicesTable(List<PayerDirectory.InvoiceRowInfo> invoices) {
-        PdfPTable t = dataTable(new float[]{1.1f, 1.1f, 1.4f, 0.6f});
+    private PdfPTable invoicesTable(List<PayerDirectory.InvoiceRowInfo> invoices,
+                                     java.util.Map<Long, java.time.LocalDateTime> paidAtByInvoiceId) {
+        PdfPTable t = dataTable(new float[]{1.05f, 0.9f, 1.35f, 0.85f, 0.5f});
         t.setSpacingBefore(4f);
         compactHeaderCell(t, "Réf.");
         compactHeaderCell(t, "Montant");
         compactHeaderCell(t, "Observation");
+        compactHeaderCell(t, "Date & heure");
         compactHeaderCell(t, "Payé");
 
+        DateTimeFormatter paidAtFormat = DateTimeFormatter.ofPattern("dd/MM/yyyy HH'h'mm");
         for (PayerDirectory.InvoiceRowInfo inv : invoices) {
             compactCell(t, inv.reference(), Element.ALIGN_LEFT);
             compactCell(t, money(inv.amount()) + " GNF", Element.ALIGN_RIGHT);
             compactCell(t, inv.label(), Element.ALIGN_LEFT);
+            java.time.LocalDateTime paidAt = paidAtByInvoiceId.get(inv.id());
+            compactCell(t, paidAt != null ? paidAt.format(paidAtFormat) : "-", Element.ALIGN_CENTER);
             t.addCell(paidCell(inv.paid()));
         }
         return t;
+    }
+
+    /**
+     * Date/heure du DERNIER paiement réussi reçu sur chaque facture de cet élève — une facture peut
+     * être réglée en plusieurs fois (tranche payée en deux acomptes à des dates différentes), on garde
+     * alors la plus récente. Couvre aussi bien un paiement simple ({@code Payment.invoiceId}) qu'un
+     * paiement groupé fratrie ({@code groupLines}, où {@code invoiceId} reste null — voir
+     * {@code PaymentService#initiateGroup}) : sans ce 2e cas, une facture réglée via un encaissement
+     * groupé plusieurs enfants afficherait "-" à tort. Vide si l'élève n'a encore rien payé.
+     */
+    private java.util.Map<Long, java.time.LocalDateTime> paidAtByInvoiceId(Long studentId) {
+        java.util.Map<Long, java.time.LocalDateTime> result = new java.util.HashMap<>();
+        if (studentId == null) return result;
+        for (Payment p : paymentRepository.findByStudentId(studentId)) {
+            if (p.getStatus() != gn.lacaeducation.payments.domain.PaymentStatus.SUCCEEDED || p.getPaidAt() == null) continue;
+            List<Long> invoiceIds = p.getInvoiceId() != null
+                    ? List.of(p.getInvoiceId())
+                    : parseGroupLines(p.getGroupLines()).stream().map(GroupLine::invoiceId).filter(java.util.Objects::nonNull).toList();
+            for (Long invoiceId : invoiceIds) {
+                result.merge(invoiceId, p.getPaidAt(), (a, b) -> a.isAfter(b) ? a : b);
+            }
+        }
+        return result;
     }
 
     /**

@@ -61,10 +61,11 @@ public interface PayerDirectory {
      * encaissé à ce jour sur cette facture (ce qui a été payé, jamais plus) — c'est lui qu'il faut
      * sommer pour un total cumulé "Total payé" correct, jamais {@code amount} (qui, pour une facture
      * remisée, est plus élevé que ce qui a réellement été reçu). */
-    record InvoiceRowInfo(String reference, java.math.BigDecimal amount, String label, boolean paid,
+    record InvoiceRowInfo(Long id, String reference, java.math.BigDecimal amount, String label, boolean paid,
                           java.math.BigDecimal paidAmount) {}
 
     /** Toutes les factures non annulées de l'élève sur l'année scolaire courante du tenant (même
-     * portée que {@link #unpaidInvoices}), triées par date d'émission croissante. */
+     * portée que {@link #unpaidInvoices}) — inscription/réinscription d'abord, puis la scolarité
+     * (tranches, chronologique), puis les frais annexes (§retour comptable, reçu de paiement). */
     List<InvoiceRowInfo> studentInvoices(Long studentId);
 }

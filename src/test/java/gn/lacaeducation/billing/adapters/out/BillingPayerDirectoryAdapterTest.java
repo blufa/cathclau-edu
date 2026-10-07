@@ -152,4 +152,33 @@ class BillingPayerDirectoryAdapterTest {
                 .containsExactly(true, false);
         assertThat(result.get(1).label()).isEqualTo("Mensualité — Octobre 2026");
     }
+
+    /**
+     * Ordre du tableau de factures du reçu (§retour comptable) : inscription d'abord, puis la
+     * scolarité (tranches, chronologique), puis les frais annexes — PAS un simple tri par date
+     * d'émission. Les factures ci-dessous sont volontairement créées dans un ordre de date qui ne
+     * correspond PAS à l'ordre attendu, pour vérifier que c'est bien le type de frais qui prime : le
+     * transport (souscrit avant tout le reste) doit malgré ça finir en bas, après la mensualité.
+     */
+    @Test
+    void studentInvoices_ordersByFeeTypeGroupThenDate_notByIssueDateAlone() {
+        Invoice transport = Invoice.builder().id(1L).studentId(7L).feeId(5L).reference("FAC-TRANS")
+                .status(InvoiceStatus.UNPAID).totalAmount(new BigDecimal("30000"))
+                .issueDate(LocalDate.of(2026, 1, 1)).build();
+        Invoice monthly = Invoice.builder().id(2L).studentId(7L).feeId(3L).reference("FAC-MENS")
+                .status(InvoiceStatus.UNPAID).totalAmount(new BigDecimal("50000"))
+                .issueDate(LocalDate.of(2026, 10, 1)).build();
+        Invoice enrollment = Invoice.builder().id(3L).studentId(7L).feeId(4L).reference("FAC-INS")
+                .status(InvoiceStatus.PAID).totalAmount(new BigDecimal("100000"))
+                .issueDate(LocalDate.of(2026, 11, 1)).build();
+        when(invoiceRepository.findByStudentId(7L)).thenReturn(List.of(transport, monthly, enrollment));
+        when(schoolFeeRepository.findById(5L)).thenReturn(Optional.of(SchoolFee.builder().id(5L).type(FeeType.TRANSPORT).build()));
+        when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(SchoolFee.builder().id(3L).type(FeeType.MONTHLY).build()));
+        when(schoolFeeRepository.findById(4L)).thenReturn(Optional.of(SchoolFee.builder().id(4L).type(FeeType.ENROLLMENT).build()));
+
+        var result = adapter.studentInvoices(7L);
+
+        assertThat(result).extracting(gn.lacaeducation.payments.PayerDirectory.InvoiceRowInfo::reference)
+                .containsExactly("FAC-INS", "FAC-MENS", "FAC-TRANS");
+    }
 }

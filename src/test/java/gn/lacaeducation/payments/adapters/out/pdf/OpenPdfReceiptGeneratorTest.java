@@ -33,9 +33,10 @@ class OpenPdfReceiptGeneratorTest {
     @Mock TenantInfoProvider tenantInfoProvider;
     @Mock PayerDirectory payerDirectory;
     @Mock tools.jackson.databind.ObjectMapper objectMapper;
+    @Mock gn.lacaeducation.payments.application.port.out.PaymentRepository paymentRepository;
 
     private OpenPdfReceiptGenerator generator() {
-        return new OpenPdfReceiptGenerator(tenantInfoProvider, payerDirectory, objectMapper);
+        return new OpenPdfReceiptGenerator(tenantInfoProvider, payerDirectory, objectMapper, paymentRepository);
     }
 
     private Payment payment() {
@@ -58,8 +59,8 @@ class OpenPdfReceiptGeneratorTest {
         when(payerDirectory.studentNumber(7L)).thenReturn(Optional.of("MAT-1"));
         when(payerDirectory.currentAcademicYearLabel(10L)).thenReturn(Optional.of("2025-2026"));
         when(payerDirectory.studentInvoices(7L)).thenReturn(List.of(
-                new InvoiceRowInfo("FAC-1", new BigDecimal("50000"), "Mensualité — Octobre 2026", true, new BigDecimal("50000")),
-                new InvoiceRowInfo("FAC-2", new BigDecimal("20000"), "Cantine", false, BigDecimal.ZERO)));
+                new InvoiceRowInfo(1L, "FAC-1", new BigDecimal("50000"), "Mensualité — Octobre 2026", true, new BigDecimal("50000")),
+                new InvoiceRowInfo(1L, "FAC-2", new BigDecimal("20000"), "Cantine", false, BigDecimal.ZERO)));
         when(payerDirectory.unpaidInvoices(7L)).thenReturn(List.of(
                 new UnpaidInvoiceInfo("Cantine", new BigDecimal("20000"))));
 
@@ -72,7 +73,7 @@ class OpenPdfReceiptGeneratorTest {
     @Test
     void generate_studentWithNoOutstandingInvoices_omitsRemainingLineWithoutError() {
         when(payerDirectory.studentInvoices(7L)).thenReturn(List.of(
-                new InvoiceRowInfo("FAC-1", new BigDecimal("50000"), "Inscription", true, new BigDecimal("50000"))));
+                new InvoiceRowInfo(1L, "FAC-1", new BigDecimal("50000"), "Inscription", true, new BigDecimal("50000"))));
         when(payerDirectory.unpaidInvoices(7L)).thenReturn(List.of());
 
         byte[] pdf = generator().generate(receipt(), payment());
@@ -138,7 +139,7 @@ class OpenPdfReceiptGeneratorTest {
     @Test
     void discountNotes_groupedPaymentWithRealGroupLinesJson_findsInvoiceDiscountViaGroupLines() throws Exception {
         tools.jackson.databind.ObjectMapper realMapper = tools.jackson.databind.json.JsonMapper.builder().build();
-        OpenPdfReceiptGenerator realGenerator = new OpenPdfReceiptGenerator(tenantInfoProvider, payerDirectory, realMapper);
+        OpenPdfReceiptGenerator realGenerator = new OpenPdfReceiptGenerator(tenantInfoProvider, payerDirectory, realMapper, paymentRepository);
         // Même forme que PaymentService#serializeShares (GroupedInvoiceSettlementEvent.Share) : un champ
         // `paidMonths` de plus que le `GroupLine` interne du générateur — c'est ce décalage qu'il fallait
         // vérifier ne casse pas le parsing (champ inconnu, pas un champ manquant).
@@ -176,12 +177,12 @@ class OpenPdfReceiptGeneratorTest {
         String[] months = {"Septembre", "Octobre", "Novembre", "Décembre", "Janvier", "Février",
                 "Mars", "Avril", "Mai", "Juin"};
         for (String month : months) {
-            invoices.add(new InvoiceRowInfo("FAC-" + month, new BigDecimal("100000"), "Mensualité — " + month + " 2026", true, new BigDecimal("100000")));
+            invoices.add(new InvoiceRowInfo(1L, "FAC-" + month, new BigDecimal("100000"), "Mensualité — " + month + " 2026", true, new BigDecimal("100000")));
         }
-        invoices.add(new InvoiceRowInfo("FAC-INS", new BigDecimal("250000"), "Inscription", true, new BigDecimal("250000")));
-        invoices.add(new InvoiceRowInfo("FAC-TRANS", new BigDecimal("300000"), "Transport", false, BigDecimal.ZERO));
-        invoices.add(new InvoiceRowInfo("FAC-CANT", new BigDecimal("400000"), "Cantine", false, BigDecimal.ZERO));
-        invoices.add(new InvoiceRowInfo("FAC-EXAM", new BigDecimal("50000"), "Examen", true, new BigDecimal("50000")));
+        invoices.add(new InvoiceRowInfo(1L, "FAC-INS", new BigDecimal("250000"), "Inscription", true, new BigDecimal("250000")));
+        invoices.add(new InvoiceRowInfo(1L, "FAC-TRANS", new BigDecimal("300000"), "Transport", false, BigDecimal.ZERO));
+        invoices.add(new InvoiceRowInfo(1L, "FAC-CANT", new BigDecimal("400000"), "Cantine", false, BigDecimal.ZERO));
+        invoices.add(new InvoiceRowInfo(1L, "FAC-EXAM", new BigDecimal("50000"), "Examen", true, new BigDecimal("50000")));
         when(payerDirectory.studentInvoices(7L)).thenReturn(invoices);
         when(payerDirectory.unpaidInvoices(7L)).thenReturn(List.of(
                 new UnpaidInvoiceInfo("Transport", new BigDecimal("300000")),
@@ -215,14 +216,14 @@ class OpenPdfReceiptGeneratorTest {
         List<InvoiceRowInfo> invoices = new java.util.ArrayList<>();
         for (String year : new String[]{"2024-2025", "2025-2026"}) {
             for (String month : months) {
-                invoices.add(new InvoiceRowInfo("FAC-" + month + "-" + year,
+                invoices.add(new InvoiceRowInfo(1L, "FAC-" + month + "-" + year,
                         new BigDecimal("100000"), "Mensualité — " + month + " " + year, true, new BigDecimal("100000")));
             }
         }
-        invoices.add(new InvoiceRowInfo("FAC-INS", new BigDecimal("250000"), "Inscription", true, new BigDecimal("250000")));
-        invoices.add(new InvoiceRowInfo("FAC-TRANS", new BigDecimal("300000"), "Transport", false, BigDecimal.ZERO));
-        invoices.add(new InvoiceRowInfo("FAC-CANT", new BigDecimal("400000"), "Cantine", false, BigDecimal.ZERO));
-        invoices.add(new InvoiceRowInfo("FAC-EXAM", new BigDecimal("50000"), "Examen", true, new BigDecimal("50000")));
+        invoices.add(new InvoiceRowInfo(1L, "FAC-INS", new BigDecimal("250000"), "Inscription", true, new BigDecimal("250000")));
+        invoices.add(new InvoiceRowInfo(1L, "FAC-TRANS", new BigDecimal("300000"), "Transport", false, BigDecimal.ZERO));
+        invoices.add(new InvoiceRowInfo(1L, "FAC-CANT", new BigDecimal("400000"), "Cantine", false, BigDecimal.ZERO));
+        invoices.add(new InvoiceRowInfo(1L, "FAC-EXAM", new BigDecimal("50000"), "Examen", true, new BigDecimal("50000")));
         when(payerDirectory.studentInvoices(7L)).thenReturn(invoices);
         when(payerDirectory.unpaidInvoices(7L)).thenReturn(List.of(
                 new UnpaidInvoiceInfo("Transport", new BigDecimal("300000")),
