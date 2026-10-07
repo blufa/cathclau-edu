@@ -83,12 +83,24 @@ public class InscriptionService implements EnrollmentUseCase, EnrollmentValidati
             throw new ConflictException("Student " + e.getStudentId()
                     + " already has an active enrollment for academic year " + cmd.academicYearId());
         }
+        Long oldClassId = e.getClassId();
+        Long oldAcademicYearId = e.getAcademicYearId();
         e.setClassId(cmd.classId());
         e.setAcademicYearId(cmd.academicYearId());
         if (cmd.type() != null) e.setType(cmd.type());
         Enrollment saved = enrollmentRepository.save(e);
-        // Re-issue the enrollment invoice against the (possibly new) class fee.
-        if (classChanged) publishCreated(saved);
+        if (classChanged) {
+            // Retour comptable (bug réel) : corriger la classe d'une inscription juste après l'avoir
+            // créée (ex. 6ème saisie par erreur au lieu de 7ème, factures déjà générées) régénérait
+            // les factures de la nouvelle classe SANS jamais annuler celles de l'ancienne — l'élève se
+            // retrouvait avec les deux jeux de factures actifs en même temps. ClassTransferInvoiceListener
+            // (déjà utilisé pour un transfert en cours d'année sur une inscription VALIDÉE) annule
+            // désormais aussi les factures de l'ancienne classe pour une inscription encore EN ATTENTE.
+            eventPublisher.publishEvent(new EnrollmentClassChangedEvent(
+                    null, e.getStudentId(), e.getId(), oldClassId, cmd.classId(), oldAcademicYearId));
+            // Re-issue the enrollment invoice against the (possibly new) class fee.
+            publishCreated(saved);
+        }
         return saved;
     }
 

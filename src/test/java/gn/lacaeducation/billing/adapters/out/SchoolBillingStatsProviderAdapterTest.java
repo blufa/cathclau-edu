@@ -7,6 +7,7 @@ import gn.lacaeducation.billing.SchoolBillingStatsProvider.RecoveryBreakdown;
 import gn.lacaeducation.billing.SchoolBillingStatsProvider.SubsidyStats;
 import gn.lacaeducation.billing.SchoolBillingStatsProvider.TopDebtor;
 import gn.lacaeducation.billing.SchoolBillingStatsProvider.UpcomingInstallment;
+import gn.lacaeducation.billing.application.port.out.EnrollmentQueryPort;
 import gn.lacaeducation.billing.application.port.out.ExemptionRepository;
 import gn.lacaeducation.billing.application.port.out.InstallmentRepository;
 import gn.lacaeducation.billing.application.port.out.InvoiceRepository;
@@ -31,6 +32,8 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -40,6 +43,7 @@ class SchoolBillingStatsProviderAdapterTest {
     @Mock SchoolFeeRepository schoolFeeRepository;
     @Mock ExemptionRepository exemptionRepository;
     @Mock InstallmentRepository installmentRepository;
+    @Mock EnrollmentQueryPort enrollmentQueryPort;
     @InjectMocks SchoolBillingStatsProviderAdapter adapter;
 
     private Invoice inv(String total, String paid, String remaining, InvoiceStatus status) {
@@ -177,6 +181,44 @@ class SchoolBillingStatsProviderAdapterTest {
 
         assertThat(stats.exemptionDiscountInvoiceCount()).isEqualTo(2);
         assertThat(stats.exemptionDiscountInvoicePaidCount()).isEqualTo(1);
+    }
+
+    /**
+     * Retour fondateurs : une exonération TOTALE (100%) ne produit jamais de facture (voir
+     * InvoiceService#buildAndSaveInvoice), donc rien dans exemptionDiscountAmount pour elle — ce test
+     * vérifie que sa valeur est quand même estimée séparément (totalExemptionEstimatedValue), à partir
+     * des échéances réellement configurées pour le frais MENSUALITE de la classe actuelle de l'élève.
+     */
+    @Test
+    void subsidyStats_totalExemption_estimatesValueFromStudentsClassMonthlyFee() {
+        when(exemptionRepository.findByTenantId(9L)).thenReturn(List.of(
+                Exemption.builder().studentId(5L).type(ExemptionType.TOTAL).active(true).build()));
+        when(invoiceRepository.findByTenantIdAndAcademicYearId(9L, 1L)).thenReturn(List.of());
+        when(schoolFeeRepository.findByTenantId(9L)).thenReturn(List.of());
+        when(enrollmentQueryPort.findActiveClassId(5L)).thenReturn(20L);
+        when(schoolFeeRepository.findByClassIdAndType(20L, FeeType.MONTHLY))
+                .thenReturn(List.of(SchoolFee.builder().id(300L).classId(20L).type(FeeType.MONTHLY).build()));
+        when(installmentRepository.findByFeeId(300L)).thenReturn(List.of(
+                Installment.builder().id(1L).feeId(300L).amount(new BigDecimal("100000")).build(),
+                Installment.builder().id(2L).feeId(300L).amount(new BigDecimal("100000")).build()));
+
+        SubsidyStats stats = adapter.subsidyStats(9L, 1L);
+
+        assertThat(stats.totalExemptionEstimatedValue()).isEqualByComparingTo("200000");
+    }
+
+    @Test
+    void subsidyStats_totalExemption_feeTypesExcludesMonthly_estimatesZero() {
+        when(exemptionRepository.findByTenantId(9L)).thenReturn(List.of(
+                Exemption.builder().studentId(5L).type(ExemptionType.TOTAL).active(true)
+                        .feeTypes(List.of(FeeType.EXAM)).build()));
+        when(invoiceRepository.findByTenantIdAndAcademicYearId(9L, 1L)).thenReturn(List.of());
+        when(schoolFeeRepository.findByTenantId(9L)).thenReturn(List.of());
+
+        SubsidyStats stats = adapter.subsidyStats(9L, 1L);
+
+        assertThat(stats.totalExemptionEstimatedValue()).isEqualByComparingTo("0");
+        verify(enrollmentQueryPort, never()).findActiveClassId(any());
     }
 
     @Test
