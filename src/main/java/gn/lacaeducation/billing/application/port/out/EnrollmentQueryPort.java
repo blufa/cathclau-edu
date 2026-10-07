@@ -43,4 +43,10 @@ public interface EnrollmentQueryPort {
     record ActiveGrade(String grade, String niveauCycle, Integer niveauSortOrder) {}
 
     ActiveGrade findActiveLevel(Long studentId);
+
+    /** Classe de l'inscription active (VALIDÉE en priorité, sinon la plus récente) la plus récente
+     * de l'élève, ou {@code null} s'il n'en a aucune — utilisé pour estimer la valeur d'une
+     * exonération totale (§retour fondateurs, "Vision Fondateur") en retrouvant le frais MENSUALITE
+     * de sa classe. */
+    Long findActiveClassId(Long studentId);
 }

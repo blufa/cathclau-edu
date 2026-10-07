@@ -40,6 +40,7 @@ public class StudentController {
     private final ParentUseCase parentUseCase;
     private final gn.lacaeducation.students.application.service.StudentCertificateService certificateService;
     private final gn.lacaeducation.students.application.service.StudentImportService importService;
+    private final gn.lacaeducation.students.application.service.StudentPurgeService purgeService;
 
     public record CertificateRequest(String schoolName, String motif) {}
 
@@ -179,6 +180,15 @@ public class StudentController {
     @PreAuthorize("hasAuthority('eleve:delete')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) { studentUseCase.delete(id); }
+
+    @Operation(summary = "Purger DÉFINITIVEMENT un élève (irréversible, SUPER_ADMIN) — supprime "
+            + "l'élève et toutes les lignes qui le référencent dans la base (factures, paiements, "
+            + "présences, notes...), contrairement à la suppression (archivage réversible) ci-dessus")
+    @DeleteMapping("/{id}/purge")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public gn.lacaeducation.students.application.service.StudentPurgeService.PurgeResult purge(@PathVariable Long id) {
+        return purgeService.purge(id);
+    }
 
     // ---- Documents ----
 

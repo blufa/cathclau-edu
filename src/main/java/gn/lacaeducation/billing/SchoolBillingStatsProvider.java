@@ -55,11 +55,22 @@ public interface SchoolBillingStatsProvider {
      * @param earlyPaymentDiscountApplied      montant réellement déduit des factures via la remise
      *                                         "paiement anticipé" (§billing, EarlyPaymentDiscountRule) —
      *                                         remise réelle, pas une estimation.
+     * @param totalExemptionEstimatedValue     ESTIMATION (§retour fondateurs) de la valeur des
+     *                                         exonérations TOTALES (100 %) actives sur la mensualité —
+     *                                         somme des échéances configurées pour la classe de chaque
+     *                                         élève concerné. Distincte de {@code exemptionDiscountAmount}
+     *                                         à dessein : une exonération 100% ne produit JAMAIS de
+     *                                         facture (voir InvoiceService#buildAndSaveInvoice, pour
+     *                                         éviter qu'une facture à 0 GNF soit cochée par erreur avec
+     *                                         le reste) — ce montant n'existe donc nulle part en base,
+     *                                         recalculé à la volée à chaque consultation, jamais aussi
+     *                                         précis qu'un vrai montant facturé (ex. ne reflète pas une
+     *                                         exonération accordée/révoquée en cours d'année).
      */
     record SubsidyStats(long activeExemptionsCount, long totalExemptions, long partialExemptions,
                         BigDecimal exemptionDiscountAmount, long exemptionDiscountInvoiceCount,
                         long exemptionDiscountInvoicePaidCount, int studentsFullySettledMonthlyFees,
-                        BigDecimal earlyPaymentDiscountApplied) {}
+                        BigDecimal earlyPaymentDiscountApplied, BigDecimal totalExemptionEstimatedValue) {}
 
     SubsidyStats subsidyStats(Long tenantId, Long academicYearId);
 

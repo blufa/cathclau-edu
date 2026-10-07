@@ -55,8 +55,14 @@ public interface PayerDirectory {
 
     /** Une facture de l'élève — quel que soit son statut (sauf annulée) — pour le tableau complet du
      * reçu de paiement (§retour comptable) : le parent voit d'un coup d'œil toutes les factures de son
-     * enfant, réglées ou non, pas seulement celle(s) couvertes par le paiement en cours. */
-    record InvoiceRowInfo(String reference, java.math.BigDecimal amount, String label, boolean paid) {}
+     * enfant, réglées ou non, pas seulement celle(s) couvertes par le paiement en cours. {@code amount}
+     * reste le montant BRUT de la facture (avant remise, pour rester cohérent avec la note "Remise
+     * appliquée : -X GNF" imprimée séparément) ; {@code paidAmount} est le montant NET réellement
+     * encaissé à ce jour sur cette facture (ce qui a été payé, jamais plus) — c'est lui qu'il faut
+     * sommer pour un total cumulé "Total payé" correct, jamais {@code amount} (qui, pour une facture
+     * remisée, est plus élevé que ce qui a réellement été reçu). */
+    record InvoiceRowInfo(String reference, java.math.BigDecimal amount, String label, boolean paid,
+                          java.math.BigDecimal paidAmount) {}
 
     /** Toutes les factures non annulées de l'élève sur l'année scolaire courante du tenant (même
      * portée que {@link #unpaidInvoices}), triées par date d'émission croissante. */

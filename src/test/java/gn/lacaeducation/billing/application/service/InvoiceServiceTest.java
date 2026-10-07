@@ -237,6 +237,60 @@ class InvoiceServiceTest {
         assertThat(inv.getTotalAmount()).isEqualByComparingTo("100.00");
     }
 
+    /**
+     * Régression réelle (§retour comptable) : "cancel" (bouton "Annuler la facture" de l'écran
+     * Factures élèves) faisait jusqu'ici un repo.deleteById — suppression physique malgré son nom et
+     * malgré la documentation client qui annonçait l'historique conservé. Doit maintenant se comporter
+     * exactement comme {@code voidInvoice} (jamais repo.deleteById).
+     */
+    @Test
+    void cancel_keepsHistoryLikeVoidInvoice_neverHardDeletes() {
+        Invoice existing = Invoice.builder().id(1L).tenantId(10L).studentId(7L)
+                .totalAmount(new BigDecimal("100.00")).paidAmount(new BigDecimal("40.00"))
+                .remainingBalance(new BigDecimal("60.00")).status(InvoiceStatus.PARTIAL).build();
+        when(repo.findById(1L)).thenReturn(Optional.of(existing));
+        when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service().cancel(1L);
+
+        verify(repo, never()).deleteById(any());
+        ArgumentCaptor<Invoice> captor = ArgumentCaptor.forClass(Invoice.class);
+        verify(repo).save(captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo(InvoiceStatus.CANCELLED);
+        assertThat(captor.getValue().getRemainingBalance()).isEqualByComparingTo("0");
+        assertThat(captor.getValue().getPaidAmount()).isEqualByComparingTo("40.00");
+    }
+
+    /**
+     * Régression réelle (§retour comptable) : "delete" (suppression physique, ex. nettoyer une
+     * facture générée par erreur/en doublon tant qu'elle n'est pas encaissée) n'avait aucune garde —
+     * une facture déjà payée aurait pu être supprimée sans laisser de trace. Seul un contrôle côté
+     * client (contournable) existait jusqu'ici.
+     */
+    @Test
+    void delete_throwsWhenInvoiceAlreadyHasPayment() {
+        Invoice paid = Invoice.builder().id(1L).tenantId(10L).studentId(7L)
+                .totalAmount(new BigDecimal("100.00")).paidAmount(new BigDecimal("40.00"))
+                .remainingBalance(new BigDecimal("60.00")).status(InvoiceStatus.PARTIAL).build();
+        when(repo.findById(1L)).thenReturn(Optional.of(paid));
+
+        assertThatThrownBy(() -> service().delete(1L)).isInstanceOf(gn.lacaeducation.common.BusinessRuleException.class);
+
+        verify(repo, never()).deleteById(any());
+    }
+
+    @Test
+    void delete_succeedsWhenNoPaymentYet() {
+        Invoice unpaid = Invoice.builder().id(1L).tenantId(10L).studentId(7L)
+                .totalAmount(new BigDecimal("100.00")).paidAmount(BigDecimal.ZERO)
+                .remainingBalance(new BigDecimal("100.00")).status(InvoiceStatus.UNPAID).build();
+        when(repo.findById(1L)).thenReturn(Optional.of(unpaid));
+
+        service().delete(1L);
+
+        verify(repo).deleteById(1L);
+    }
+
     @Test
     void applyCredit_increasesPaidAmountAndRecomputesBalance() {
         Invoice existing = Invoice.builder().id(1L).tenantId(10L).studentId(7L)

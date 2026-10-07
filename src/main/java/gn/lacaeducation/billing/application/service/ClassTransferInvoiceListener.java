@@ -20,16 +20,23 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Réconcilie la facturation quand un élève est transféré vers une autre classe en cours d'année
- * (§billing, réponse à Correction-hier.md) : seules les mensualités (frais MENSUALITE) diffèrent
- * réellement d'une classe à l'autre — les frais d'inscription déjà payés ne sont jamais re-facturés,
- * l'élève ne se réinscrit pas. Les mensualités non annulées de l'ancienne classe sont annulées
- * ({@link InvoiceUseCase#voidInvoice}, historique conservé) et tout ce qui avait déjà été payé dessus
- * est reporté en crédit sur les nouvelles mensualités générées pour la nouvelle classe, dans l'ordre
- * chronologique des échéances — sans notifier le parent d'un « nouveau paiement » (ce n'en est pas
- * un). Si la nouvelle classe n'a aucun frais MENSUALITE configuré, ou si le crédit dépasse le montant
- * des nouvelles factures générées, le reliquat est simplement journalisé (pas de solde créditeur géré
- * sur une facture).
+ * Réconcilie la facturation quand un élève change de classe — que ce soit un transfert en cours
+ * d'année sur une inscription VALIDÉE, ou la correction d'une classe mal saisie juste après une
+ * inscription encore EN ATTENTE (§billing, retour comptable réel : corriger 6ème en 7ème juste après
+ * coup régénérait les factures de 7ème SANS annuler celles de 6ème — les deux jeux de factures
+ * restaient actifs en même temps, y compris pour les frais annexes comme "Révision").
+ *
+ * <p>Les mensualités (MENSUALITE) ont un traitement dédié ({@link #reconcileMonthly}) : annulées puis
+ * régénérées pour la nouvelle classe, avec report en crédit de ce qui avait déjà été payé — seul frais
+ * dont le report fait sens (un même nombre d'échéances, juste un montant différent). Tous les AUTRES
+ * frais de l'ancienne classe (inscription, examen, cantine, transport, autre…) sont simplement
+ * ANNULÉS ({@link #voidOtherOldClassInvoices}) — leur régénération pour la nouvelle classe, si
+ * nécessaire, passe par les mécanismes déjà en place (frais d'inscription : automatique via
+ * {@code EnrollmentInvoiceListener} ; autres frais annexes : action "Générer les factures" du
+ * comptable) — ne pas les dupliquer ici. Si une facture annulée avait déjà un paiement dessus, le
+ * montant payé n'est PAS reporté automatiquement (contrairement aux mensualités : la correspondance
+ * frais-par-frais entre les deux classes est trop ambiguë pour l'automatiser sans risque) — journalisé
+ * pour régularisation manuelle, jamais perdu silencieusement.
  */
 @Slf4j
 @Component
@@ -42,6 +49,38 @@ public class ClassTransferInvoiceListener {
     @EventListener
     @Transactional
     public void onEnrollmentClassChanged(EnrollmentClassChangedEvent event) {
+        reconcileMonthly(event);
+        voidOtherOldClassInvoices(event);
+    }
+
+    private void voidOtherOldClassInvoices(EnrollmentClassChangedEvent event) {
+        List<Long> oldOtherFeeIds = schoolFeeRepository.findByClassId(event.oldClassId()).stream()
+                .filter(f -> f.getType() != FeeType.MONTHLY)
+                .map(SchoolFee::getId)
+                .toList();
+        if (oldOtherFeeIds.isEmpty()) return;
+
+        List<Invoice> toVoid = invoiceUseCase.findByStudentId(event.studentId()).stream()
+                .filter(i -> i.getStatus() != InvoiceStatus.CANCELLED)
+                .filter(i -> event.academicYearId() == null || event.academicYearId().equals(i.getAcademicYearId()))
+                .filter(i -> i.getFeeId() != null && oldOtherFeeIds.contains(i.getFeeId()))
+                .toList();
+        if (toVoid.isEmpty()) return;
+
+        for (Invoice inv : toVoid) {
+            BigDecimal paid = inv.getPaidAmount();
+            if (paid != null && paid.signum() > 0) {
+                log.warn("Transfert de classe : facture {} (frais id={}) de l'ancienne classe id={} annulée alors qu'elle "
+                                + "portait déjà {} payé pour l'élève id={} — montant à régulariser manuellement, pas reporté automatiquement.",
+                        inv.getReference(), inv.getFeeId(), event.oldClassId(), paid, event.studentId());
+            }
+            invoiceUseCase.voidInvoice(inv.getId());
+        }
+        log.info("Transfert de classe : {} facture(s) annexe(s) (hors mensualité) de l'ancienne classe id={} annulée(s) pour l'élève id={}",
+                toVoid.size(), event.oldClassId(), event.studentId());
+    }
+
+    private void reconcileMonthly(EnrollmentClassChangedEvent event) {
         List<Long> oldMonthlyFeeIds = schoolFeeRepository.findByClassIdAndType(event.oldClassId(), FeeType.MONTHLY)
                 .stream().map(SchoolFee::getId).toList();
 

@@ -1,6 +1,7 @@
 package gn.lacaeducation.billing.adapters.out;
 
 import gn.lacaeducation.billing.SchoolBillingStatsProvider;
+import gn.lacaeducation.billing.application.port.out.EnrollmentQueryPort;
 import gn.lacaeducation.billing.application.port.out.ExemptionRepository;
 import gn.lacaeducation.billing.application.port.out.InstallmentRepository;
 import gn.lacaeducation.billing.application.port.out.InvoiceRepository;
@@ -39,6 +40,7 @@ class SchoolBillingStatsProviderAdapter implements SchoolBillingStatsProvider {
     private final SchoolFeeRepository schoolFeeRepository;
     private final ExemptionRepository exemptionRepository;
     private final InstallmentRepository installmentRepository;
+    private final EnrollmentQueryPort enrollmentQueryPort;
 
     @Override
     @Transactional(readOnly = true)
@@ -134,9 +136,35 @@ class SchoolBillingStatsProviderAdapter implements SchoolBillingStatsProvider {
                 .filter(e -> e.getValue().stream().allMatch(i -> i.getStatus() == InvoiceStatus.PAID))
                 .toList();
 
+        BigDecimal totalExemptionEstimatedValue = exemptions.stream()
+                .filter(e -> e.getType() == ExemptionType.TOTAL)
+                .map(e -> estimateAnnualMonthlyFeeValue(e.getStudentId(), e.getFeeTypes()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
         return new SubsidyStats(exemptions.size(), totalExemptions, partialExemptions, exemptionDiscountAmount,
                 exemptionDiscountedInvoices.size(), exemptionDiscountInvoicePaidCount,
-                fullySettled.size(), earlyPaymentDiscountApplied);
+                fullySettled.size(), earlyPaymentDiscountApplied, totalExemptionEstimatedValue);
+    }
+
+    /**
+     * Estimation de la valeur annuelle de la mensualité d'un élève (§retour fondateurs) — voir
+     * {@link SchoolBillingStatsProvider.SubsidyStats#totalExemptionEstimatedValue} pour le pourquoi
+     * (une exonération 100% ne produit jamais de facture, donc aucun montant réel à sommer). Somme
+     * des échéances RÉELLEMENT configurées pour le frais MENSUALITE de la classe actuelle de l'élève
+     * (pas un nombre de mois supposé) ; 0 si l'exonération ne couvre pas la mensualité (§feeTypes), si
+     * l'élève n'a pas d'inscription active, ou si sa classe n'a pas de frais MENSUALITE configuré.
+     */
+    private BigDecimal estimateAnnualMonthlyFeeValue(Long studentId, List<FeeType> feeTypes) {
+        if (feeTypes != null && !feeTypes.isEmpty() && !feeTypes.contains(FeeType.MONTHLY)) {
+            return BigDecimal.ZERO;
+        }
+        Long classId = enrollmentQueryPort.findActiveClassId(studentId);
+        if (classId == null) return BigDecimal.ZERO;
+        return schoolFeeRepository.findByClassIdAndType(classId, FeeType.MONTHLY).stream()
+                .flatMap(fee -> installmentRepository.findByFeeId(fee.getId()).stream())
+                .map(Installment::getAmount)
+                .filter(a -> a != null)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     @Override
