@@ -116,7 +116,8 @@ public final class SchoolPdfHeader {
         logoCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
         Image logo = loadLogo(info.logo());
         if (logo != null) {
-            logo.scaleToFit(66, 66);
+            // Retour comptable : logo trop petit sur le reçu — agrandi une 2e fois (66 → 90).
+            logo.scaleToFit(90, 90);
             logo.setAlignment(Element.ALIGN_MIDDLE);
             logoCell.addElement(logo);
         }
