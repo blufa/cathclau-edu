@@ -2,10 +2,8 @@ package gn.lacaeducation.payments.adapters.out.pdf;
 
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
-import com.lowagie.text.Chunk;
 import com.lowagie.text.Document;
 import com.lowagie.text.Element;
-import com.lowagie.text.Font;
 import com.lowagie.text.FontFactory;
 import com.lowagie.text.PageSize;
 import com.lowagie.text.Paragraph;
@@ -66,9 +64,9 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
         try {
             TenantPublicInfo info = payment.getTenantId() == null ? null
                     : tenantInfoProvider.findTenantInfo(payment.getTenantId()).orElse(null);
+            java.awt.Color brand = SchoolPdfHeader.parseColor(info == null ? null : info.brandColor());
             PdfWriter writer = PdfWriter.getInstance(doc, out);
-            writer.setPageEvent(new SchoolPdfPageFooter(info,
-                    SchoolPdfHeader.parseColor(info == null ? null : info.brandColor())));
+            writer.setPageEvent(new SchoolPdfPageFooter(info, brand));
             doc.open();
 
             String academicYearLabel = payerDirectory.currentAcademicYearLabel(payment.getTenantId()).orElse(null);
@@ -109,8 +107,9 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
                 doc.add(studentBlock);
                 List<PayerDirectory.InvoiceRowInfo> invoices = payerDirectory.studentInvoices(studentId);
                 doc.add(invoicesTable(invoices));
-                encaisseAujourdhuiLine(doc, money(receipt.getAmount()) + " GNF");
-                totalRow(doc, "Total payé", money(sumPaidToDate(invoices)) + " GNF");
+                amountBox(doc, "Encaissé aujourd'hui", money(receipt.getAmount()) + " GNF",
+                        SchoolPdfHeader.tint(brand, 0.12), DARK);
+                amountBox(doc, "Total payé", money(sumPaidToDate(invoices)) + " GNF", brand, java.awt.Color.WHITE);
                 remainingLine(doc, studentId);
             } else {
                 BigDecimal totalPaidToDate = BigDecimal.ZERO;
@@ -125,8 +124,9 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
                     doc.add(invoicesTable(invoices));
                     totalPaidToDate = totalPaidToDate.add(sumPaidToDate(invoices));
                 }
-                encaisseAujourdhuiLine(doc, money(receipt.getAmount()) + " GNF");
-                totalRow(doc, "Total payé", money(totalPaidToDate) + " GNF");
+                amountBox(doc, "Encaissé aujourd'hui", money(receipt.getAmount()) + " GNF",
+                        SchoolPdfHeader.tint(brand, 0.12), DARK);
+                amountBox(doc, "Total payé", money(totalPaidToDate) + " GNF", brand, java.awt.Color.WHITE);
                 for (Long studentId : studentIds) {
                     remainingLine(doc, studentId);
                 }
@@ -272,14 +272,39 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
      * réservé au total le plus important visuellement : "Total payé" (cumul, via {@code totalRow}
      * partagé avec facture/fiche de paie). Évite de refaire déborder le reçu sur une 2e page
      * maintenant qu'il y a deux totaux au lieu d'un seul (§retour comptable). */
-    private void encaisseAujourdhuiLine(Document doc, String amount) {
-        Font boldLabel = FontFactory.getFont(FontFactory.HELVETICA, 9.5f, Font.BOLD, DARK);
-        Paragraph p = new Paragraph();
-        p.add(new Chunk("Encaissé aujourd'hui", boldLabel));
-        p.add(new Chunk(" : " + amount, font(FontFactory.HELVETICA_BOLD, 9.5f, DARK)));
-        p.setSpacingBefore(2f);
-        doc.add(p);
+    /**
+     * Bloc coloré "Libellé : Montant" (§retour comptable : "stylise les trois lignes" — Encaissé
+     * aujourd'hui / Total payé / Reste à payer) — remplace l'ancien mélange d'un tableau bordé
+     * ({@code AdminDocumentLayout#totalRow}) pour "Total payé" et de simples lignes de texte pour les
+     * deux autres, par un style UNIQUE et cohérent pour les trois, seule la couleur changeant selon
+     * l'importance (Total payé en couleur pleine de l'école, Encaissé aujourd'hui en teinte légère,
+     * Reste à payer en orange d'alerte — voir {@link #remainingLine}). Padding volontairement réduit
+     * (5f) : ce bloc s'ajoute à deux/trois autres sur le même reçu, jamais au prix d'un débordement
+     * sur une 2e page (§retour comptable, point récurrent sur ce fichier).
+     */
+    private void amountBox(Document doc, String label, String amount, java.awt.Color bg, java.awt.Color textColor) {
+        PdfPTable t = new PdfPTable(new float[]{2f, 2f});
+        t.setWidthPercentage(100);
+        t.setSpacingBefore(3f);
+        PdfPCell l = new PdfPCell(new com.lowagie.text.Phrase(label, font(FontFactory.HELVETICA_BOLD, 9.5f, textColor)));
+        l.setBackgroundColor(bg);
+        l.setBorder(0);
+        l.setPadding(5f);
+        PdfPCell v = new PdfPCell(new com.lowagie.text.Phrase(amount, font(FontFactory.HELVETICA_BOLD, 10f, textColor)));
+        v.setBackgroundColor(bg);
+        v.setBorder(0);
+        v.setPadding(5f);
+        v.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        t.addCell(l);
+        t.addCell(v);
+        doc.add(t);
     }
+
+    /** Teinte d'alerte (orange) pour "Reste à payer" — seule ligne des trois signalant un montant
+     * encore dû, distincte à dessein des deux autres (argent déjà en caisse). Rien n'est affiché si
+     * l'élève n'a plus aucune facture due (comportement inchangé). */
+    private static final java.awt.Color REMAINING_BG = new java.awt.Color(254, 243, 199);
+    private static final java.awt.Color REMAINING_TEXT = new java.awt.Color(146, 64, 14);
 
     private void remainingLine(Document doc, Long studentId) {
         BigDecimal total = payerDirectory.unpaidInvoices(studentId).stream()
@@ -287,12 +312,7 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
                 .filter(java.util.Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         if (total.signum() <= 0) return;
-        Font boldLabel = FontFactory.getFont(FontFactory.HELVETICA, 9.5f, Font.BOLD, DARK);
-        Paragraph rest = new Paragraph();
-        rest.add(new Chunk("Reste à payer", boldLabel));
-        rest.add(new Chunk(" : " + money(total) + " GNF", font(FontFactory.HELVETICA_BOLD, 9.5f, DARK)));
-        rest.setSpacingBefore(2f);
-        doc.add(rest);
+        amountBox(doc, "Reste à payer", money(total) + " GNF", REMAINING_BG, REMAINING_TEXT);
     }
 
     /**
