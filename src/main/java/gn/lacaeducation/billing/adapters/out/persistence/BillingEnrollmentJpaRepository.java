@@ -42,6 +42,10 @@ interface BillingEnrollmentJpaRepository extends JpaRepository<BillingEnrollment
             + "AND e.status <> 'CANCELLED' ORDER BY CASE WHEN e.status = 'VALIDATED' THEN 0 ELSE 1 END, e.id DESC")
     List<Long> findActiveAcademicYearIdsMostRecentFirst(@Param("studentId") Long studentId);
 
+    @Query("SELECT e.classId FROM BillingEnrollmentJpaEntity e WHERE e.studentId = :studentId "
+            + "AND e.status <> 'CANCELLED' ORDER BY CASE WHEN e.status = 'VALIDATED' THEN 0 ELSE 1 END, e.id DESC")
+    List<Long> findActiveClassIdsMostRecentFirst(@Param("studentId") Long studentId);
+
     // À la différence de l'opt-in plateforme ci-dessus, VALIDATED ou PENDING sont acceptés ici : ce
     // choix n'a aucun impact sur les notifications (contrairement au frais plateforme), et
     // generateMonthly() est explicitement conçu pour tourner dès l'inscription PENDING ("on peut payer
