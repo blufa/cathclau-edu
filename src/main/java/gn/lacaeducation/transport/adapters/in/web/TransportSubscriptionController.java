@@ -34,6 +34,13 @@ public class TransportSubscriptionController {
         return service.subscriptions(TenantContext.get(), routeId, studentId);
     }
 
+    @Operation(summary = "Élèves ayant déjà réglé au moins un mois de transport (§retour comptable : "
+            + "\"savoir qui a payé le transport\") — parmi les abonnés, ceux absents de cette liste n'ont encore rien payé")
+    @GetMapping("/paid-student-ids")
+    public List<Long> paidStudentIds() {
+        return service.paidStudentIds(TenantContext.get());
+    }
+
     // Action courante du comptable/secrétaire à l'inscription ou à l'encaissement (choisir le bus) —
     // jamais la configuration des lignes/arrêts (transport:manage, restée admin/direction/secrétaire,
     // déjà détentrice de transport:manage depuis V149). abonnement_transport:create est un privilège

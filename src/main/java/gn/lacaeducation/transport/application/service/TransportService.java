@@ -3,6 +3,7 @@ package gn.lacaeducation.transport.application.service;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.transport.application.event.TransportSubscriptionCreatedEvent;
+import gn.lacaeducation.transport.application.port.out.TransportInvoiceQueryPort;
 import gn.lacaeducation.transport.application.port.out.TransportRouteRepository;
 import gn.lacaeducation.transport.application.port.out.TransportStopRepository;
 import gn.lacaeducation.transport.application.port.out.TransportSubscriptionRepository;
@@ -32,6 +33,7 @@ public class TransportService {
     private final TransportStopRepository stopRepo;
     private final TransportSubscriptionRepository subRepo;
     private final ApplicationEventPublisher eventPublisher;
+    private final TransportInvoiceQueryPort invoiceQueryPort;
 
     // ── Lignes ───────────────────────────────────────────────────────────────
 
@@ -119,6 +121,13 @@ public class TransportService {
         if (routeId != null) return subRepo.findByRouteId(routeId);
         if (studentId != null) return subRepo.findByStudentId(studentId);
         return subRepo.findByTenantId(tenantId);
+    }
+
+    /** Élèves du tenant ayant déjà réglé au moins un mois de transport (§retour comptable : "savoir
+     * qui a payé le transport") — parmi les abonnés, ceux absents de cette liste n'ont encore rien
+     * payé (abonnement actif mais facturé mois par mois, à la demande, jamais automatique). */
+    public List<Long> paidStudentIds(Long tenantId) {
+        return invoiceQueryPort.findStudentIdsWithPaidTransportInvoice(tenantId);
     }
 
     private TransportRoute loadRoute(Long id) {
