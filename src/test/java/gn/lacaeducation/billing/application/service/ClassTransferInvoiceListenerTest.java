@@ -50,8 +50,8 @@ class ClassTransferInvoiceListenerTest {
         SchoolFee newFee = SchoolFee.builder().id(4L).tenantId(10L).classId(21L).type(FeeType.MONTHLY).build();
         when(schoolFeeRepository.findByClassIdAndType(21L, FeeType.MONTHLY)).thenReturn(List.of(newFee));
 
-        Invoice newInv1 = Invoice.builder().id(200L).installmentId(1L).totalAmount(new BigDecimal("40.00")).build();
-        Invoice newInv2 = Invoice.builder().id(201L).installmentId(2L).totalAmount(new BigDecimal("40.00")).build();
+        Invoice newInv1 = Invoice.builder().id(200L).installmentId(1L).totalAmount(new BigDecimal("40.00")).remainingBalance(new BigDecimal("40.00")).build();
+        Invoice newInv2 = Invoice.builder().id(201L).installmentId(2L).totalAmount(new BigDecimal("40.00")).remainingBalance(new BigDecimal("40.00")).build();
         when(invoiceUseCase.generateMonthly(any(GenerateMonthlyCommand.class)))
                 .thenReturn(new InvoiceUseCase.GenerateMonthlyResult(List.of(newInv1, newInv2), List.of()));
 
@@ -113,7 +113,7 @@ class ClassTransferInvoiceListenerTest {
 
         SchoolFee newFee = SchoolFee.builder().id(4L).tenantId(10L).classId(21L).type(FeeType.MONTHLY).build();
         when(schoolFeeRepository.findByClassIdAndType(21L, FeeType.MONTHLY)).thenReturn(List.of(newFee));
-        Invoice newInv = Invoice.builder().id(200L).installmentId(1L).totalAmount(new BigDecimal("40.00")).build();
+        Invoice newInv = Invoice.builder().id(200L).installmentId(1L).totalAmount(new BigDecimal("40.00")).remainingBalance(new BigDecimal("40.00")).build();
         when(invoiceUseCase.generateMonthly(any(GenerateMonthlyCommand.class)))
                 .thenReturn(new InvoiceUseCase.GenerateMonthlyResult(List.of(newInv), List.of()));
 
@@ -123,6 +123,44 @@ class ClassTransferInvoiceListenerTest {
         // Reliquat = 100.00 - 40.00 = 60.00, jamais affecté à aucune facture.
         verify(eventPublisher).publishEvent(new ClassTransferCreditSurplusEvent(10L, 7L, 20L, 21L, new BigDecimal("60.00")));
         verify(classTransferRefundUseCase).record(eq(10L), eq(7L), eq(20L), eq(21L), eq(new BigDecimal("60.00")), anyString());
+    }
+
+    /**
+     * Retour comptable réel (cas Abib Kiss BERETE) : un parent qui a réglé toute l'année avec la
+     * remise "paiement anticipé" dans l'ancienne classe doit en bénéficier aussi sur la nouvelle,
+     * sinon le crédit (déjà net de cette remise) se compare à un total resté au plein tarif — un
+     * vrai surplus resterait alors invisible.
+     */
+    @Test
+    void oldClassHadEarlyPaymentDiscount_carriesItOverBeforeComparingCredit() {
+        when(schoolFeeRepository.findByClassIdAndType(20L, FeeType.MONTHLY))
+                .thenReturn(List.of(SchoolFee.builder().id(3L).tenantId(10L).classId(20L).type(FeeType.MONTHLY).build()));
+        // Ancienne classe : 100.00 brut remisé à 5% (payé net = 95.00), remise "paiement anticipé".
+        Invoice paidOld = Invoice.builder().id(100L).studentId(7L).feeId(3L).academicYearId(99L)
+                .status(InvoiceStatus.PAID).totalAmount(new BigDecimal("100.00")).paidAmount(new BigDecimal("95.00"))
+                .discountAmount(new BigDecimal("5.00")).discountReason("Remise paiement anticipé : Scolarite annuelle (5%)")
+                .build();
+        when(invoiceUseCase.findByStudentId(7L)).thenReturn(List.of(paidOld));
+
+        SchoolFee newFee = SchoolFee.builder().id(4L).tenantId(10L).classId(21L).type(FeeType.MONTHLY).build();
+        when(schoolFeeRepository.findByClassIdAndType(21L, FeeType.MONTHLY)).thenReturn(List.of(newFee));
+        // Nouvelle classe générée au plein tarif (90.00) — applyEarlyPaymentDiscount doit la ramener à
+        // 85.50 net (5% de remise reportée) avant que le crédit ne s'y compare.
+        Invoice newInvFullPrice = Invoice.builder().id(200L).installmentId(1L).totalAmount(new BigDecimal("90.00"))
+                .remainingBalance(new BigDecimal("90.00")).build();
+        when(invoiceUseCase.generateMonthly(any(GenerateMonthlyCommand.class)))
+                .thenReturn(new InvoiceUseCase.GenerateMonthlyResult(List.of(newInvFullPrice), List.of()));
+        Invoice newInvDiscounted = Invoice.builder().id(200L).installmentId(1L).totalAmount(new BigDecimal("90.00"))
+                .discountAmount(new BigDecimal("4.50")).remainingBalance(new BigDecimal("85.50")).build();
+        when(invoiceUseCase.applyEarlyPaymentDiscount(7L, 4L)).thenReturn(List.of(newInvDiscounted));
+
+        listener.onEnrollmentClassChanged(event);
+
+        verify(invoiceUseCase).applyEarlyPaymentDiscount(7L, 4L);
+        // Crédit = 95.00, plafonné au solde NET remisé (85.50), pas au total brut (90.00).
+        verify(invoiceUseCase).applyCredit(eq(200L), eq(new BigDecimal("85.50")), anyString());
+        // Surplus = 95.00 - 85.50 = 9.50, à rembourser.
+        verify(classTransferRefundUseCase).record(eq(10L), eq(7L), eq(20L), eq(21L), eq(new BigDecimal("9.50")), anyString());
     }
 
     /**

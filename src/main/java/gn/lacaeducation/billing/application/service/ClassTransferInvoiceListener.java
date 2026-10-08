@@ -45,6 +45,12 @@ import java.util.Objects;
 @RequiredArgsConstructor
 public class ClassTransferInvoiceListener {
 
+    // Même préfixe que InvoiceService#applyEarlyPaymentDiscount / SchoolBillingStatsProviderAdapter
+    // (pas de constante partagée dans ce codebase pour ce motif précis — dupliquée volontairement,
+    // comme aux deux autres endroits). Sert à détecter si l'ancienne classe avait cette remise, pour
+    // la reporter sur la nouvelle plutôt que de la perdre silencieusement.
+    private static final String EARLY_PAYMENT_DISCOUNT_REASON_PREFIX = "Remise paiement anticipé : ";
+
     private final SchoolFeeRepository schoolFeeRepository;
     private final InvoiceUseCase invoiceUseCase;
     private final ApplicationEventPublisher eventPublisher;
@@ -101,13 +107,28 @@ public class ClassTransferInvoiceListener {
             return;
         }
 
+        // Retour comptable réel : un parent qui avait réglé toute l'année avec la remise "paiement
+        // anticipé" doit en bénéficier aussi sur la nouvelle classe — sinon le crédit reporté (déjà
+        // net de cette remise) se compare à un total de la nouvelle classe resté au plein tarif, ce
+        // qui masque un vrai surplus à rembourser. Rejoué AVANT le report de crédit ci-dessous (tant
+        // que les nouvelles factures sont encore impayées — condition exigée par
+        // applyEarlyPaymentDiscount) pour que le crédit se compare ensuite au total déjà remisé.
+        boolean hadEarlyPaymentDiscount = oldInvoices.stream().anyMatch(i ->
+                i.getDiscountReason() != null && i.getDiscountReason().startsWith(EARLY_PAYMENT_DISCOUNT_REASON_PREFIX));
+        if (hadEarlyPaymentDiscount) {
+            newInvoices = invoiceUseCase.applyEarlyPaymentDiscount(event.studentId(), newFee.getId());
+        }
+
         BigDecimal remaining = credit;
         List<Invoice> sortedNew = newInvoices.stream()
                 .sorted(Comparator.comparing(Invoice::getInstallmentId, Comparator.nullsLast(Comparator.naturalOrder())))
                 .toList();
         for (Invoice inv : sortedNew) {
             if (remaining.signum() <= 0) break;
-            BigDecimal toApply = remaining.min(inv.getTotalAmount());
+            // Le solde encore net de remise (jamais le total BRUT) — sans ça, une remise (ci-dessus
+            // ou une exonération déjà appliquée à la génération) serait reportée en trop, rendant le
+            // solde restant négatif au lieu de rester à 0.
+            BigDecimal toApply = remaining.min(inv.getRemainingBalance());
             invoiceUseCase.applyCredit(inv.getId(), toApply, "Transfert de classe");
             remaining = remaining.subtract(toApply);
         }
