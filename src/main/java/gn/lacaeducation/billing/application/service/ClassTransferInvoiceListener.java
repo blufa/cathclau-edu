@@ -102,7 +102,8 @@ public class ClassTransferInvoiceListener {
         for (Invoice inv : sortedNew) {
             if (remaining.signum() <= 0) break;
             BigDecimal toApply = remaining.min(inv.getTotalAmount());
-            invoiceUseCase.applyCredit(inv.getId(), toApply);
+            invoiceUseCase.applyCredit(inv.getId(), toApply,
+                    "Crédit reporté de l'ancienne classe (transfert, déjà réglé avant le changement de classe)");
             remaining = remaining.subtract(toApply);
         }
         if (remaining.signum() > 0) {

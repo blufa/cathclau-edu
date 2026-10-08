@@ -299,11 +299,13 @@ class InvoiceServiceTest {
         when(repo.findById(1L)).thenReturn(Optional.of(existing));
         when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        Invoice inv = service().applyCredit(1L, new BigDecimal("60.00"));
+        Invoice inv = service().applyCredit(1L, new BigDecimal("60.00"), "Crédit reporté de l'ancienne classe");
 
         assertThat(inv.getPaidAmount()).isEqualByComparingTo("60.00");
         assertThat(inv.getRemainingBalance()).isEqualByComparingTo("40.00");
         assertThat(inv.getStatus()).isEqualTo(InvoiceStatus.PARTIAL);
+        assertThat(inv.getCreditedAmount()).isEqualByComparingTo("60.00");
+        assertThat(inv.getCreditReason()).isEqualTo("Crédit reporté de l'ancienne classe");
         // Report de crédit, pas un nouveau paiement : aucune notification au parent.
         verify(eventPublisher, never()).publishEvent(any());
     }

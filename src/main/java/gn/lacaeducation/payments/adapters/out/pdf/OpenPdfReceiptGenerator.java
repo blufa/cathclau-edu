@@ -98,6 +98,10 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
             // (CET encaissement précis), puis "Total payé" (cumul de toutes les factures réglées à ce
             // jour, même celles réglées un autre jour — distinct du précédent : voir leur Javadoc
             // respective plus bas), puis "Reste à payer" — jamais dans un autre ordre.
+            // Collecté pendant l'affichage des tableaux ci-dessous (§retour comptable) : une facture
+            // déjà réglée sans encaissement correspondant (crédit reporté d'un transfert de classe)
+            // doit être expliquée, sinon le comptable ne comprend pas le calcul.
+            List<String> creditNotes = new java.util.ArrayList<>();
             if (studentIds.size() <= 1) {
                 Long studentId = studentIds.isEmpty() ? payment.getStudentId() : studentIds.iterator().next();
                 PdfPTable studentBlock = compactFields(
@@ -108,6 +112,7 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
                 doc.add(studentBlock);
                 List<PayerDirectory.InvoiceRowInfo> invoices = payerDirectory.studentInvoices(studentId);
                 doc.add(invoicesTable(invoices, paidAtByInvoiceId(studentId)));
+                creditNotes.addAll(creditNotes(invoices));
                 amountBox(doc, "Encaissé aujourd'hui", money(receipt.getAmount()) + " GNF",
                         SchoolPdfHeader.tint(brand, 0.12), DARK);
                 amountBox(doc, "Total payé", money(sumPaidToDate(invoices)) + " GNF", brand, java.awt.Color.WHITE);
@@ -123,6 +128,7 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
                     doc.add(studentBlock);
                     List<PayerDirectory.InvoiceRowInfo> invoices = payerDirectory.studentInvoices(studentId);
                     doc.add(invoicesTable(invoices, paidAtByInvoiceId(studentId)));
+                    creditNotes.addAll(creditNotes(invoices));
                     totalPaidToDate = totalPaidToDate.add(sumPaidToDate(invoices));
                 }
                 amountBox(doc, "Encaissé aujourd'hui", money(receipt.getAmount()) + " GNF",
@@ -131,6 +137,12 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
                 for (Long studentId : studentIds) {
                     remainingLine(doc, studentId);
                 }
+            }
+
+            for (String line : creditNotes) {
+                Paragraph credit = new Paragraph(line, font(FontFactory.HELVETICA, 9, GREY));
+                credit.setSpacingBefore(2f);
+                doc.add(credit);
             }
 
             for (String line : discountNotes(payment)) {
@@ -372,6 +384,21 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
         }
         return totalByReason.entrySet().stream()
                 .map(e -> "Remise appliquée : -" + money(e.getValue()) + " GNF (" + e.getKey() + ")")
+                .toList();
+    }
+
+    /**
+     * Crédit reporté (ex. transfert de classe, §retour comptable) apparaissant sur une ou plusieurs
+     * factures du tableau ci-dessus — sans cette note, une facture déjà réglée sans encaissement
+     * correspondant ne s'expliquerait pas pour le comptable. Une ligne par facture créditée (pas
+     * agrégé par motif comme {@link #discountNotes} : chaque facture garde son propre libellé, ex.
+     * "Tranche 2 (novembre, décembre, janvier)").
+     */
+    private List<String> creditNotes(List<PayerDirectory.InvoiceRowInfo> invoices) {
+        return invoices.stream()
+                .filter(i -> i.creditedAmount() != null && i.creditedAmount().signum() > 0)
+                .map(i -> "Crédit reporté sur " + i.label() + " : +" + money(i.creditedAmount()) + " GNF"
+                        + (i.creditReason() != null && !i.creditReason().isBlank() ? " (" + i.creditReason() + ")" : ""))
                 .toList();
     }
 

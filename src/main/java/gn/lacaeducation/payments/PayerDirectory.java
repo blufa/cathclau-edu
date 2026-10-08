@@ -60,9 +60,13 @@ public interface PayerDirectory {
      * appliquée : -X GNF" imprimée séparément) ; {@code paidAmount} est le montant NET réellement
      * encaissé à ce jour sur cette facture (ce qui a été payé, jamais plus) — c'est lui qu'il faut
      * sommer pour un total cumulé "Total payé" correct, jamais {@code amount} (qui, pour une facture
-     * remisée, est plus élevé que ce qui a réellement été reçu). */
+     * remisée, est plus élevé que ce qui a réellement été reçu).
+     * {@code creditedAmount}/{@code creditReason} : montant porté au paidAmount SANS paiement réel
+     * correspondant (ex. crédit reporté d'une ancienne classe lors d'un transfert) — sans cette trace,
+     * le reçu afficherait une facture déjà réglée sans qu'aucun encaissement ne l'explique. */
     record InvoiceRowInfo(Long id, String reference, java.math.BigDecimal amount, String label, boolean paid,
-                          java.math.BigDecimal paidAmount) {}
+                          java.math.BigDecimal paidAmount,
+                          java.math.BigDecimal creditedAmount, String creditReason) {}
 
     /** Toutes les factures non annulées de l'élève sur l'année scolaire courante du tenant (même
      * portée que {@link #unpaidInvoices}) — inscription/réinscription d'abord, puis la scolarité

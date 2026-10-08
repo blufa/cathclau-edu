@@ -409,10 +409,13 @@ public class InvoiceService implements InvoiceUseCase {
         return repo.save(inv);
     }
 
-    @Override public Invoice applyCredit(Long invoiceId, BigDecimal amount) {
+    @Override public Invoice applyCredit(Long invoiceId, BigDecimal amount, String reason) {
         Invoice inv = load(invoiceId);
         BigDecimal currentPaid = inv.getPaidAmount() != null ? inv.getPaidAmount() : BigDecimal.ZERO;
         inv.setPaidAmount(currentPaid.add(amount));
+        BigDecimal currentCredited = inv.getCreditedAmount() != null ? inv.getCreditedAmount() : BigDecimal.ZERO;
+        inv.setCreditedAmount(currentCredited.add(amount));
+        inv.setCreditReason(reason);
         recomputeBalance(inv);
         return repo.save(inv);
     }

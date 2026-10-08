@@ -18,6 +18,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
@@ -55,8 +56,8 @@ class ClassTransferInvoiceListenerTest {
         verify(invoiceUseCase).generateMonthly(new GenerateMonthlyCommand(10L, 7L, 4L, 99L));
         // Crédit total = 50.00 (seul le montant déjà payé) réparti sur les nouvelles factures, dans
         // l'ordre chronologique des échéances : la première absorbe 40.00, la seconde le reliquat de 10.00.
-        verify(invoiceUseCase).applyCredit(200L, new BigDecimal("40.00"));
-        verify(invoiceUseCase).applyCredit(201L, new BigDecimal("10.00"));
+        verify(invoiceUseCase).applyCredit(eq(200L), eq(new BigDecimal("40.00")), anyString());
+        verify(invoiceUseCase).applyCredit(eq(201L), eq(new BigDecimal("10.00")), anyString());
     }
 
     @Test
@@ -83,7 +84,7 @@ class ClassTransferInvoiceListenerTest {
 
         verify(invoiceUseCase).voidInvoice(100L);
         verify(invoiceUseCase, never()).generateMonthly(any());
-        verify(invoiceUseCase, never()).applyCredit(any(), any());
+        verify(invoiceUseCase, never()).applyCredit(any(), any(), any());
     }
 
     /**
