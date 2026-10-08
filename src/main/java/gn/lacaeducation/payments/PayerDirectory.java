@@ -73,4 +73,14 @@ public interface PayerDirectory {
      * portée que {@link #unpaidInvoices}) — inscription/réinscription d'abord, puis la scolarité
      * (tranches, chronologique), puis les frais annexes (§retour comptable, reçu de paiement). */
     List<InvoiceRowInfo> studentInvoices(Long studentId);
+
+    /** Surplus de crédit laissé par un transfert de classe (nouvelle classe moins chère que
+     * l'ancienne), pas encore remboursé au parent — voir {@code ClassTransferRefund}. */
+    record PendingRefundInfo(java.math.BigDecimal amount, String reason, java.time.LocalDateTime createdAt) {}
+
+    /** Surplus(s) encore dus à CET élève (pas encore marqués remboursés) — affichés sur le reçu
+     * jusqu'à ce que le comptable confirme le remboursement physique au parent (§retour comptable :
+     * un surplus resté seulement dans les logs/SMS ne se retrouvait plus jamais nulle part après
+     * coup). Vide si aucun surplus en attente. */
+    List<PendingRefundInfo> pendingRefunds(Long studentId);
 }

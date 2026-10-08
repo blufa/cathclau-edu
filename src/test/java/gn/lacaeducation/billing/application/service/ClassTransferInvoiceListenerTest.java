@@ -1,5 +1,6 @@
 package gn.lacaeducation.billing.application.service;
 
+import gn.lacaeducation.billing.application.port.in.ClassTransferRefundUseCase;
 import gn.lacaeducation.billing.application.port.in.InvoiceUseCase;
 import gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand;
 import gn.lacaeducation.billing.application.port.out.SchoolFeeRepository;
@@ -22,6 +23,7 @@ import java.util.List;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -30,6 +32,7 @@ class ClassTransferInvoiceListenerTest {
     @Mock SchoolFeeRepository schoolFeeRepository;
     @Mock InvoiceUseCase invoiceUseCase;
     @Mock ApplicationEventPublisher eventPublisher;
+    @Mock ClassTransferRefundUseCase classTransferRefundUseCase;
     @InjectMocks ClassTransferInvoiceListener listener;
 
     private final EnrollmentClassChangedEvent event = new EnrollmentClassChangedEvent(null, 7L, 1L, 20L, 21L, 99L);
@@ -91,6 +94,7 @@ class ClassTransferInvoiceListenerTest {
         // Retour comptable : ce crédit entier (plus aucune mensualité où le reporter) est un surplus à
         // rembourser au parent — doit être signalé, pas juste logué.
         verify(eventPublisher).publishEvent(new ClassTransferCreditSurplusEvent(null, 7L, 20L, 21L, new BigDecimal("50.00")));
+        verify(classTransferRefundUseCase).record(isNull(), eq(7L), eq(20L), eq(21L), eq(new BigDecimal("50.00")), anyString());
     }
 
     /**
@@ -118,6 +122,7 @@ class ClassTransferInvoiceListenerTest {
         verify(invoiceUseCase).applyCredit(eq(200L), eq(new BigDecimal("40.00")), anyString());
         // Reliquat = 100.00 - 40.00 = 60.00, jamais affecté à aucune facture.
         verify(eventPublisher).publishEvent(new ClassTransferCreditSurplusEvent(10L, 7L, 20L, 21L, new BigDecimal("60.00")));
+        verify(classTransferRefundUseCase).record(eq(10L), eq(7L), eq(20L), eq(21L), eq(new BigDecimal("60.00")), anyString());
     }
 
     /**

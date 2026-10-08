@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
@@ -127,39 +128,31 @@ class OpenPdfReceiptGeneratorTest {
     }
 
     /**
-     * Régression réelle (§retour comptable) : le chemin RÉELLEMENT utilisé par l'écran d'encaissement
-     * ({@code StudentInvoicesPanel#collect}) passe TOUJOURS par un paiement GROUPÉ ({@code
-     * PaymentService#initiateGroup}), même pour une seule facture — {@code invoiceId} reste alors
-     * {@code null} sur le {@code Payment}, et seul {@code groupLines} (JSON réel, pas mocké) porte la
-     * référence de facture. Les tests ci-dessus, qui mockent `objectMapper` et utilisent `invoiceId`
-     * directement, ne couvraient JAMAIS ce chemin — exactement celui qui ne montrait rien en pratique.
-     * Appelle {@code discountNotes} par réflexion pour vérifier le contenu réel, pas seulement
-     * l'absence d'exception (aucune bibliothèque d'extraction de texte PDF dans le projet).
+     * Retour comptable réel : un parent qui a réglé toute l'année avec 5 % de remise (paiement
+     * anticipé) revient un autre jour régler uniquement le transport — ce reçu-là ne règle aucune
+     * facture remisée, mais doit quand même rappeler la remise déjà appliquée sur la mensualité,
+     * visible dans le tableau du reçu. Avant ce correctif, {@code discountNotes} ne regardait QUE
+     * les factures couvertes par le paiement du jour (transport, jamais remisé) : la remise
+     * disparaissait purement et simplement de ce reçu-là.
      */
     @Test
-    void discountNotes_groupedPaymentWithRealGroupLinesJson_findsInvoiceDiscountViaGroupLines() throws Exception {
-        tools.jackson.databind.ObjectMapper realMapper = tools.jackson.databind.json.JsonMapper.builder().build();
-        OpenPdfReceiptGenerator realGenerator = new OpenPdfReceiptGenerator(tenantInfoProvider, payerDirectory, realMapper, paymentRepository);
-        // Même forme que PaymentService#serializeShares (GroupedInvoiceSettlementEvent.Share) : un champ
-        // `paidMonths` de plus que le `GroupLine` interne du générateur — c'est ce décalage qu'il fallait
-        // vérifier ne casse pas le parsing (champ inconnu, pas un champ manquant).
-        String groupLines = """
-                [{"invoiceId":2,"studentId":7,"amount":10000,"paidMonths":["2026-10"]}]
-                """;
-        Payment grouped = Payment.builder().id(1L).tenantId(10L).studentId(7L).invoiceId(null)
-                .groupLines(groupLines).amount(new BigDecimal("10000")).channel(PaymentChannel.CASH)
-                .collectedByUserId(99L).build();
+    void discountNotes_discountOnInvoiceNotCoveredByTodaysPayment_stillAppears() throws Exception {
+        List<InvoiceRowInfo> invoices = List.of(
+                new InvoiceRowInfo(2L, "FAC-MENS", new BigDecimal("2000000"), "Mensualité", true,
+                        new BigDecimal("1900000"), null, null, null),
+                new InvoiceRowInfo(5L, "FAC-TRANS", new BigDecimal("50000"), "Transport", true,
+                        new BigDecimal("50000"), null, null, null));
         when(payerDirectory.invoiceFeeInfo(2L)).thenReturn(Optional.of(new PayerDirectory.InvoiceFeeInfo(
-                "Mensualité", "Octobre 2026", new BigDecimal("10000"),
-                "Exonération : Meilleur élève (100%)", null)));
+                "Mensualité", null, new BigDecimal("100000"), "Remise paiement anticipé : 5%", null)));
+        when(payerDirectory.invoiceFeeInfo(5L)).thenReturn(Optional.empty());
 
-        var method = OpenPdfReceiptGenerator.class.getDeclaredMethod("discountNotes", Payment.class);
+        var method = OpenPdfReceiptGenerator.class.getDeclaredMethod("discountNotes", List.class);
         method.setAccessible(true);
         @SuppressWarnings("unchecked")
-        List<String> notes = (List<String>) method.invoke(realGenerator, grouped);
+        List<String> notes = (List<String>) method.invoke(generator(), invoices);
 
         assertThat(notes).hasSize(1);
-        assertThat(notes.get(0)).contains("Meilleur élève").contains("100%").contains("10 000");
+        assertThat(notes.get(0)).contains("5%").contains("100 000");
     }
 
     /** Retour comptable (transfert de classe) : une facture créditée doit l'expliquer sur le reçu,
@@ -183,6 +176,22 @@ class OpenPdfReceiptGeneratorTest {
                 .contains("100 000")
                 .contains("ancienne classe")
                 .contains("transfert de classe");
+    }
+
+    /** Retour comptable réel : un surplus de crédit (transfert vers une classe moins chère) doit
+     * rester visible sur CHAQUE reçu de l'élève, pas seulement celui du jour du transfert. */
+    @Test
+    void refundNotes_pendingRefund_mentionsAmountToReimburse() throws Exception {
+        when(payerDirectory.pendingRefunds(7L)).thenReturn(List.of(
+                new PayerDirectory.PendingRefundInfo(new BigDecimal("150000"), "Transfert de classe", LocalDateTime.now())));
+
+        var method = OpenPdfReceiptGenerator.class.getDeclaredMethod("refundNotes", Long.class);
+        method.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        List<String> notes = (List<String>) method.invoke(generator(), 7L);
+
+        assertThat(notes).hasSize(1);
+        assertThat(notes.get(0)).contains("REMBOURSER").contains("150 000");
     }
 
     /** Régression : un reçu A5 avec le tableau complet des factures de l'élève débordait sur une 2e
@@ -237,21 +246,25 @@ class OpenPdfReceiptGeneratorTest {
         String[] months = {"Septembre", "Octobre", "Novembre", "Décembre", "Janvier", "Février",
                 "Mars", "Avril", "Mai", "Juin"};
         List<InvoiceRowInfo> invoices = new java.util.ArrayList<>();
+        long[] nextId = {1L};
         for (String year : new String[]{"2024-2025", "2025-2026"}) {
             for (String month : months) {
-                invoices.add(new InvoiceRowInfo(1L, "FAC-" + month + "-" + year,
+                invoices.add(new InvoiceRowInfo(nextId[0]++, "FAC-" + month + "-" + year,
                         new BigDecimal("100000"), "Mensualité — " + month + " " + year, true, new BigDecimal("100000"), null, null, null));
             }
         }
-        invoices.add(new InvoiceRowInfo(1L, "FAC-INS", new BigDecimal("250000"), "Inscription", true, new BigDecimal("250000"), null, null, null));
-        invoices.add(new InvoiceRowInfo(1L, "FAC-TRANS", new BigDecimal("300000"), "Transport", false, BigDecimal.ZERO, null, null, null));
-        invoices.add(new InvoiceRowInfo(1L, "FAC-CANT", new BigDecimal("400000"), "Cantine", false, BigDecimal.ZERO, null, null, null));
-        invoices.add(new InvoiceRowInfo(1L, "FAC-EXAM", new BigDecimal("50000"), "Examen", true, new BigDecimal("50000"), null, null, null));
+        invoices.add(new InvoiceRowInfo(nextId[0]++, "FAC-INS", new BigDecimal("250000"), "Inscription", true, new BigDecimal("250000"), null, null, null));
+        invoices.add(new InvoiceRowInfo(nextId[0]++, "FAC-TRANS", new BigDecimal("300000"), "Transport", false, BigDecimal.ZERO, null, null, null));
+        invoices.add(new InvoiceRowInfo(nextId[0]++, "FAC-CANT", new BigDecimal("400000"), "Cantine", false, BigDecimal.ZERO, null, null, null));
+        invoices.add(new InvoiceRowInfo(nextId[0]++, "FAC-EXAM", new BigDecimal("50000"), "Examen", true, new BigDecimal("50000"), null, null, null));
         when(payerDirectory.studentInvoices(7L)).thenReturn(invoices);
         when(payerDirectory.unpaidInvoices(7L)).thenReturn(List.of(
                 new UnpaidInvoiceInfo("Transport", new BigDecimal("300000")),
                 new UnpaidInvoiceInfo("Cantine", new BigDecimal("400000"))));
-        when(payerDirectory.invoiceFeeInfo(2L)).thenReturn(Optional.of(new PayerDirectory.InvoiceFeeInfo(
+        // Un seul des 24 mensualités porte la remise — les 23 autres n'ont volontairement aucun stub
+        // (retombent sur Optional.empty() par défaut) pour ne pas fausser le total de la remise.
+        lenient().when(payerDirectory.invoiceFeeInfo(any())).thenReturn(Optional.empty());
+        when(payerDirectory.invoiceFeeInfo(1L)).thenReturn(Optional.of(new PayerDirectory.InvoiceFeeInfo(
                 "Mensualité", "Octobre 2026", new BigDecimal("10000"),
                 "Exonération : Avantage personnel (50%)", new BigDecimal("5000"))));
 

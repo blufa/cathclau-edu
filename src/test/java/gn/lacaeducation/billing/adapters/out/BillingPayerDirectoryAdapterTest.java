@@ -1,6 +1,7 @@
 package gn.lacaeducation.billing.adapters.out;
 
 import gn.lacaeducation.academics.AcademicsDataProvider;
+import gn.lacaeducation.billing.application.port.in.ClassTransferRefundUseCase;
 import gn.lacaeducation.billing.application.port.out.InvoiceRepository;
 import gn.lacaeducation.billing.application.port.out.SchoolFeeRepository;
 import gn.lacaeducation.billing.domain.FeeType;
@@ -34,6 +35,7 @@ class BillingPayerDirectoryAdapterTest {
     @Mock UserPublicInfoProvider userPublicInfoProvider;
     @Mock InvoiceRepository invoiceRepository;
     @Mock SchoolFeeRepository schoolFeeRepository;
+    @Mock ClassTransferRefundUseCase classTransferRefundUseCase;
     @InjectMocks BillingPayerDirectoryAdapter adapter;
 
     // ── unpaidInvoices (§retour comptable, point 1 : reste à payer énuméré dans le SMS d'encaissement) ──
@@ -180,5 +182,21 @@ class BillingPayerDirectoryAdapterTest {
 
         assertThat(result).extracting(gn.lacaeducation.payments.PayerDirectory.InvoiceRowInfo::reference)
                 .containsExactly("FAC-INS", "FAC-MENS", "FAC-TRANS");
+    }
+
+    // ── pendingRefunds (§retour comptable : surplus de transfert de classe à rappeler sur le reçu) ──
+
+    @Test
+    void pendingRefunds_delegatesToClassTransferRefundUseCase() {
+        gn.lacaeducation.billing.domain.ClassTransferRefund refund = gn.lacaeducation.billing.domain.ClassTransferRefund.builder()
+                .id(1L).studentId(7L).amount(new BigDecimal("60000")).reason("Transfert de classe")
+                .createdAt(java.time.LocalDateTime.of(2026, 10, 1, 9, 0)).build();
+        when(classTransferRefundUseCase.findPendingByStudentId(7L)).thenReturn(List.of(refund));
+
+        var result = adapter.pendingRefunds(7L);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).amount()).isEqualByComparingTo("60000");
+        assertThat(result.get(0).reason()).isEqualTo("Transfert de classe");
     }
 }

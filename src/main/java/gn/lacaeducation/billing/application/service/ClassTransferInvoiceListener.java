@@ -1,6 +1,7 @@
 package gn.lacaeducation.billing.application.service;
 
 import gn.lacaeducation.billing.application.event.ClassTransferCreditSurplusEvent;
+import gn.lacaeducation.billing.application.port.in.ClassTransferRefundUseCase;
 import gn.lacaeducation.billing.application.port.in.InvoiceUseCase;
 import gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand;
 import gn.lacaeducation.billing.application.port.out.SchoolFeeRepository;
@@ -47,6 +48,7 @@ public class ClassTransferInvoiceListener {
     private final SchoolFeeRepository schoolFeeRepository;
     private final InvoiceUseCase invoiceUseCase;
     private final ApplicationEventPublisher eventPublisher;
+    private final ClassTransferRefundUseCase classTransferRefundUseCase;
 
     @EventListener
     @Transactional
@@ -118,8 +120,11 @@ public class ClassTransferInvoiceListener {
 
     /** Surplus jamais reporté sur aucune facture (le parent avait déjà réglé plus que ce que coûte la
      * nouvelle classe) — à rembourser, pas à laisser filer silencieusement dans les logs (§retour
-     * comptable, cas réel signalé). Consommé par {@code communication} pour alerter l'école par SMS. */
+     * comptable, cas réel signalé). Persisté (visible sur le prochain reçu de l'élève tant qu'il
+     * n'est pas marqué remboursé) ET publié pour l'alerte SMS immédiate à l'école. */
     private void publishSurplus(Long tenantId, EnrollmentClassChangedEvent event, BigDecimal surplus) {
+        classTransferRefundUseCase.record(tenantId, event.studentId(), event.oldClassId(), event.newClassId(),
+                surplus, "Transfert de classe (nouvelle classe moins chère)");
         eventPublisher.publishEvent(new ClassTransferCreditSurplusEvent(
                 tenantId, event.studentId(), event.oldClassId(), event.newClassId(), surplus));
     }
