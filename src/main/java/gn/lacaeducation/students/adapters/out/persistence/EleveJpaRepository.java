@@ -19,8 +19,12 @@ interface EleveJpaRepository extends JpaRepository<EleveJpaEntity, Long> {
 
     /**
      * Paginated student search scoped to a tenant, filtering by gender, name/matricule/parent
-     * (nom/prénom/téléphone du parent lié, case-insensitive) and — through the enrollments table —
-     * by class and/or enrollment status. {@code q} must be passed already lower-cased.
+     * (nom/prénom/téléphone du parent lié, case-insensitive), by class and/or enrollment status
+     * (through the enrollments table), and by transport subscription status / number of months of
+     * transport already paid (through the transport_subscriptions / invoices / school_fees tables,
+     * mirrored read-only in this module — §retour comptable : "filtrer par transport, pour chercher
+     * rapidement"). {@code q} must be passed already lower-cased. {@code minPaidMonths = 0} means
+     * "aucun mois payé" (exact match), any other non-null value means "au moins N mois payés".
      */
     @Query("""
             SELECT s FROM EleveJpaEntity s
@@ -43,6 +47,24 @@ interface EleveJpaRepository extends JpaRepository<EleveJpaEntity, Long> {
                    SELECT 1 FROM InscriptionJpaEntity e3
                    WHERE e3.studentId = s.id
                      AND e3.status <> gn.lacaeducation.students.domain.EnrollmentStatus.CANCELLED))
+              AND (:transportSubscribed IS NULL
+                   OR (:transportSubscribed = TRUE AND EXISTS (
+                        SELECT 1 FROM StudentsTransportSubscriptionMirrorEntity sub
+                        WHERE sub.studentId = s.id AND sub.status = 'ACTIVE'))
+                   OR (:transportSubscribed = FALSE AND NOT EXISTS (
+                        SELECT 1 FROM StudentsTransportSubscriptionMirrorEntity sub
+                        WHERE sub.studentId = s.id AND sub.status = 'ACTIVE')))
+              AND (:minPaidMonths IS NULL
+                   OR (:minPaidMonths = 0 AND (
+                        SELECT COUNT(i) FROM StudentsInvoiceMirrorEntity i
+                        WHERE i.studentId = s.id AND i.paidAmount > 0
+                          AND i.feeId IN (SELECT f.id FROM StudentsSchoolFeeMirrorEntity f WHERE f.type = 'TRANSPORT')
+                       ) = 0)
+                   OR (:minPaidMonths > 0 AND (
+                        SELECT COUNT(i) FROM StudentsInvoiceMirrorEntity i
+                        WHERE i.studentId = s.id AND i.paidAmount > 0
+                          AND i.feeId IN (SELECT f.id FROM StudentsSchoolFeeMirrorEntity f WHERE f.type = 'TRANSPORT')
+                       ) >= :minPaidMonths))
             """)
     Page<EleveJpaEntity> search(@Param("tenantId") Long tenantId,
                                  @Param("gender") Gender gender,
@@ -50,6 +72,8 @@ interface EleveJpaRepository extends JpaRepository<EleveJpaEntity, Long> {
                                  @Param("classId") Long classId,
                                  @Param("status") EnrollmentStatus status,
                                  @Param("notEnrolled") boolean notEnrolled,
+                                 @Param("transportSubscribed") Boolean transportSubscribed,
+                                 @Param("minPaidMonths") Integer minPaidMonths,
                                  Pageable pageable);
 
     /**

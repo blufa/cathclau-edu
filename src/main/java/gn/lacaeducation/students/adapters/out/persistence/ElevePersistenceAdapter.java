@@ -21,8 +21,8 @@ class ElevePersistenceAdapter implements StudentRepository, StudentDocumentRepos
     @Override public Optional<Student> findByUserId(Long userId) { return eleveRepo.findByUserId(userId).map(mapper::toDomain); }
     @Override public Optional<Student> findByIdempotencyKey(String key) { return eleveRepo.findByIdempotencyKey(key).map(mapper::toDomain); }
     @Override public List<Student> findByTenantId(Long t) { return eleveRepo.findByTenantId(t).stream().map(mapper::toDomain).toList(); }
-    @Override public org.springframework.data.domain.Page<Student> search(Long t, gn.lacaeducation.students.domain.Gender gender, String q, Long classId, gn.lacaeducation.students.domain.EnrollmentStatus status, boolean notEnrolled, org.springframework.data.domain.Pageable pageable) {
-        return eleveRepo.search(t, gender, q, classId, status, notEnrolled, pageable).map(mapper::toDomain);
+    @Override public org.springframework.data.domain.Page<Student> search(Long t, gn.lacaeducation.students.domain.Gender gender, String q, Long classId, gn.lacaeducation.students.domain.EnrollmentStatus status, boolean notEnrolled, Boolean transportSubscribed, Integer minPaidMonths, org.springframework.data.domain.Pageable pageable) {
+        return eleveRepo.search(t, gender, q, classId, status, notEnrolled, transportSubscribed, minPaidMonths, pageable).map(mapper::toDomain);
     }
     @Override public void deleteById(Long id) { eleveRepo.deleteById(id); }
     @Override public boolean existsById(Long id) { return eleveRepo.existsById(id); }

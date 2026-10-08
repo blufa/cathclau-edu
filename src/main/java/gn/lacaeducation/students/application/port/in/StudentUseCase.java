@@ -37,7 +37,8 @@ public interface StudentUseCase {
     Optional<Student> findByUserId(Long userId);
     List<Student> findByTenantId(Long tenantId);
     org.springframework.data.domain.Page<Student> search(Long tenantId, Gender gender, String search,
-            Long classId, EnrollmentStatus enrollmentStatus, boolean notEnrolled, org.springframework.data.domain.Pageable pageable);
+            Long classId, EnrollmentStatus enrollmentStatus, boolean notEnrolled,
+            Boolean transportSubscribed, Integer minPaidMonths, org.springframework.data.domain.Pageable pageable);
     void delete(Long id);
     boolean existsById(Long id);
     long countByTenantId(Long tenantId);
