@@ -60,11 +60,27 @@ public interface PayerDirectory {
      * appliquée : -X GNF" imprimée séparément) ; {@code paidAmount} est le montant NET réellement
      * encaissé à ce jour sur cette facture (ce qui a été payé, jamais plus) — c'est lui qu'il faut
      * sommer pour un total cumulé "Total payé" correct, jamais {@code amount} (qui, pour une facture
-     * remisée, est plus élevé que ce qui a réellement été reçu). */
-    record InvoiceRowInfo(String reference, java.math.BigDecimal amount, String label, boolean paid,
-                          java.math.BigDecimal paidAmount) {}
+     * remisée, est plus élevé que ce qui a réellement été reçu).
+     * {@code creditedAmount}/{@code creditReason} : montant porté au paidAmount SANS paiement réel
+     * correspondant (ex. crédit reporté d'une ancienne classe lors d'un transfert) — sans cette trace,
+     * le reçu afficherait une facture déjà réglée sans qu'aucun encaissement ne l'explique. */
+    record InvoiceRowInfo(Long id, String reference, java.math.BigDecimal amount, String label, boolean paid,
+                          java.math.BigDecimal paidAmount,
+                          java.math.BigDecimal creditedAmount, String creditReason,
+                          java.time.LocalDateTime creditedAt) {}
 
     /** Toutes les factures non annulées de l'élève sur l'année scolaire courante du tenant (même
-     * portée que {@link #unpaidInvoices}), triées par date d'émission croissante. */
+     * portée que {@link #unpaidInvoices}) — inscription/réinscription d'abord, puis la scolarité
+     * (tranches, chronologique), puis les frais annexes (§retour comptable, reçu de paiement). */
     List<InvoiceRowInfo> studentInvoices(Long studentId);
+
+    /** Surplus de crédit laissé par un transfert de classe (nouvelle classe moins chère que
+     * l'ancienne), pas encore remboursé au parent — voir {@code ClassTransferRefund}. */
+    record PendingRefundInfo(java.math.BigDecimal amount, String reason, java.time.LocalDateTime createdAt) {}
+
+    /** Surplus(s) encore dus à CET élève (pas encore marqués remboursés) — affichés sur le reçu
+     * jusqu'à ce que le comptable confirme le remboursement physique au parent (§retour comptable :
+     * un surplus resté seulement dans les logs/SMS ne se retrouvait plus jamais nulle part après
+     * coup). Vide si aucun surplus en attente. */
+    List<PendingRefundInfo> pendingRefunds(Long studentId);
 }

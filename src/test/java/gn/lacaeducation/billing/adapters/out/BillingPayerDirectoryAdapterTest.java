@@ -1,6 +1,7 @@
 package gn.lacaeducation.billing.adapters.out;
 
 import gn.lacaeducation.academics.AcademicsDataProvider;
+import gn.lacaeducation.billing.application.port.in.ClassTransferRefundUseCase;
 import gn.lacaeducation.billing.application.port.out.InvoiceRepository;
 import gn.lacaeducation.billing.application.port.out.SchoolFeeRepository;
 import gn.lacaeducation.billing.domain.FeeType;
@@ -34,6 +35,7 @@ class BillingPayerDirectoryAdapterTest {
     @Mock UserPublicInfoProvider userPublicInfoProvider;
     @Mock InvoiceRepository invoiceRepository;
     @Mock SchoolFeeRepository schoolFeeRepository;
+    @Mock ClassTransferRefundUseCase classTransferRefundUseCase;
     @InjectMocks BillingPayerDirectoryAdapter adapter;
 
     // ── unpaidInvoices (§retour comptable, point 1 : reste à payer énuméré dans le SMS d'encaissement) ──
@@ -151,5 +153,50 @@ class BillingPayerDirectoryAdapterTest {
         assertThat(result).extracting(gn.lacaeducation.payments.PayerDirectory.InvoiceRowInfo::paid)
                 .containsExactly(true, false);
         assertThat(result.get(1).label()).isEqualTo("Mensualité — Octobre 2026");
+    }
+
+    /**
+     * Ordre du tableau de factures du reçu (§retour comptable) : inscription d'abord, puis la
+     * scolarité (tranches, chronologique), puis les frais annexes — PAS un simple tri par date
+     * d'émission. Les factures ci-dessous sont volontairement créées dans un ordre de date qui ne
+     * correspond PAS à l'ordre attendu, pour vérifier que c'est bien le type de frais qui prime : le
+     * transport (souscrit avant tout le reste) doit malgré ça finir en bas, après la mensualité.
+     */
+    @Test
+    void studentInvoices_ordersByFeeTypeGroupThenDate_notByIssueDateAlone() {
+        Invoice transport = Invoice.builder().id(1L).studentId(7L).feeId(5L).reference("FAC-TRANS")
+                .status(InvoiceStatus.UNPAID).totalAmount(new BigDecimal("30000"))
+                .issueDate(LocalDate.of(2026, 1, 1)).build();
+        Invoice monthly = Invoice.builder().id(2L).studentId(7L).feeId(3L).reference("FAC-MENS")
+                .status(InvoiceStatus.UNPAID).totalAmount(new BigDecimal("50000"))
+                .issueDate(LocalDate.of(2026, 10, 1)).build();
+        Invoice enrollment = Invoice.builder().id(3L).studentId(7L).feeId(4L).reference("FAC-INS")
+                .status(InvoiceStatus.PAID).totalAmount(new BigDecimal("100000"))
+                .issueDate(LocalDate.of(2026, 11, 1)).build();
+        when(invoiceRepository.findByStudentId(7L)).thenReturn(List.of(transport, monthly, enrollment));
+        when(schoolFeeRepository.findById(5L)).thenReturn(Optional.of(SchoolFee.builder().id(5L).type(FeeType.TRANSPORT).build()));
+        when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(SchoolFee.builder().id(3L).type(FeeType.MONTHLY).build()));
+        when(schoolFeeRepository.findById(4L)).thenReturn(Optional.of(SchoolFee.builder().id(4L).type(FeeType.ENROLLMENT).build()));
+
+        var result = adapter.studentInvoices(7L);
+
+        assertThat(result).extracting(gn.lacaeducation.payments.PayerDirectory.InvoiceRowInfo::reference)
+                .containsExactly("FAC-INS", "FAC-MENS", "FAC-TRANS");
+    }
+
+    // ── pendingRefunds (§retour comptable : surplus de transfert de classe à rappeler sur le reçu) ──
+
+    @Test
+    void pendingRefunds_delegatesToClassTransferRefundUseCase() {
+        gn.lacaeducation.billing.domain.ClassTransferRefund refund = gn.lacaeducation.billing.domain.ClassTransferRefund.builder()
+                .id(1L).studentId(7L).amount(new BigDecimal("60000")).reason("Transfert de classe")
+                .createdAt(java.time.LocalDateTime.of(2026, 10, 1, 9, 0)).build();
+        when(classTransferRefundUseCase.findPendingByStudentId(7L)).thenReturn(List.of(refund));
+
+        var result = adapter.pendingRefunds(7L);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).amount()).isEqualByComparingTo("60000");
+        assertThat(result.get(0).reason()).isEqualTo("Transfert de classe");
     }
 }

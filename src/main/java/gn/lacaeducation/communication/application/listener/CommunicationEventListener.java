@@ -6,6 +6,7 @@ import gn.lacaeducation.attendance.application.event.StudentExitEvent;
 import gn.lacaeducation.attendance.application.event.TeacherAbsentEvent;
 import gn.lacaeducation.attendance.application.event.UndeclaredAttendanceEvent;
 import gn.lacaeducation.audit.application.event.AccountantAnomalyDetectedEvent;
+import gn.lacaeducation.billing.application.event.ClassTransferCreditSurplusEvent;
 import gn.lacaeducation.billing.application.event.EcheanceDepasseeEvent;
 import gn.lacaeducation.billing.application.event.InvoicePaymentAppliedEvent;
 import gn.lacaeducation.communication.application.port.in.CommunicationUseCase;
@@ -295,6 +296,25 @@ public class CommunicationEventListener {
                 + " à la clôture de " + cashierName + " (comptant " + event.physicalCount() + " GNF, système "
                 + event.systemTotal() + " GNF). Vérifiez le rapprochement de caisse.";
         notifySchoolAdmins(event.tenantId(), "Écart de caisse", content);
+    }
+
+    /**
+     * Retour comptable réel : un parent qui avait déjà réglé toute l'année dans l'ancienne classe se
+     * retrouve, après un transfert vers une classe moins chère, avec un reliquat de crédit qu'aucune
+     * facture ne peut plus absorber — ce surplus doit être remboursé au parent, jamais laissé filer
+     * silencieusement dans les logs (voir ClassTransferInvoiceListener#publishSurplus).
+     */
+    @TransactionalEventListener
+    @Async
+    public void onClassTransferCreditSurplus(ClassTransferCreditSurplusEvent event) {
+        String studentName = studentDataProvider.findStudent(event.studentId()).map(this::fullName)
+                .orElse("Élève #" + event.studentId());
+        String oldClassName = academicsDataProvider.findClass(event.oldClassId()).map(c -> c.label()).orElse("N/A");
+        String newClassName = academicsDataProvider.findClass(event.newClassId()).map(c -> c.label()).orElse("N/A");
+        String content = "École " + schoolName(event.tenantId()) + " : suite au transfert de " + studentName
+                + " de " + oldClassName + " vers " + newClassName + ", un surplus de " + event.surplusAmount()
+                + " GNF a déjà été réglé et ne peut plus être affecté à aucune facture. À REMBOURSER au parent.";
+        notifySchoolAdmins(event.tenantId(), "Surplus à rembourser (transfert de classe)", content);
     }
 
     /**

@@ -1,6 +1,7 @@
 package gn.lacaeducation.billing.adapters.out;
 
 import gn.lacaeducation.academics.AcademicsDataProvider;
+import gn.lacaeducation.billing.application.port.in.ClassTransferRefundUseCase;
 import gn.lacaeducation.billing.application.port.out.InvoiceRepository;
 import gn.lacaeducation.billing.application.port.out.SchoolFeeRepository;
 import gn.lacaeducation.billing.domain.FeeType;
@@ -32,6 +33,7 @@ public class BillingPayerDirectoryAdapter implements PayerDirectory {
     private final UserPublicInfoProvider userPublicInfoProvider;
     private final InvoiceRepository invoiceRepository;
     private final SchoolFeeRepository schoolFeeRepository;
+    private final ClassTransferRefundUseCase classTransferRefundUseCase;
 
     private static final java.util.Map<FeeType, String> FEE_TYPE_LABEL = java.util.Map.of(
             FeeType.ENROLLMENT, "Inscription",
@@ -115,11 +117,37 @@ public class BillingPayerDirectoryAdapter implements PayerDirectory {
         if (studentId == null) return List.of();
         return currentYearInvoices(studentId).stream()
                 .filter(i -> i.getStatus() != InvoiceStatus.CANCELLED)
-                .sorted(Comparator.comparing(Invoice::getIssueDate,
-                        Comparator.nullsFirst(Comparator.naturalOrder())))
-                .map(i -> new InvoiceRowInfo(i.getReference(), i.getTotalAmount(), fullLabel(i),
-                        i.getStatus() == InvoiceStatus.PAID, i.getPaidAmount()))
+                // Ordre d'affichage du reçu (§retour comptable) : inscription/réinscription d'abord,
+                // puis la scolarité (tranches, chronologique), puis les frais annexes (transport,
+                // cantine, examen…) — même convention que le guichet d'accueil (GROUP_ORDER côté
+                // frontend). Un nouveau frais annexe souscrit plus tard (ex. transport) vient donc
+                // s'ajouter EN BAS du tableau plutôt que de s'insérer au milieu des tranches déjà
+                // listées, triées par date d'émission à l'intérieur de chaque groupe.
+                .sorted(Comparator.comparing(this::groupOrder)
+                        .thenComparing(Invoice::getIssueDate, Comparator.nullsFirst(Comparator.naturalOrder())))
+                .map(i -> new InvoiceRowInfo(i.getId(), i.getReference(), i.getTotalAmount(), fullLabel(i),
+                        i.getStatus() == InvoiceStatus.PAID, i.getPaidAmount(),
+                        i.getCreditedAmount(), i.getCreditReason(), i.getCreditedAt()))
                 .toList();
+    }
+
+    @Override
+    public List<PendingRefundInfo> pendingRefunds(Long studentId) {
+        if (studentId == null) return List.of();
+        return classTransferRefundUseCase.findPendingByStudentId(studentId).stream()
+                .map(r -> new PendingRefundInfo(r.getAmount(), r.getReason(), r.getCreatedAt()))
+                .toList();
+    }
+
+    /** Groupe d'affichage du reçu (0 = inscription/réinscription, 1 = mensualité, 2 = tout le reste) —
+     * voir {@link #studentInvoices}. 2 par défaut (frais introuvable/sans type) plutôt qu'une
+     * exception, pour ne jamais faire planter l'impression d'un reçu sur une donnée incomplète. */
+    private int groupOrder(Invoice invoice) {
+        if (invoice.getFeeId() == null) return 2;
+        FeeType type = schoolFeeRepository.findById(invoice.getFeeId()).map(f -> f.getType()).orElse(null);
+        if (type == FeeType.ENROLLMENT || type == FeeType.RE_ENROLLMENT) return 0;
+        if (type == FeeType.MONTHLY) return 1;
+        return 2;
     }
 
     /** Factures de l'élève limitées à l'année scolaire courante du tenant (§retour comptable) — sans
