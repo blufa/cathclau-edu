@@ -1,14 +1,15 @@
 package gn.lacaeducation.transport.application.port.out;
 
-import java.util.List;
+import java.util.Map;
 
 /**
  * Lecture miroir (sans dépendance directe au module {@code billing}) des factures de type TRANSPORT
- * — permet de distinguer, parmi les élèves abonnés à une ligne, ceux qui ont déjà réellement réglé
- * au moins un mois de ceux qui n'ont encore rien payé (§retour comptable : "savoir qui a payé le
- * transport").
+ * — permet de savoir, pour chaque élève abonné à une ligne, combien de mois il a déjà réellement
+ * réglés (§retour comptable : "savoir qui a payé le transport", puis précisé en "le nombre de mois
+ * payé").
  */
 public interface TransportInvoiceQueryPort {
-    /** Élèves du tenant ayant au moins une facture de frais TRANSPORT avec un montant payé > 0. */
-    List<Long> findStudentIdsWithPaidTransportInvoice(Long tenantId);
+    /** Nombre de factures de frais TRANSPORT réglées (montant payé > 0), par élève — absent de la
+     * map si l'élève n'a encore rien payé (jamais une entrée à 0). */
+    Map<Long, Long> countPaidTransportMonthsByStudentId(Long tenantId);
 }

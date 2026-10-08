@@ -34,11 +34,11 @@ public class TransportSubscriptionController {
         return service.subscriptions(TenantContext.get(), routeId, studentId);
     }
 
-    @Operation(summary = "Élèves ayant déjà réglé au moins un mois de transport (§retour comptable : "
-            + "\"savoir qui a payé le transport\") — parmi les abonnés, ceux absents de cette liste n'ont encore rien payé")
-    @GetMapping("/paid-student-ids")
-    public List<Long> paidStudentIds() {
-        return service.paidStudentIds(TenantContext.get());
+    @Operation(summary = "Nombre de mois de transport déjà réglés, par élève (§retour comptable : "
+            + "\"savoir qui a payé le transport\") — absent de la réponse si l'élève n'a encore rien payé")
+    @GetMapping("/paid-months-count")
+    public java.util.Map<Long, Long> paidMonthsCount() {
+        return service.paidMonthsCountByStudentId(TenantContext.get());
     }
 
     // Action courante du comptable/secrétaire à l'inscription ou à l'encaissement (choisir le bus) —

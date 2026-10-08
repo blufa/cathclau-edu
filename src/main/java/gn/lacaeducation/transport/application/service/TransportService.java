@@ -123,11 +123,11 @@ public class TransportService {
         return subRepo.findByTenantId(tenantId);
     }
 
-    /** Élèves du tenant ayant déjà réglé au moins un mois de transport (§retour comptable : "savoir
-     * qui a payé le transport") — parmi les abonnés, ceux absents de cette liste n'ont encore rien
+    /** Nombre de mois de transport déjà réglés, par élève (§retour comptable : "savoir qui a payé le
+     * transport", précisé en "le nombre de mois payé") — absent de la map si l'élève n'a encore rien
      * payé (abonnement actif mais facturé mois par mois, à la demande, jamais automatique). */
-    public List<Long> paidStudentIds(Long tenantId) {
-        return invoiceQueryPort.findStudentIdsWithPaidTransportInvoice(tenantId);
+    public java.util.Map<Long, Long> paidMonthsCountByStudentId(Long tenantId) {
+        return invoiceQueryPort.countPaidTransportMonthsByStudentId(tenantId);
     }
 
     private TransportRoute loadRoute(Long id) {

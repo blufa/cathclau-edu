@@ -11,14 +11,15 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 
-import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
 /**
- * §retour comptable : "savoir qui a payé le transport" — seul {@link TransportService#paidStudentIds}
- * est testé ici (aucune suite de test n'existait pour ce module avant ce correctif).
+ * §retour comptable : "savoir qui a payé le transport", précisé en "le nombre de mois payé" — seul
+ * {@link TransportService#paidMonthsCountByStudentId} est testé ici (aucune suite de test n'existait
+ * pour ce module avant ce correctif).
  */
 @ExtendWith(MockitoExtension.class)
 class TransportServiceTest {
@@ -31,11 +32,11 @@ class TransportServiceTest {
     @InjectMocks TransportService service;
 
     @Test
-    void paidStudentIds_delegatesToInvoiceQueryPort() {
-        when(invoiceQueryPort.findStudentIdsWithPaidTransportInvoice(10L)).thenReturn(List.of(7L, 8L));
+    void paidMonthsCountByStudentId_delegatesToInvoiceQueryPort() {
+        when(invoiceQueryPort.countPaidTransportMonthsByStudentId(10L)).thenReturn(Map.of(7L, 2L, 8L, 1L));
 
-        List<Long> result = service.paidStudentIds(10L);
+        Map<Long, Long> result = service.paidMonthsCountByStudentId(10L);
 
-        assertThat(result).containsExactly(7L, 8L);
+        assertThat(result).containsEntry(7L, 2L).containsEntry(8L, 1L);
     }
 }
