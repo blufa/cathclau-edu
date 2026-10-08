@@ -49,4 +49,15 @@ public class Invoice {
      * CASH uniquement) — affiché en pied de facture PDF ("Encaissé par"). Null tant qu'aucun paiement
      * guichet n'a encore été appliqué. */
     private Long collectedByUserId;
+    /** Montant porté à {@link #paidAmount} SANS paiement réel correspondant (ex. crédit reporté d'une
+     * ancienne classe lors d'un transfert, voir ClassTransferInvoiceListener#reconcileMonthly) — sans
+     * cette trace, le comptable voit une facture déjà réglée sans aucun encaissement associé. Null/zéro
+     * si aucun crédit n'a jamais été reporté sur cette facture. */
+    private BigDecimal creditedAmount;
+    /** Motif du crédit reporté (ex. "Crédit reporté de l'ancienne classe (transfert)"). Null si
+     * {@link #creditedAmount} est null/zéro. */
+    private String creditReason;
+    /** Date/heure à laquelle le crédit a été reporté — affichée à la place du paiement (aucun
+     * encaissement direct n'existe pour un crédit) dans la colonne "Date & heure" du reçu. */
+    private java.time.LocalDateTime creditedAt;
 }

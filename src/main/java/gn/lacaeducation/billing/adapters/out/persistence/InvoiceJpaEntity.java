@@ -37,4 +37,7 @@ public class InvoiceJpaEntity {
      * CASH uniquement) — affiché en pied de facture PDF ("Encaissé par"). Null tant qu'aucun paiement
      * guichet n'a encore été appliqué. */
     @Column(name = "collected_by_user_id") private Long collectedByUserId;
+    @Column(name = "credited_amount", precision = 15, scale = 2) private BigDecimal creditedAmount;
+    @Column(name = "credit_reason", length = 255) private String creditReason;
+    @Column(name = "credited_at") private java.time.LocalDateTime creditedAt;
 }

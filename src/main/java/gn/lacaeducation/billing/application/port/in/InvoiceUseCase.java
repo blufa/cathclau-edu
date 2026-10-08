@@ -81,9 +81,11 @@ public interface InvoiceUseCase {
      * Reporte un crédit (ex. déjà payé sur une facture annulée par {@link #voidInvoice}) sur une autre
      * facture : augmente {@code paidAmount} et recalcule le solde. Ne publie aucun événement de
      * paiement (ce n'est pas un nouveau règlement — éviterait un SMS trompeur et un double comptage du
-     * frais plateforme déjà comptabilisé lors du paiement d'origine).
+     * frais plateforme déjà comptabilisé lors du paiement d'origine). {@code reason} est tracé sur la
+     * facture ({@code creditedAmount}/{@code creditReason}, §retour comptable) pour que le comptable
+     * comprenne pourquoi une facture apparaît déjà réglée sans paiement correspondant.
      */
-    Invoice applyCredit(Long invoiceId, BigDecimal amount);
+    Invoice applyCredit(Long invoiceId, BigDecimal amount, String reason);
     /** Applique une remise / bourse (montant + motif) et recalcule le reste à payer / le statut. */
     Invoice applyDiscount(Long invoiceId, BigDecimal amount, String reason);
     /**

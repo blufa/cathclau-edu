@@ -33,6 +33,7 @@ class LiveStudentPurgeSqlCheckTest {
     private static final String[] STATEMENTS = {
             "SELECT COUNT(*) FROM students WHERE id = 999999999",
             "SELECT id FROM payments WHERE student_id <> 999999999 AND student_ids LIKE '%,999999999,%'",
+            "SELECT class_id, academic_year_id FROM enrollments WHERE student_id = 999999999",
             "DELETE FROM receipts WHERE payment_id IN (SELECT id FROM payments WHERE student_id = 999999999)",
             "DELETE FROM payment_transactions WHERE payment_id IN (SELECT id FROM payments WHERE student_id = 999999999)",
             "DELETE FROM payments WHERE student_id = 999999999",

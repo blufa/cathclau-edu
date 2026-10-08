@@ -50,6 +50,7 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
     private final TenantInfoProvider tenantInfoProvider;
     private final PayerDirectory payerDirectory;
     private final ObjectMapper objectMapper;
+    private final gn.lacaeducation.payments.application.port.out.PaymentRepository paymentRepository;
 
     /** Une part d'un paiement groupé (miroir minimal de {@code GroupedInvoiceSettlementEvent.Share}). */
     private record GroupLine(Long invoiceId, Long studentId, BigDecimal amount) {}
@@ -93,10 +94,24 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
             }
             if (studentIds.isEmpty() && payment.getStudentId() != null) studentIds.add(payment.getStudentId());
 
-            // Ordre demandé (§retour comptable) : le tableau de factures, puis "Encaissé aujourd'hui"
+            // Ordre demandé (§retour comptable) : le tableau de factures, puis "Montant réglé"
             // (CET encaissement précis), puis "Total payé" (cumul de toutes les factures réglées à ce
             // jour, même celles réglées un autre jour — distinct du précédent : voir leur Javadoc
             // respective plus bas), puis "Reste à payer" — jamais dans un autre ordre.
+            // Collecté pendant l'affichage des tableaux ci-dessous (§retour comptable) : une facture
+            // déjà réglée sans encaissement correspondant (crédit reporté d'un transfert de classe)
+            // doit être expliquée, sinon le comptable ne comprend pas le calcul.
+            List<String> creditNotes = new java.util.ArrayList<>();
+            // Remises (exonération, paiement anticipé…) de TOUTES les factures affichées dans le
+            // tableau, pas seulement celle(s) réglée(s) par CE paiement précis (§retour comptable :
+            // un reçu qui ne règle que le transport doit quand même rappeler la remise appliquée sur
+            // la mensualité réglée un autre jour — sinon elle disparaît purement et simplement dès que
+            // le prochain reçu porte sur un frais différent).
+            List<String> discountNotes = new java.util.ArrayList<>();
+            // Surplus de crédit (transfert vers une classe moins chère) pas encore remboursé(s) au
+            // parent — à rappeler sur CHAQUE reçu tant que le comptable ne l'a pas marqué remboursé,
+            // sinon il se perd dès que le prochain reçu porte sur un autre frais (§retour comptable).
+            List<String> refundNotes = new java.util.ArrayList<>();
             if (studentIds.size() <= 1) {
                 Long studentId = studentIds.isEmpty() ? payment.getStudentId() : studentIds.iterator().next();
                 PdfPTable studentBlock = compactFields(
@@ -106,8 +121,11 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
                 studentBlock.setSpacingBefore(3f);
                 doc.add(studentBlock);
                 List<PayerDirectory.InvoiceRowInfo> invoices = payerDirectory.studentInvoices(studentId);
-                doc.add(invoicesTable(invoices));
-                amountBox(doc, "Encaissé aujourd'hui", money(receipt.getAmount()) + " GNF",
+                doc.add(invoicesTable(invoices, paidAtByInvoiceId(studentId)));
+                creditNotes.addAll(creditNotes(invoices));
+                discountNotes.addAll(discountNotes(invoices));
+                refundNotes.addAll(refundNotes(studentId));
+                amountBox(doc, "Montant réglé", money(receipt.getAmount()) + " GNF",
                         SchoolPdfHeader.tint(brand, 0.12), DARK);
                 amountBox(doc, "Total payé", money(sumPaidToDate(invoices)) + " GNF", brand, java.awt.Color.WHITE);
                 remainingLine(doc, studentId);
@@ -121,10 +139,13 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
                     studentBlock.setSpacingBefore(3f);
                     doc.add(studentBlock);
                     List<PayerDirectory.InvoiceRowInfo> invoices = payerDirectory.studentInvoices(studentId);
-                    doc.add(invoicesTable(invoices));
+                    doc.add(invoicesTable(invoices, paidAtByInvoiceId(studentId)));
+                    creditNotes.addAll(creditNotes(invoices));
+                    discountNotes.addAll(discountNotes(invoices));
+                    refundNotes.addAll(refundNotes(studentId));
                     totalPaidToDate = totalPaidToDate.add(sumPaidToDate(invoices));
                 }
-                amountBox(doc, "Encaissé aujourd'hui", money(receipt.getAmount()) + " GNF",
+                amountBox(doc, "Montant réglé", money(receipt.getAmount()) + " GNF",
                         SchoolPdfHeader.tint(brand, 0.12), DARK);
                 amountBox(doc, "Total payé", money(totalPaidToDate) + " GNF", brand, java.awt.Color.WHITE);
                 for (Long studentId : studentIds) {
@@ -132,10 +153,23 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
                 }
             }
 
-            for (String line : discountNotes(payment)) {
+            for (String line : creditNotes) {
+                Paragraph credit = new Paragraph(line, font(FontFactory.HELVETICA, 9, GREY));
+                credit.setSpacingBefore(2f);
+                doc.add(credit);
+            }
+
+            for (String line : discountNotes) {
                 Paragraph discount = new Paragraph(line, font(FontFactory.HELVETICA, 9, GREY));
                 discount.setSpacingBefore(2f);
                 doc.add(discount);
+            }
+            // Mis en évidence (gras, couleur d'alerte) plutôt qu'en gris discret comme les autres
+            // notes : c'est une action à faire (rembourser), pas juste une information à lire.
+            for (String line : refundNotes) {
+                Paragraph refund = new Paragraph(line, font(FontFactory.HELVETICA_BOLD, 9, REMAINING_TEXT));
+                refund.setSpacingBefore(2f);
+                doc.add(refund);
             }
             String platformFeeNote = platformFeeNote(payment);
             if (platformFeeNote != null) {
@@ -192,38 +226,72 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
     /**
      * Toutes les factures (non annulées) de l'élève — pas seulement celle(s) couvertes par ce
      * paiement — pour que le reçu serve de vue d'ensemble de sa situation (§retour comptable) : Réf.,
-     * Montant, Observation (type de frais + période), et une colonne Payé en gras (OUI/NON) donnant
-     * son statut de règlement à cette date. Lignes compactes (padding réduit, voir
-     * {@link #compactHeaderCell}/{@link #compactCell}) plutôt que {@code AdminDocumentLayout#cell} :
-     * ce tableau grandit avec le nombre de factures de l'élève (mensualités + frais annexes sur
-     * l'année) et était la cause du débordement du reçu sur une deuxième page — jamais touché sur la
-     * facture/fiche de paie, qui n'ont pas ce problème (§retour comptable).
+     * Montant, Observation (type de frais + période), Date & heure d'encaissement (dernier paiement
+     * reçu sur CETTE facture précise, "-" si jamais payée), et une colonne Payé en gras (OUI/NON)
+     * donnant son statut de règlement à cette date. Déjà triées par {@link PayerDirectory#studentInvoices}
+     * (inscription, puis mensualité, puis frais annexes — §retour comptable : un nouveau frais annexe
+     * souscrit plus tard s'ajoute donc en bas, jamais au milieu des tranches). Lignes compactes
+     * (padding réduit, voir {@link #compactHeaderCell}/{@link #compactCell}) plutôt que
+     * {@code AdminDocumentLayout#cell} : ce tableau grandit avec le nombre de factures de l'élève
+     * (mensualités + frais annexes sur l'année) et était la cause du débordement du reçu sur une
+     * deuxième page — jamais touché sur la facture/fiche de paie, qui n'ont pas ce problème.
      */
-    private PdfPTable invoicesTable(List<PayerDirectory.InvoiceRowInfo> invoices) {
-        PdfPTable t = dataTable(new float[]{1.1f, 1.1f, 1.4f, 0.6f});
+    private PdfPTable invoicesTable(List<PayerDirectory.InvoiceRowInfo> invoices,
+                                     java.util.Map<Long, java.time.LocalDateTime> paidAtByInvoiceId) {
+        PdfPTable t = dataTable(new float[]{1.05f, 0.9f, 1.35f, 0.85f, 0.5f});
         t.setSpacingBefore(4f);
         compactHeaderCell(t, "Réf.");
         compactHeaderCell(t, "Montant");
         compactHeaderCell(t, "Observation");
+        compactHeaderCell(t, "Date & heure");
         compactHeaderCell(t, "Payé");
 
+        DateTimeFormatter paidAtFormat = DateTimeFormatter.ofPattern("dd/MM/yyyy HH'h'mm");
         for (PayerDirectory.InvoiceRowInfo inv : invoices) {
             compactCell(t, inv.reference(), Element.ALIGN_LEFT);
             compactCell(t, money(inv.amount()) + " GNF", Element.ALIGN_RIGHT);
             compactCell(t, inv.label(), Element.ALIGN_LEFT);
+            // Un crédit reporté (transfert de classe) ne correspond à aucun paiement direct — à
+            // défaut, la date du report reste plus utile qu'un simple "-" (§retour comptable).
+            java.time.LocalDateTime paidAt = paidAtByInvoiceId.get(inv.id());
+            java.time.LocalDateTime shown = paidAt != null ? paidAt : inv.creditedAt();
+            compactCell(t, shown != null ? shown.format(paidAtFormat) : "-", Element.ALIGN_CENTER);
             t.addCell(paidCell(inv.paid()));
         }
         return t;
     }
 
     /**
+     * Date/heure du DERNIER paiement réussi reçu sur chaque facture de cet élève — une facture peut
+     * être réglée en plusieurs fois (tranche payée en deux acomptes à des dates différentes), on garde
+     * alors la plus récente. Couvre aussi bien un paiement simple ({@code Payment.invoiceId}) qu'un
+     * paiement groupé fratrie ({@code groupLines}, où {@code invoiceId} reste null — voir
+     * {@code PaymentService#initiateGroup}) : sans ce 2e cas, une facture réglée via un encaissement
+     * groupé plusieurs enfants afficherait "-" à tort. Vide si l'élève n'a encore rien payé.
+     */
+    private java.util.Map<Long, java.time.LocalDateTime> paidAtByInvoiceId(Long studentId) {
+        java.util.Map<Long, java.time.LocalDateTime> result = new java.util.HashMap<>();
+        if (studentId == null) return result;
+        for (Payment p : paymentRepository.findByStudentId(studentId)) {
+            if (p.getStatus() != gn.lacaeducation.payments.domain.PaymentStatus.SUCCEEDED || p.getPaidAt() == null) continue;
+            List<Long> invoiceIds = p.getInvoiceId() != null
+                    ? List.of(p.getInvoiceId())
+                    : parseGroupLines(p.getGroupLines()).stream().map(GroupLine::invoiceId).filter(java.util.Objects::nonNull).toList();
+            for (Long invoiceId : invoiceIds) {
+                result.merge(invoiceId, p.getPaidAt(), (a, b) -> a.isAfter(b) ? a : b);
+            }
+        }
+        return result;
+    }
+
+    /**
      * Cumul de tout ce qui a été réellement encaissé à ce jour sur les factures de l'élève listées
      * ci-dessus (§retour comptable, point 3) — somme de {@code paidAmount} (le NET réellement reçu,
      * jamais {@code amount} qui, pour une facture remisée, reste le montant BRUT avant remise et
-     * gonflerait ce total du montant de la remise). Distinct de "Encaissé aujourd'hui"
+     * gonflerait ce total du montant de la remise). Distinct de "Montant réglé"
      * ({@code receipt.getAmount()}, l'encaissement précis de CE reçu) : un reçu émis un jour pour le
      * transport seul affiche ainsi le cumul complet (mensualité déjà réglée un autre jour + transport
-     * de ce jour), là où "Encaissé aujourd'hui" reste le transport seul.
+     * de ce jour), là où "Montant réglé" reste le transport seul.
      */
     private BigDecimal sumPaidToDate(List<PayerDirectory.InvoiceRowInfo> invoices) {
         return invoices.stream()
@@ -277,7 +345,7 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
      * aujourd'hui / Total payé / Reste à payer) — remplace l'ancien mélange d'un tableau bordé
      * ({@code AdminDocumentLayout#totalRow}) pour "Total payé" et de simples lignes de texte pour les
      * deux autres, par un style UNIQUE et cohérent pour les trois, seule la couleur changeant selon
-     * l'importance (Total payé en couleur pleine de l'école, Encaissé aujourd'hui en teinte légère,
+     * l'importance (Total payé en couleur pleine de l'école, Montant réglé en teinte légère,
      * Reste à payer en orange d'alerte — voir {@link #remainingLine}). Padding volontairement réduit
      * (5f) : ce bloc s'ajoute à deux/trois autres sur le même reçu, jamais au prix d'un débordement
      * sur une 2e page (§retour comptable, point récurrent sur ce fichier).
@@ -316,23 +384,20 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
     }
 
     /**
-     * Remise(s) (exonération, avantage personnel, paiement anticipé…) portée(s) par les factures
-     * réglées par ce paiement — une ligne PAR MOTIF DISTINCT (nom de l'exonération/règle, pourcentage
-     * déjà intégré au libellé — voir {@code InvoiceService#computeApplicableDiscount} /
-     * {@code #applyEarlyPaymentDiscount} —, et montant réellement déduit), visible sur le reçu même
-     * quand la remise a été calculée et appliquée automatiquement avant l'encaissement. Un même
-     * paiement peut, rarement, couvrir des factures à motifs différents (ex. exonération modifiée
-     * entre deux générations) : les agréger sous un seul motif masquerait alors une partie de la
-     * remise réellement appliquée (§retour comptable).
+     * Remise(s) (exonération, avantage personnel, paiement anticipé…) portée(s) par N'IMPORTE QUELLE
+     * facture du tableau affiché sur ce reçu — pas seulement celle(s) réglée(s) par le paiement du
+     * jour (§retour comptable, cas réel : un reçu qui ne règle que le transport doit quand même
+     * rappeler la remise appliquée sur la mensualité réglée un autre jour, sinon elle disparaît
+     * purement et simplement dès que le prochain reçu porte sur un frais différent). Une ligne PAR
+     * MOTIF DISTINCT (nom de l'exonération/règle, pourcentage déjà intégré au libellé — voir
+     * {@code InvoiceService#computeApplicableDiscount}/{@code #applyEarlyPaymentDiscount} —, et
+     * montant réellement déduit) : des factures à motifs différents ne doivent jamais s'agréger sous
+     * un seul motif, ça masquerait une partie de la remise réellement appliquée.
      */
-    private List<String> discountNotes(Payment payment) {
-        List<GroupLine> groupLines = parseGroupLines(payment.getGroupLines());
-        List<Long> invoiceIds = !groupLines.isEmpty()
-                ? groupLines.stream().map(GroupLine::invoiceId).toList()
-                : (payment.getInvoiceId() != null ? List.of(payment.getInvoiceId()) : List.of());
+    private List<String> discountNotes(List<PayerDirectory.InvoiceRowInfo> invoices) {
         java.util.Map<String, BigDecimal> totalByReason = new java.util.LinkedHashMap<>();
-        for (Long id : invoiceIds) {
-            var info = payerDirectory.invoiceFeeInfo(id).orElse(null);
+        for (PayerDirectory.InvoiceRowInfo inv : invoices) {
+            var info = payerDirectory.invoiceFeeInfo(inv.id()).orElse(null);
             if (info == null || info.discountAmount() == null || info.discountAmount().signum() <= 0) continue;
             String reason = info.discountReason() != null && !info.discountReason().isBlank()
                     ? info.discountReason() : "Remise";
@@ -340,6 +405,34 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
         }
         return totalByReason.entrySet().stream()
                 .map(e -> "Remise appliquée : -" + money(e.getValue()) + " GNF (" + e.getKey() + ")")
+                .toList();
+    }
+
+    /**
+     * Crédit reporté (ex. transfert de classe, §retour comptable) apparaissant sur une ou plusieurs
+     * factures du tableau ci-dessus — sans cette note, une facture déjà réglée sans encaissement
+     * correspondant ne s'expliquerait pas pour le comptable. Une ligne par facture créditée (pas
+     * agrégé par motif comme {@link #discountNotes} : chaque facture garde son propre libellé, ex.
+     * "Tranche 2 (novembre, décembre, janvier)").
+     */
+    private List<String> creditNotes(List<PayerDirectory.InvoiceRowInfo> invoices) {
+        return invoices.stream()
+                .filter(i -> i.creditedAmount() != null && i.creditedAmount().signum() > 0)
+                .map(i -> i.label() + " : " + money(i.creditedAmount()) + " GNF déjà réglés dans l'ancienne classe"
+                        + (i.creditReason() != null && !i.creditReason().isBlank() ? " (" + i.creditReason().toLowerCase() + ")" : "") + ".")
+                .toList();
+    }
+
+    /**
+     * Surplus de crédit (transfert vers une classe moins chère, §retour comptable) encore dû au
+     * parent — persiste sur CHAQUE reçu de cet élève jusqu'à ce que le comptable le marque remboursé
+     * (voir ClassTransferRefundUseCase#markRefunded), pour ne jamais se perdre une fois le reçu du
+     * transfert remplacé par un reçu plus récent portant sur un autre frais.
+     */
+    private List<String> refundNotes(Long studentId) {
+        return payerDirectory.pendingRefunds(studentId).stream()
+                .map(r -> "À REMBOURSER au parent : " + money(r.amount()) + " GNF déjà réglés en trop"
+                        + (r.reason() != null && !r.reason().isBlank() ? " (" + r.reason().toLowerCase() + ")" : "") + ".")
                 .toList();
     }
 
