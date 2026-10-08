@@ -230,8 +230,11 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
             compactCell(t, inv.reference(), Element.ALIGN_LEFT);
             compactCell(t, money(inv.amount()) + " GNF", Element.ALIGN_RIGHT);
             compactCell(t, inv.label(), Element.ALIGN_LEFT);
+            // Un crédit reporté (transfert de classe) ne correspond à aucun paiement direct — à
+            // défaut, la date du report reste plus utile qu'un simple "-" (§retour comptable).
             java.time.LocalDateTime paidAt = paidAtByInvoiceId.get(inv.id());
-            compactCell(t, paidAt != null ? paidAt.format(paidAtFormat) : "-", Element.ALIGN_CENTER);
+            java.time.LocalDateTime shown = paidAt != null ? paidAt : inv.creditedAt();
+            compactCell(t, shown != null ? shown.format(paidAtFormat) : "-", Element.ALIGN_CENTER);
             t.addCell(paidCell(inv.paid()));
         }
         return t;
@@ -397,8 +400,8 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
     private List<String> creditNotes(List<PayerDirectory.InvoiceRowInfo> invoices) {
         return invoices.stream()
                 .filter(i -> i.creditedAmount() != null && i.creditedAmount().signum() > 0)
-                .map(i -> "Crédit reporté sur " + i.label() + " : +" + money(i.creditedAmount()) + " GNF"
-                        + (i.creditReason() != null && !i.creditReason().isBlank() ? " (" + i.creditReason() + ")" : ""))
+                .map(i -> i.label() + " : " + money(i.creditedAmount()) + " GNF déjà réglés dans l'ancienne classe"
+                        + (i.creditReason() != null && !i.creditReason().isBlank() ? " (" + i.creditReason().toLowerCase() + ")" : "") + ".")
                 .toList();
     }
 

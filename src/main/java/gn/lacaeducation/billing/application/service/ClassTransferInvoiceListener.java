@@ -1,5 +1,6 @@
 package gn.lacaeducation.billing.application.service;
 
+import gn.lacaeducation.billing.application.event.ClassTransferCreditSurplusEvent;
 import gn.lacaeducation.billing.application.port.in.InvoiceUseCase;
 import gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand;
 import gn.lacaeducation.billing.application.port.out.SchoolFeeRepository;
@@ -10,6 +11,7 @@ import gn.lacaeducation.billing.domain.SchoolFee;
 import gn.lacaeducation.students.application.event.EnrollmentClassChangedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,6 +46,7 @@ public class ClassTransferInvoiceListener {
 
     private final SchoolFeeRepository schoolFeeRepository;
     private final InvoiceUseCase invoiceUseCase;
+    private final ApplicationEventPublisher eventPublisher;
 
     @EventListener
     @Transactional
@@ -81,6 +84,7 @@ public class ClassTransferInvoiceListener {
             log.warn("Transfert de classe : aucun frais MENSUALITE configuré pour la nouvelle classe id={} ; "
                             + "crédit de {} non reporté pour l'élève id={} — à régulariser manuellement.",
                     event.newClassId(), credit, event.studentId());
+            publishSurplus(oldInvoices.get(0).getTenantId(), event, credit);
             return;
         }
         SchoolFee newFee = newFees.get(0);
@@ -102,13 +106,21 @@ public class ClassTransferInvoiceListener {
         for (Invoice inv : sortedNew) {
             if (remaining.signum() <= 0) break;
             BigDecimal toApply = remaining.min(inv.getTotalAmount());
-            invoiceUseCase.applyCredit(inv.getId(), toApply,
-                    "Crédit reporté de l'ancienne classe (transfert, déjà réglé avant le changement de classe)");
+            invoiceUseCase.applyCredit(inv.getId(), toApply, "Transfert de classe");
             remaining = remaining.subtract(toApply);
         }
         if (remaining.signum() > 0) {
             log.warn("Transfert de classe : reliquat de crédit {} non affecté (nouvelles mensualités insuffisantes) "
                     + "pour l'élève id={} — à régulariser manuellement.", remaining, event.studentId());
+            publishSurplus(newFee.getTenantId(), event, remaining);
         }
+    }
+
+    /** Surplus jamais reporté sur aucune facture (le parent avait déjà réglé plus que ce que coûte la
+     * nouvelle classe) — à rembourser, pas à laisser filer silencieusement dans les logs (§retour
+     * comptable, cas réel signalé). Consommé par {@code communication} pour alerter l'école par SMS. */
+    private void publishSurplus(Long tenantId, EnrollmentClassChangedEvent event, BigDecimal surplus) {
+        eventPublisher.publishEvent(new ClassTransferCreditSurplusEvent(
+                tenantId, event.studentId(), event.oldClassId(), event.newClassId(), surplus));
     }
 }

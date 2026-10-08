@@ -57,4 +57,7 @@ public class Invoice {
     /** Motif du crédit reporté (ex. "Crédit reporté de l'ancienne classe (transfert)"). Null si
      * {@link #creditedAmount} est null/zéro. */
     private String creditReason;
+    /** Date/heure à laquelle le crédit a été reporté — affichée à la place du paiement (aucun
+     * encaissement direct n'existe pour un crédit) dans la colonne "Date & heure" du reçu. */
+    private java.time.LocalDateTime creditedAt;
 }

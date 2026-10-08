@@ -66,7 +66,8 @@ public interface PayerDirectory {
      * le reçu afficherait une facture déjà réglée sans qu'aucun encaissement ne l'explique. */
     record InvoiceRowInfo(Long id, String reference, java.math.BigDecimal amount, String label, boolean paid,
                           java.math.BigDecimal paidAmount,
-                          java.math.BigDecimal creditedAmount, String creditReason) {}
+                          java.math.BigDecimal creditedAmount, String creditReason,
+                          java.time.LocalDateTime creditedAt) {}
 
     /** Toutes les factures non annulées de l'élève sur l'année scolaire courante du tenant (même
      * portée que {@link #unpaidInvoices}) — inscription/réinscription d'abord, puis la scolarité

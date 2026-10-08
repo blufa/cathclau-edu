@@ -7,12 +7,14 @@ import gn.lacaeducation.billing.domain.FeeType;
 import gn.lacaeducation.billing.domain.Invoice;
 import gn.lacaeducation.billing.domain.InvoiceStatus;
 import gn.lacaeducation.billing.domain.SchoolFee;
+import gn.lacaeducation.billing.application.event.ClassTransferCreditSurplusEvent;
 import gn.lacaeducation.students.application.event.EnrollmentClassChangedEvent;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -27,6 +29,7 @@ class ClassTransferInvoiceListenerTest {
 
     @Mock SchoolFeeRepository schoolFeeRepository;
     @Mock InvoiceUseCase invoiceUseCase;
+    @Mock ApplicationEventPublisher eventPublisher;
     @InjectMocks ClassTransferInvoiceListener listener;
 
     private final EnrollmentClassChangedEvent event = new EnrollmentClassChangedEvent(null, 7L, 1L, 20L, 21L, 99L);
@@ -85,6 +88,36 @@ class ClassTransferInvoiceListenerTest {
         verify(invoiceUseCase).voidInvoice(100L);
         verify(invoiceUseCase, never()).generateMonthly(any());
         verify(invoiceUseCase, never()).applyCredit(any(), any(), any());
+        // Retour comptable : ce crédit entier (plus aucune mensualité où le reporter) est un surplus à
+        // rembourser au parent — doit être signalé, pas juste logué.
+        verify(eventPublisher).publishEvent(new ClassTransferCreditSurplusEvent(null, 7L, 20L, 21L, new BigDecimal("50.00")));
+    }
+
+    /**
+     * Retour comptable réel : un parent qui avait déjà réglé toute l'année dans l'ancienne classe se
+     * retrouve, après transfert vers une classe moins chère, avec un reliquat non affectable une fois
+     * toutes les nouvelles mensualités couvertes — ce surplus doit être signalé pour remboursement, pas
+     * seulement logué comme avant.
+     */
+    @Test
+    void creditExceedsNewClassInvoices_publishesSurplusForRefund() {
+        when(schoolFeeRepository.findByClassIdAndType(20L, FeeType.MONTHLY))
+                .thenReturn(List.of(SchoolFee.builder().id(3L).tenantId(10L).classId(20L).type(FeeType.MONTHLY).build()));
+        Invoice paidOld = Invoice.builder().id(100L).studentId(7L).feeId(3L).academicYearId(99L)
+                .status(InvoiceStatus.PAID).totalAmount(new BigDecimal("100.00")).paidAmount(new BigDecimal("100.00")).build();
+        when(invoiceUseCase.findByStudentId(7L)).thenReturn(List.of(paidOld));
+
+        SchoolFee newFee = SchoolFee.builder().id(4L).tenantId(10L).classId(21L).type(FeeType.MONTHLY).build();
+        when(schoolFeeRepository.findByClassIdAndType(21L, FeeType.MONTHLY)).thenReturn(List.of(newFee));
+        Invoice newInv = Invoice.builder().id(200L).installmentId(1L).totalAmount(new BigDecimal("40.00")).build();
+        when(invoiceUseCase.generateMonthly(any(GenerateMonthlyCommand.class)))
+                .thenReturn(new InvoiceUseCase.GenerateMonthlyResult(List.of(newInv), List.of()));
+
+        listener.onEnrollmentClassChanged(event);
+
+        verify(invoiceUseCase).applyCredit(eq(200L), eq(new BigDecimal("40.00")), anyString());
+        // Reliquat = 100.00 - 40.00 = 60.00, jamais affecté à aucune facture.
+        verify(eventPublisher).publishEvent(new ClassTransferCreditSurplusEvent(10L, 7L, 20L, 21L, new BigDecimal("60.00")));
     }
 
     /**

@@ -416,6 +416,7 @@ public class InvoiceService implements InvoiceUseCase {
         BigDecimal currentCredited = inv.getCreditedAmount() != null ? inv.getCreditedAmount() : BigDecimal.ZERO;
         inv.setCreditedAmount(currentCredited.add(amount));
         inv.setCreditReason(reason);
+        inv.setCreditedAt(java.time.LocalDateTime.now());
         recomputeBalance(inv);
         return repo.save(inv);
     }

@@ -247,6 +247,30 @@ class CommunicationEventListenerTest {
         verify(communicationUseCase, times(0)).send(any());
     }
 
+    // ── onClassTransferCreditSurplus (§retour comptable : surplus à rembourser après transfert) ────
+
+    @Test
+    void onClassTransferCreditSurplus_alertsSchoolAdminWithAmountAndClasses() {
+        when(studentDataProvider.findStudent(7L)).thenReturn(Optional.of(student));
+        when(academicsDataProvider.findClass(20L)).thenReturn(Optional.of(
+                new gn.lacaeducation.academics.ClassPublicInfo(20L, "6ème A", "Collège", "NORMALE", null, null, null)));
+        when(academicsDataProvider.findClass(21L)).thenReturn(Optional.of(
+                new gn.lacaeducation.academics.ClassPublicInfo(21L, "5ème B", "Collège", "NORMALE", null, null, null)));
+        when(schoolStaffDirectory.findSchoolAdminContacts(10L))
+                .thenReturn(List.of(new SchoolAdminContact("622000000", "Directeur École")));
+        when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.of(
+                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null)));
+
+        listener().onClassTransferCreditSurplus(new gn.lacaeducation.billing.application.event.ClassTransferCreditSurplusEvent(
+                10L, 7L, 20L, 21L, new BigDecimal("60000")));
+
+        ArgumentCaptor<SendCommunicationCommand> captor = ArgumentCaptor.forClass(SendCommunicationCommand.class);
+        verify(communicationUseCase).send(captor.capture());
+        SendCommunicationCommand cmd = captor.getValue();
+        assertThat(cmd.recipients()).extracting("destination").containsExactly("622000000");
+        assertThat(cmd.content()).contains("6ème A").contains("5ème B").contains("60000").contains("REMBOURSER");
+    }
+
     // ── onCashCollectedWithoutOpenSession (§retour fondateurs, détecteur B2) ────────────────────────
 
     @Test
