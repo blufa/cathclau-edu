@@ -14,7 +14,8 @@ public interface StudentRepository {
     Optional<Student> findByUserId(Long userId);
     Optional<Student> findByIdempotencyKey(String idempotencyKey);
     List<Student> findByTenantId(Long tenantId);
-    Page<Student> search(Long tenantId, Gender gender, String q, Long classId, EnrollmentStatus status, boolean notEnrolled, Pageable pageable);
+    Page<Student> search(Long tenantId, Gender gender, String q, Long classId, EnrollmentStatus status, boolean notEnrolled,
+                          Boolean transportSubscribed, Integer minPaidMonths, Pageable pageable);
     void deleteById(Long id);
     boolean existsById(Long id);
     long countByTenantId(Long tenantId);

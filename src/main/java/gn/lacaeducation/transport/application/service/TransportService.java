@@ -3,6 +3,7 @@ package gn.lacaeducation.transport.application.service;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.transport.application.event.TransportSubscriptionCreatedEvent;
+import gn.lacaeducation.transport.application.port.out.TransportInvoiceQueryPort;
 import gn.lacaeducation.transport.application.port.out.TransportRouteRepository;
 import gn.lacaeducation.transport.application.port.out.TransportStopRepository;
 import gn.lacaeducation.transport.application.port.out.TransportSubscriptionRepository;
@@ -32,6 +33,7 @@ public class TransportService {
     private final TransportStopRepository stopRepo;
     private final TransportSubscriptionRepository subRepo;
     private final ApplicationEventPublisher eventPublisher;
+    private final TransportInvoiceQueryPort invoiceQueryPort;
 
     // ── Lignes ───────────────────────────────────────────────────────────────
 
@@ -119,6 +121,13 @@ public class TransportService {
         if (routeId != null) return subRepo.findByRouteId(routeId);
         if (studentId != null) return subRepo.findByStudentId(studentId);
         return subRepo.findByTenantId(tenantId);
+    }
+
+    /** Nombre de mois de transport déjà réglés, par élève (§retour comptable : "savoir qui a payé le
+     * transport", précisé en "le nombre de mois payé") — absent de la map si l'élève n'a encore rien
+     * payé (abonnement actif mais facturé mois par mois, à la demande, jamais automatique). */
+    public java.util.Map<Long, Long> paidMonthsCountByStudentId(Long tenantId) {
+        return invoiceQueryPort.countPaidTransportMonthsByStudentId(tenantId);
     }
 
     private TransportRoute loadRoute(Long id) {
