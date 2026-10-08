@@ -74,7 +74,8 @@ public class StudentController {
         return ResponseEntity.created(URI.create("/api/v1/students/" + s.getId())).body(s);
     }
 
-    @Operation(summary = "Lister les élèves du tenant (filtres : classe, statut d'inscription, sexe, recherche par nom/matricule/parent)")
+    @Operation(summary = "Lister les élèves du tenant (filtres : classe, statut d'inscription, sexe, recherche par nom/matricule/parent, "
+            + "abonnement transport, nombre de mois de transport payés)")
     @GetMapping
     @PreAuthorize("hasAuthority('eleve:read') and !hasRole('PARENT')")
     public PageResponse<Student> findAll(@RequestParam(required = false) Long classId,
@@ -82,12 +83,18 @@ public class StudentController {
                                          @RequestParam(required = false) Gender gender,
                                          @RequestParam(required = false) String search,
                                          @RequestParam(required = false, defaultValue = "false") boolean notEnrolled,
+                                         @RequestParam(required = false) Boolean transportSubscribed,
+                                         @RequestParam(required = false) Integer minPaidMonths,
                                          @PageableDefault(size = 20) Pageable pageable) {
         return PageResponse.of(studentUseCase.search(
-                TenantContext.get(), gender, search, classId, enrollmentStatus, notEnrolled, pageable));
+                TenantContext.get(), gender, search, classId, enrollmentStatus, notEnrolled,
+                transportSubscribed, minPaidMonths, pageable));
     }
 
-    @Operation(summary = "Lister les élèves avec leur classe et parent principal (guichet d'accueil, liste des élèves) — recherche par nom/matricule/parent")
+    @Operation(summary = "Lister les élèves avec leur classe et parent principal (guichet d'accueil, liste des élèves) — recherche par "
+            + "nom/matricule/parent, filtre abonnement transport / nombre de mois de transport payés (§retour comptable : "
+            + "\"filtrer par transport, pour chercher rapidement\" — minPaidMonths=0 signifie \"aucun mois payé\", toute autre "
+            + "valeur signifie \"au moins N mois payés\")")
     @GetMapping("/summary")
     @PreAuthorize("hasAuthority('eleve:read') and !hasRole('PARENT')")
     public PageResponse<StudentSummaryResponse> summary(@RequestParam(required = false) Long classId,
@@ -95,9 +102,12 @@ public class StudentController {
                                                          @RequestParam(required = false) Gender gender,
                                                          @RequestParam(required = false) String search,
                                                          @RequestParam(required = false, defaultValue = "false") boolean notEnrolled,
+                                                         @RequestParam(required = false) Boolean transportSubscribed,
+                                                         @RequestParam(required = false) Integer minPaidMonths,
                                                          @PageableDefault(size = 20) Pageable pageable) {
         return PageResponse.of(studentUseCase.search(
-                TenantContext.get(), gender, search, classId, enrollmentStatus, notEnrolled, pageable)
+                TenantContext.get(), gender, search, classId, enrollmentStatus, notEnrolled,
+                transportSubscribed, minPaidMonths, pageable)
                 .map(s -> {
                     Long enrolledClassId = enrollmentUseCase.findByStudent(s.getId()).stream()
                             .filter(e -> e.getStatus() == EnrollmentStatus.VALIDATED)

@@ -146,9 +146,11 @@ public class EleveService implements StudentUseCase {
     public org.springframework.data.domain.Page<Student> search(
             Long tenantId, gn.lacaeducation.students.domain.Gender gender, String search,
             Long classId, gn.lacaeducation.students.domain.EnrollmentStatus enrollmentStatus,
-            boolean notEnrolled, org.springframework.data.domain.Pageable pageable) {
+            boolean notEnrolled, Boolean transportSubscribed, Integer minPaidMonths,
+            org.springframework.data.domain.Pageable pageable) {
         String q = (search == null || search.isBlank()) ? null : search.toLowerCase();
-        return studentRepository.search(tenantId, gender, q, classId, enrollmentStatus, notEnrolled, pageable);
+        return studentRepository.search(tenantId, gender, q, classId, enrollmentStatus, notEnrolled,
+                transportSubscribed, minPaidMonths, pageable);
     }
 
     @Override
