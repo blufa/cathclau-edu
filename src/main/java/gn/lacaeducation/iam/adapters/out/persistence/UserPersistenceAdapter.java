@@ -24,6 +24,8 @@ class UserPersistenceAdapter implements UserRepository {
     @Override public Optional<User> findByEmailAndTenantId(String email, Long tenantId) { return jpaRepository.findByEmailAndTenantId(email, tenantId).map(mapper::toDomain); }
     @Override public boolean existsByTenantIdAndEmail(Long tenantId, String email) { return jpaRepository.existsByTenantIdAndEmail(tenantId, email); }
     @Override public boolean existsByTenantIdAndUsername(Long tenantId, String username) { return jpaRepository.existsByTenantIdAndUsername(tenantId, username); }
+    @Override public boolean existsByTenantIdAndPhone(Long tenantId, String phone) { return jpaRepository.existsByTenantIdAndPhone(tenantId, phone); }
+    @Override public boolean existsByTenantIdAndPhoneAndIdNot(Long tenantId, String phone, Long id) { return jpaRepository.existsByTenantIdAndPhoneAndIdNot(tenantId, phone, id); }
     @Override public List<User> findByTenantId(Long tenantId) { return jpaRepository.findByTenantId(tenantId).stream().map(mapper::toDomain).toList(); }
     @Override public List<User> findAll() { return jpaRepository.findAll().stream().map(mapper::toDomain).toList(); }
     @Override public void deleteById(Long id) { jpaRepository.deleteById(id); }

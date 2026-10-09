@@ -16,6 +16,11 @@ public interface UserRepository {
     boolean existsByTenantIdAndEmail(Long tenantId, String email);
     /** Unicité du username scopée par tenant (tenantId {@code null} = comptes plateforme/SUPER_ADMIN). */
     boolean existsByTenantIdAndUsername(Long tenantId, String username);
+    /** Unicité du téléphone scopée par tenant — testée sur toutes les variantes de format
+     * ({@link gn.lacaeducation.common.PhoneNumbers#candidates}), voir {@code UserService}. */
+    boolean existsByTenantIdAndPhone(Long tenantId, String phone);
+    /** Variante « modification » : exclut l'utilisateur dont on modifie le numéro. */
+    boolean existsByTenantIdAndPhoneAndIdNot(Long tenantId, String phone, Long id);
     List<User> findByTenantId(Long tenantId);
     /** Tous les utilisateurs, toutes écoles confondues — réservé aux vues plateforme (SUPER_ADMIN). */
     List<User> findAll();
