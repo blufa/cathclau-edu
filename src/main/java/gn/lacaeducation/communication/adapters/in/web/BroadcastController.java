@@ -18,7 +18,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 /**
  * Diffusion de masse segmentée (§11.1) : résout automatiquement les destinataires réels selon
  * l'audience choisie (tous les parents, une classe, les garçons/filles d'une classe, tous les
- * enseignants, ou le(s) parent(s) d'un élève précis) — pas de sélection manuelle d'IDs.
+ * enseignants, le(s) parent(s) d'un élève précis, ou les parents des élèves en retard de paiement/
+ * dont l'échéance approche) — pas de sélection manuelle d'IDs. Pour composer soi-même la liste avant
+ * d'envoyer (trier/filtrer), voir {@code GET /communications/payment-reminders}.
  */
 @Tag(name = "Communications — Diffusion", description = "Diffusion de masse segmentée aux parents/enseignants")
 @RestController
@@ -35,7 +37,7 @@ public class BroadcastController {
                                     * réseau dupliquée) — optionnelle. */
                                    String idempotencyKey) {}
 
-    @Operation(summary = "Diffuser un message à une audience segmentée (parents, classe, sexe, enseignants, élève)")
+    @Operation(summary = "Diffuser un message à une audience segmentée (parents, classe, sexe, enseignants, élève, retard/échéance proche de paiement)")
     @PreAuthorize("hasAuthority('communication:send')")
     @PostMapping
     public ResponseEntity<Communication> broadcast(@RequestBody DiffusionRequest r) {

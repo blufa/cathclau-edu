@@ -1,6 +1,8 @@
 package gn.lacaeducation.communication.application.service;
 
 import gn.lacaeducation.communication.application.port.in.CommunicationUseCase.RecipientTarget;
+import gn.lacaeducation.communication.application.port.out.PaymentReminderDataPort;
+import gn.lacaeducation.communication.application.port.out.PaymentReminderDataPort.DueLine;
 import gn.lacaeducation.communication.domain.BroadcastAudience;
 import gn.lacaeducation.communication.domain.CommunicationChannel;
 import gn.lacaeducation.staff.EmployeePublicInfoProvider;
@@ -20,6 +22,8 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -28,6 +32,7 @@ class RecipientResolverServiceTest {
     @Mock StudentDataProvider studentDataProvider;
     @Mock TeacherPublicInfoProvider teacherPublicInfoProvider;
     @Mock EmployeePublicInfoProvider employeePublicInfoProvider;
+    @Mock PaymentReminderDataPort paymentReminderDataPort;
     @InjectMocks RecipientResolverService resolver;
 
     private static StudentPublicInfo student(long id, String gender) {
@@ -146,6 +151,46 @@ class RecipientResolverServiceTest {
         List<RecipientTarget> targets = resolver.resolve(1L, BroadcastAudience.ALL_PARENTS, null, null, CommunicationChannel.EMAIL);
 
         assertThat(targets).extracting(RecipientTarget::destination).containsExactly("awa@ecole.gn");
+    }
+
+    @Test
+    void overduePayers_resolvesParentsOfLateStudents_dedupedAcrossInvoices() {
+        // Deux lignes en retard pour le MÊME élève (deux échéances différentes) : le parent ne doit
+        // recevoir le SMS qu'une seule fois.
+        when(paymentReminderDataPort.findOverdueLines(eq(1L), any())).thenReturn(List.of(
+                new DueLine(7L, 3L, BigDecimal.TEN, java.time.LocalDate.now().minusDays(10)),
+                new DueLine(7L, 3L, BigDecimal.TEN, java.time.LocalDate.now().minusDays(5))));
+        when(studentDataProvider.hasPlatformAccessOptIn(7L)).thenReturn(true);
+        when(studentDataProvider.findParentsByStudent(7L)).thenReturn(List.of(
+                new ParentPublicInfo(10L, "Awa", "Diallo", null, "623000001")));
+
+        List<RecipientTarget> targets = resolver.resolve(1L, BroadcastAudience.OVERDUE_PAYERS, null, null, CommunicationChannel.SMS);
+
+        assertThat(targets).extracting(RecipientTarget::destination).containsExactly("623000001");
+    }
+
+    @Test
+    void overduePayers_withoutPlatformAccess_returnsEmpty() {
+        when(paymentReminderDataPort.findOverdueLines(eq(1L), any())).thenReturn(List.of(
+                new DueLine(7L, 3L, BigDecimal.TEN, java.time.LocalDate.now().minusDays(10))));
+        when(studentDataProvider.hasPlatformAccessOptIn(7L)).thenReturn(false);
+
+        List<RecipientTarget> targets = resolver.resolve(1L, BroadcastAudience.OVERDUE_PAYERS, null, null, CommunicationChannel.SMS);
+
+        assertThat(targets).isEmpty();
+    }
+
+    @Test
+    void upcomingPayers_resolvesParentsOfStudentsWithApproachingDeadline() {
+        when(paymentReminderDataPort.findUpcomingLines(eq(1L), any(), any())).thenReturn(List.of(
+                new DueLine(8L, 3L, BigDecimal.TEN, java.time.LocalDate.now().plusDays(3))));
+        when(studentDataProvider.hasPlatformAccessOptIn(8L)).thenReturn(true);
+        when(studentDataProvider.findParentsByStudent(8L)).thenReturn(List.of(
+                new ParentPublicInfo(11L, "Ibrahima", "Bah", null, "623000002")));
+
+        List<RecipientTarget> targets = resolver.resolve(1L, BroadcastAudience.UPCOMING_PAYERS, null, null, CommunicationChannel.SMS);
+
+        assertThat(targets).extracting(RecipientTarget::destination).containsExactly("623000002");
     }
 
     @Test

@@ -43,6 +43,9 @@ public class UserService implements UserUseCase {
         if (commandHasEmail && userRepository.existsByTenantIdAndEmail(command.tenantId(), command.email())) {
             throw new ConflictException("A user with this email already exists in this tenant");
         }
+        if (commandHasPhone && phoneTakenInTenant(command.tenantId(), command.phone(), null)) {
+            throw new ConflictException("Un utilisateur avec ce numéro de téléphone existe déjà dans cet établissement.");
+        }
         // Identifiant de connexion généré (prenom.nom, unique PAR TENANT) — la même personne peut
         // avoir un compte dans plusieurs écoles avec le même prénom/nom sans collision.
         String username = UsernameGenerator.generate(command.firstName(), command.lastName(),
@@ -118,7 +121,16 @@ public class UserService implements UserUseCase {
         // (which carries only the active flag) does not wipe the user's name/phone.
         if (command.firstName() != null) user.setFirstName(PersonName.capitalizeFirstName(command.firstName()));
         if (command.lastName() != null) user.setLastName(PersonName.upperCaseLastName(command.lastName()));
-        if (command.phone() != null) user.setPhone(command.phone());
+        if (command.phone() != null && !command.phone().equals(user.getPhone())) {
+            // Sans ce contrôle, réassigner un numéro déjà utilisé par un autre compte du même
+            // établissement casse silencieusement la connexion des deux (résolution ambiguë au
+            // login, voir AuthService#resolveByPhone) : on bloque explicitement au lieu de laisser
+            // l'admin découvrir le problème quand l'utilisateur ne peut plus se connecter.
+            if (!command.phone().isBlank() && phoneTakenInTenant(user.getTenantId(), command.phone(), id)) {
+                throw new ConflictException("Un utilisateur avec ce numéro de téléphone existe déjà dans cet établissement.");
+            }
+            user.setPhone(command.phone());
+        }
         if (command.photo() != null) user.setPhoto(command.photo());
         if (command.active() != null) {
             user.setActive(command.active());
@@ -137,6 +149,20 @@ public class UserService implements UserUseCase {
         user.setDeletedAt(LocalDateTime.now());
         userRepository.save(user);
         refreshTokenRepository.revokeAllByUserId(id);
+    }
+
+    /** Teste toutes les variantes de format ({@code "622...", "+224622...", "00224622..."}) du même
+     * numéro — sans ça, un numéro stocké dans un format et ressaisi dans un autre ne serait pas
+     * détecté comme doublon (voir {@code AuthService#resolveByPhone}, qui doit reconnaître les mêmes
+     * numéros comme identiques). {@code excludeUserId} null en création, id de l'utilisateur en modification. */
+    private boolean phoneTakenInTenant(Long tenantId, String phone, Long excludeUserId) {
+        for (String candidate : gn.lacaeducation.common.PhoneNumbers.candidates(phone)) {
+            boolean taken = excludeUserId == null
+                    ? userRepository.existsByTenantIdAndPhone(tenantId, candidate)
+                    : userRepository.existsByTenantIdAndPhoneAndIdNot(tenantId, candidate, excludeUserId);
+            if (taken) return true;
+        }
+        return false;
     }
 
     @Override

@@ -23,4 +23,8 @@ public class StudentCard {
     private String pdfUrl;
     private Long replacesCardId;
     private LocalDateTime createdAt;
+    /** Date/heure du dernier passage sur une planche d'impression — null tant que jamais imprimée.
+     * Sert à filtrer les cartes restant à imprimer (§studentcards, demande utilisateur) : ne jamais
+     * réimprimer par erreur un badge déjà sorti. */
+    private LocalDateTime printedAt;
 }

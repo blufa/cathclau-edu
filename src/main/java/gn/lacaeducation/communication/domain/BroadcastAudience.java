@@ -18,5 +18,11 @@ public enum BroadcastAudience {
     STUDENT_PARENTS,
     /** Toute l'école : parents (élèves), enseignants ET personnel non-enseignant — ex. annonce d'un
      * événement école à tout le monde. */
-    ALL
+    ALL,
+    /** Parents des élèves ayant au moins une échéance de paiement dépassée (retard) — relance SMS
+     * groupée, sans avoir à composer la liste manuellement (voir PaymentReminderCandidatesService). */
+    OVERDUE_PAYERS,
+    /** Parents des élèves ayant une échéance de paiement qui approche (pas encore en retard) — relance
+     * préventive (voir PaymentReminderCandidatesService). */
+    UPCOMING_PAYERS
 }

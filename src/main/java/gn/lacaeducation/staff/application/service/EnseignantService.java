@@ -7,7 +7,6 @@ import gn.lacaeducation.academics.ScheduleSlotPublicInfo;
 import gn.lacaeducation.common.ConflictException;
 import gn.lacaeducation.common.PersonName;
 import gn.lacaeducation.common.ResourceNotFoundException;
-import gn.lacaeducation.common.SchoolCode;
 import gn.lacaeducation.common.TenantInfoProvider;
 import gn.lacaeducation.grading.GradingTeacherProvider;
 import gn.lacaeducation.staff.application.event.StaffCreatedEvent;
@@ -71,15 +70,10 @@ public class EnseignantService implements TeacherUseCase {
             }
             return provided;
         }
-        String prefix = SchoolCode.prefix(tenantInfoProvider, tenantId);
-        var info = tenantId == null ? Optional.<gn.lacaeducation.common.TenantPublicInfo>empty()
-                : tenantInfoProvider.findTenantInfo(tenantId);
-        String format = info.map(gn.lacaeducation.common.TenantPublicInfo::matriculeFormat).orElse(null);
-        Integer digits = info.map(gn.lacaeducation.common.TenantPublicInfo::matriculeDigits).orElse(null);
         long seq = teacherRepository.findByTenantId(tenantId).size() + 1L;
         String candidate;
         do {
-            candidate = gn.lacaeducation.common.MatriculeFormatter.generate(format, digits, prefix, seq++);
+            candidate = gn.lacaeducation.common.MatriculeAllocator.candidate(tenantInfoProvider, tenantId, seq++);
         } while (teacherRepository.existsByTenantIdAndStaffNumber(tenantId, candidate));
         return candidate;
     }

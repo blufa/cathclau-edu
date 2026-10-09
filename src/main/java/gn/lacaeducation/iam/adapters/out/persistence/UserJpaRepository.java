@@ -15,6 +15,11 @@ interface UserJpaRepository extends JpaRepository<UserJpaEntity, Long> {
     Optional<UserJpaEntity> findFirstByPhone(String phone);
     Optional<UserJpaEntity> findByEmailAndTenantId(String email, Long tenantId);
     boolean existsByTenantIdAndEmail(Long tenantId, String email);
+    /** Détection de doublon avant enregistrement (création ou modification du numéro) — même tenant. */
+    boolean existsByTenantIdAndPhone(Long tenantId, String phone);
+    /** Variante utilisée en modification : exclut l'utilisateur lui-même (son propre numéro inchangé
+     * ne doit pas se signaler comme un doublon). */
+    boolean existsByTenantIdAndPhoneAndIdNot(Long tenantId, String phone, Long id);
     /** {@code tenantId} peut être {@code null} (comptes SUPER_ADMIN, hors tenant) : comparaison explicite pour gérer NULL correctement. */
     @Query("SELECT COUNT(u) > 0 FROM UserJpaEntity u WHERE u.username = :username "
             + "AND ((:tenantId IS NULL AND u.tenantId IS NULL) OR u.tenantId = :tenantId)")

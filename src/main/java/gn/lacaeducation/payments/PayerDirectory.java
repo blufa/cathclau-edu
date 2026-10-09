@@ -63,11 +63,15 @@ public interface PayerDirectory {
      * remisée, est plus élevé que ce qui a réellement été reçu).
      * {@code creditedAmount}/{@code creditReason} : montant porté au paidAmount SANS paiement réel
      * correspondant (ex. crédit reporté d'une ancienne classe lors d'un transfert) — sans cette trace,
-     * le reçu afficherait une facture déjà réglée sans qu'aucun encaissement ne l'explique. */
+     * le reçu afficherait une facture déjà réglée sans qu'aucun encaissement ne l'explique.
+     * {@code remainingBalance} : solde encore dû sur CETTE facture précisément (net, après remise) —
+     * affiché en colonne "Reste" sur le reçu, pour qu'un règlement partiel sur une tranche (§retour
+     * comptable : un parent qui règle 300 000 GNF sur une tranche de 340 000) soit immédiatement
+     * clair pour le parent, sans qu'il ait à comparer lui-même "Montant" et "Payé". */
     record InvoiceRowInfo(Long id, String reference, java.math.BigDecimal amount, String label, boolean paid,
                           java.math.BigDecimal paidAmount,
                           java.math.BigDecimal creditedAmount, String creditReason,
-                          java.time.LocalDateTime creditedAt) {}
+                          java.time.LocalDateTime creditedAt, java.math.BigDecimal remainingBalance) {}
 
     /** Toutes les factures non annulées de l'élève sur l'année scolaire courante du tenant (même
      * portée que {@link #unpaidInvoices}) — inscription/réinscription d'abord, puis la scolarité

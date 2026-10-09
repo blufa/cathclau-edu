@@ -127,7 +127,7 @@ public class BillingPayerDirectoryAdapter implements PayerDirectory {
                         .thenComparing(Invoice::getIssueDate, Comparator.nullsFirst(Comparator.naturalOrder())))
                 .map(i -> new InvoiceRowInfo(i.getId(), i.getReference(), i.getTotalAmount(), fullLabel(i),
                         i.getStatus() == InvoiceStatus.PAID, i.getPaidAmount(),
-                        i.getCreditedAmount(), i.getCreditReason(), i.getCreditedAt()))
+                        i.getCreditedAmount(), i.getCreditReason(), i.getCreditedAt(), i.getRemainingBalance()))
                 .toList();
     }
 

@@ -18,6 +18,7 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.Year;
 import java.util.List;
 import java.util.Optional;
@@ -81,6 +82,17 @@ public class StudentCardService {
         return repo.save(c);
     }
 
+    /** Marque ces cartes comme imprimées (passées sur une planche) — pour pouvoir ensuite filtrer les
+     * cartes restant à imprimer et ne jamais réimprimer par erreur un badge déjà sorti. */
+    public List<StudentCard> markPrinted(List<Long> ids) {
+        LocalDateTime now = LocalDateTime.now();
+        return ids.stream().map(id -> {
+            StudentCard c = load(id);
+            c.setPrintedAt(now);
+            return repo.save(c);
+        }).toList();
+    }
+
     @Transactional(readOnly = true)
     public List<StudentCard> findByTenant(Long tenantId) { return repo.findByTenantId(tenantId); }
 
@@ -90,11 +102,18 @@ public class StudentCardService {
     @Transactional(readOnly = true)
     public StudentCard findById(Long id) { return load(id); }
 
-    /** Verifies a scanned QR payload/signature; returns the card when valid & ACTIVE. */
+    /**
+     * Verifies a scanned QR payload/signature; returns the card only when valid: signature correct,
+     * status ACTIVE, AND not past its expiration date. Computed live from {@code expirationDate}
+     * rather than relying on a scheduled job to flip the status to EXPIRED — a card whose date has
+     * passed must be rejected immediately on scan, not only once some nightly job has caught up.
+     */
     @Transactional(readOnly = true)
     public Optional<StudentCard> verify(String payload, String signature) {
         if (payload == null || signature == null || !sign(payload).equals(signature)) return Optional.empty();
-        return repo.findByQrPayload(payload).filter(c -> c.getStatus() == CardStatus.ACTIVE);
+        return repo.findByQrPayload(payload)
+                .filter(c -> c.getStatus() == CardStatus.ACTIVE)
+                .filter(c -> c.getExpirationDate() == null || !c.getExpirationDate().isBefore(LocalDate.now()));
     }
 
     private StudentCard create(IssueCardCommand c, Long replacesId) {

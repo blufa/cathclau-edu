@@ -14,4 +14,7 @@ public interface EmployeeRepository {
     boolean existsById(Long id);
     boolean existsByTenantIdAndEmployeeNumber(Long tenantId, String employeeNumber);
     Optional<Employee> findByUserId(Long userId);
+    /** Fiches sans matricule (créées avant l'auto-génération, ou import en masse) — pour le rattrapage
+     * au démarrage, voir {@code StaffMatriculeBackfill}. */
+    List<Employee> findMissingEmployeeNumber();
 }
