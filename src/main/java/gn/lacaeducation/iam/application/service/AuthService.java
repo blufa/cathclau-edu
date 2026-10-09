@@ -270,27 +270,11 @@ public class AuthService implements AuthUseCase {
      * (brut, chiffres seuls, international +224…) pour accepter aussi bien un numéro local qu'international.
      */
     private Optional<User> resolveByPhone(String identifier) {
-        for (String candidate : phoneCandidates(identifier)) {
+        for (String candidate : gn.lacaeducation.common.PhoneNumbers.candidates(identifier)) {
             Optional<User> u = userRepository.findByPhone(candidate);
             if (u.isPresent()) return u;
         }
         return Optional.empty();
-    }
-
-    /** Variantes de format d'un numéro à tenter ; liste vide si l'identifiant n'a pas l'allure d'un téléphone. */
-    private static List<String> phoneCandidates(String id) {
-        if (id == null) return List.of();
-        String digits = id.replaceAll("[^0-9+]", "");
-        if (!digits.matches("\\+?[0-9]{6,}")) return List.of();
-        java.util.LinkedHashSet<String> out = new java.util.LinkedHashSet<>();
-        out.add(id.trim());
-        out.add(digits);
-        String d = digits.startsWith("+") ? digits.substring(1) : digits;
-        if (digits.startsWith("+")) out.add(digits);
-        else if (d.startsWith("00")) out.add("+" + d.substring(2));
-        else if (d.startsWith("224")) out.add("+" + d);
-        else out.add("+224" + d); // numéro local guinéen
-        return new java.util.ArrayList<>(out);
     }
 
     private void requireActiveTenant(User user) {

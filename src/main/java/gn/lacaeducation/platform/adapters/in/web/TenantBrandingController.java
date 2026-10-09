@@ -24,23 +24,24 @@ public class TenantBrandingController {
     // l'école) est imprimé sur les badges élève, pour joindre l'établissement en cas de besoin.
     public record BrandingResponse(Long tenantId, String schoolName, String logo, String brandColor,
                                     String motto, String slogan, String ire, String dpeLabel,
-                                    String sousPrefectureLabel, String phone) {}
+                                    String sousPrefectureLabel, String phone, String address, String email) {}
     public record BrandingRequest(String logo, String brandColor) {}
 
     @Operation(summary = "Get the current school's branding")
     @GetMapping
     public BrandingResponse get() {
-        Tenant t = tenantUseCase.findById(TenantContext.get());
-        return new BrandingResponse(t.getId(), t.getSchoolName(), t.getLogo(), t.getBrandColor(), t.getMotto(), t.getSlogan(),
-                t.getIre(), t.getDpeLabel(), t.getSousPrefectureLabel(), t.getPhone());
+        return toResponse(tenantUseCase.findById(TenantContext.get()));
     }
 
     @Operation(summary = "Update the current school's logo and brand colour")
     @PreAuthorize("hasAuthority('ecole:profil')")
     @PutMapping
     public BrandingResponse update(@RequestBody BrandingRequest r) {
-        Tenant t = tenantUseCase.updateBranding(TenantContext.get(), r.logo(), r.brandColor());
+        return toResponse(tenantUseCase.updateBranding(TenantContext.get(), r.logo(), r.brandColor()));
+    }
+
+    private BrandingResponse toResponse(Tenant t) {
         return new BrandingResponse(t.getId(), t.getSchoolName(), t.getLogo(), t.getBrandColor(), t.getMotto(), t.getSlogan(),
-                t.getIre(), t.getDpeLabel(), t.getSousPrefectureLabel(), t.getPhone());
+                t.getIre(), t.getDpeLabel(), t.getSousPrefectureLabel(), t.getPhone(), t.getAddress(), t.getEmail());
     }
 }

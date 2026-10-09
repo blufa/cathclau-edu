@@ -39,11 +39,11 @@ class LiveTenant4NovemberExpenseTest {
         System.out.println("Fiche créée id=" + sheet.getId());
 
         Expense e1 = service.addExpense(sheet.getId(), new ExpenseLineCommand(
-                "Fournitures scolaires", new BigDecimal("150000"), true, LocalDate.of(2026, 11, 5)));
+                "Fournitures scolaires", new BigDecimal("150000"), true, LocalDate.of(2026, 11, 5)), 45L);
         Expense e2 = service.addExpense(sheet.getId(), new ExpenseLineCommand(
-                "Réparation électricité", new BigDecimal("80000"), true, LocalDate.of(2026, 11, 12)));
+                "Réparation électricité", new BigDecimal("80000"), true, LocalDate.of(2026, 11, 12)), 45L);
         Expense e3 = service.addExpense(sheet.getId(), new ExpenseLineCommand(
-                "Carburant groupe électrogène", new BigDecimal("45000"), false, LocalDate.of(2026, 11, 20)));
+                "Carburant groupe électrogène", new BigDecimal("45000"), false, LocalDate.of(2026, 11, 20)), 45L);
 
         System.out.println("Ligne 1 id=" + e1.getId() + " montant=" + e1.getAmount());
         System.out.println("Ligne 2 id=" + e2.getId() + " montant=" + e2.getAmount());

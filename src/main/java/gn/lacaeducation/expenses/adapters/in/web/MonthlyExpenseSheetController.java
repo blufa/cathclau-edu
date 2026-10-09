@@ -60,8 +60,8 @@ public class MonthlyExpenseSheetController {
     @Operation(summary = "Ajouter une ligne de dépense à la fiche")
     @PreAuthorize("hasAuthority('depense:create')")
     @PostMapping("/{id}/expenses")
-    public Expense addExpense(@PathVariable Long id, @RequestBody ExpenseLineRequest r) {
-        return service.addExpense(id, new ExpenseLineCommand(r.label(), r.amount(), r.necessary(), r.expenseDate()));
+    public Expense addExpense(@PathVariable Long id, @RequestBody ExpenseLineRequest r, @AuthenticationPrincipal Jwt jwt) {
+        return service.addExpense(id, new ExpenseLineCommand(r.label(), r.amount(), r.necessary(), r.expenseDate()), currentUserId(jwt));
     }
 
     @Operation(summary = "Modifier une ligne de dépense (fiche ouverte uniquement)")

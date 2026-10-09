@@ -9,6 +9,7 @@ import gn.lacaeducation.payments.application.port.in.PaymentUseCase.GroupPayment
 import gn.lacaeducation.payments.application.port.in.PaymentUseCase.InitiatePaymentCommand;
 import gn.lacaeducation.payments.application.port.in.PaymentUseCase.InvoiceShare;
 import gn.lacaeducation.payments.application.port.in.ReceiptUseCase;
+import gn.lacaeducation.payments.application.port.out.CashierSessionRepository;
 import gn.lacaeducation.payments.application.port.out.PaymentProviderGateway;
 import gn.lacaeducation.payments.application.port.out.PaymentRepository;
 import gn.lacaeducation.payments.application.port.out.PaymentTransactionRepository;
@@ -39,10 +40,11 @@ class PaymentServiceTest {
     @Mock PaymentProviderGateway orangeGateway;
     @Mock ApplicationEventPublisher eventPublisher;
     @Mock gn.lacaeducation.payments.application.port.out.DjomyVerificationPort djomyVerifier;
+    @Mock CashierSessionRepository cashierSessionRepository;
 
     private PaymentService service() {
         return new PaymentService(repo, transactionRepo, receiptUseCase, List.of(orangeGateway), eventPublisher, djomyVerifier,
-                tools.jackson.databind.json.JsonMapper.builder().build());
+                tools.jackson.databind.json.JsonMapper.builder().build(), cashierSessionRepository);
     }
 
     private final InitiatePaymentCommand cmd = new InitiatePaymentCommand(
@@ -143,6 +145,8 @@ class PaymentServiceTest {
         // CASH est encaissé au guichet (isDeskManual) : confirmation immédiate (SUCCEEDED), reçu groupé
         // émis et événements publiés, sans passerelle en ligne (§payments — flux d'encaissement réel).
         when(repo.findByIdempotencyKey(any())).thenReturn(Optional.empty());
+        when(cashierSessionRepository.findOpenByCashierId(99L))
+                .thenReturn(Optional.of(mock(CashierSession.class)));
         when(repo.save(any(Payment.class))).thenAnswer(i -> {
             Payment p = i.getArgument(0);
             if (p.getId() == null) p.setId(1L);
@@ -158,6 +162,48 @@ class PaymentServiceTest {
     }
 
     @Test
+    void initiate_deskManualWithoutOpenCashierSession_throwsBusinessRule() {
+        // Barrière caisse (§angles morts comptables) : un encaissement guichet en direct (pas un rejeu
+        // hors-ligne) sans session de caisse ouverte pour le collecteur doit être bloqué, pas seulement
+        // signalé après coup.
+        InitiatePaymentCommand withCollector = new InitiatePaymentCommand(
+                10L, 3L, 7L, "PAY-1", new BigDecimal("100.00"), PaymentChannel.ORANGE_MONEY, PaymentType.COMPLETE, null, 99L, 2026L);
+        when(cashierSessionRepository.findOpenByCashierId(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service().initiate(withCollector)).isInstanceOf(BusinessRuleException.class);
+        verify(repo, never()).save(any(Payment.class));
+    }
+
+    @Test
+    void initiateGroup_deskManualWithoutOpenCashierSession_throwsBusinessRule() {
+        when(repo.findByIdempotencyKey(any())).thenReturn(Optional.empty());
+        when(cashierSessionRepository.findOpenByCashierId(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service().initiateGroup(groupCmd("key-live"))).isInstanceOf(BusinessRuleException.class);
+        verify(repo, never()).save(any(Payment.class));
+    }
+
+    @Test
+    void initiateGroup_offlineReplayWithPaidAt_skipsCashierSessionCheck() {
+        // Encaissement hors-ligne resynchronisé tardivement (paidAt renseigné) : la caisse peut déjà
+        // être clôturée au moment de la synchro sans que l'encaissement d'origine soit illégitime.
+        GroupPaymentCommand replay = new GroupPaymentCommand(10L, 7L, PaymentChannel.CASH, null, "Tranche 1",
+                1, BigDecimal.ZERO, List.of(new InvoiceShare(3L, null, new BigDecimal("100.00"), null)),
+                99L, 2026L, "key-replay", LocalDateTime.of(2026, 1, 5, 9, 0));
+        when(repo.findByIdempotencyKey(any())).thenReturn(Optional.empty());
+        when(repo.save(any(Payment.class))).thenAnswer(i -> {
+            Payment p = i.getArgument(0);
+            if (p.getId() == null) p.setId(1L);
+            return p;
+        });
+
+        Payment p = service().initiateGroup(replay);
+
+        assertThat(p.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED);
+        verify(cashierSessionRepository, never()).findOpenByCashierId(any());
+    }
+
+    @Test
     void initiateGroup_calledTwiceWithSameIdempotencyKey_returnsSamePayment_doesNotDuplicate() {
         // Rejoué après une coupure réseau (mode hors-ligne, §payments) avec la même clé : le second
         // appel doit renvoyer le paiement déjà créé, sans en créer un second ni régénérer le reçu.
@@ -167,6 +213,8 @@ class PaymentServiceTest {
         when(repo.findByIdempotencyKey("key-1"))
                 .thenReturn(Optional.empty())
                 .thenReturn(Optional.of(alreadyCreated));
+        when(cashierSessionRepository.findOpenByCashierId(99L))
+                .thenReturn(Optional.of(mock(CashierSession.class)));
         when(repo.save(any(Payment.class))).thenAnswer(i -> {
             Payment p = i.getArgument(0);
             if (p.getId() == null) p.setId(1L);

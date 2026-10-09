@@ -2,6 +2,7 @@ package gn.lacaeducation.expenses.application.service;
 
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
+import gn.lacaeducation.payments.CashierSessionStatusProvider;
 import gn.lacaeducation.expenses.application.event.ExpensePaidEvent;
 import gn.lacaeducation.expenses.application.port.out.ExpenseRepository;
 import gn.lacaeducation.expenses.application.port.out.MonthlyExpenseSheetRepository;
@@ -35,6 +36,7 @@ public class MonthlyExpenseSheetService {
     private final ExpenseRepository expenseRepo;
     private final RevenueLineRepository revenueRepo;
     private final ApplicationEventPublisher eventPublisher;
+    private final CashierSessionStatusProvider cashierSessionStatusProvider;
 
     public record SheetCommand(Long tenantId, String label, String academicYear,
                                FinancingMode financingMode, BigDecimal financingAmount) {}
@@ -83,9 +85,16 @@ public class MonthlyExpenseSheetService {
     // ── Lignes de dépense ───────────────────────────────────────────────────────
 
     /** Chaque ligne ajoutée correspond à un montant déjà dépensé (pas de circuit d'approbation
-     * séparé) — publie immédiatement l'événement qui alimente la trésorerie. */
-    public Expense addExpense(Long sheetId, ExpenseLineCommand c) {
+     * séparé) — publie immédiatement l'événement qui alimente la trésorerie. {@code recordedBy} :
+     * utilisateur qui saisit la sortie — doit avoir sa caisse ouverte (même barrière que les
+     * encaissements guichet, voir {@code PaymentService}) : une dépense est elle aussi de l'argent
+     * physique qui sort, qu'il faut pouvoir rapprocher. */
+    public Expense addExpense(Long sheetId, ExpenseLineCommand c, Long recordedBy) {
         MonthlyExpenseSheet s = requireOpen(sheetId);
+        if (!cashierSessionStatusProvider.hasOpenSession(recordedBy)) {
+            throw new BusinessRuleException(
+                    "Aucune session de caisse ouverte : ouvrez votre caisse avant d'enregistrer une dépense.");
+        }
         if (c.label() == null || c.label().isBlank()) throw new BusinessRuleException("Le libellé est requis");
         if (c.amount() == null || c.amount().signum() <= 0) throw new BusinessRuleException("Le montant doit être positif");
         Expense saved = expenseRepo.save(Expense.builder()

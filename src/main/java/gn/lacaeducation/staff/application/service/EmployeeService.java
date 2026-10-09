@@ -1,8 +1,10 @@
 package gn.lacaeducation.staff.application.service;
 
 import gn.lacaeducation.common.ConflictException;
+import gn.lacaeducation.common.MatriculeAllocator;
 import gn.lacaeducation.common.PersonName;
 import gn.lacaeducation.common.ResourceNotFoundException;
+import gn.lacaeducation.common.TenantInfoProvider;
 import gn.lacaeducation.staff.application.port.in.EmployeeUseCase;
 import gn.lacaeducation.staff.application.port.out.EmployeeRepository;
 import gn.lacaeducation.staff.domain.Employee;
@@ -19,20 +21,35 @@ import java.util.Optional;
 public class EmployeeService implements EmployeeUseCase {
 
     private final EmployeeRepository repo;
+    private final TenantInfoProvider tenantInfoProvider;
 
     @Override
     public Employee create(CreateEmployeeCommand c) {
-        if (c.employeeNumber() != null && !c.employeeNumber().isBlank()
-                && repo.existsByTenantIdAndEmployeeNumber(c.tenantId(), c.employeeNumber())) {
-            throw new ConflictException("Un employé porte déjà le matricule " + c.employeeNumber());
-        }
+        String matricule = resolveEmployeeNumber(c.tenantId(), c.employeeNumber());
         return repo.save(Employee.builder()
-                .tenantId(c.tenantId()).userId(c.userId()).employeeNumber(c.employeeNumber())
+                .tenantId(c.tenantId()).userId(c.userId()).employeeNumber(matricule)
                 .firstName(PersonName.capitalizeFirstName(c.firstName()))
                 .lastName(PersonName.upperCaseLastName(c.lastName())).phone(c.phone()).email(c.email())
                 .category(c.category()).jobTitle(c.jobTitle()).hireDate(c.hireDate())
                 .baseSalary(c.baseSalary()).cnssNumber(c.cnssNumber()).bankAccount(c.bankAccount()).active(true)
                 .build());
+    }
+
+    /** Même logique que {@code EnseignantService#resolveStaffNumber} : valide un matricule fourni, ou
+     * en génère un auto — le personnel non-enseignant n'en recevait jamais faute d'auto-génération ici. */
+    private String resolveEmployeeNumber(Long tenantId, String provided) {
+        if (provided != null && !provided.isBlank()) {
+            if (repo.existsByTenantIdAndEmployeeNumber(tenantId, provided)) {
+                throw new ConflictException("Un employé porte déjà le matricule " + provided);
+            }
+            return provided;
+        }
+        long seq = repo.findByTenantId(tenantId).size() + 1L;
+        String candidate;
+        do {
+            candidate = MatriculeAllocator.candidate(tenantInfoProvider, tenantId, seq++);
+        } while (repo.existsByTenantIdAndEmployeeNumber(tenantId, candidate));
+        return candidate;
     }
 
     @Override

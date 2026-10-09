@@ -25,4 +25,5 @@ public class StudentCardJpaEntity {
     @Column(name = "pdf_url") private String pdfUrl;
     @Column(name = "replaces_card_id") private Long replacesCardId;
     @CreationTimestamp @Column(name = "created_at", updatable = false) private LocalDateTime createdAt;
+    @Column(name = "printed_at") private LocalDateTime printedAt;
 }

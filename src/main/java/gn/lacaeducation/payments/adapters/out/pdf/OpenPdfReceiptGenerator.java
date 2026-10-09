@@ -238,13 +238,14 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
      */
     private PdfPTable invoicesTable(List<PayerDirectory.InvoiceRowInfo> invoices,
                                      java.util.Map<Long, java.time.LocalDateTime> paidAtByInvoiceId) {
-        PdfPTable t = dataTable(new float[]{1.05f, 0.9f, 1.35f, 0.85f, 0.5f});
+        PdfPTable t = dataTable(new float[]{1.0f, 0.65f, 1.3f, 0.7f, 0.3f, 0.7f});
         t.setSpacingBefore(4f);
         compactHeaderCell(t, "Réf.");
         compactHeaderCell(t, "Montant");
         compactHeaderCell(t, "Observation");
         compactHeaderCell(t, "Date & heure");
         compactHeaderCell(t, "Payé");
+        compactHeaderCell(t, "Reste");
 
         DateTimeFormatter paidAtFormat = DateTimeFormatter.ofPattern("dd/MM/yyyy HH'h'mm");
         for (PayerDirectory.InvoiceRowInfo inv : invoices) {
@@ -257,8 +258,27 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
             java.time.LocalDateTime shown = paidAt != null ? paidAt : inv.creditedAt();
             compactCell(t, shown != null ? shown.format(paidAtFormat) : "-", Element.ALIGN_CENTER);
             t.addCell(paidCell(inv.paid()));
+            t.addCell(remainingCell(inv.remainingBalance()));
         }
         return t;
+    }
+
+    /**
+     * Solde encore dû sur CETTE facture précisément — "-" si entièrement réglée, sinon le montant en
+     * rouge/gras pour qu'un règlement partiel sur une tranche (ex. 300 000 GNF réglés sur une tranche
+     * de 340 000) soit immédiatement visible pour le parent, sans qu'il ait à comparer lui-même les
+     * colonnes "Montant" et "Payé" (§retour comptable, demande client).
+     */
+    private com.lowagie.text.pdf.PdfPCell remainingCell(BigDecimal remaining) {
+        boolean due = remaining != null && remaining.signum() > 0;
+        String text = due ? money(remaining) + " GNF" : "-";
+        java.awt.Color color = due ? new java.awt.Color(170, 30, 30) : java.awt.Color.GRAY;
+        com.lowagie.text.pdf.PdfPCell c = new com.lowagie.text.pdf.PdfPCell(
+                new com.lowagie.text.Phrase(text, font(due ? FontFactory.HELVETICA_BOLD : FontFactory.HELVETICA, 8.5f, color)));
+        c.setPadding(3.5f);
+        c.setBorderColor(LINE);
+        c.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        return c;
     }
 
     /**
