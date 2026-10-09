@@ -54,6 +54,13 @@ public class StudentCardController {
     @PatchMapping("/cartes/{id}/declarer-perdue")
     public StudentCard declareLost(@PathVariable Long id) { return service.declareLost(id); }
 
+    public record MarkPrintedRequest(List<Long> ids) {}
+
+    @Operation(summary = "Marquer ces cartes comme imprimées (après passage sur une planche de badges)")
+    @PreAuthorize("hasAuthority('carte:manage')")
+    @PatchMapping("/cartes/marquer-imprimees")
+    public List<StudentCard> markPrinted(@RequestBody MarkPrintedRequest r) { return service.markPrinted(r.ids()); }
+
     @Operation(summary = "Vérifier une carte en scannant son QR code (payload + signature)")
     @GetMapping("/cartes/verifier")
     public ResponseEntity<Map<String, Object>> verify(@RequestParam String payload, @RequestParam String signature) {
