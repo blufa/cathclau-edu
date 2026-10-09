@@ -10,6 +10,7 @@ import gn.lacaeducation.payments.application.event.PaymentRefundedEvent;
 import gn.lacaeducation.payments.application.event.PaymentSucceededEvent;
 import gn.lacaeducation.payments.application.port.in.PaymentUseCase;
 import gn.lacaeducation.payments.application.port.in.ReceiptUseCase;
+import gn.lacaeducation.payments.application.port.out.CashierSessionRepository;
 import gn.lacaeducation.payments.application.port.out.DjomyVerificationPort;
 import gn.lacaeducation.payments.application.port.out.PaymentProviderGateway;
 import gn.lacaeducation.payments.application.port.out.PaymentRepository;
@@ -34,8 +35,14 @@ public class PaymentService implements PaymentUseCase {
     private final ApplicationEventPublisher eventPublisher;
     private final DjomyVerificationPort djomyVerifier;
     private final ObjectMapper objectMapper;
+    private final CashierSessionRepository cashierSessionRepository;
 
     @Override public Payment initiate(InitiatePaymentCommand c) throws JsonProcessingException {
+        // Barrière caisse (§angles morts comptables) : un encaissement guichet (espèces, Orange Money,
+        // virement reçu à la main) doit être rattaché à une session de caisse ouverte pour pouvoir être
+        // rapproché au comptant physique — sans ça, CashReconciliationGuard ne fait que le signaler
+        // APRÈS coup, trop tard pour l'éviter.
+        requireOpenCashierSession(c.channel(), c.collectedByUserId());
         // Facture → Paiement → TransactionPaiement (appel fournisseur) → EN_ATTENTE (§9.1).
         Payment payment = repo.save(Payment.builder().tenantId(c.tenantId()).invoiceId(c.invoiceId()).studentId(c.studentId())
                 .academicYearId(c.academicYearId())
@@ -84,6 +91,13 @@ public class PaymentService implements PaymentUseCase {
         }
         if (c.shares() == null || c.shares().isEmpty()) {
             throw new BusinessRuleException("Aucune facture sélectionnée pour le paiement groupé");
+        }
+        // Barrière caisse — sauf rejeu hors-ligne (paidAt renseigné) : l'argent a déjà été physiquement
+        // encaissé au moment indiqué par paidAt, sous la session ouverte à CE moment-là côté caissier ;
+        // exiger une session encore ouverte MAINTENANT (potentiellement après resynchronisation tardive,
+        // caisse déjà clôturée) rejetterait à tort un encaissement pourtant légitime.
+        if (c.paidAt() == null) {
+            requireOpenCashierSession(c.channel(), c.collectedByUserId());
         }
         BigDecimal total = c.shares().stream()
                 .map(PaymentUseCase.InvoiceShare::amount)
@@ -280,6 +294,17 @@ public class PaymentService implements PaymentUseCase {
         return new DailyCollectionsReport(grandTotal, days);
     }
     @Override public void delete(Long id) { repo.deleteById(id); }
+
+    /** Encaissement/décaissement guichet (espèces, Orange Money, virement reçu à la main) : impossible
+     * sans session de caisse ouverte pour le collecteur. Les canaux en ligne (Djomy...) ne sont jamais
+     * concernés — l'argent transite par la passerelle, jamais par la caisse physique. */
+    private void requireOpenCashierSession(PaymentChannel channel, Long collectedByUserId) {
+        if (channel == null || !channel.isDeskManual() || collectedByUserId == null) return;
+        if (cashierSessionRepository.findOpenByCashierId(collectedByUserId).isEmpty()) {
+            throw new BusinessRuleException(
+                    "Aucune session de caisse ouverte : ouvrez votre caisse avant d'enregistrer un encaissement au guichet.");
+        }
+    }
 
     private PaymentProviderGateway resolveGateway(PaymentChannel channel) {
         return gateways.stream().filter(g -> g.getChannel() == channel).findFirst()
