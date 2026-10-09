@@ -1,6 +1,7 @@
 package gn.lacaeducation.communication.application.service;
 
 import gn.lacaeducation.communication.application.port.in.CommunicationUseCase.RecipientTarget;
+import gn.lacaeducation.communication.application.port.out.PaymentReminderDataPort;
 import gn.lacaeducation.communication.domain.BroadcastAudience;
 import gn.lacaeducation.communication.domain.CommunicationChannel;
 import gn.lacaeducation.staff.EmployeePublicInfoProvider;
@@ -25,9 +26,15 @@ import java.util.Map;
 @RequiredArgsConstructor
 class RecipientResolverService {
 
+    /** Fenêtre par défaut pour l'audience UPCOMING_PAYERS (échéance qui approche) — cohérent avec
+     * l'horizon "relance avant échéance" ; distinct des 30 jours du widget dashboard (lecture passive,
+     * pas un envoi de SMS). */
+    private static final int UPCOMING_PAYERS_DAYS_AHEAD = 7;
+
     private final StudentDataProvider studentDataProvider;
     private final TeacherPublicInfoProvider teacherPublicInfoProvider;
     private final EmployeePublicInfoProvider employeePublicInfoProvider;
+    private final PaymentReminderDataPort paymentReminderDataPort;
 
     List<RecipientTarget> resolve(Long tenantId, BroadcastAudience audience, Long classId, Long studentId,
                                   CommunicationChannel channel) {
@@ -50,6 +57,20 @@ class RecipientResolverService {
                     .map(d -> new RecipientTarget(null, d))
                     .toList();
         }
+        if (audience == BroadcastAudience.OVERDUE_PAYERS) {
+            List<Long> studentIds = paymentReminderDataPort.findOverdueLines(tenantId, java.time.LocalDate.now()).stream()
+                    .map(PaymentReminderDataPort.DueLine::studentId).distinct().toList();
+            return resolveParentsOf(studentIds, channel);
+        }
+
+        if (audience == BroadcastAudience.UPCOMING_PAYERS) {
+            java.time.LocalDate today = java.time.LocalDate.now();
+            List<Long> studentIds = paymentReminderDataPort
+                    .findUpcomingLines(tenantId, today, today.plusDays(UPCOMING_PAYERS_DAYS_AHEAD)).stream()
+                    .map(PaymentReminderDataPort.DueLine::studentId).distinct().toList();
+            return resolveParentsOf(studentIds, channel);
+        }
+
         if (audience == BroadcastAudience.ALL) {
             // Union parents + enseignants + personnel, dédupliquée par destination (un enseignant qui
             // est aussi parent d'élève dans la même école ne reçoit le message qu'une seule fois).
@@ -70,7 +91,7 @@ class RecipientResolverService {
             case CLASS_PARENTS_GIRLS -> parentsOfClass(classId, "FEMALE");
             case STUDENT_PARENTS -> studentDataProvider.hasPlatformAccessOptIn(studentId)
                     ? studentDataProvider.findParentsByStudent(studentId) : List.of();
-            case ALL_TEACHERS, ALL_STAFF, ALL -> throw new IllegalStateException("traité plus haut");
+            case ALL_TEACHERS, ALL_STAFF, ALL, OVERDUE_PAYERS, UPCOMING_PAYERS -> throw new IllegalStateException("traité plus haut");
         };
 
         return parents.stream()
@@ -93,6 +114,24 @@ class RecipientResolverService {
             }
         }
         return List.copyOf(byParentId.values());
+    }
+
+    /** Parents de ces élèves (dédupliqués), même règle de confidentialité que les autres audiences
+     * élève (§billing, frais annexe optionnel) : un parent n'ayant pas accepté l'accès plateforme pour
+     * cet élève ne reçoit jamais de notification, retard de paiement ou pas. */
+    private List<RecipientTarget> resolveParentsOf(List<Long> studentIds, CommunicationChannel channel) {
+        Map<Long, ParentPublicInfo> byParentId = new LinkedHashMap<>();
+        for (Long studentId : studentIds) {
+            if (!studentDataProvider.hasPlatformAccessOptIn(studentId)) continue;
+            for (ParentPublicInfo p : studentDataProvider.findParentsByStudent(studentId)) {
+                byParentId.putIfAbsent(p.id(), p);
+            }
+        }
+        return byParentId.values().stream()
+                .map(p -> destinationOf(p.email(), p.phone(), channel))
+                .filter(d -> d != null && !d.isBlank())
+                .map(d -> new RecipientTarget(null, d))
+                .toList();
     }
 
     private static String destinationOf(String email, String phone, CommunicationChannel channel) {
