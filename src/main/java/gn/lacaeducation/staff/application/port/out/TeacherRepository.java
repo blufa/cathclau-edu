@@ -13,4 +13,7 @@ public interface TeacherRepository {
     void deleteById(Long id);
     boolean existsById(Long id);
     boolean existsByTenantIdAndStaffNumber(Long tenantId, String staffNumber);
+    /** Fiches sans matricule (créées avant l'auto-génération, ou import en masse) — pour le rattrapage
+     * au démarrage, voir {@code StaffMatriculeBackfill}. */
+    List<Teacher> findMissingStaffNumber();
 }
