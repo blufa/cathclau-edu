@@ -40,6 +40,22 @@ public class SalaryFeeDeductionService implements SalaryFeeDeductionUseCase {
         return employeeProvider.findUserIdByEmployeeId(staffId).orElse(null);
     }
 
+    /** Enfants scolarisés (inscription VALIDÉE) de ce salarié, qu'il ait un compte de connexion
+     * (lien par {@code userId} partagé avec sa fiche Parent) OU non (lien direct {@code staffType}/
+     * {@code staffId}, personnel sans smartphone Android — voir ParentInput côté inscription). Les
+     * deux chemins sont consultés et fusionnés : sans ça, un salarié inscrit "Personnel de l'école"
+     * sans compte ne déclenchait jamais aucune retenue, même avec un enfant correctement rattaché. */
+    private List<Long> resolveChildStudentIds(EmployeeType employeeType, Long staffId) {
+        Long userId = resolveUserId(employeeType, staffId);
+        java.util.LinkedHashSet<Long> ids = new java.util.LinkedHashSet<>();
+        if (userId != null) {
+            ids.addAll(parentAccessProvider.findChildStudentIdsWithValidatedEnrollment(userId));
+        }
+        String staffType = employeeType == EmployeeType.TEACHER ? "TEACHER" : "EMPLOYEE";
+        ids.addAll(parentAccessProvider.findChildStudentIdsWithValidatedEnrollmentByStaffLink(staffType, staffId));
+        return List.copyOf(ids);
+    }
+
     @Override
     public SalaryFeeDeductionRule create(Long tenantId, RuleCommand c) {
         validate(c);
@@ -75,14 +91,10 @@ public class SalaryFeeDeductionService implements SalaryFeeDeductionUseCase {
     @Override
     @Transactional(readOnly = true)
     public FeeDeduction computeFeeDeduction(Long tenantId, EmployeeType employeeType, Long staffId) {
-        Long userId = resolveUserId(employeeType, staffId);
-        if (userId == null) {
-            return new FeeDeduction(BigDecimal.ZERO, null, 0);
-        }
         // Ne compte que les enfants effectivement scolarisés (inscription VALIDÉE) : un enfant parti
         // (abandon/annulation) ou jamais formellement inscrit ne doit pas continuer à faire retenir de
         // l'argent sur le salaire indéfiniment.
-        int childCount = parentAccessProvider.findChildStudentIdsWithValidatedEnrollment(userId).size();
+        int childCount = resolveChildStudentIds(employeeType, staffId).size();
         if (childCount == 0) {
             return new FeeDeduction(BigDecimal.ZERO, null, 0);
         }
@@ -103,9 +115,7 @@ public class SalaryFeeDeductionService implements SalaryFeeDeductionUseCase {
 
     @Override
     public void applyDeductionAsInvoicePayment(Long tenantId, EmployeeType employeeType, Long staffId) {
-        Long userId = resolveUserId(employeeType, staffId);
-        if (userId == null) return;
-        List<Long> childIds = parentAccessProvider.findChildStudentIdsWithValidatedEnrollment(userId);
+        List<Long> childIds = resolveChildStudentIds(employeeType, staffId);
         if (childIds.isEmpty()) return;
         SalaryFeeDeductionRule rule = repo.findByTenantId(tenantId).stream()
                 .filter(SalaryFeeDeductionRule::isActive)
@@ -130,11 +140,9 @@ public class SalaryFeeDeductionService implements SalaryFeeDeductionUseCase {
     @Transactional(readOnly = true)
     public StaffBenefitRemainderDeduction computeStaffBenefitRemainder(Long tenantId, EmployeeType employeeType, Long staffId,
                                                                         LocalDate periodStart, String periodLabel) {
-        Long userId = resolveUserId(employeeType, staffId);
-        if (userId == null) return new StaffBenefitRemainderDeduction(BigDecimal.ZERO, 0);
         BigDecimal total = BigDecimal.ZERO;
         int concerned = 0;
-        for (Long studentId : parentAccessProvider.findChildStudentIdsWithValidatedEnrollment(userId)) {
+        for (Long studentId : resolveChildStudentIds(employeeType, staffId)) {
             BigDecimal remainder = studentFeePaymentApi.outstandingStaffBenefitRemainder(studentId, periodStart, periodLabel);
             if (remainder != null && remainder.signum() > 0) {
                 total = total.add(remainder);
@@ -147,9 +155,7 @@ public class SalaryFeeDeductionService implements SalaryFeeDeductionUseCase {
     @Override
     public void applyStaffBenefitRemainderAsInvoicePayment(Long tenantId, EmployeeType employeeType, Long staffId,
                                                             LocalDate periodStart, String periodLabel) {
-        Long userId = resolveUserId(employeeType, staffId);
-        if (userId == null) return;
-        for (Long studentId : parentAccessProvider.findChildStudentIdsWithValidatedEnrollment(userId)) {
+        for (Long studentId : resolveChildStudentIds(employeeType, staffId)) {
             BigDecimal remainder = studentFeePaymentApi.outstandingStaffBenefitRemainder(studentId, periodStart, periodLabel);
             if (remainder != null && remainder.signum() > 0) {
                 studentFeePaymentApi.applyStaffBenefitRemainderPayment(studentId, periodStart, periodLabel, remainder);
