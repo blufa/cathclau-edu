@@ -20,7 +20,7 @@ class UserPersistenceAdapter implements UserRepository {
     @Override public Optional<User> findById(Long id) { return jpaRepository.findById(id).map(mapper::toDomain); }
     @Override public Optional<User> findByEmail(String email) { return jpaRepository.findByEmail(email).map(mapper::toDomain); }
     @Override public Optional<User> findByUsername(String username) { return jpaRepository.findByUsername(username).map(mapper::toDomain); }
-    @Override public Optional<User> findByPhone(String phone) { return jpaRepository.findFirstByPhone(phone).map(mapper::toDomain); }
+    @Override public Optional<User> findByPhone(String phone) { return jpaRepository.findFirstByPhoneOrderByIdAsc(phone).map(mapper::toDomain); }
     @Override public Optional<User> findByEmailAndTenantId(String email, Long tenantId) { return jpaRepository.findByEmailAndTenantId(email, tenantId).map(mapper::toDomain); }
     @Override public boolean existsByTenantIdAndEmail(Long tenantId, String email) { return jpaRepository.existsByTenantIdAndEmail(tenantId, email); }
     @Override public boolean existsByTenantIdAndUsername(Long tenantId, String username) { return jpaRepository.existsByTenantIdAndUsername(tenantId, username); }

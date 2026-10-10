@@ -12,7 +12,13 @@ import java.util.Optional;
 interface UserJpaRepository extends JpaRepository<UserJpaEntity, Long> {
     Optional<UserJpaEntity> findByEmail(String email);
     Optional<UserJpaEntity> findByUsername(String username);
-    Optional<UserJpaEntity> findFirstByPhone(String phone);
+    /** {@code OrderByIdAsc} : sans tri explicite, "premier" n'est pas garanti stable d'un appel à
+     * l'autre (plan de requête, VACUUM...) — si un doublon de téléphone existe encore en base (numéro
+     * créé avant la contrainte d'unicité ajoutée dans UserService), résoudre tantôt vers l'un tantôt
+     * vers l'autre ferait échouer la connexion après une réinitialisation de mot de passe par OTP
+     * (code envoyé/validé sur un compte, mot de passe modifié sur un autre). Id croissant = le compte
+     * le plus ancien, choix déterministe et stable. */
+    Optional<UserJpaEntity> findFirstByPhoneOrderByIdAsc(String phone);
     Optional<UserJpaEntity> findByEmailAndTenantId(String email, Long tenantId);
     boolean existsByTenantIdAndEmail(Long tenantId, String email);
     /** Détection de doublon avant enregistrement (création ou modification du numéro) — même tenant. */
