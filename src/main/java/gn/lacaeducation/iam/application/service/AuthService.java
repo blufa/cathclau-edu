@@ -177,6 +177,11 @@ public class AuthService implements AuthUseCase {
 
         user.setPasswordHash(passwordHasher.hash(command.newPassword()));
         user.setMustChangePassword(false);
+        // Un reset réussi doit aussi lever un éventuel verrou (5 tentatives échouées) — sinon un compte
+        // verrouillé reste bloqué malgré un nouveau mot de passe correct, le verrou expirant seulement
+        // après son délai initial (30 min), sans rapport avec la réussite du reset.
+        user.setFailedAttempts(0);
+        user.setLockedUntil(null);
         userRepository.save(user);
 
         resetToken.setUsed(true);
@@ -221,6 +226,9 @@ public class AuthService implements AuthUseCase {
 
         user.setPasswordHash(passwordHasher.hash(command.newPassword()));
         user.setMustChangePassword(false);
+        // Même raison que resetPassword (token) : un reset réussi lève aussi un éventuel verrou.
+        user.setFailedAttempts(0);
+        user.setLockedUntil(null);
         userRepository.save(user);
 
         otp.setUsed(true);
