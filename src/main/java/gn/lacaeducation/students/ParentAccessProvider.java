@@ -38,4 +38,11 @@ public interface ParentAccessProvider {
 
     /** Lien direct personnel (sans compte) de CETTE fiche Parent précise — vide si aucun. */
     java.util.Optional<DirectStaffLink> findDirectStaffLinkByParentId(Long parentId);
+
+    /** Comme {@link #findChildStudentIdsWithValidatedEnrollment}, mais pour un membre du personnel SANS
+     * compte de connexion (lien direct {@code staffType}/{@code staffId}, voir {@link DirectStaffLink}).
+     * Sans ce chemin, la retenue sur salaire (§7 payroll) ne trouvait jamais les enfants d'un personnel
+     * qui n'a pas de compte — seul {@link #findChildStudentIdsWithValidatedEnrollment} (compte partagé)
+     * était consulté côté paie, alors que l'inscription "Personnel de l'école" accepte les deux. */
+    java.util.List<Long> findChildStudentIdsWithValidatedEnrollmentByStaffLink(String staffType, Long staffId);
 }

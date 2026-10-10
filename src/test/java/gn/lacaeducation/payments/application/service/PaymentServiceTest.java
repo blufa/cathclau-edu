@@ -14,11 +14,15 @@ import gn.lacaeducation.payments.application.port.out.PaymentProviderGateway;
 import gn.lacaeducation.payments.application.port.out.PaymentRepository;
 import gn.lacaeducation.payments.application.port.out.PaymentTransactionRepository;
 import gn.lacaeducation.payments.domain.*;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -45,6 +49,11 @@ class PaymentServiceTest {
     private PaymentService service() {
         return new PaymentService(repo, transactionRepo, receiptUseCase, List.of(orangeGateway), eventPublisher, djomyVerifier,
                 tools.jackson.databind.json.JsonMapper.builder().build(), cashierSessionRepository);
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
     }
 
     private final InitiatePaymentCommand cmd = new InitiatePaymentCommand(
@@ -172,6 +181,28 @@ class PaymentServiceTest {
 
         assertThatThrownBy(() -> service().initiate(withCollector)).isInstanceOf(BusinessRuleException.class);
         verify(repo, never()).save(any(Payment.class));
+    }
+
+    @Test
+    void initiate_deskManualWithoutOpenCashierSession_butSchoolAdmin_isExempt() throws Exception {
+        // SCHOOL_ADMIN/SUPER_ADMIN n'ont pas à ouvrir de caisse (demande utilisateur) : l'exemption
+        // court-circuite la barrière avant même de consulter cashierSessionRepository. Lue depuis
+        // l'authentification en cours (voir CashierSessionStatusProvider.currentUserExempt), pas
+        // depuis collectedByUserId — payments ne peut pas interroger le module iam (cycle interdit).
+        SecurityContextHolder.getContext().setAuthentication(
+                new TestingAuthenticationToken("99", null, List.of(new SimpleGrantedAuthority("ROLE_SCHOOL_ADMIN"))));
+        InitiatePaymentCommand withCollector = new InitiatePaymentCommand(
+                10L, 3L, 7L, "PAY-1", new BigDecimal("100.00"), PaymentChannel.ORANGE_MONEY, PaymentType.COMPLETE, null, 99L, 2026L);
+        when(repo.save(any(Payment.class))).thenAnswer(i -> {
+            Payment p = i.getArgument(0);
+            if (p.getId() == null) p.setId(1L);
+            return p;
+        });
+
+        Payment p = service().initiate(withCollector);
+
+        assertThat(p.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED);
+        verify(cashierSessionRepository, never()).findOpenByCashierId(any());
     }
 
     @Test

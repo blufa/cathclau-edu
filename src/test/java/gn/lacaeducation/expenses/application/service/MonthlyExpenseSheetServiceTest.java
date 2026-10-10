@@ -8,14 +8,19 @@ import gn.lacaeducation.expenses.application.service.MonthlyExpenseSheetService.
 import gn.lacaeducation.expenses.domain.Expense;
 import gn.lacaeducation.expenses.domain.MonthlyExpenseSheet;
 import gn.lacaeducation.payments.CashierSessionStatusProvider;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -37,6 +42,11 @@ class MonthlyExpenseSheetServiceTest {
         return new MonthlyExpenseSheetService(sheetRepo, expenseRepo, revenueRepo, eventPublisher, cashierSessionStatusProvider);
     }
 
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
+
     private final MonthlyExpenseSheet openSheet = MonthlyExpenseSheet.builder().id(1L).tenantId(10L).build();
     private final ExpenseLineCommand cmd = new ExpenseLineCommand("Fournitures", new BigDecimal("50000"), true, LocalDate.of(2026, 10, 5));
 
@@ -47,6 +57,19 @@ class MonthlyExpenseSheetServiceTest {
 
         assertThatThrownBy(() -> service().addExpense(1L, cmd, 99L)).isInstanceOf(BusinessRuleException.class);
         verify(expenseRepo, org.mockito.Mockito.never()).save(any(Expense.class));
+    }
+
+    @Test
+    void addExpense_withoutOpenCashierSession_butSchoolAdmin_isExempt() {
+        SecurityContextHolder.getContext().setAuthentication(
+                new TestingAuthenticationToken("99", null, List.of(new SimpleGrantedAuthority("ROLE_SCHOOL_ADMIN"))));
+        when(sheetRepo.findById(1L)).thenReturn(Optional.of(openSheet));
+        when(expenseRepo.save(any(Expense.class))).thenAnswer(i -> i.getArgument(0));
+
+        Expense saved = service().addExpense(1L, cmd, 99L);
+
+        assertThat(saved.getAmount()).isEqualByComparingTo("50000");
+        verify(cashierSessionStatusProvider, org.mockito.Mockito.never()).hasOpenSession(any());
     }
 
     @Test
