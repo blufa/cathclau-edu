@@ -2,6 +2,7 @@ package gn.lacaeducation.billing.adapters.out;
 
 import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.billing.application.port.in.ClassTransferRefundUseCase;
+import gn.lacaeducation.billing.application.port.out.InstallmentRepository;
 import gn.lacaeducation.billing.application.port.out.InvoiceRepository;
 import gn.lacaeducation.billing.application.port.out.SchoolFeeRepository;
 import gn.lacaeducation.billing.domain.FeeType;
@@ -33,6 +34,7 @@ public class BillingPayerDirectoryAdapter implements PayerDirectory {
     private final UserPublicInfoProvider userPublicInfoProvider;
     private final InvoiceRepository invoiceRepository;
     private final SchoolFeeRepository schoolFeeRepository;
+    private final InstallmentRepository installmentRepository;
     private final ClassTransferRefundUseCase classTransferRefundUseCase;
 
     private static final java.util.Map<FeeType, String> FEE_TYPE_LABEL = java.util.Map.of(
@@ -118,13 +120,17 @@ public class BillingPayerDirectoryAdapter implements PayerDirectory {
         return currentYearInvoices(studentId).stream()
                 .filter(i -> i.getStatus() != InvoiceStatus.CANCELLED)
                 // Ordre d'affichage du reçu (§retour comptable) : inscription/réinscription d'abord,
-                // puis la scolarité (tranches, chronologique), puis les frais annexes (transport,
-                // cantine, examen…) — même convention que le guichet d'accueil (GROUP_ORDER côté
-                // frontend). Un nouveau frais annexe souscrit plus tard (ex. transport) vient donc
-                // s'ajouter EN BAS du tableau plutôt que de s'insérer au milieu des tranches déjà
-                // listées, triées par date d'émission à l'intérieur de chaque groupe.
+                // puis la scolarité (Tranche 1/2/3 si groupée, ou Octobre/Novembre/… si éclatée par
+                // mois — chronologique dans les deux cas), puis les frais annexes (transport, cantine,
+                // examen…, ex. "Transport — Octobre") — même convention que le guichet d'accueil
+                // (GROUP_ORDER côté frontend). Trié sur l'échéance (due date) de la tranche liée, pas
+                // la date d'émission de la facture : deux factures peuvent être émises dans un ordre
+                // différent de celui de leurs échéances (ex. régénération tardive d'une tranche
+                // antérieure), auquel cas la date d'émission ne reflète plus l'ordre chronologique
+                // voulu. Un nouveau frais annexe souscrit plus tard (ex. transport) vient donc s'ajouter
+                // EN BAS du tableau plutôt que de s'insérer au milieu des tranches déjà listées.
                 .sorted(Comparator.comparing(this::groupOrder)
-                        .thenComparing(Invoice::getIssueDate, Comparator.nullsFirst(Comparator.naturalOrder())))
+                        .thenComparing(this::sortDate, Comparator.nullsFirst(Comparator.naturalOrder())))
                 .map(i -> new InvoiceRowInfo(i.getId(), i.getReference(), i.getTotalAmount(), fullLabel(i),
                         i.getStatus() == InvoiceStatus.PAID, i.getPaidAmount(),
                         i.getCreditedAmount(), i.getCreditReason(), i.getCreditedAt(), i.getRemainingBalance()))
@@ -148,6 +154,19 @@ public class BillingPayerDirectoryAdapter implements PayerDirectory {
         if (type == FeeType.ENROLLMENT || type == FeeType.RE_ENROLLMENT) return 0;
         if (type == FeeType.MONTHLY) return 1;
         return 2;
+    }
+
+    /** Date servant à trier les factures à l'intérieur d'un même groupe (voir {@link #groupOrder}) —
+     * l'échéance de la tranche liée (Tranche 1/2/3, ou le mois si la mensualité est éclatée) quand
+     * elle existe, sinon la date d'émission de la facture (inscription/frais annexe sans échéance
+     * propre). */
+    private java.time.LocalDate sortDate(Invoice invoice) {
+        if (invoice.getInstallmentId() != null) {
+            java.time.LocalDate due = installmentRepository.findById(invoice.getInstallmentId())
+                    .map(gn.lacaeducation.billing.domain.Installment::getDueDate).orElse(null);
+            if (due != null) return due;
+        }
+        return invoice.getIssueDate();
     }
 
     /** Factures de l'élève limitées à l'année scolaire courante du tenant (§retour comptable) — sans
