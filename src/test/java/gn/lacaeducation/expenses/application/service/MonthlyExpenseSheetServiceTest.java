@@ -8,14 +8,19 @@ import gn.lacaeducation.expenses.application.service.MonthlyExpenseSheetService.
 import gn.lacaeducation.expenses.domain.Expense;
 import gn.lacaeducation.expenses.domain.MonthlyExpenseSheet;
 import gn.lacaeducation.payments.CashierSessionStatusProvider;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -32,10 +37,14 @@ class MonthlyExpenseSheetServiceTest {
     @Mock RevenueLineRepository revenueRepo;
     @Mock ApplicationEventPublisher eventPublisher;
     @Mock CashierSessionStatusProvider cashierSessionStatusProvider;
-    @Mock gn.lacaeducation.iam.UserPublicInfoProvider userPublicInfoProvider;
 
     private MonthlyExpenseSheetService service() {
-        return new MonthlyExpenseSheetService(sheetRepo, expenseRepo, revenueRepo, eventPublisher, cashierSessionStatusProvider, userPublicInfoProvider);
+        return new MonthlyExpenseSheetService(sheetRepo, expenseRepo, revenueRepo, eventPublisher, cashierSessionStatusProvider);
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
     }
 
     private final MonthlyExpenseSheet openSheet = MonthlyExpenseSheet.builder().id(1L).tenantId(10L).build();
@@ -52,8 +61,9 @@ class MonthlyExpenseSheetServiceTest {
 
     @Test
     void addExpense_withoutOpenCashierSession_butSchoolAdmin_isExempt() {
+        SecurityContextHolder.getContext().setAuthentication(
+                new TestingAuthenticationToken("99", null, List.of(new SimpleGrantedAuthority("ROLE_SCHOOL_ADMIN"))));
         when(sheetRepo.findById(1L)).thenReturn(Optional.of(openSheet));
-        when(userPublicInfoProvider.hasAnyRole(org.mockito.ArgumentMatchers.eq(99L), any())).thenReturn(true);
         when(expenseRepo.save(any(Expense.class))).thenAnswer(i -> i.getArgument(0));
 
         Expense saved = service().addExpense(1L, cmd, 99L);

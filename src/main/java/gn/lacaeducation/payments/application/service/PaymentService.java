@@ -4,7 +4,6 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
-import gn.lacaeducation.iam.UserPublicInfoProvider;
 import gn.lacaeducation.payments.CashierSessionStatusProvider;
 import gn.lacaeducation.payments.application.event.GroupedInvoiceSettlementEvent;
 import gn.lacaeducation.payments.application.event.PaymentFailedEvent;
@@ -38,7 +37,6 @@ public class PaymentService implements PaymentUseCase {
     private final DjomyVerificationPort djomyVerifier;
     private final ObjectMapper objectMapper;
     private final CashierSessionRepository cashierSessionRepository;
-    private final UserPublicInfoProvider userPublicInfoProvider;
 
     @Override public Payment initiate(InitiatePaymentCommand c) throws JsonProcessingException {
         // Barrière caisse (§angles morts comptables) : un encaissement guichet (espèces, Orange Money,
@@ -306,7 +304,7 @@ public class PaymentService implements PaymentUseCase {
         // La direction (SCHOOL_ADMIN) et le SUPER_ADMIN n'ont pas à ouvrir de caisse : le
         // rapprochement comptant physique/système vise le personnel de guichet, pas la direction qui
         // encaisse occasionnellement en direct (demande utilisateur, "il ne faut pas lui bloquer").
-        if (userPublicInfoProvider.hasAnyRole(collectedByUserId, CashierSessionStatusProvider.EXEMPT_CASHIER_GATE_ROLES)) return;
+        if (CashierSessionStatusProvider.currentUserExempt()) return;
         if (cashierSessionRepository.findOpenByCashierId(collectedByUserId).isEmpty()) {
             throw new BusinessRuleException(
                     "Aucune session de caisse ouverte : ouvrez votre caisse avant d'enregistrer un encaissement au guichet.");
