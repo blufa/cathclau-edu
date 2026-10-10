@@ -29,4 +29,6 @@ class TransportInvoiceMirrorEntity {
     private Long feeId;
     @Column(name = "paid_amount", nullable = false)
     private BigDecimal paidAmount;
+    @Column(name = "installment_id")
+    private Long installmentId;
 }

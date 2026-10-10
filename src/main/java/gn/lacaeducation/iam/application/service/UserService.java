@@ -90,6 +90,10 @@ public class UserService implements UserUseCase {
         // Mot de passe généré (temporaire) → à changer à la 1re connexion. Mot de passe choisi
         // explicitement par l'admin → définitif, aucun changement forcé.
         user.setMustChangePassword(generated);
+        // Un reset réussi doit aussi lever un éventuel verrou (5 tentatives échouées) — sinon le compte
+        // reste bloqué malgré le nouveau mot de passe, jusqu'à l'expiration du verrou initial (30 min).
+        user.setFailedAttempts(0);
+        user.setLockedUntil(null);
         userRepository.save(user);
         refreshTokenRepository.revokeAllByUserId(userId);
         return new TemporaryAccess(userId, user.getUsername(), password, generated);

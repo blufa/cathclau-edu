@@ -26,4 +26,9 @@ public record TenantPublicInfo(Long id, String schoolName, String email, String 
                                 * §retour fondateurs. Null = les alertes restent envoyées à tous les
                                 * comptes SCHOOL_ADMIN du tenant (comportement historique), voir
                                 * {@code CommunicationEventListener#notifySchoolAdmins}. */
-                               String founderPhone) {}
+                               String founderPhone,
+                               /** Quand un paiement est encaissé, le parent reçoit toujours un SMS — ce
+                                * champ contrôle en plus l'alerte SCHOOL_ADMIN/DIRECTEUR (anti-fraude) ET
+                                * celle à la personne qui a physiquement encaissé. Réglable uniquement par
+                                * le SUPER_ADMIN, désactivé par défaut (§retour comptable). */
+                               boolean notifyStaffOnPayment) {}

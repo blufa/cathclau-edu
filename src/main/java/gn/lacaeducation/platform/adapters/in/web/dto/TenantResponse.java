@@ -45,7 +45,11 @@ public record TenantResponse(
     /** Format du matricule (jetons {PREFIXE}/{ANNEE}/{NUM}) ; null = format par défaut. */
     String matriculeFormat,
     /** Nombre de chiffres du numéro séquentiel du matricule ; null = 5 par défaut. */
-    Integer matriculeDigits
+    Integer matriculeDigits,
+    /** Alerte SMS au personnel (fondateur + encaisseur) à chaque paiement reçu, en plus du parent —
+     * réglable uniquement par le SUPER_ADMIN (voir TenantController#setNotifyStaffOnPayment), jamais
+     * via {@link #from}/UpdateTenantRequest. Désactivé par défaut. */
+    boolean notifyStaffOnPayment
 ) {
     public static TenantResponse from(Tenant tenant) {
         return from(tenant, null);
@@ -63,7 +67,8 @@ public record TenantResponse(
             tenant.getEstablishmentTypes(),
             tenant.getStatus(), tenant.getTrialEndsAt(), tenant.getActivatedAt(), tenant.getCreatedAt(),
             temporaryPassword, tenant.getPrefectureId(),
-            tenant.getMatriculeFormat(), tenant.getMatriculeDigits()
+            tenant.getMatriculeFormat(), tenant.getMatriculeDigits(),
+            tenant.isNotifyStaffOnPayment()
         );
     }
 }

@@ -665,15 +665,21 @@ public class CommunicationEventListener {
     }
 
     /**
-     * Alerte par SMS le numéro du fondateur (voir {@link #founderAlertPhones}) dès qu'un paiement est
-     * reçu, en plus de la notification au parent. Alerte aussi le comptable/caissier qui a
-     * physiquement encaissé ({@code collectedByUserId}, canal CASH uniquement), pas seulement le
-     * fondateur — son numéro peut être différent (point 2, retour comptable). Un même numéro n'est
-     * jamais alerté deux fois (ex. le fondateur encaisse lui-même). Contenu identique au SMS du
-     * parent ({@link #paymentSmsBody}) : le comptable/fondateur doit voir le même montant payé et le
-     * même reste à payer, pas un message différent (§retour comptable).
+     * Alerte par SMS le numéro du fondateur (voir {@link #founderAlertPhones}) et le comptable/caissier
+     * qui a physiquement encaissé ({@code collectedByUserId}) à chaque paiement reçu, en plus du parent
+     * — mais seulement si {@code Tenant#notifyStaffOnPayment} est activé (désactivé par défaut, réglable
+     * uniquement par le SUPER_ADMIN ; §retour comptable, trop de SMS reçus par le personnel sinon). Un
+     * même numéro n'est jamais alerté deux fois (ex. le fondateur encaisse lui-même). Contenu identique
+     * au SMS du parent ({@link #paymentSmsBody}) : le comptable/fondateur doit voir le même montant
+     * payé et le même reste à payer, pas un message différent (§retour comptable).
      */
     private void notifyFounder(Long tenantId, String studentName, String amount, String restLine, Long collectedByUserId) {
+        // Désactivé par défaut (§retour comptable) : le parent reçoit toujours son SMS (voir dispatch
+        // ci-dessus), mais alerter en plus le fondateur/SCHOOL_ADMIN ET la personne qui a physiquement
+        // encaissé à chaque paiement ne doit se faire que si l'école l'a explicitement demandé — sinon
+        // le personnel recevait un SMS à chaque encaissement, même les plus anodins.
+        boolean enabled = tenantInfoProvider.findTenantInfo(tenantId).map(TenantPublicInfo::notifyStaffOnPayment).orElse(false);
+        if (!enabled) return;
         java.util.LinkedHashMap<String, String> byPhone = new java.util.LinkedHashMap<>();
         founderAlertPhones(tenantId).forEach(phone -> byPhone.putIfAbsent(phone, phone));
         if (collectedByUserId != null) {

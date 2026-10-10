@@ -1,0 +1,1 @@
+ALTER TABLE tenant ADD COLUMN notify_staff_on_payment BOOLEAN NOT NULL DEFAULT FALSE;
