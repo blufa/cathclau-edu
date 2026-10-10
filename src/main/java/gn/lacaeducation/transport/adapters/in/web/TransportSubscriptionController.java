@@ -41,6 +41,15 @@ public class TransportSubscriptionController {
         return service.paidMonthsCountByStudentId(TenantContext.get());
     }
 
+    @Operation(summary = "Ids des élèves ayant réglé le transport pour un mois donné (format YYYY-MM, "
+            + "mois en cours par défaut) — filtre par mois sur la liste des abonnés (§retour comptable)")
+    @GetMapping("/paid-for-month")
+    public java.util.Set<Long> paidForMonth(@RequestParam(required = false) String month) {
+        java.time.YearMonth ym = month == null || month.isBlank()
+                ? java.time.YearMonth.now() : java.time.YearMonth.parse(month);
+        return service.studentIdsPaidForMonth(TenantContext.get(), ym);
+    }
+
     // Action courante du comptable/secrétaire à l'inscription ou à l'encaissement (choisir le bus) —
     // jamais la configuration des lignes/arrêts (transport:manage, restée admin/direction/secrétaire,
     // déjà détentrice de transport:manage depuis V149). abonnement_transport:create est un privilège

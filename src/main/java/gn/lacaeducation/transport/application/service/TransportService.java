@@ -130,6 +130,12 @@ public class TransportService {
         return invoiceQueryPort.countPaidTransportMonthsByStudentId(tenantId);
     }
 
+    /** Élèves ayant réglé le transport pour {@code month} (§retour comptable : "par défaut, afficher
+     * ceux qui ont payé le mois en cours" + filtre par mois sur la liste des abonnés). */
+    public java.util.Set<Long> studentIdsPaidForMonth(Long tenantId, java.time.YearMonth month) {
+        return invoiceQueryPort.findStudentIdsPaidForMonth(tenantId, month.atDay(1), month.atEndOfMonth());
+    }
+
     private TransportRoute loadRoute(Long id) {
         return routeRepo.findById(id).orElseThrow(() -> new ResourceNotFoundException("TransportRoute", id));
     }
