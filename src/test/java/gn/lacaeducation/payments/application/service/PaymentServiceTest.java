@@ -41,10 +41,11 @@ class PaymentServiceTest {
     @Mock ApplicationEventPublisher eventPublisher;
     @Mock gn.lacaeducation.payments.application.port.out.DjomyVerificationPort djomyVerifier;
     @Mock CashierSessionRepository cashierSessionRepository;
+    @Mock gn.lacaeducation.iam.UserPublicInfoProvider userPublicInfoProvider;
 
     private PaymentService service() {
         return new PaymentService(repo, transactionRepo, receiptUseCase, List.of(orangeGateway), eventPublisher, djomyVerifier,
-                tools.jackson.databind.json.JsonMapper.builder().build(), cashierSessionRepository);
+                tools.jackson.databind.json.JsonMapper.builder().build(), cashierSessionRepository, userPublicInfoProvider);
     }
 
     private final InitiatePaymentCommand cmd = new InitiatePaymentCommand(
@@ -172,6 +173,25 @@ class PaymentServiceTest {
 
         assertThatThrownBy(() -> service().initiate(withCollector)).isInstanceOf(BusinessRuleException.class);
         verify(repo, never()).save(any(Payment.class));
+    }
+
+    @Test
+    void initiate_deskManualWithoutOpenCashierSession_butSchoolAdmin_isExempt() throws Exception {
+        // SCHOOL_ADMIN/SUPER_ADMIN n'ont pas à ouvrir de caisse (demande utilisateur) : l'exemption
+        // court-circuite la barrière avant même de consulter cashierSessionRepository.
+        InitiatePaymentCommand withCollector = new InitiatePaymentCommand(
+                10L, 3L, 7L, "PAY-1", new BigDecimal("100.00"), PaymentChannel.ORANGE_MONEY, PaymentType.COMPLETE, null, 99L, 2026L);
+        when(userPublicInfoProvider.hasAnyRole(eq(99L), any())).thenReturn(true);
+        when(repo.save(any(Payment.class))).thenAnswer(i -> {
+            Payment p = i.getArgument(0);
+            if (p.getId() == null) p.setId(1L);
+            return p;
+        });
+
+        Payment p = service().initiate(withCollector);
+
+        assertThat(p.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED);
+        verify(cashierSessionRepository, never()).findOpenByCashierId(any());
     }
 
     @Test

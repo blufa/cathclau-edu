@@ -2,6 +2,7 @@ package gn.lacaeducation.expenses.application.service;
 
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
+import gn.lacaeducation.iam.UserPublicInfoProvider;
 import gn.lacaeducation.payments.CashierSessionStatusProvider;
 import gn.lacaeducation.expenses.application.event.ExpensePaidEvent;
 import gn.lacaeducation.expenses.application.port.out.ExpenseRepository;
@@ -37,6 +38,7 @@ public class MonthlyExpenseSheetService {
     private final RevenueLineRepository revenueRepo;
     private final ApplicationEventPublisher eventPublisher;
     private final CashierSessionStatusProvider cashierSessionStatusProvider;
+    private final UserPublicInfoProvider userPublicInfoProvider;
 
     public record SheetCommand(Long tenantId, String label, String academicYear,
                                FinancingMode financingMode, BigDecimal financingAmount) {}
@@ -91,7 +93,10 @@ public class MonthlyExpenseSheetService {
      * physique qui sort, qu'il faut pouvoir rapprocher. */
     public Expense addExpense(Long sheetId, ExpenseLineCommand c, Long recordedBy) {
         MonthlyExpenseSheet s = requireOpen(sheetId);
-        if (!cashierSessionStatusProvider.hasOpenSession(recordedBy)) {
+        // La direction (SCHOOL_ADMIN) et le SUPER_ADMIN sont dispensés de la barrière caisse — voir
+        // PaymentService.requireOpenCashierSession pour la même exemption côté encaissement.
+        boolean exempt = userPublicInfoProvider.hasAnyRole(recordedBy, CashierSessionStatusProvider.EXEMPT_CASHIER_GATE_ROLES);
+        if (!exempt && !cashierSessionStatusProvider.hasOpenSession(recordedBy)) {
             throw new BusinessRuleException(
                     "Aucune session de caisse ouverte : ouvrez votre caisse avant d'enregistrer une dépense.");
         }

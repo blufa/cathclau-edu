@@ -32,9 +32,10 @@ class MonthlyExpenseSheetServiceTest {
     @Mock RevenueLineRepository revenueRepo;
     @Mock ApplicationEventPublisher eventPublisher;
     @Mock CashierSessionStatusProvider cashierSessionStatusProvider;
+    @Mock gn.lacaeducation.iam.UserPublicInfoProvider userPublicInfoProvider;
 
     private MonthlyExpenseSheetService service() {
-        return new MonthlyExpenseSheetService(sheetRepo, expenseRepo, revenueRepo, eventPublisher, cashierSessionStatusProvider);
+        return new MonthlyExpenseSheetService(sheetRepo, expenseRepo, revenueRepo, eventPublisher, cashierSessionStatusProvider, userPublicInfoProvider);
     }
 
     private final MonthlyExpenseSheet openSheet = MonthlyExpenseSheet.builder().id(1L).tenantId(10L).build();
@@ -47,6 +48,18 @@ class MonthlyExpenseSheetServiceTest {
 
         assertThatThrownBy(() -> service().addExpense(1L, cmd, 99L)).isInstanceOf(BusinessRuleException.class);
         verify(expenseRepo, org.mockito.Mockito.never()).save(any(Expense.class));
+    }
+
+    @Test
+    void addExpense_withoutOpenCashierSession_butSchoolAdmin_isExempt() {
+        when(sheetRepo.findById(1L)).thenReturn(Optional.of(openSheet));
+        when(userPublicInfoProvider.hasAnyRole(org.mockito.ArgumentMatchers.eq(99L), any())).thenReturn(true);
+        when(expenseRepo.save(any(Expense.class))).thenAnswer(i -> i.getArgument(0));
+
+        Expense saved = service().addExpense(1L, cmd, 99L);
+
+        assertThat(saved.getAmount()).isEqualByComparingTo("50000");
+        verify(cashierSessionStatusProvider, org.mockito.Mockito.never()).hasOpenSession(any());
     }
 
     @Test
