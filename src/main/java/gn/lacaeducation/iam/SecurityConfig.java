@@ -65,18 +65,25 @@ public class SecurityConfig {
         return converter;
     }
 
-    /** All tenant-level roles a SUPER_ADMIN is granted so it can operate any school (impersonation). */
+    /** Rôles personnel d'école accordés au SUPER_ADMIN pour qu'il opère n'importe quelle école
+     * (impersonation) — PARENT/STUDENT délibérément exclus : ce sont des comptes personnels étroits
+     * (un seul élève/une seule famille), jamais des rôles de supervision, et plusieurs endpoints
+     * d'administration les EXCLUENT explicitement ({@code !hasRole('PARENT')}, ex. liste des élèves,
+     * présences) pour garder ces vues réservées au personnel. Les inclure ici faisait donc échouer ces
+     * contrôles pour le SUPER_ADMIN lui-même (il "possède" alors aussi PARENT/STUDENT, donc l'exclusion
+     * le bloque) — constaté en vrai : liste des élèves inaccessible en 403 pour le SUPER_ADMIN. */
     private static final List<String> ALL_ROLES = List.of(
             "SUPER_ADMIN", "SCHOOL_ADMIN", "DIRECTOR", "RESPONSABLE_PEDAGOGIQUE",
-            "ACCOUNTANT", "SECRETARY", "TEACHER", "PARENT", "STUDENT");
+            "ACCOUNTANT", "SECRETARY", "TEACHER");
 
     /** Combines the {@code roles} claim (prefixed {@code ROLE_}) with the raw {@code permissions} claim. */
     private static Collection<GrantedAuthority> extractAuthorities(Jwt jwt) {
         Collection<GrantedAuthority> authorities = new ArrayList<>();
         List<String> roles = jwt.getClaimAsStringList("roles");
         if (roles != null) {
-            // SUPER_ADMIN is all-powerful: grant every role authority so it passes hasAnyRole(...) checks
-            // on tenant endpoints when impersonating a school.
+            // SUPER_ADMIN is all-powerful: grant every staff role authority so it passes hasAnyRole(...)
+            // checks on tenant endpoints when impersonating a school (see ALL_ROLES javadoc for why
+            // PARENT/STUDENT are deliberately excluded from this blanket grant).
             List<String> effective = roles.contains("SUPER_ADMIN") ? ALL_ROLES : roles;
             effective.forEach(r -> authorities.add(new SimpleGrantedAuthority("ROLE_" + r)));
         }

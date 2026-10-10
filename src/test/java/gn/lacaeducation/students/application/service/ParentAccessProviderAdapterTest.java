@@ -6,6 +6,7 @@ import gn.lacaeducation.students.application.port.out.StudentParentRepository;
 import gn.lacaeducation.students.domain.Enrollment;
 import gn.lacaeducation.students.domain.EnrollmentStatus;
 import gn.lacaeducation.students.domain.Parent;
+import gn.lacaeducation.students.domain.StaffLinkType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -85,5 +86,31 @@ class ParentAccessProviderAdapterTest {
         when(studentParentRepository.findStudentIdsByParentId(9L)).thenReturn(List.of(12L));
 
         assertThat(adapter.findChildStudentIds(7L)).containsExactlyInAnyOrder(10L, 11L, 12L);
+    }
+
+    @Test
+    void findChildStudentIdsWithValidatedEnrollmentByStaffLink_resolvesViaDirectLink_excludesUnvalidated() {
+        // Personnel SANS compte de connexion (lien direct staffType/staffId au lieu de userId) :
+        // régression découverte en vrai — la retenue sur salaire ne trouvait jamais ces enfants.
+        when(parentRepository.findAllByLinkedStaff(StaffLinkType.TEACHER, 36L))
+                .thenReturn(List.of(Parent.builder().id(59L).build()));
+        when(studentParentRepository.findStudentIdsByParentId(59L)).thenReturn(List.of(137L, 138L));
+        when(enrollmentRepository.findByStudentId(137L)).thenReturn(
+                List.of(Enrollment.builder().studentId(137L).status(EnrollmentStatus.VALIDATED).build()));
+        when(enrollmentRepository.findByStudentId(138L)).thenReturn(
+                List.of(Enrollment.builder().studentId(138L).status(EnrollmentStatus.PENDING).build()));
+
+        assertThat(adapter.findChildStudentIdsWithValidatedEnrollmentByStaffLink("TEACHER", 36L)).containsExactly(137L);
+    }
+
+    @Test
+    void findChildStudentIdsWithValidatedEnrollmentByStaffLink_nullArgs_returnsEmpty() {
+        assertThat(adapter.findChildStudentIdsWithValidatedEnrollmentByStaffLink(null, 36L)).isEmpty();
+        assertThat(adapter.findChildStudentIdsWithValidatedEnrollmentByStaffLink("TEACHER", null)).isEmpty();
+    }
+
+    @Test
+    void findChildStudentIdsWithValidatedEnrollmentByStaffLink_unknownStaffType_returnsEmpty() {
+        assertThat(adapter.findChildStudentIdsWithValidatedEnrollmentByStaffLink("BOGUS", 36L)).isEmpty();
     }
 }

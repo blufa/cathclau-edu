@@ -46,6 +46,13 @@ class SalaryFeeDeductionServiceTest {
         when(parentAccessProvider.findChildStudentIdsWithValidatedEnrollment(50L)).thenReturn(List.of(1L, 2L));
     }
 
+    /** Personnel SANS compte de connexion (ex. pas de smartphone Android) : lié à ses enfants par
+     * staffType/staffId direct (voir ParentInput côté inscription), pas par userId partagé. */
+    private void staffWithTwoChildrenViaDirectLink() {
+        when(teacherProvider.findUserIdByTeacherId(9L)).thenReturn(Optional.empty());
+        when(parentAccessProvider.findChildStudentIdsWithValidatedEnrollmentByStaffLink("TEACHER", 9L)).thenReturn(List.of(1L, 2L));
+    }
+
     @Test
     void computeFeeDeduction_perChildAmount_timesChildren() {
         staffWithTwoChildren();
@@ -110,6 +117,19 @@ class SalaryFeeDeductionServiceTest {
         FeeDeduction d = service.computeFeeDeduction(1L, EmployeeType.TEACHER, 9L);
 
         assertThat(d.amount()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void computeFeeDeduction_staffWithoutAccount_viaDirectLink_stillComputesDeduction() {
+        // Régression : un personnel inscrit "sans compte" (lien direct staffType/staffId) ne doit pas
+        // être traité comme "pas d'enfant" — la retenue doit quand même se calculer.
+        staffWithTwoChildrenViaDirectLink();
+        when(repo.findByTenantId(1L)).thenReturn(List.of(rule("50000", null, null)));
+
+        FeeDeduction d = service.computeFeeDeduction(1L, EmployeeType.TEACHER, 9L);
+
+        assertThat(d.amount()).isEqualByComparingTo("100000");
+        assertThat(d.childrenCount()).isEqualTo(2);
     }
 
     @Test
@@ -209,6 +229,18 @@ class SalaryFeeDeductionServiceTest {
 
         assertThat(d.amount()).isEqualByComparingTo("15000");
         assertThat(d.childrenCount()).isEqualTo(1);
+    }
+
+    @Test
+    void computeStaffBenefitRemainder_staffWithoutAccount_viaDirectLink_stillComputesRemainder() {
+        staffWithTwoChildrenViaDirectLink();
+        when(studentFeePaymentApi.outstandingStaffBenefitRemainder(1L, OCTOBER, "Octobre 2026")).thenReturn(new BigDecimal("15000"));
+        when(studentFeePaymentApi.outstandingStaffBenefitRemainder(2L, OCTOBER, "Octobre 2026")).thenReturn(new BigDecimal("25000"));
+
+        StaffBenefitRemainderDeduction d = service.computeStaffBenefitRemainder(1L, EmployeeType.TEACHER, 9L, OCTOBER, "Octobre 2026");
+
+        assertThat(d.amount()).isEqualByComparingTo("40000");
+        assertThat(d.childrenCount()).isEqualTo(2);
     }
 
     @Test

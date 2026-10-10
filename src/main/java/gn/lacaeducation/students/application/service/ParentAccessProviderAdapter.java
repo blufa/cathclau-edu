@@ -43,7 +43,28 @@ class ParentAccessProviderAdapter implements ParentAccessProvider {
     @Override
     @Transactional(readOnly = true)
     public java.util.List<Long> findChildStudentIdsWithValidatedEnrollment(Long userId) {
-        return findChildStudentIds(userId).stream()
+        return filterValidatedEnrollment(findChildStudentIds(userId));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.List<Long> findChildStudentIdsWithValidatedEnrollmentByStaffLink(String staffType, Long staffId) {
+        if (staffType == null || staffId == null) return java.util.List.of();
+        gn.lacaeducation.students.domain.StaffLinkType type;
+        try {
+            type = gn.lacaeducation.students.domain.StaffLinkType.valueOf(staffType);
+        } catch (IllegalArgumentException e) {
+            return java.util.List.of();
+        }
+        java.util.List<Long> studentIds = parentRepository.findAllByLinkedStaff(type, staffId).stream()
+                .flatMap(parent -> studentParentRepository.findStudentIdsByParentId(parent.getId()).stream())
+                .distinct()
+                .toList();
+        return filterValidatedEnrollment(studentIds);
+    }
+
+    private java.util.List<Long> filterValidatedEnrollment(java.util.List<Long> studentIds) {
+        return studentIds.stream()
                 .filter(studentId -> enrollmentRepository.findByStudentId(studentId).stream()
                         .anyMatch(e -> e.getStatus() == EnrollmentStatus.VALIDATED))
                 .toList();

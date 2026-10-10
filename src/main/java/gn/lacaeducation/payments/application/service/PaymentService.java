@@ -4,6 +4,7 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
+import gn.lacaeducation.payments.CashierSessionStatusProvider;
 import gn.lacaeducation.payments.application.event.GroupedInvoiceSettlementEvent;
 import gn.lacaeducation.payments.application.event.PaymentFailedEvent;
 import gn.lacaeducation.payments.application.event.PaymentRefundedEvent;
@@ -300,6 +301,10 @@ public class PaymentService implements PaymentUseCase {
      * concernés — l'argent transite par la passerelle, jamais par la caisse physique. */
     private void requireOpenCashierSession(PaymentChannel channel, Long collectedByUserId) {
         if (channel == null || !channel.isDeskManual() || collectedByUserId == null) return;
+        // La direction (SCHOOL_ADMIN) et le SUPER_ADMIN n'ont pas à ouvrir de caisse : le
+        // rapprochement comptant physique/système vise le personnel de guichet, pas la direction qui
+        // encaisse occasionnellement en direct (demande utilisateur, "il ne faut pas lui bloquer").
+        if (CashierSessionStatusProvider.currentUserExempt()) return;
         if (cashierSessionRepository.findOpenByCashierId(collectedByUserId).isEmpty()) {
             throw new BusinessRuleException(
                     "Aucune session de caisse ouverte : ouvrez votre caisse avant d'enregistrer un encaissement au guichet.");
