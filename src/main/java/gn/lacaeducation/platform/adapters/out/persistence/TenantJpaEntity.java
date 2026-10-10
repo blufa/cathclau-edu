@@ -57,6 +57,13 @@ public class TenantJpaEntity {
     @Column(name = "founder_phone")
     private String founderPhone;
 
+    /** Quand un paiement est encaissé, le parent reçoit toujours un SMS — ce champ contrôle en plus
+     * l'alerte SCHOOL_ADMIN/DIRECTEUR (anti-fraude) ET celle à la personne qui a physiquement encaissé
+     * (son propre numéro) ; voir {@code Tenant#notifyStaffOnPayment}. Réglable uniquement par le
+     * SUPER_ADMIN (§retour comptable : désactivé par défaut, trop de SMS reçus par le personnel). */
+    @Column(name = "notify_staff_on_payment", nullable = false)
+    private boolean notifyStaffOnPayment;
+
     @Column(name = "accreditation_number")
     private String accreditationNumber;
 
