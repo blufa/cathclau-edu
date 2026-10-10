@@ -4,8 +4,11 @@ import gn.lacaeducation.transport.application.port.out.TransportInvoiceQueryPort
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDate;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Component
 @RequiredArgsConstructor
@@ -20,5 +23,11 @@ class TransportInvoiceQueryAdapter implements TransportInvoiceQueryPort {
             result.put((Long) row[0], (Long) row[1]);
         }
         return result;
+    }
+
+    @Override
+    public Set<Long> findStudentIdsPaidForMonth(Long tenantId, LocalDate from, LocalDate to) {
+        List<Long> ids = repo.findStudentIdsPaidForMonth(tenantId, from, to);
+        return new java.util.LinkedHashSet<>(ids);
     }
 }

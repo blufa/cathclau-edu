@@ -16,6 +16,10 @@ public interface CreateTenantUseCase {
     Tenant updateBranding(Long id, String logo, String brandColor);
     void suspend(Long id);
     void activate(Long id);
+    /** Réservé au SUPER_ADMIN — jamais exposé via {@link #update} (utilisé aussi par l'école elle-même,
+     * voir {@code SchoolProfileController}) pour qu'une école ne puisse jamais s'auto-activer cette
+     * option (§retour comptable). Voir {@code Tenant#notifyStaffOnPayment}. */
+    void setNotifyStaffOnPayment(Long id, boolean enabled);
     /** Generic status change for SUPER_ADMIN (ACTIVATE | SUSPEND | ARCHIVE) routed through the lifecycle. */
     void changeStatus(Long id, TenantStatus target);
     void delete(Long id);

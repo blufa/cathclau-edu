@@ -11,7 +11,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 
+import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
@@ -38,5 +41,16 @@ class TransportServiceTest {
         Map<Long, Long> result = service.paidMonthsCountByStudentId(10L);
 
         assertThat(result).containsEntry(7L, 2L).containsEntry(8L, 1L);
+    }
+
+    @Test
+    void studentIdsPaidForMonth_delegatesToInvoiceQueryPort_withMonthBounds() {
+        YearMonth october = YearMonth.of(2026, 10);
+        when(invoiceQueryPort.findStudentIdsPaidForMonth(10L, LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 31)))
+                .thenReturn(Set.of(7L, 8L));
+
+        Set<Long> result = service.studentIdsPaidForMonth(10L, october);
+
+        assertThat(result).containsExactlyInAnyOrder(7L, 8L);
     }
 }

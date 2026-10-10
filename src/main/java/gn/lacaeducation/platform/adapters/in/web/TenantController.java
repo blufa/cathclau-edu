@@ -90,6 +90,15 @@ public class TenantController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void activate(@PathVariable Long id) { tenantUseCase.activate(id); }
 
+    @Operation(summary = "Active/désactive l'alerte SMS au personnel (fondateur + encaisseur) à chaque "
+            + "paiement reçu — en plus du SMS parent, toujours envoyé. Désactivé par défaut.")
+    @PatchMapping("/{id}/notify-staff-on-payment")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void setNotifyStaffOnPayment(@PathVariable Long id, @RequestParam boolean enabled) {
+        tenantUseCase.setNotifyStaffOnPayment(id, enabled);
+    }
+
     @Operation(summary = "Change tenant status (ACTIVATE | SUSPEND | ARCHIVE) via the lifecycle state machine")
     @PatchMapping("/{id}/status")
     @PreAuthorize("hasRole('SUPER_ADMIN')")

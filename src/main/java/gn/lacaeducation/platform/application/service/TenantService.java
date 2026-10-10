@@ -157,6 +157,13 @@ public class TenantService implements CreateTenantUseCase, TenantEstablishmentTy
     }
 
     @Override
+    public void setNotifyStaffOnPayment(Long id, boolean enabled) {
+        Tenant t = findById(id);
+        t.setNotifyStaffOnPayment(enabled);
+        tenantRepository.save(t);
+    }
+
+    @Override
     public void delete(Long id) {
         lifecycleService.transition(id, TenantStatus.ARCHIVED, "soft delete");
     }

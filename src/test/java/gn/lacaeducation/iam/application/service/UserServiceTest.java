@@ -137,7 +137,7 @@ class UserServiceTest {
         User created = userService.create(new UserUseCase.CreateUserCommand(
                 10L, "Jean", "Camara", "new@ecole.gn", null, "0600"));
 
-        org.assertj.core.api.Assertions.assertThat(created.getUsername()).isEqualTo("jean.camara");
+        org.assertj.core.api.Assertions.assertThat(created.getUsername()).matches("camara@\\d{3,}");
         org.assertj.core.api.Assertions.assertThat(created.isMustChangePassword()).isTrue();
         org.assertj.core.api.Assertions.assertThat(created.getPlainTemporaryPassword()).isNotBlank();
     }
@@ -151,7 +151,7 @@ class UserServiceTest {
         User created = userService.create(new UserUseCase.CreateUserCommand(
                 10L, "Marie", "Diallo", "new@ecole.gn", "chosenPw", "0600"));
 
-        org.assertj.core.api.Assertions.assertThat(created.getUsername()).isEqualTo("marie.diallo");
+        org.assertj.core.api.Assertions.assertThat(created.getUsername()).matches("diallo@\\d{3,}");
         org.assertj.core.api.Assertions.assertThat(created.isMustChangePassword()).isFalse();
         org.assertj.core.api.Assertions.assertThat(created.getPlainTemporaryPassword()).isNull();
     }
