@@ -45,10 +45,11 @@ class PaymentServiceTest {
     @Mock ApplicationEventPublisher eventPublisher;
     @Mock gn.lacaeducation.payments.application.port.out.DjomyVerificationPort djomyVerifier;
     @Mock CashierSessionRepository cashierSessionRepository;
+    @Mock gn.lacaeducation.payments.EnrollmentFeeGateProvider enrollmentFeeGateProvider;
 
     private PaymentService service() {
         return new PaymentService(repo, transactionRepo, receiptUseCase, List.of(orangeGateway), eventPublisher, djomyVerifier,
-                tools.jackson.databind.json.JsonMapper.builder().build(), cashierSessionRepository);
+                tools.jackson.databind.json.JsonMapper.builder().build(), cashierSessionRepository, enrollmentFeeGateProvider);
     }
 
     @AfterEach
@@ -86,6 +87,97 @@ class PaymentServiceTest {
                 10L, 3L, 7L, "PAY-2", BigDecimal.TEN, PaymentChannel.MTN_MONEY, PaymentType.COMPLETE, null, null, 99L);
 
         assertThatThrownBy(() -> service().initiate(onlineCmd)).isInstanceOf(BusinessRuleException.class);
+    }
+
+    // ── Frais d'inscription/réinscription en priorité (§retour comptable, demande utilisateur) ──────
+
+    @Test
+    void initiate_enrollmentFeeOutstanding_payingOtherInvoice_throwsBusinessRule() {
+        // cmd paie la facture id=3 (un frais quelconque) ; l'élève a une facture d'inscription id=99
+        // encore due, non incluse dans ce paiement -> doit être rejeté.
+        when(enrollmentFeeGateProvider.outstandingEnrollmentInvoiceIds(7L)).thenReturn(List.of(99L));
+
+        assertThatThrownBy(() -> service().initiate(cmd)).isInstanceOf(BusinessRuleException.class);
+        verify(repo, never()).save(any(Payment.class));
+    }
+
+    @Test
+    void initiate_enrollmentFeeOutstanding_payingEnrollmentInvoiceItself_succeeds() throws Exception {
+        // cmd paie la facture id=3, qui EST précisément la facture d'inscription due -> autorisé.
+        when(enrollmentFeeGateProvider.outstandingEnrollmentInvoiceIds(7L)).thenReturn(List.of(3L));
+        when(repo.save(any(Payment.class))).thenAnswer(i -> {
+            Payment p = i.getArgument(0);
+            if (p.getId() == null) p.setId(1L);
+            return p;
+        });
+
+        Payment p = service().initiate(cmd);
+
+        assertThat(p.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED);
+    }
+
+    @Test
+    void initiate_noOutstandingEnrollmentFee_succeeds() throws Exception {
+        when(enrollmentFeeGateProvider.outstandingEnrollmentInvoiceIds(7L)).thenReturn(List.of());
+        when(repo.save(any(Payment.class))).thenAnswer(i -> {
+            Payment p = i.getArgument(0);
+            if (p.getId() == null) p.setId(1L);
+            return p;
+        });
+
+        Payment p = service().initiate(cmd);
+
+        assertThat(p.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED);
+    }
+
+    @Test
+    void initiateGroup_enrollmentFeeOutstanding_payingOnlyOtherShares_throwsBusinessRule() {
+        // groupCmd ne paie que la facture id=3 (pas l'inscription id=99, encore due) -> rejeté.
+        when(cashierSessionRepository.findOpenByCashierId(99L))
+                .thenReturn(Optional.of(mock(CashierSession.class)));
+        when(enrollmentFeeGateProvider.outstandingEnrollmentInvoiceIds(7L)).thenReturn(List.of(99L));
+
+        assertThatThrownBy(() -> service().initiateGroup(groupCmd("key-blocked"))).isInstanceOf(BusinessRuleException.class);
+        verify(repo, never()).save(any(Payment.class));
+    }
+
+    @Test
+    void initiateGroup_enrollmentFeeIncludedAlongsideOtherShares_succeeds() {
+        // Facture d'inscription id=3 incluse dans le même paiement groupé que d'autres frais -> autorisé
+        // ("en même temps que les autres frais").
+        when(repo.findByIdempotencyKey(any())).thenReturn(Optional.empty());
+        when(cashierSessionRepository.findOpenByCashierId(99L))
+                .thenReturn(Optional.of(mock(CashierSession.class)));
+        when(enrollmentFeeGateProvider.outstandingEnrollmentInvoiceIds(7L)).thenReturn(List.of(3L));
+        when(repo.save(any(Payment.class))).thenAnswer(i -> {
+            Payment p = i.getArgument(0);
+            if (p.getId() == null) p.setId(1L);
+            return p;
+        });
+
+        Payment p = service().initiateGroup(groupCmd("key-ok"));
+
+        assertThat(p.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED);
+    }
+
+    @Test
+    void initiateGroup_offlineReplay_skipsEnrollmentFeeCheck() {
+        // Rejeu hors-ligne (paidAt renseigné) : l'argent a déjà été physiquement encaissé dans le passé,
+        // ne doit jamais être rejeté pour un ordre de frais non respecté à MAINTENANT.
+        GroupPaymentCommand replay = new GroupPaymentCommand(10L, 7L, PaymentChannel.CASH, null, "Tranche 1",
+                1, BigDecimal.ZERO, List.of(new InvoiceShare(3L, null, new BigDecimal("100.00"), null)),
+                99L, 2026L, "key-replay-enroll", LocalDateTime.of(2026, 1, 5, 9, 0));
+        when(repo.findByIdempotencyKey(any())).thenReturn(Optional.empty());
+        when(repo.save(any(Payment.class))).thenAnswer(i -> {
+            Payment p = i.getArgument(0);
+            if (p.getId() == null) p.setId(1L);
+            return p;
+        });
+
+        Payment p = service().initiateGroup(replay);
+
+        assertThat(p.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED);
+        verify(enrollmentFeeGateProvider, never()).outstandingEnrollmentInvoiceIds(any());
     }
 
     @Test

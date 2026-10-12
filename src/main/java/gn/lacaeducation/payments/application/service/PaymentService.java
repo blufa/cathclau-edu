@@ -5,6 +5,7 @@ import tools.jackson.databind.ObjectMapper;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.payments.CashierSessionStatusProvider;
+import gn.lacaeducation.payments.EnrollmentFeeGateProvider;
 import gn.lacaeducation.payments.application.event.GroupedInvoiceSettlementEvent;
 import gn.lacaeducation.payments.application.event.PaymentFailedEvent;
 import gn.lacaeducation.payments.application.event.PaymentRefundedEvent;
@@ -37,6 +38,7 @@ public class PaymentService implements PaymentUseCase {
     private final DjomyVerificationPort djomyVerifier;
     private final ObjectMapper objectMapper;
     private final CashierSessionRepository cashierSessionRepository;
+    private final EnrollmentFeeGateProvider enrollmentFeeGateProvider;
 
     @Override public Payment initiate(InitiatePaymentCommand c) throws JsonProcessingException {
         // Barrière caisse (§angles morts comptables) : un encaissement guichet (espèces, Orange Money,
@@ -44,6 +46,7 @@ public class PaymentService implements PaymentUseCase {
         // rapproché au comptant physique — sans ça, CashReconciliationGuard ne fait que le signaler
         // APRÈS coup, trop tard pour l'éviter.
         requireOpenCashierSession(c.channel(), c.collectedByUserId());
+        requireEnrollmentFeeIncluded(c.studentId(), java.util.Set.of(c.invoiceId()));
         // Facture → Paiement → TransactionPaiement (appel fournisseur) → EN_ATTENTE (§9.1).
         Payment payment = repo.save(Payment.builder().tenantId(c.tenantId()).invoiceId(c.invoiceId()).studentId(c.studentId())
                 .academicYearId(c.academicYearId())
@@ -99,6 +102,14 @@ public class PaymentService implements PaymentUseCase {
         // caisse déjà clôturée) rejetterait à tort un encaissement pourtant légitime.
         if (c.paidAt() == null) {
             requireOpenCashierSession(c.channel(), c.collectedByUserId());
+            // Même repli que la barrière caisse : un rejeu hors-ligne (paidAt renseigné) représente de
+            // l'argent déjà physiquement encaissé dans le passé — le rejeter maintenant pour un ordre de
+            // frais non respecté serait absurde, la décision a déjà été prise au moment réel de l'encaissement.
+            c.shares().stream()
+                    .collect(java.util.stream.Collectors.groupingBy(
+                            s -> s.studentId() != null ? s.studentId() : c.studentId(),
+                            java.util.stream.Collectors.mapping(PaymentUseCase.InvoiceShare::invoiceId, java.util.stream.Collectors.toSet())))
+                    .forEach(this::requireEnrollmentFeeIncluded);
         }
         BigDecimal total = c.shares().stream()
                 .map(PaymentUseCase.InvoiceShare::amount)
@@ -308,6 +319,25 @@ public class PaymentService implements PaymentUseCase {
         if (cashierSessionRepository.findOpenByCashierId(collectedByUserId).isEmpty()) {
             throw new BusinessRuleException(
                     "Aucune session de caisse ouverte : ouvrez votre caisse avant d'enregistrer un encaissement au guichet.");
+        }
+    }
+
+    /** Frais d'inscription/réinscription en priorité (§retour comptable, demande utilisateur : "on ne
+     * peut pas sauter sur inscription/réinscription pour encaisser les autres") : tant qu'une facture
+     * ENROLLMENT/RE_ENROLLMENT reste due pour l'élève, impossible d'encaisser d'autres frais SANS
+     * l'inclure dans ce même encaissement — jamais "sautée". Réglée seule (sans autre frais) reste
+     * toujours permise ; incluse aux côtés d'autres frais dans le même paiement aussi (payée "en même
+     * temps"), seul le cas "autres frais sans elle" est rejeté. */
+    private void requireEnrollmentFeeIncluded(Long studentId, java.util.Set<Long> invoiceIdsInThisPayment) {
+        if (studentId == null || invoiceIdsInThisPayment == null || invoiceIdsInThisPayment.isEmpty()) return;
+        List<Long> outstanding = enrollmentFeeGateProvider.outstandingEnrollmentInvoiceIds(studentId);
+        if (outstanding.isEmpty()) return;
+        boolean includesEnrollment = outstanding.stream().anyMatch(invoiceIdsInThisPayment::contains);
+        if (includesEnrollment) return;
+        boolean paysOtherFees = invoiceIdsInThisPayment.stream().anyMatch(id -> !outstanding.contains(id));
+        if (paysOtherFees) {
+            throw new BusinessRuleException(
+                    "La facture d'inscription/réinscription doit être réglée avant, ou en même temps que, les autres frais de cet élève.");
         }
     }
 
