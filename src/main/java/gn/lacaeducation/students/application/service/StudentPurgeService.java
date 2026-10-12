@@ -30,13 +30,15 @@ import java.util.Map;
  * qui n'est PAS un flux métier mais un outil d'administration ponctuel — le gain de pureté
  * architecturale ne justifie pas la complexité ici.</p>
  *
- * <p><b>Cas particulier des paiements groupés (fratrie)</b> : {@code payments.student_id} porte
- * l'élève "principal" d'un paiement, mais {@code payments.student_ids} (CSV) peut aussi couvrir CET
- * élève comme simple participant d'un paiement partagé avec un frère/sœur ({@code group_lines}, en
- * JSON, est toujours renseigné en même temps que {@code student_ids} par {@code
+ * <p><b>Cas particulier des paiements partagés entre plusieurs élèves</b> (sans rapport avec la remise
+ * "famille nombreuse", qui n'est qu'un pourcentage choisi par le comptable sur une facture — purement
+ * déclaratif, ne fusionne aucune donnée) : {@code payments.student_id} porte l'élève "principal" d'un
+ * paiement, mais {@code payments.student_ids} (CSV) peut aussi couvrir CET élève comme simple
+ * participant d'un paiement réglé en une fois pour plusieurs enfants ({@code group_lines}, en JSON,
+ * est toujours renseigné en même temps que {@code student_ids} par {@code
  * PaymentService#initiateGroup} — vérifier {@code student_ids} suffit, pas besoin de parser le JSON).
- * Supprimer tout le paiement corromprait alors les données du frère/sœur — ces paiements-là sont
- * seulement SIGNALÉS (jamais touchés), à régulariser à la main.</p>
+ * Supprimer tout le paiement corromprait alors les données du ou des autres élèves couverts — ces
+ * paiements-là sont seulement SIGNALÉS (jamais touchés), à régulariser à la main.</p>
  */
 @Slf4j
 @Service
@@ -64,18 +66,19 @@ public class StudentPurgeService {
         Map<String, Integer> deleted = new LinkedHashMap<>();
         java.util.List<String> warnings = new java.util.ArrayList<>();
 
-        // Signale (sans y toucher) les paiements groupés où cet élève n'est qu'un participant parmi
-        // d'autres (fratrie) — supprimer toute la ligne couperait les données d'un autre élève.
-        // Format CSV entouré de virgules (ex. ",12,45,"), voir V124__payment_group_students.sql.
+        // Signale (sans y toucher) les paiements où cet élève n'est qu'un participant parmi d'autres
+        // (encaissement groupé pour plusieurs enfants en une fois) — supprimer toute la ligne
+        // couperait les données d'un autre élève. Format CSV entouré de virgules (ex. ",12,45,"), voir
+        // V124__payment_group_students.sql.
         List<?> sharedPaymentIds = em.createNativeQuery(
                 "SELECT id FROM payments WHERE student_id <> :id AND student_ids LIKE :pattern")
                 .setParameter("id", studentId)
                 .setParameter("pattern", "%," + studentId + ",%")
                 .getResultList();
         if (!sharedPaymentIds.isEmpty()) {
-            warnings.add("Paiement(s) groupé(s) (fratrie) où l'élève n'est qu'un participant parmi "
-                    + "d'autres, NON supprimés (risquerait de corrompre les données d'un frère/sœur) : "
-                    + "ids=" + sharedPaymentIds + " — à régulariser manuellement si besoin.");
+            warnings.add("Paiement(s) partagé(s) avec d'autres élèves où celui-ci n'est qu'un "
+                    + "participant parmi d'autres, NON supprimés (risquerait de corrompre les données "
+                    + "d'un autre élève) : ids=" + sharedPaymentIds + " — à régulariser manuellement si besoin.");
         }
 
         // Nettoie d'abord les tables qui référencent un payment_id/report_card_id de cet élève (pas de
