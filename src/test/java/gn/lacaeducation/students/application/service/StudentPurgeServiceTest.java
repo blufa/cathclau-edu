@@ -83,7 +83,7 @@ class StudentPurgeServiceTest {
         StudentPurgeService.PurgeResult result = service.purge(7L);
 
         assertThat(result.warnings()).hasSize(1);
-        assertThat(result.warnings().get(0)).contains("42").contains("fratrie");
+        assertThat(result.warnings().get(0)).contains("42").contains("partagé");
     }
 
     /**

@@ -40,7 +40,7 @@ class LiveStudentPurgeEndToEndTest {
                 insertEnrollment(conn, studentId);
                 long invoiceId = insertInvoice(conn, studentId);
                 insertPayment(conn, studentId, invoiceId);
-                // Paiement groupé (fratrie) où CET élève n'est qu'un participant — jamais touché.
+                // Paiement partagé avec un autre élève où CET élève n'est qu'un participant — jamais touché.
                 long sharedPaymentId = insertSharedPayment(conn, studentId);
 
                 assertRowCount(conn, "students", studentId, 1);
@@ -54,11 +54,11 @@ class LiveStudentPurgeEndToEndTest {
                 assertRowCount(conn, "enrollments", studentId, 0);
                 assertRowCount(conn, "invoices", studentId, 0);
                 assertRowCount(conn, "payments", studentId, 0);
-                // Le paiement partagé (fratrie) doit TOUJOURS exister — jamais supprimé.
+                // Le paiement partagé doit TOUJOURS exister — jamais supprimé.
                 try (Statement st = conn.createStatement()) {
                     ResultSet rs = st.executeQuery("SELECT COUNT(*) FROM payments WHERE id = " + sharedPaymentId);
                     rs.next();
-                    assertThat(rs.getLong(1)).as("paiement partagé (fratrie), ne doit jamais être supprimé").isEqualTo(1);
+                    assertThat(rs.getLong(1)).as("paiement partagé, ne doit jamais être supprimé").isEqualTo(1);
                 }
             } finally {
                 conn.rollback(); // la vraie base locale n'est JAMAIS modifiée, même si une assertion échoue au-dessus.
