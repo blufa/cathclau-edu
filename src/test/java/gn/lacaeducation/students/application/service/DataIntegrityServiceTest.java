@@ -142,4 +142,66 @@ class DataIntegrityServiceTest {
         verify(em).createNativeQuery(eq("DELETE FROM payment_transactions WHERE payment_id = :id"));
         verify(em).createNativeQuery(eq("DELETE FROM payments WHERE id = :id"));
     }
+
+    private static final String ORPHANED_GRADES_SQL =
+            "SELECT g.student_id, COUNT(*) FROM grades g "
+                    + "WHERE g.assessment_id IN (SELECT id FROM assessments WHERE tenant_id = :tenantId) "
+                    + "AND NOT EXISTS (SELECT 1 FROM students s WHERE s.id = g.student_id) GROUP BY g.student_id";
+    private static final String ORPHANED_STUDENT_DOCUMENTS_SQL =
+            "SELECT student_id, COUNT(*) FROM student_documents "
+                    + "WHERE NOT EXISTS (SELECT 1 FROM students s WHERE s.id = student_documents.student_id) GROUP BY student_id";
+
+    @Test
+    void scan_orphanedRowsInOtherTable_groupedByStudentAndReported() {
+        Query gradesQuery = mock(Query.class);
+        when(em.createNativeQuery(eq(ORPHANED_GRADES_SQL))).thenReturn(gradesQuery);
+        when(gradesQuery.setParameter(anyString(), org.mockito.ArgumentMatchers.any())).thenReturn(gradesQuery);
+        // Retour comptable réel : 12 notes restées pointées sur un élève supprimé directement en base.
+        when(gradesQuery.getResultList()).thenReturn(java.util.Collections.singletonList(new Object[]{7L, 12L}));
+
+        DataIntegrityService.ScanResult result = service.scan(10L);
+
+        assertThat(result.orphanedOtherTables())
+                .anySatisfy(g -> {
+                    assertThat(g.table()).isEqualTo("grades");
+                    assertThat(g.studentId()).isEqualTo(7L);
+                    assertThat(g.rowCount()).isEqualTo(12L);
+                });
+    }
+
+    @Test
+    void scan_orphanedStudentDocuments_scannedWithoutTenantFilter() {
+        Query docsQuery = mock(Query.class);
+        when(em.createNativeQuery(eq(ORPHANED_STUDENT_DOCUMENTS_SQL))).thenReturn(docsQuery);
+        when(docsQuery.getResultList()).thenReturn(java.util.Collections.singletonList(new Object[]{7L, 2L}));
+
+        DataIntegrityService.ScanResult result = service.scan(10L);
+
+        assertThat(result.orphanedStudentDocuments()).hasSize(1);
+        assertThat(result.orphanedStudentDocuments().get(0).studentId()).isEqualTo(7L);
+        // Aucune colonne tenant_id sur student_documents : pas de setParameter("tenantId", ...) sur cette requête.
+        verify(docsQuery, org.mockito.Mockito.never()).setParameter(eq("tenantId"), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void deleteOrphanedRows_knownTable_executesDelete() {
+        service.deleteOrphanedRows("grades", 7L);
+
+        verify(em).createNativeQuery(eq("DELETE FROM grades WHERE student_id = :id"));
+        verify(query).setParameter(eq("id"), eq(7L));
+    }
+
+    @Test
+    void deleteOrphanedRows_reportCards_deletesLinesBeforeReportCards() {
+        service.deleteOrphanedRows("report_cards", 7L);
+
+        verify(em).createNativeQuery(eq("DELETE FROM report_card_lines WHERE report_card_id IN (SELECT id FROM report_cards WHERE student_id = :id)"));
+        verify(em).createNativeQuery(eq("DELETE FROM report_cards WHERE student_id = :id"));
+    }
+
+    @Test
+    void deleteOrphanedRows_unknownTable_rejected() {
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.deleteOrphanedRows("users", 7L))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
 }

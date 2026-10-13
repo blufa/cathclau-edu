@@ -49,4 +49,12 @@ public class DataIntegrityController {
     public void deleteOrphanedPayment(@PathVariable Long paymentId) {
         service.deleteOrphanedPayment(paymentId);
     }
+
+    @Operation(summary = "Supprimer toutes les lignes orphelines d'une table pour un ancien élève")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @DeleteMapping("/tables/{table}/students/{studentId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteOrphanedRows(@PathVariable String table, @PathVariable Long studentId) {
+        service.deleteOrphanedRows(table, studentId);
+    }
 }
