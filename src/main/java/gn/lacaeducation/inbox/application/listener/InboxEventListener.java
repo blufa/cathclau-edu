@@ -69,7 +69,7 @@ public class InboxEventListener {
         for (Long userId : event.userIds()) {
             try {
                 notificationUseCase.create(new CreateNotificationCommand(event.tenantId(), userId, NotificationType.PAYMENT,
-                        "Échéances proches", content, "/communications/payment-reminders"));
+                        "Échéances proches", content, "/enrollments/payment-status"));
             } catch (Exception e) {
                 log.error("Échec de création du rappel d'échéances proches pour user {} (tenant {}): {}",
                         userId, event.tenantId(), e.getMessage(), e);

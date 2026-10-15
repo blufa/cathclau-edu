@@ -42,7 +42,7 @@ class InboxEventListenerTest {
         assertThat(commands).allMatch(c -> c.tenantId().equals(10L));
         assertThat(commands).allMatch(c -> c.type() == NotificationType.PAYMENT);
         assertThat(commands).allMatch(c -> c.content().contains("3 élèves ont"));
-        assertThat(commands).allMatch(c -> "/communications/payment-reminders".equals(c.link()));
+        assertThat(commands).allMatch(c -> "/enrollments/payment-status".equals(c.link()));
     }
 
     @Test
