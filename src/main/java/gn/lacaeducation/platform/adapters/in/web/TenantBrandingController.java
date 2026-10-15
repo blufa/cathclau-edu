@@ -24,7 +24,7 @@ public class TenantBrandingController {
     // l'école) est imprimé sur les badges élève, pour joindre l'établissement en cas de besoin.
     public record BrandingResponse(Long tenantId, String schoolName, String logo, String brandColor,
                                     String motto, String slogan, String ire, String dpeLabel,
-                                    String sousPrefectureLabel, String phone, String address, String email) {}
+                                    String sousPrefectureLabel, String phone, String phone2, String address, String email) {}
     public record BrandingRequest(String logo, String brandColor) {}
 
     @Operation(summary = "Get the current school's branding")
@@ -42,6 +42,6 @@ public class TenantBrandingController {
 
     private BrandingResponse toResponse(Tenant t) {
         return new BrandingResponse(t.getId(), t.getSchoolName(), t.getLogo(), t.getBrandColor(), t.getMotto(), t.getSlogan(),
-                t.getIre(), t.getDpeLabel(), t.getSousPrefectureLabel(), t.getPhone(), t.getAddress(), t.getEmail());
+                t.getIre(), t.getDpeLabel(), t.getSousPrefectureLabel(), t.getPhone(), t.getPhone2(), t.getAddress(), t.getEmail());
     }
 }

@@ -3,6 +3,7 @@ package gn.lacaeducation.billing.application.service;
 import gn.lacaeducation.billing.application.event.ClassTransferCreditSurplusEvent;
 import gn.lacaeducation.billing.application.port.in.ClassTransferRefundUseCase;
 import gn.lacaeducation.billing.application.port.in.InvoiceUseCase;
+import gn.lacaeducation.billing.application.port.in.InvoiceUseCase.CreateInvoiceCommand;
 import gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand;
 import gn.lacaeducation.billing.application.port.out.SchoolFeeRepository;
 import gn.lacaeducation.billing.domain.FeeType;
@@ -29,16 +30,23 @@ import java.util.Objects;
  * coup régénérait les factures de mensualité de 7ème SANS annuler celles de 6ème — les deux jeux de
  * factures restaient actifs en même temps).
  *
- * <p>Seules les mensualités (MENSUALITE) sont traitées ici ({@link #reconcileMonthly}) : annulées puis
- * régénérées pour la nouvelle classe, avec report en crédit de ce qui avait déjà été payé — seul frais
- * dont le report fait sens (un même nombre d'échéances, juste un montant différent). Les AUTRES frais
- * de l'ancienne classe (inscription, examen, cantine, transport, autre…) ne sont PAS touchés : une
- * version antérieure les annulait automatiquement, mais sans jamais les régénérer pour la nouvelle
- * classe (laissé au comptable, via "Générer les factures") — en pratique une facture annexe encore
- * impayée disparaissait purement et simplement de "Factures à régler" au lieu d'y rester (§retour
- * comptable réel, transfert testé en conditions réelles). Le risque de duplication pour les frais
- * annexes (ex. "Révision" générée deux fois) est un problème distinct, pas spécifique au transfert de
- * classe — voir le ticket correspondant.
+ * <p>Mensualités (MENSUALITE, {@link #reconcileMonthly}) ET frais d'inscription (ENROLLMENT/
+ * RE_ENROLLMENT, {@link #reconcileEnrollmentFee}) sont traités ici : annulés puis régénérés pour la
+ * nouvelle classe, avec report en crédit de ce qui avait déjà été payé (§retour comptable réel : un
+ * élève inscrit par erreur en 9ème, inscription + mensualité encaissées, doit finalement être en 7ème —
+ * l'argent déjà réglé se reporte sur les nouvelles factures, visible via un badge "déjà réglés" côté
+ * frontend, voir {@code InvoiceUseCase#applyCredit}). Ces deux frais partagent la même particularité :
+ * générés automatiquement une seule fois par l'application elle-même (jamais un ajout libre du
+ * comptable), donc aucun risque de duplication à reporter en les régénérant.
+ *
+ * <p>Les AUTRES frais de l'ancienne classe (examen, cantine, transport, autre…) ne sont volontairement
+ * PAS touchés : une version antérieure les annulait automatiquement, mais sans jamais les régénérer
+ * pour la nouvelle classe (laissé au comptable, via "Générer les factures") — en pratique une facture
+ * annexe encore impayée disparaissait purement et simplement de "Factures à régler" au lieu d'y rester
+ * (§retour comptable réel, transfert testé en conditions réelles). Le risque de duplication pour ces
+ * frais annexes (ex. "Révision" générée deux fois, ajoutés librement par le comptable contrairement à
+ * l'inscription) est un problème distinct, pas spécifique au transfert de classe — voir le ticket
+ * correspondant.
  */
 @Slf4j
 @Component
@@ -60,6 +68,79 @@ public class ClassTransferInvoiceListener {
     @Transactional
     public void onEnrollmentClassChanged(EnrollmentClassChangedEvent event) {
         reconcileMonthly(event);
+        reconcileEnrollmentFee(event);
+    }
+
+    /**
+     * Même principe que {@link #reconcileMonthly}, pour le frais ENROLLMENT/RE_ENROLLMENT cette fois
+     * (§retour comptable réel : un élève inscrit par erreur en 9ème, frais d'inscription encaissé, doit
+     * finalement être en 7ème — l'argent déjà réglé doit se reporter sur la nouvelle facture
+     * d'inscription, pas rester bloqué sur une facture annulée de l'ancienne classe). Contrairement aux
+     * AUTRES frais annexes (examen, cantine, transport, autre — volontairement non touchés, voir
+     * {@link #reconcileMonthly} javadoc), l'inscription est de la même nature que la mensualité : un
+     * frais obligatoire généré automatiquement une seule fois par inscription, jamais un frais annexe
+     * ajouté librement par le comptable — aucun risque de duplication à gérer ici.
+     */
+    private void reconcileEnrollmentFee(EnrollmentClassChangedEvent event) {
+        List<Long> oldEnrollmentFeeIds = java.util.stream.Stream.of(FeeType.ENROLLMENT, FeeType.RE_ENROLLMENT)
+                .flatMap(t -> schoolFeeRepository.findByClassIdAndType(event.oldClassId(), t).stream())
+                .map(SchoolFee::getId)
+                .toList();
+
+        List<Invoice> oldInvoices = invoiceUseCase.findByStudentId(event.studentId()).stream()
+                .filter(i -> i.getStatus() != InvoiceStatus.CANCELLED)
+                .filter(i -> event.academicYearId() == null || event.academicYearId().equals(i.getAcademicYearId()))
+                .filter(i -> i.getFeeId() != null && oldEnrollmentFeeIds.contains(i.getFeeId()))
+                .toList();
+
+        if (oldInvoices.isEmpty()) {
+            log.info("Transfert de classe : aucune facture d'inscription à reporter pour l'élève id={} "
+                    + "(ancienne classe id={})", event.studentId(), event.oldClassId());
+            return;
+        }
+
+        BigDecimal credit = oldInvoices.stream()
+                .map(Invoice::getPaidAmount)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        oldInvoices.forEach(i -> invoiceUseCase.voidInvoice(i.getId()));
+        log.info("Transfert de classe : {} facture(s) d'inscription annulée(s) pour l'élève id={}, crédit à reporter={}",
+                oldInvoices.size(), event.studentId(), credit);
+
+        // Même repli REINSCRIPTION -> INSCRIPTION que EnrollmentInvoiceListener quand la nouvelle classe
+        // n'a qu'un seul frais d'inscription configuré, pas un distinct par type.
+        List<SchoolFee> newFees = schoolFeeRepository.findByClassIdAndType(event.newClassId(), FeeType.RE_ENROLLMENT);
+        if (newFees.isEmpty()) {
+            newFees = schoolFeeRepository.findByClassIdAndType(event.newClassId(), FeeType.ENROLLMENT);
+        }
+        if (newFees.isEmpty()) {
+            log.warn("Transfert de classe : aucun frais d'inscription configuré pour la nouvelle classe id={} ; "
+                            + "crédit de {} non reporté pour l'élève id={} — à régulariser manuellement.",
+                    event.newClassId(), credit, event.studentId());
+            publishSurplus(oldInvoices.get(0).getTenantId(), event, credit);
+            return;
+        }
+
+        BigDecimal remaining = credit;
+        for (SchoolFee fee : newFees) {
+            if (remaining.signum() <= 0) break;
+            // Idempotence (même garde que EnrollmentInvoiceListener) : si une facture pour ce frais
+            // existe déjà pour cet élève, on ne la recrée pas une deuxième fois.
+            if (invoiceUseCase.existsByStudentIdAndFeeId(event.studentId(), fee.getId())) continue;
+            Invoice newInvoice = invoiceUseCase.create(new CreateInvoiceCommand(
+                    fee.getTenantId(), event.studentId(), fee.getId(), null, fee.getAmount(), event.academicYearId()));
+            // Solde net (remise/exonération déjà appliquée par InvoiceUseCase#create), jamais le total
+            // brut — même garde-fou que reconcileMonthly pour ne jamais reporter plus que le dû réel.
+            BigDecimal toApply = remaining.min(newInvoice.getRemainingBalance());
+            invoiceUseCase.applyCredit(newInvoice.getId(), toApply, "Transfert de classe");
+            remaining = remaining.subtract(toApply);
+        }
+        if (remaining.signum() > 0) {
+            log.warn("Transfert de classe : reliquat de crédit {} non affecté (frais d'inscription de la nouvelle "
+                    + "classe insuffisant) pour l'élève id={} — à régulariser manuellement.", remaining, event.studentId());
+            publishSurplus(newFees.get(0).getTenantId(), event, remaining);
+        }
     }
 
     private void reconcileMonthly(EnrollmentClassChangedEvent event) {

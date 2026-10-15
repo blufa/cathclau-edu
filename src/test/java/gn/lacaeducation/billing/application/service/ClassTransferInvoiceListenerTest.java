@@ -165,26 +165,87 @@ class ClassTransferInvoiceListenerTest {
 
     /**
      * Régression réelle (§retour comptable, transfert testé en conditions réelles) : une version
-     * antérieure annulait aussi les factures ANNEXES (hors mensualité) de l'ancienne classe, mais
-     * sans jamais les régénérer pour la nouvelle — une facture annexe encore impayée disparaissait
-     * purement et simplement au lieu de rester "à régler". Vérifie que ces factures annexes ne sont
-     * plus touchées du tout par un transfert de classe.
+     * antérieure annulait aussi les factures ANNEXES (hors mensualité/inscription) de l'ancienne
+     * classe, mais sans jamais les régénérer pour la nouvelle — une facture annexe encore impayée
+     * disparaissait purement et simplement au lieu de rester "à régler". Vérifie que ces factures
+     * annexes (ex. "Révision", ajoutée librement par le comptable) ne sont toujours pas touchées —
+     * contrairement à l'inscription (voir {@link #voidsOldEnrollmentInvoiceAndCarriesForwardCredit}),
+     * qui elle EST désormais reconciliée comme la mensualité.
      */
     @Test
-    void doesNotTouchAnnexInvoices_otherThanMonthly() {
+    void doesNotTouchAnnexInvoices_otherThanMonthlyOrEnrollment() {
         when(schoolFeeRepository.findByClassIdAndType(20L, FeeType.MONTHLY)).thenReturn(List.of());
+        when(schoolFeeRepository.findByClassIdAndType(20L, FeeType.ENROLLMENT)).thenReturn(List.of());
+        when(schoolFeeRepository.findByClassIdAndType(20L, FeeType.RE_ENROLLMENT)).thenReturn(List.of());
 
         Invoice revisionInvoice = Invoice.builder().id(300L).reference("REF-REV").studentId(7L).feeId(30L).academicYearId(99L)
                 .status(InvoiceStatus.UNPAID).totalAmount(new BigDecimal("50000")).paidAmount(BigDecimal.ZERO).build();
-        Invoice enrollmentInvoice = Invoice.builder().id(301L).reference("REF-INS").studentId(7L).feeId(31L).academicYearId(99L)
-                .status(InvoiceStatus.PAID).totalAmount(new BigDecimal("250000")).paidAmount(new BigDecimal("250000")).build();
-        when(invoiceUseCase.findByStudentId(7L)).thenReturn(List.of(revisionInvoice, enrollmentInvoice));
+        when(invoiceUseCase.findByStudentId(7L)).thenReturn(List.of(revisionInvoice));
 
         listener.onEnrollmentClassChanged(event);
 
         verify(invoiceUseCase, never()).voidInvoice(300L);
-        verify(invoiceUseCase, never()).voidInvoice(301L);
         verify(schoolFeeRepository, never()).findByClassId(any());
+    }
+
+    /**
+     * Nouveau comportement (§retour comptable réel : "il inscrit quelqu'un en 9ème, encaisse
+     * l'argent, et il se trouve que ça devrait être en 7ème") : le frais d'inscription/réinscription
+     * suit désormais la même logique de report de crédit que la mensualité — contrairement aux autres
+     * frais annexes (voir {@link #doesNotTouchAnnexInvoices_otherThanMonthlyOrEnrollment}), il est
+     * généré automatiquement par l'application (jamais un ajout libre du comptable), donc aucun risque
+     * de duplication à le régénérer pour la nouvelle classe.
+     */
+    @Test
+    void voidsOldEnrollmentInvoiceAndCarriesForwardCredit() {
+        when(schoolFeeRepository.findByClassIdAndType(20L, FeeType.MONTHLY)).thenReturn(List.of());
+        SchoolFee oldEnrollmentFee = SchoolFee.builder().id(31L).tenantId(10L).classId(20L).type(FeeType.ENROLLMENT).build();
+        when(schoolFeeRepository.findByClassIdAndType(20L, FeeType.ENROLLMENT)).thenReturn(List.of(oldEnrollmentFee));
+        when(schoolFeeRepository.findByClassIdAndType(20L, FeeType.RE_ENROLLMENT)).thenReturn(List.of());
+
+        Invoice enrollmentInvoice = Invoice.builder().id(301L).reference("REF-INS").studentId(7L).feeId(31L).academicYearId(99L)
+                .status(InvoiceStatus.PAID).totalAmount(new BigDecimal("250000")).paidAmount(new BigDecimal("250000")).build();
+        when(invoiceUseCase.findByStudentId(7L)).thenReturn(List.of(enrollmentInvoice));
+
+        SchoolFee newEnrollmentFee = SchoolFee.builder().id(32L).tenantId(10L).classId(21L).type(FeeType.ENROLLMENT).amount(new BigDecimal("200000")).build();
+        when(schoolFeeRepository.findByClassIdAndType(21L, FeeType.RE_ENROLLMENT)).thenReturn(List.of());
+        when(schoolFeeRepository.findByClassIdAndType(21L, FeeType.ENROLLMENT)).thenReturn(List.of(newEnrollmentFee));
+        when(invoiceUseCase.existsByStudentIdAndFeeId(7L, 32L)).thenReturn(false);
+
+        Invoice newInvoice = Invoice.builder().id(400L).totalAmount(new BigDecimal("200000")).remainingBalance(new BigDecimal("200000")).build();
+        when(invoiceUseCase.create(any(InvoiceUseCase.CreateInvoiceCommand.class))).thenReturn(newInvoice);
+
+        listener.onEnrollmentClassChanged(event);
+
+        verify(invoiceUseCase).voidInvoice(301L);
+        verify(invoiceUseCase).create(new InvoiceUseCase.CreateInvoiceCommand(10L, 7L, 32L, null, new BigDecimal("200000"), 99L));
+        // Crédit = 250 000 (payé en 9ème), nouvelle facture 7ème = 200 000 : plafonné à 200 000, le
+        // reliquat de 50 000 part en surplus à rembourser (frais d'inscription moins cher en 7ème).
+        verify(invoiceUseCase).applyCredit(eq(400L), eq(new BigDecimal("200000")), anyString());
+        verify(classTransferRefundUseCase).record(eq(10L), eq(7L), eq(20L), eq(21L), eq(new BigDecimal("50000")), anyString());
+    }
+
+    /** Pas de frais d'inscription configuré du tout pour la nouvelle classe : le crédit entier part en surplus. */
+    @Test
+    void newClassHasNoEnrollmentFee_voidsOldButDoesNotGenerate() {
+        when(schoolFeeRepository.findByClassIdAndType(20L, FeeType.MONTHLY)).thenReturn(List.of());
+        SchoolFee oldEnrollmentFee = SchoolFee.builder().id(31L).tenantId(10L).classId(20L).type(FeeType.ENROLLMENT).build();
+        when(schoolFeeRepository.findByClassIdAndType(20L, FeeType.ENROLLMENT)).thenReturn(List.of(oldEnrollmentFee));
+        when(schoolFeeRepository.findByClassIdAndType(20L, FeeType.RE_ENROLLMENT)).thenReturn(List.of());
+
+        Invoice enrollmentInvoice = Invoice.builder().id(301L).reference("REF-INS").studentId(7L).feeId(31L).academicYearId(99L)
+                .tenantId(10L).status(InvoiceStatus.PAID).totalAmount(new BigDecimal("250000")).paidAmount(new BigDecimal("250000")).build();
+        when(invoiceUseCase.findByStudentId(7L)).thenReturn(List.of(enrollmentInvoice));
+
+        when(schoolFeeRepository.findByClassIdAndType(21L, FeeType.RE_ENROLLMENT)).thenReturn(List.of());
+        when(schoolFeeRepository.findByClassIdAndType(21L, FeeType.ENROLLMENT)).thenReturn(List.of());
+
+        listener.onEnrollmentClassChanged(event);
+
+        verify(invoiceUseCase).voidInvoice(301L);
+        verify(invoiceUseCase, never()).create(any());
+        verify(invoiceUseCase, never()).applyCredit(any(), any(), any());
+        verify(classTransferRefundUseCase).record(eq(10L), eq(7L), eq(20L), eq(21L), eq(new BigDecimal("250000")), anyString());
     }
 
     @Test

@@ -16,6 +16,8 @@ public record CreateTenantRequest(
     /** Identifiant de connexion de l'admin (login par username OU email) ; généré si vide. */
     String username,
     @NotBlank String phone,
+    /** Second school phone number (optional), distinct from {@code phone} — see {@code Tenant#phone2}. */
+    String phone2,
     String address,
     String city,
     String country,

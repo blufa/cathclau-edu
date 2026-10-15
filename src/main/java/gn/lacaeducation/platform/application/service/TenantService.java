@@ -53,7 +53,7 @@ public class TenantService implements CreateTenantUseCase, TenantEstablishmentTy
 
         LocalDateTime now = LocalDateTime.now();
         Tenant saved = tenantRepository.save(Tenant.builder()
-                .schoolName(c.schoolName()).slug(slug).email(c.email()).phone(c.phone())
+                .schoolName(c.schoolName()).slug(slug).email(c.email()).phone(c.phone()).phone2(c.phone2())
                 .address(c.address()).city(c.city()).country(c.country()).director(c.director())
                 .establishmentTypes(c.establishmentTypes() == null ? new java.util.LinkedHashSet<>() : c.establishmentTypes())
                 .status(initial)
@@ -111,7 +111,7 @@ public class TenantService implements CreateTenantUseCase, TenantEstablishmentTy
                 || !Objects.equals(t.getBrandColor(), c.brandColor());
         t.setSchoolName(c.schoolName()); t.setLogo(c.logo()); t.setBrandColor(c.brandColor());
         t.setAddress(c.address()); t.setCity(c.city()); t.setCountry(c.country());
-        t.setPhone(c.phone()); t.setEmail(c.email()); t.setWebsite(c.website()); t.setDirector(c.director());
+        t.setPhone(c.phone()); t.setPhone2(c.phone2()); t.setEmail(c.email()); t.setWebsite(c.website()); t.setDirector(c.director());
         t.setFounderPhone(c.founderPhone());
         t.setAccreditationNumber(c.accreditationNumber()); t.setOpeningAuthorization(c.openingAuthorization());
         t.setMotto(c.motto()); t.setSlogan(c.slogan());

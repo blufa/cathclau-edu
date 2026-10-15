@@ -55,7 +55,7 @@ class OpenPdfReceiptGeneratorTest {
     @Test
     void generate_withMixOfPaidAndUnpaidInvoices_producesValidPdf() {
         lenient().when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.of(
-                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, false)));
+                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, false)));
         when(payerDirectory.className(7L)).thenReturn(Optional.of("7ème A"));
         when(payerDirectory.studentNumber(7L)).thenReturn(Optional.of("MAT-1"));
         when(payerDirectory.currentAcademicYearLabel(10L)).thenReturn(Optional.of("2025-2026"));
@@ -201,7 +201,7 @@ class OpenPdfReceiptGeneratorTest {
     @Test
     void generate_fullYearOfInvoices_staysOnSinglePage() {
         lenient().when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.of(
-                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, false)));
+                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, false)));
         when(payerDirectory.className(7L)).thenReturn(Optional.of("7ème A"));
         when(payerDirectory.studentNumber(7L)).thenReturn(Optional.of("MAT-1"));
         when(payerDirectory.currentAcademicYearLabel(10L)).thenReturn(Optional.of("2025-2026"));
@@ -238,7 +238,7 @@ class OpenPdfReceiptGeneratorTest {
     @Test
     void generate_twoYearsOfInvoicesWithDiscountAndPlatformFee_staysOnSinglePage() {
         lenient().when(tenantInfoProvider.findTenantInfo(10L)).thenReturn(Optional.of(
-                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, false)));
+                new TenantPublicInfo(10L, "École Test", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, false)));
         when(payerDirectory.className(7L)).thenReturn(Optional.of("7ème A"));
         when(payerDirectory.studentNumber(7L)).thenReturn(Optional.of("MAT-1"));
         when(payerDirectory.currentAcademicYearLabel(10L)).thenReturn(Optional.of("2025-2026"));

@@ -138,7 +138,8 @@ public final class SchoolPdfHeader {
             year.setAlignment(Element.ALIGN_RIGHT);
             right.addElement(year);
         }
-        String contact = join("  /  ", prefix("Tél : ", info.phone()), prefix("Email : ", info.email()));
+        String phones = join(" / ", info.phone(), info.phone2());
+        String contact = join("  /  ", prefix("Tél : ", phones.isBlank() ? null : phones), prefix("Email : ", info.email()));
         if (!contact.isBlank()) {
             Paragraph c = new Paragraph(contact, small);
             c.setAlignment(Element.ALIGN_RIGHT);

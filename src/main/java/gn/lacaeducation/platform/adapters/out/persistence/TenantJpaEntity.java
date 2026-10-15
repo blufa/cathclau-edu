@@ -46,6 +46,7 @@ public class TenantJpaEntity {
     private String city;
     private String country;
     private String phone;
+    private String phone2;
     private String email;
 
     @Column(name = "website")

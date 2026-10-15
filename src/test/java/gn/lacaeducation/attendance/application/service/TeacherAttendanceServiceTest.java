@@ -413,4 +413,46 @@ class TeacherAttendanceServiceTest {
         assertThat(report.rows().get(1).subjectLabel()).isEqualTo("Mathématiques");
         assertThat(report.rows().get(1).lateMinutes()).isEqualTo(15);
     }
+
+    /**
+     * §retour fondateurs : un enseignant arrivé en retard (8h30 pour un cours à 8h) qui reste plus
+     * longtemps que prévu (14h30 au lieu de 14h) a bien compensé — ses heures effectives (utilisées
+     * pour la paie) ne doivent PAS être pénalisées, même si lateMinutes affiché reste 30 (visible tel
+     * quel dans le rapport de ponctualité RH, voir latenessDetail).
+     */
+    @Test
+    void monthlySummary_lateArrivalCompensatedByLateDeparture_noPenaltyOnEffectiveMinutes() {
+        when(academics.findScheduleByTeacher(5L)).thenReturn(List.of(
+                new ScheduleSlotPublicInfo(1L, 20L, 30L, 5L, 2L, "LUNDI", "08:00", "14:00", null)));
+        when(repo.findByTeacherIdAndDateBetween(eq(5L), any(), any())).thenReturn(List.of());
+        TeacherCheckin compensated = TeacherCheckin.builder().teacherId(5L).checkinDate(LocalDate.of(2026, 10, 5))
+                .scheduleSlotId(1L).sessionStart(java.time.LocalTime.of(8, 0)).sessionEnd(java.time.LocalTime.of(14, 0))
+                .checkInTime(java.time.LocalTime.of(8, 30)).checkOutTime(java.time.LocalTime.of(14, 30))
+                .lateMinutes(30).earlyMinutes(0).build();
+        when(checkinRepository.findByTeacherIdAndDateBetween(eq(5L), any(), any())).thenReturn(List.of(compensated));
+
+        var result = service.monthlySummary(5L, 2026, 10);
+
+        assertThat(result.totalLateMinutes()).isEqualTo(30); // affiché tel quel, pour le RH
+        assertThat(result.totalEarlyMinutes()).isEqualTo(0);
+        // Aucun écart entre dû et effectif : la présence nette (6h) couvre la durée prévue (6h).
+        assertThat(result.effectiveMinutes()).isEqualTo(result.dueMinutes());
+    }
+
+    /** Retard SANS sortie pointée (séance en cours, ou badge de sortie oublié) : impossible de savoir
+     * si l'enseignant a compensé — on retombe sur le seul retard connu, même comportement qu'avant. */
+    @Test
+    void monthlySummary_lateArrivalNoCheckoutYet_fallsBackToLateMinutesOnly() {
+        when(academics.findScheduleByTeacher(5L)).thenReturn(List.of(
+                new ScheduleSlotPublicInfo(1L, 20L, 30L, 5L, 2L, "LUNDI", "08:00", "14:00", null)));
+        when(repo.findByTeacherIdAndDateBetween(eq(5L), any(), any())).thenReturn(List.of());
+        TeacherCheckin noCheckout = TeacherCheckin.builder().teacherId(5L).checkinDate(LocalDate.of(2026, 10, 5))
+                .scheduleSlotId(1L).sessionStart(java.time.LocalTime.of(8, 0)).sessionEnd(java.time.LocalTime.of(14, 0))
+                .checkInTime(java.time.LocalTime.of(8, 30)).lateMinutes(30).earlyMinutes(0).build();
+        when(checkinRepository.findByTeacherIdAndDateBetween(eq(5L), any(), any())).thenReturn(List.of(noCheckout));
+
+        var result = service.monthlySummary(5L, 2026, 10);
+
+        assertThat(result.effectiveMinutes()).isEqualTo(result.dueMinutes() - 30);
+    }
 }
