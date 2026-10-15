@@ -25,7 +25,7 @@ class UserPublicInfoProviderAdapter implements UserPublicInfoProvider {
     public List<Long> findUserIdsByRoles(Long tenantId, Set<String> roleCodes) {
         if (tenantId == null || roleCodes == null || roleCodes.isEmpty()) return List.of();
         List<RoleCode> codes = roleCodes.stream().map(RoleCode::valueOf).toList();
-        return jpa.findActiveByTenantIdAndRoleCodes(tenantId, codes).stream()
+        return jpa.findActiveByTenantIdAndRoleCodesAnyContact(tenantId, codes).stream()
                 .map(UserJpaEntity::getId).distinct().toList();
     }
 }

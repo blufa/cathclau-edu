@@ -33,7 +33,7 @@ class UserPublicInfoProviderAdapterTest {
      * qu'une seule fois, pas une fois par rôle demandé. */
     @Test
     void findUserIdsByRoles_dedupesUsersWithMultipleMatchingRoles() {
-        when(jpa.findActiveByTenantIdAndRoleCodes(eq(10L), anyCollection()))
+        when(jpa.findActiveByTenantIdAndRoleCodesAnyContact(eq(10L), anyCollection()))
                 .thenReturn(List.of(user(5L), user(5L), user(6L)));
 
         List<Long> ids = adapter().findUserIdsByRoles(10L, Set.of("SCHOOL_ADMIN", "ACCOUNTANT"));
@@ -49,10 +49,10 @@ class UserPublicInfoProviderAdapterTest {
 
     @Test
     void findUserIdsByRoles_passesParsedRoleCodesToRepository() {
-        when(jpa.findActiveByTenantIdAndRoleCodes(eq(10L), anyCollection())).thenReturn(List.of());
+        when(jpa.findActiveByTenantIdAndRoleCodesAnyContact(eq(10L), anyCollection())).thenReturn(List.of());
 
         adapter().findUserIdsByRoles(10L, Set.of("ACCOUNTANT"));
 
-        org.mockito.Mockito.verify(jpa).findActiveByTenantIdAndRoleCodes(eq(10L), eq(List.of(RoleCode.ACCOUNTANT)));
+        org.mockito.Mockito.verify(jpa).findActiveByTenantIdAndRoleCodesAnyContact(eq(10L), eq(List.of(RoleCode.ACCOUNTANT)));
     }
 }
