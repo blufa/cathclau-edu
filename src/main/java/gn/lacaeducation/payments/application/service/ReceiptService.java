@@ -79,25 +79,17 @@ public class ReceiptService implements ReceiptUseCase {
         return receipt;
     }
 
-    @Override
-    public Receipt refreshStudentName(Long receiptId) {
-        Receipt receipt = repo.findById(receiptId)
-                .orElseThrow(() -> new ResourceNotFoundException("Receipt", receiptId));
-        Payment p = paymentRepo.findById(receipt.getPaymentId())
-                .orElseThrow(() -> new ResourceNotFoundException("Payment", receipt.getPaymentId()));
-        receipt.setStudentName(resolveGroupStudentName(p));
-        // pdfBytes() régénère déjà toujours à la volée (lira donc directement le nom corrigé) ; pdfUrl()
-        // sert en revanche la version Cloudinary mise en cache tant que pdfFile n'est pas vidé ici.
-        receipt.setPdfFile(null);
-        return repo.save(receipt);
-    }
-
     @Override @Transactional(readOnly = true)
     public byte[] pdfBytes(Long receiptId) {
         Receipt receipt = repo.findById(receiptId)
                 .orElseThrow(() -> new ResourceNotFoundException("Receipt", receiptId));
         Payment p = paymentRepo.findById(receipt.getPaymentId())
                 .orElseThrow(() -> new ResourceNotFoundException("Payment", receipt.getPaymentId()));
+        // Nom résolu à la volée (pas celui figé en base au moment de l'émission) : une faute de frappe
+        // corrigée sur la fiche élève après coup doit apparaître dès la prochaine ouverture du reçu,
+        // sans action manuelle (§retour comptable). Transaction en lecture seule : cette correction
+        // n'est jamais persistée, juste utilisée pour ce rendu-ci.
+        receipt.setStudentName(resolveGroupStudentName(p));
         return pdfGenerator.generate(receipt, p);
     }
 

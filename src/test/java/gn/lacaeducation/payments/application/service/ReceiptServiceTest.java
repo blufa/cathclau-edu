@@ -9,6 +9,7 @@ import gn.lacaeducation.payments.domain.PaymentStatus;
 import gn.lacaeducation.payments.domain.Receipt;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -106,25 +107,21 @@ class ReceiptServiceTest {
     }
 
     @Test
-    void refreshStudentName_reresolvesNameAndInvalidatesCachedPdf() {
-        Receipt receipt = Receipt.builder().id(1L).paymentId(2L)
-                .studentName("Awa Diallo (ancien nom mal saisi)").pdfFile("https://cdn.test/raw/receipts/stale.pdf").build();
+    void pdfBytes_resolvesStudentNameLive_ignoringStaleSnapshot() {
+        // §retour comptable : une faute de frappe corrigée sur la fiche élève APRÈS la génération du
+        // reçu doit apparaître dès la prochaine ouverture — pas seulement le nom figé à l'émission.
+        Receipt receipt = Receipt.builder().id(1L).paymentId(2L).studentName("Awa Dialo (faute)").build();
         when(repo.findById(1L)).thenReturn(Optional.of(receipt));
         when(paymentRepo.findById(2L)).thenReturn(Optional.of(Payment.builder().id(2L).studentId(7L).build()));
         when(payerDirectory.studentName(7L)).thenReturn(Optional.of("Awa Diallo (corrigé)"));
-        when(repo.save(any(Receipt.class))).thenAnswer(i -> i.getArgument(0));
+        when(pdfGenerator.generate(any(), any())).thenReturn(new byte[]{1});
 
-        Receipt result = service.refreshStudentName(1L);
+        service.pdfBytes(1L);
 
-        assertThat(result.getStudentName()).isEqualTo("Awa Diallo (corrigé)");
-        assertThat(result.getPdfFile()).isNull();
-    }
-
-    @Test
-    void refreshStudentName_unknownReceipt_throwsNotFound() {
-        when(repo.findById(1L)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> service.refreshStudentName(1L)).isInstanceOf(ResourceNotFoundException.class);
+        ArgumentCaptor<Receipt> captor = ArgumentCaptor.forClass(Receipt.class);
+        verify(pdfGenerator).generate(captor.capture(), any());
+        assertThat(captor.getValue().getStudentName()).isEqualTo("Awa Diallo (corrigé)");
+        verify(repo, never()).save(any());
     }
 
     @Test
