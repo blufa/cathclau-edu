@@ -7,6 +7,8 @@ package gn.lacaeducation.common;
  * opening authorization).
  */
 public record TenantPublicInfo(Long id, String schoolName, String email, String phone,
+                               /** Second school phone number (optional) — see {@code Tenant#phone2}. */
+                               String phone2,
                                String logo, String address, String city, String country,
                                String website, String director,
                                String accreditationNumber, String openingAuthorization,

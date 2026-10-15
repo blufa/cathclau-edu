@@ -11,7 +11,7 @@ public class TenantInfoProviderAdapter implements TenantInfoProvider {
     @Override
     public Optional<TenantPublicInfo> findTenantInfo(Long tenantId) {
         return jpa.findById(tenantId).map(t ->
-                new TenantPublicInfo(t.getId(), t.getSchoolName(), t.getEmail(), t.getPhone(),
+                new TenantPublicInfo(t.getId(), t.getSchoolName(), t.getEmail(), t.getPhone(), t.getPhone2(),
                         t.getLogo(), t.getAddress(), t.getCity(), t.getCountry(),
                         t.getWebsite(), t.getDirector(),
                         t.getAccreditationNumber(), t.getOpeningAuthorization(),

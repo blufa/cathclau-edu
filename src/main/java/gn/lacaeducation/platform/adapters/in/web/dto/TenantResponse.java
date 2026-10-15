@@ -13,6 +13,8 @@ public record TenantResponse(
     String slug,
     String email,
     String phone,
+    /** Second school phone number (optional) — see {@code Tenant#phone2}. */
+    String phone2,
     String logo,
     String brandColor,
     String address,
@@ -58,7 +60,7 @@ public record TenantResponse(
     public static TenantResponse from(Tenant tenant, String temporaryPassword) {
         return new TenantResponse(
             tenant.getId(), tenant.getSchoolName(), tenant.getSlug(), tenant.getEmail(),
-            tenant.getPhone(), tenant.getLogo(), tenant.getBrandColor(), tenant.getAddress(), tenant.getCity(),
+            tenant.getPhone(), tenant.getPhone2(), tenant.getLogo(), tenant.getBrandColor(), tenant.getAddress(), tenant.getCity(),
             tenant.getCountry(), tenant.getWebsite(), tenant.getDirector(), tenant.getFounderPhone(),
             tenant.getAccreditationNumber(), tenant.getOpeningAuthorization(),
             tenant.getMotto(), tenant.getSlogan(),

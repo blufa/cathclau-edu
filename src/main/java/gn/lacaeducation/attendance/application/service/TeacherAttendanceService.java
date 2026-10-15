@@ -249,6 +249,23 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
         int totalLate = checkins.stream().mapToInt(c -> c.getLateMinutes() != null ? c.getLateMinutes() : 0).sum();
         // Départ anticipé cumulé (symétrique) : 0 si la sortie n'a jamais été pointée (bénéfice du doute).
         int totalEarly = checkins.stream().mapToInt(c -> c.getEarlyMinutes() != null ? c.getEarlyMinutes() : 0).sum();
+        // Manque à gagner RÉEL par séance, pour le calcul des heures effectives (paie) — distinct de
+        // totalLate/totalEarly ci-dessus qui restent affichés tels quels pour le rapport de ponctualité
+        // (RH, voir latenessDetail/latenessReportPdf). §retour fondateurs : un enseignant arrivé à 8h30
+        // (30 min de retard) qui reste jusqu'à 14h30 (30 min après la fin prévue) a bien fait ses heures
+        // — compare directement la présence nette (sortie - entrée) à la durée prévue de la séance,
+        // plutôt que de soustraire retard et départ anticipé indépendamment (ce qui pénalisait deux fois
+        // un enseignant ayant compensé). Sans pointage de sortie, impossible de savoir s'il a compensé :
+        // on retombe sur le seul retard connu (même comportement qu'avant pour ce cas).
+        int totalShortfall = checkins.stream().mapToInt(c -> {
+            if (c.getSessionStart() == null || c.getSessionEnd() == null) return 0;
+            int scheduled = (int) Duration.between(c.getSessionStart(), c.getSessionEnd()).toMinutes();
+            if (c.getCheckInTime() != null && c.getCheckOutTime() != null) {
+                int presentMinutes = (int) Math.max(0, Duration.between(c.getCheckInTime(), c.getCheckOutTime()).toMinutes());
+                return Math.max(0, scheduled - presentMinutes);
+            }
+            return c.getLateMinutes() != null ? c.getLateMinutes() : 0;
+        }).sum();
         // Minutes prévues par jour de semaine (emploi du temps hebdomadaire de l'enseignant).
         Map<String, Integer> minutesByDay = new HashMap<>();
         for (var s : academics.findScheduleByTeacher(teacherId)) {
@@ -266,7 +283,7 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
                 .filter(r -> r.getStatus() == TeacherAttendanceStatus.ABSENT)
                 .mapToInt(r -> minutesByDay.getOrDefault(frenchDay(r.getDate().getDayOfWeek()), 0))
                 .sum();
-        int effective = Math.max(0, dueMinutes - absentMinutes - totalLate - totalEarly);
+        int effective = Math.max(0, dueMinutes - absentMinutes - totalShortfall);
         return new MonthlySummary(teacherId, year, month, present, absent, totalLate, totalEarly, dueMinutes, absentMinutes, effective);
     }
 

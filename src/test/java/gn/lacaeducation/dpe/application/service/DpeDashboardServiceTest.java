@@ -34,7 +34,7 @@ class DpeDashboardServiceTest {
 
     private void stubSchool(Long tenantId, String name, long students, long teachers, long activeTeachers, long classes) {
         when(tenantInfoProvider.findTenantInfo(tenantId)).thenReturn(Optional.of(
-                new TenantPublicInfo(tenantId, name, null, null, null, null, "Coyah", "Guinée",
+                new TenantPublicInfo(tenantId, name, null, null, null, null, null, "Coyah", "Guinée",
                         null, null, null, null, null, null, null, null, null, null, null, null, false)));
         when(tenantInfoProvider.isTenantActive(tenantId)).thenReturn(true);
         when(studentCountPort.countByTenant(tenantId)).thenReturn(students);
@@ -97,7 +97,7 @@ class DpeDashboardServiceTest {
     @Test
     void summaryOf_classCountIsZero_whenNoCurrentAcademicYear() {
         when(tenantInfoProvider.findTenantInfo(1L)).thenReturn(Optional.of(
-                new TenantPublicInfo(1L, "École A", null, null, null, null, "Coyah", "Guinée",
+                new TenantPublicInfo(1L, "École A", null, null, null, null, null, "Coyah", "Guinée",
                         null, null, null, null, null, null, null, null, null, null, null, null, false)));
         when(tenantInfoProvider.isTenantActive(1L)).thenReturn(true);
         when(studentCountPort.countByTenant(1L)).thenReturn(10L);

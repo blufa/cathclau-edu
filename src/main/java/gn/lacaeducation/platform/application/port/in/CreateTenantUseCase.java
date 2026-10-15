@@ -25,7 +25,7 @@ public interface CreateTenantUseCase {
     void delete(Long id);
 
     /** Manual creation by SUPER_ADMIN. {@code initialState} defaults to TRIAL (null → TRIAL). */
-    record CreateTenantCommand(String schoolName, String slug, String email, String phone,
+    record CreateTenantCommand(String schoolName, String slug, String email, String phone, String phone2,
             String address, String city, String country, String director,
             Set<EstablishmentType> establishmentTypes, TenantStatus initialState, String adminPassword,
             String adminUsername) {}
@@ -36,7 +36,7 @@ public interface CreateTenantUseCase {
      */
     record CreatedTenant(Tenant tenant, String temporaryPassword) {}
     record UpdateTenantCommand(String schoolName, String logo, String brandColor,
-            String address, String city, String country, String phone, String email,
+            String address, String city, String country, String phone, String phone2, String email,
             String website, String director,
             /** Numéro dédié aux alertes automatiques (fondateur) ; voir {@code Tenant#founderPhone}. */
             String founderPhone,

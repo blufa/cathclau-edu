@@ -26,6 +26,11 @@ public class Tenant {
     private String city;
     private String country;
     private String phone;
+    /** Second school phone number (optional) — distinct from {@code phone}, which in practice often
+     * ends up holding the director's personal/login number by mistake since nothing on the create/
+     * edit forms distinguishes "school number" from "the person filling the form's own number".
+     * Both are printed on badges/receipts when set. */
+    private String phone2;
     private String email;
     private String website;
     private String director;

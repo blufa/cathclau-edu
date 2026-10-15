@@ -38,7 +38,7 @@ public class TenantController {
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ResponseEntity<TenantResponse> create(@Valid @RequestBody CreateTenantRequest req) {
         var created = tenantUseCase.create(new CreateTenantUseCase.CreateTenantCommand(
-                req.schoolName(), req.slug(), req.email(), req.phone(), req.address(), req.city(),
+                req.schoolName(), req.slug(), req.email(), req.phone(), req.phone2(), req.address(), req.city(),
                 req.country(), req.director(), req.establishmentTypes(), req.initialState(), req.adminPassword(),
                 req.username()));
         var tenant = created.tenant();
@@ -71,7 +71,7 @@ public class TenantController {
     public TenantResponse update(@PathVariable Long id, @Valid @RequestBody UpdateTenantRequest req) {
         return TenantResponse.from(tenantUseCase.update(id, new CreateTenantUseCase.UpdateTenantCommand(
                 req.schoolName(), req.logo(), req.brandColor(), req.address(), req.city(),
-                req.country(), req.phone(), req.email(), req.website(), req.director(), req.founderPhone(),
+                req.country(), req.phone(), req.phone2(), req.email(), req.website(), req.director(), req.founderPhone(),
                 req.accreditationNumber(), req.openingAuthorization(),
                 req.payoutMerchantNumber(), req.payoutOperator(), req.payoutAccountName(),
                 req.motto(), req.slogan(), req.ire(), req.dpeLabel(), req.sousPrefectureLabel(),
