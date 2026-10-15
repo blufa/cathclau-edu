@@ -10,6 +10,10 @@ public interface ReceiptUseCase {
     String pdfUrl(Long receiptId);
     /** Génère et renvoie les octets du PDF du reçu (pour affichage direct, sans Cloudinary). */
     byte[] pdfBytes(Long receiptId);
+    /** Recalcule le nom de l'élève depuis sa fiche actuelle (ex. faute de frappe corrigée après la
+     * génération du reçu, §retour comptable) et invalide le PDF déjà mis en cache pour qu'il soit
+     * régénéré avec le nom corrigé au prochain téléchargement. */
+    Receipt refreshStudentName(Long receiptId);
     Optional<Receipt> findById(Long id);
     Optional<Receipt> findByPaymentId(Long paymentId);
     Optional<Receipt> findByReference(String reference);

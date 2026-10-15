@@ -106,6 +106,28 @@ class ReceiptServiceTest {
     }
 
     @Test
+    void refreshStudentName_reresolvesNameAndInvalidatesCachedPdf() {
+        Receipt receipt = Receipt.builder().id(1L).paymentId(2L)
+                .studentName("Awa Diallo (ancien nom mal saisi)").pdfFile("https://cdn.test/raw/receipts/stale.pdf").build();
+        when(repo.findById(1L)).thenReturn(Optional.of(receipt));
+        when(paymentRepo.findById(2L)).thenReturn(Optional.of(Payment.builder().id(2L).studentId(7L).build()));
+        when(payerDirectory.studentName(7L)).thenReturn(Optional.of("Awa Diallo (corrigé)"));
+        when(repo.save(any(Receipt.class))).thenAnswer(i -> i.getArgument(0));
+
+        Receipt result = service.refreshStudentName(1L);
+
+        assertThat(result.getStudentName()).isEqualTo("Awa Diallo (corrigé)");
+        assertThat(result.getPdfFile()).isNull();
+    }
+
+    @Test
+    void refreshStudentName_unknownReceipt_throwsNotFound() {
+        when(repo.findById(1L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.refreshStudentName(1L)).isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
     void findByStudentId_collectsReceiptsAcrossStudentPayments() {
         when(paymentRepo.findByStudentId(7L)).thenReturn(List.of(
                 Payment.builder().id(1L).build(), Payment.builder().id(2L).build()));

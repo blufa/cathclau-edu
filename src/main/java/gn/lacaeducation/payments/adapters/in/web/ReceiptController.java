@@ -43,6 +43,12 @@ public class ReceiptController {
     @Operation(summary = "Generate a receipt for a successful payment")
     @PreAuthorize("hasAuthority('recu:read')")
     @PostMapping("/payment/{paymentId}") public ResponseEntity<Receipt> generate(@PathVariable Long paymentId) { return ResponseEntity.ok(useCase.generate(paymentId)); }
+    @Operation(summary = "Recalcule le nom de l'élève depuis sa fiche actuelle (faute de frappe corrigée "
+            + "après la génération du reçu) et invalide le PDF déjà mis en cache")
+    @PreAuthorize("hasAuthority('recu:read')")
+    @PostMapping("/{id}/refresh-student-name") public ResponseEntity<Receipt> refreshStudentName(@PathVariable Long id) {
+        return ResponseEntity.ok(useCase.refreshStudentName(id));
+    }
     @Operation(summary = "Get a receipt by ID")
     @GetMapping("/{id}") public ResponseEntity<Receipt> findById(@PathVariable Long id) {
         return useCase.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());

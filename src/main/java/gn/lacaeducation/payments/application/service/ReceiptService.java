@@ -79,6 +79,19 @@ public class ReceiptService implements ReceiptUseCase {
         return receipt;
     }
 
+    @Override
+    public Receipt refreshStudentName(Long receiptId) {
+        Receipt receipt = repo.findById(receiptId)
+                .orElseThrow(() -> new ResourceNotFoundException("Receipt", receiptId));
+        Payment p = paymentRepo.findById(receipt.getPaymentId())
+                .orElseThrow(() -> new ResourceNotFoundException("Payment", receipt.getPaymentId()));
+        receipt.setStudentName(resolveGroupStudentName(p));
+        // pdfBytes() régénère déjà toujours à la volée (lira donc directement le nom corrigé) ; pdfUrl()
+        // sert en revanche la version Cloudinary mise en cache tant que pdfFile n'est pas vidé ici.
+        receipt.setPdfFile(null);
+        return repo.save(receipt);
+    }
+
     @Override @Transactional(readOnly = true)
     public byte[] pdfBytes(Long receiptId) {
         Receipt receipt = repo.findById(receiptId)
