@@ -1,8 +1,11 @@
 package gn.lacaeducation.students.application.service;
 
 import gn.lacaeducation.students.application.event.EnrollmentValidatedEvent;
+import gn.lacaeducation.students.application.port.in.EnrollmentUseCase.ArrearsSummary;
 import gn.lacaeducation.students.application.port.in.EnrollmentUseCase.EnrollCommand;
+import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ConflictException;
+import gn.lacaeducation.students.ArrearsPort;
 import gn.lacaeducation.students.ClassCapacityPort;
 import gn.lacaeducation.students.application.port.out.EnrollmentRepository;
 import gn.lacaeducation.students.application.port.out.StudentRepository;
@@ -16,6 +19,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -26,6 +31,7 @@ class InscriptionServiceTest {
 
     @Mock EnrollmentRepository enrollmentRepository;
     @Mock ClassCapacityPort classCapacityPort;
+    @Mock ArrearsPort arrearsPort;
     @Mock ApplicationEventPublisher eventPublisher;
     @Mock StudentRepository studentRepository;
     @InjectMocks InscriptionService service;
@@ -246,5 +252,45 @@ class InscriptionServiceTest {
         assertThatThrownBy(() -> service.transferClass(1L, 21L))
                 .isInstanceOf(ConflictException.class);
         verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void reenroll_studentHasArrears_throwsBusinessRuleAndNeverSaves() {
+        when(arrearsPort.arrears(10L, 31L)).thenReturn(new ArrearsPort.ArrearsInfo(BigDecimal.valueOf(50_000), 1));
+
+        assertThatThrownBy(() -> service.reenroll(new EnrollCommand(10L, 20L, 31L, EnrollmentType.RE_ENROLLMENT, null, null)))
+                .isInstanceOf(BusinessRuleException.class);
+        verify(enrollmentRepository, never()).save(any());
+    }
+
+    @Test
+    void reenroll_noArrears_proceedsNormally() {
+        when(arrearsPort.arrears(10L, 31L)).thenReturn(new ArrearsPort.ArrearsInfo(BigDecimal.ZERO, 0));
+        when(enrollmentRepository.save(any())).thenAnswer(i -> { Enrollment e = i.getArgument(0); e.setId(1L); return e; });
+
+        Enrollment result = service.reenroll(new EnrollCommand(10L, 20L, 31L, EnrollmentType.RE_ENROLLMENT, null, null));
+
+        assertThat(result.getType()).isEqualTo(EnrollmentType.RE_ENROLLMENT);
+    }
+
+    @Test
+    void enroll_neverChecksArrears() {
+        when(enrollmentRepository.save(any())).thenAnswer(i -> { Enrollment e = i.getArgument(0); e.setId(1L); return e; });
+
+        service.enroll(new EnrollCommand(10L, 20L, 30L, EnrollmentType.NEW, null, null));
+
+        verify(arrearsPort, never()).arrears(any(), any());
+    }
+
+    @Test
+    void arrears_mapsEachStudentIndependently() {
+        when(arrearsPort.arrears(1L, 99L)).thenReturn(new ArrearsPort.ArrearsInfo(BigDecimal.valueOf(100_000), 2));
+        when(arrearsPort.arrears(2L, 99L)).thenReturn(new ArrearsPort.ArrearsInfo(BigDecimal.ZERO, 0));
+
+        List<ArrearsSummary> result = service.arrears(List.of(1L, 2L), 99L);
+
+        assertThat(result).containsExactly(
+                new ArrearsSummary(1L, BigDecimal.valueOf(100_000), 2),
+                new ArrearsSummary(2L, BigDecimal.ZERO, 0));
     }
 }

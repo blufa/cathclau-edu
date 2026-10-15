@@ -43,19 +43,39 @@ public class PaymentReminderCandidatesService {
                             int tranchesPaid, int totalTranches, List<ParentContact> parents) {}
 
     public List<Candidate> listByClass(Long tenantId, Long classId) {
+        String className = academicsDataProvider.findClass(classId)
+                .map(gn.lacaeducation.academics.ClassPublicInfo::label).orElse(null);
+        return sorted(computeForClass(tenantId, classId, className));
+    }
+
+    /** Même calcul que {@link #listByClass}, mais pour TOUTES les classes du tenant à la fois (§retour
+     * comptable : "sur la liste des élèves il veut filtrer par classe, en retard, échéance proche..."
+     * sans avoir à choisir une classe au préalable) — une classe sans frais MENSUALITE configuré ne
+     * contribue simplement aucun candidat (listes vides, voir {@link #computeForClass}). */
+    public List<Candidate> listByTenant(Long tenantId) {
+        List<Candidate> all = academicsDataProvider.findClassesByTenant(tenantId).stream()
+                .flatMap(c -> computeForClass(tenantId, c.id(), c.label()).stream())
+                .toList();
+        return sorted(all);
+    }
+
+    private List<Candidate> sorted(List<Candidate> candidates) {
+        return candidates.stream()
+                .sorted(Comparator.comparing((Candidate c) -> c.status() == Status.OVERDUE ? 0 : c.status() == Status.UPCOMING ? 1 : 2)
+                        .thenComparing(c -> c.dueDate() == null ? LocalDate.MAX : c.dueDate()))
+                .toList();
+    }
+
+    private List<Candidate> computeForClass(Long tenantId, Long classId, String className) {
         LocalDate today = LocalDate.now();
         List<ClassFeeLine> lines = dataPort.findClassMonthlyFeeLines(tenantId, classId);
         int totalTranches = dataPort.countMonthlyTranches(tenantId, classId);
-        String className = academicsDataProvider.findClass(classId)
-                .map(gn.lacaeducation.academics.ClassPublicInfo::label).orElse(null);
 
         Map<Long, List<ClassFeeLine>> linesByStudent = lines.stream()
                 .collect(Collectors.groupingBy(ClassFeeLine::studentId));
 
         return studentDataProvider.findStudentsByClass(classId).stream()
                 .map(s -> toCandidate(s, classId, className, linesByStudent.getOrDefault(s.id(), List.of()), totalTranches, today))
-                .sorted(Comparator.comparing((Candidate c) -> c.status() == Status.OVERDUE ? 0 : c.status() == Status.UPCOMING ? 1 : 2)
-                        .thenComparing(c -> c.dueDate() == null ? LocalDate.MAX : c.dueDate()))
                 .toList();
     }
 

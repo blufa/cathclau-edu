@@ -1,6 +1,6 @@
 @org.springframework.modulith.ApplicationModule(
     allowedDependencies = {
-        "common",
+        "common", "common::pdf",
         "students",
         "staff",
         "audit::events",

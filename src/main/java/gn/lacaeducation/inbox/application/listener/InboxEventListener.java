@@ -1,6 +1,7 @@
 package gn.lacaeducation.inbox.application.listener;
 
 import gn.lacaeducation.attendance.application.event.StudentAbsentEvent;
+import gn.lacaeducation.communication.application.event.UpcomingPaymentDeadlinesDigestEvent;
 import gn.lacaeducation.grading.application.event.ReportCardPublishedEvent;
 import gn.lacaeducation.inbox.application.port.in.NotificationUseCase;
 import gn.lacaeducation.inbox.application.port.in.NotificationUseCase.CreateNotificationCommand;
@@ -55,6 +56,25 @@ public class InboxEventListener {
                 "Paiement enregistré",
                 "Un paiement de " + event.amount() + " a été enregistré.",
                 null);
+    }
+
+    /** Rappel interne (direction/comptabilité, pas les parents) — échéances de paiement qui approchent,
+     * une seule notification groupée par utilisateur et par jour (§retour comptable, voir javadoc de
+     * {@code UpcomingDeadlineNotifyScheduler}). Les destinataires sont déjà résolus par l'émetteur. */
+    @TransactionalEventListener
+    @Async
+    public void onUpcomingPaymentDeadlinesDigest(UpcomingPaymentDeadlinesDigestEvent event) {
+        String content = event.studentCount() + " élève" + (event.studentCount() > 1 ? "s ont" : " a")
+                + " une échéance de paiement proche cette semaine.";
+        for (Long userId : event.userIds()) {
+            try {
+                notificationUseCase.create(new CreateNotificationCommand(event.tenantId(), userId, NotificationType.PAYMENT,
+                        "Échéances proches", content, "/enrollments/payment-status"));
+            } catch (Exception e) {
+                log.error("Échec de création du rappel d'échéances proches pour user {} (tenant {}): {}",
+                        userId, event.tenantId(), e.getMessage(), e);
+            }
+        }
     }
 
     private void notifyParents(Long tenantId, Long studentId, NotificationType type,
