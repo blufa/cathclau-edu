@@ -3,10 +3,12 @@ package gn.lacaeducation.communication.adapters.in.web;
 import gn.lacaeducation.common.TenantContext;
 import gn.lacaeducation.communication.application.port.out.PaymentStatusListPdfGenerator;
 import gn.lacaeducation.communication.application.service.PaymentReminderCandidatesService;
+import gn.lacaeducation.communication.application.service.UpcomingDeadlineNotifyScheduler;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -15,6 +17,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -35,6 +38,7 @@ public class PaymentReminderCandidatesController {
 
     private final PaymentReminderCandidatesService service;
     private final PaymentStatusListPdfGenerator pdfGenerator;
+    private final UpcomingDeadlineNotifyScheduler upcomingDeadlineNotifyScheduler;
 
     @Operation(summary = "Lister les élèves (d'une classe, ou de toutes si classId omis) avec leur statut de paiement "
             + "(à jour/retard/échéance proche) et leurs tranches payées")
@@ -61,5 +65,14 @@ public class PaymentReminderCandidatesController {
                 .contentType(MediaType.APPLICATION_PDF)
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=suivi-paiements.pdf")
                 .body(pdf);
+    }
+
+    @Operation(summary = "Déclenche immédiatement le rappel interne (échéances proches) pour le tenant courant — "
+            + "même traitement que le job planifié quotidien de 7h — pour tester sans attendre le lendemain matin")
+    @PreAuthorize("hasAuthority('communication:send')")
+    @PostMapping("/notify-upcoming-now")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void notifyUpcomingNow() {
+        upcomingDeadlineNotifyScheduler.notifyForTenant(TenantContext.get());
     }
 }
