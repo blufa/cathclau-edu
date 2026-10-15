@@ -3,6 +3,7 @@ package gn.lacaeducation.students.application.service;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ConflictException;
 import gn.lacaeducation.common.ResourceNotFoundException;
+import gn.lacaeducation.students.ArrearsPort;
 import gn.lacaeducation.students.EnrollmentValidationApi;
 import gn.lacaeducation.students.application.event.EnrollmentAbandonedEvent;
 import gn.lacaeducation.students.application.event.EnrollmentCancelledEvent;
@@ -28,6 +29,7 @@ public class InscriptionService implements EnrollmentUseCase, EnrollmentValidati
 
     private final EnrollmentRepository enrollmentRepository;
     private final ClassCapacityPort classCapacityPort;
+    private final ArrearsPort arrearsPort;
     private final ApplicationEventPublisher eventPublisher;
     private final StudentRepository studentRepository;
 
@@ -38,7 +40,29 @@ public class InscriptionService implements EnrollmentUseCase, EnrollmentValidati
 
     @Override
     public Enrollment reenroll(EnrollCommand cmd) {
+        requireNoArrears(cmd.studentId(), cmd.academicYearId());
         return create(cmd, EnrollmentType.RE_ENROLLMENT);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ArrearsSummary> arrears(List<Long> studentIds, Long excludingAcademicYearId) {
+        return studentIds.stream()
+                .map(id -> {
+                    ArrearsPort.ArrearsInfo info = arrearsPort.arrears(id, excludingAcademicYearId);
+                    return new ArrearsSummary(id, info.totalDue(), info.invoiceCount());
+                })
+                .toList();
+    }
+
+    /** Même admis, un élève ayant des factures impayées d'une année antérieure ne peut pas être
+     * réinscrit (§retour comptable) — ni dans la classe supérieure, ni en redoublant la même classe. */
+    private void requireNoArrears(Long studentId, Long academicYearId) {
+        ArrearsPort.ArrearsInfo arrears = arrearsPort.arrears(studentId, academicYearId);
+        if (arrears.totalDue().signum() > 0) {
+            throw new BusinessRuleException(
+                    "Cet élève a des factures impayées de l'année précédente — réglez-les avant de le réinscrire.");
+        }
     }
 
     private Enrollment create(EnrollCommand cmd, EnrollmentType type) {

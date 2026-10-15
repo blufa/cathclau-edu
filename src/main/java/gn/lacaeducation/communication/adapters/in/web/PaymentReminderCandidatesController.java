@@ -1,17 +1,27 @@
 package gn.lacaeducation.communication.adapters.in.web;
 
 import gn.lacaeducation.common.TenantContext;
+import gn.lacaeducation.communication.application.port.out.PaymentStatusListPdfGenerator;
 import gn.lacaeducation.communication.application.service.PaymentReminderCandidatesService;
+import gn.lacaeducation.communication.application.service.UpcomingDeadlineNotifyScheduler;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * Pour une classe donnée, tous ses élèves avec leur statut de paiement (à jour / en retard / échéance
@@ -27,11 +37,42 @@ import java.util.List;
 public class PaymentReminderCandidatesController {
 
     private final PaymentReminderCandidatesService service;
+    private final PaymentStatusListPdfGenerator pdfGenerator;
+    private final UpcomingDeadlineNotifyScheduler upcomingDeadlineNotifyScheduler;
 
-    @Operation(summary = "Lister les élèves d'une classe avec leur statut de paiement (à jour/retard/échéance proche) et leurs tranches payées")
+    @Operation(summary = "Lister les élèves (d'une classe, ou de toutes si classId omis) avec leur statut de paiement "
+            + "(à jour/retard/échéance proche) et leurs tranches payées")
     @PreAuthorize("hasAuthority('communication:send')")
     @GetMapping
-    public List<PaymentReminderCandidatesService.Candidate> listByClass(@RequestParam Long classId) {
-        return service.listByClass(TenantContext.get(), classId);
+    public List<PaymentReminderCandidatesService.Candidate> list(@RequestParam(required = false) Long classId) {
+        return classId != null ? service.listByClass(TenantContext.get(), classId) : service.listByTenant(TenantContext.get());
+    }
+
+    public record PrintRequest(Long classId, Set<Long> studentIds) {}
+
+    @Operation(summary = "Imprimer la liste (telle que filtrée à l'écran) des élèves sélectionnés avec leur statut de paiement")
+    @PreAuthorize("hasAuthority('communication:send')")
+    @PostMapping(value = "/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
+    public ResponseEntity<byte[]> printPdf(@RequestBody PrintRequest req) {
+        Long tenantId = TenantContext.get();
+        List<PaymentReminderCandidatesService.Candidate> all = req.classId() != null
+                ? service.listByClass(tenantId, req.classId()) : service.listByTenant(tenantId);
+        List<PaymentReminderCandidatesService.Candidate> selected = all.stream()
+                .filter(c -> req.studentIds().contains(c.studentId()))
+                .toList();
+        byte[] pdf = pdfGenerator.generate(tenantId, selected);
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=suivi-paiements.pdf")
+                .body(pdf);
+    }
+
+    @Operation(summary = "Déclenche immédiatement le rappel interne (échéances proches) pour le tenant courant — "
+            + "même traitement que le job planifié quotidien de 7h — pour tester sans attendre le lendemain matin")
+    @PreAuthorize("hasAuthority('communication:send')")
+    @PostMapping("/notify-upcoming-now")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void notifyUpcomingNow() {
+        upcomingDeadlineNotifyScheduler.notifyForTenant(TenantContext.get());
     }
 }

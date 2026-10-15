@@ -45,4 +45,15 @@ interface UserJpaRepository extends JpaRepository<UserJpaEntity, Long> {
             + "(SELECT r.id FROM RoleJpaEntity r WHERE r.code IN :codes))")
     List<UserJpaEntity> findActiveByTenantIdAndRoleCodes(@Param("tenantId") Long tenantId,
                                                          @Param("codes") Collection<RoleCode> codes);
+
+    /** Comme {@link #findActiveByTenantIdAndRoleCodes}, mais SANS exiger un email — pour une
+     * notification in-app (cloche), qui n'a besoin que de l'identifiant utilisateur, jamais d'un
+     * email ; un comptable connecté par identifiant/téléphone sans email renseigné (cas courant,
+     * ex. "mere") ne doit pas être silencieusement exclu des destinataires. */
+    @Query("SELECT u FROM UserJpaEntity u WHERE u.tenantId = :tenantId AND u.active = true "
+            + "AND u.id IN "
+            + "(SELECT ur.userId FROM UserRoleJpaEntity ur WHERE ur.roleId IN "
+            + "(SELECT r.id FROM RoleJpaEntity r WHERE r.code IN :codes))")
+    List<UserJpaEntity> findActiveByTenantIdAndRoleCodesAnyContact(@Param("tenantId") Long tenantId,
+                                                                    @Param("codes") Collection<RoleCode> codes);
 }

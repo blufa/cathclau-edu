@@ -64,6 +64,15 @@ public class EnrollmentController {
         return useCase.findById(id);
     }
 
+    @Operation(summary = "Dette (factures impayées d'une année antérieure) de chaque élève listé — "
+            + "pour afficher/bloquer en amont sur l'écran de réinscription en masse")
+    @GetMapping("/arrears")
+    @PreAuthorize("hasAuthority('inscription:read')")
+    public List<EnrollmentUseCase.ArrearsSummary> arrears(@RequestParam List<Long> studentIds,
+                                                           @RequestParam Long academicYearId) {
+        return useCase.arrears(studentIds, academicYearId);
+    }
+
     @Operation(summary = "Modifier le choix d'accès à la plateforme pour cet élève (opt-in du parent, modifiable en cours d'année)")
     @PatchMapping("/{id}/platform-access")
     @PreAuthorize("hasAuthority('inscription:create')")

@@ -89,6 +89,40 @@ class PaymentReminderCandidatesServiceTest {
                 .containsExactly(7L, 8L, 9L);
     }
 
+    /** §retour comptable : "sur la liste des élèves il veut filtrer par classe... sans avoir à choisir
+     * une classe au préalable" — même calcul que listByClass, mais sur toutes les classes du tenant. */
+    @Test
+    void listByTenant_aggregatesAcrossAllClasses() {
+        when(academicsDataProvider.findClassesByTenant(1L)).thenReturn(List.of(
+                new ClassPublicInfo(3L, "CM2 A", "CM2", "NORMALE", null, null, "PRIMAIRE"),
+                new ClassPublicInfo(4L, "6ème A", "6ème", "NORMALE", null, null, "COLLEGE")));
+
+        when(dataPort.countMonthlyTranches(1L, 3L)).thenReturn(2);
+        when(studentDataProvider.findStudentsByClass(3L)).thenReturn(List.of(student(7L, "Mamadou", "Camara")));
+        when(dataPort.findClassMonthlyFeeLines(1L, 3L)).thenReturn(List.of(
+                new ClassFeeLine(7L, 100L, new BigDecimal("50000"), "UNPAID", LocalDate.now().minusDays(2))));
+        when(studentDataProvider.hasPlatformAccessOptIn(7L)).thenReturn(false);
+
+        when(dataPort.countMonthlyTranches(1L, 4L)).thenReturn(1);
+        when(studentDataProvider.findStudentsByClass(4L)).thenReturn(List.of(student(8L, "Fatou", "Sylla")));
+        when(dataPort.findClassMonthlyFeeLines(1L, 4L)).thenReturn(List.of(
+                new ClassFeeLine(8L, 200L, BigDecimal.ZERO, "PAID", LocalDate.now().minusMonths(1))));
+        when(studentDataProvider.hasPlatformAccessOptIn(8L)).thenReturn(false);
+
+        List<PaymentReminderCandidatesService.Candidate> result = service.listByTenant(1L);
+
+        assertThat(result).hasSize(2);
+        assertThat(result).extracting(PaymentReminderCandidatesService.Candidate::studentId).containsExactlyInAnyOrder(7L, 8L);
+        var s7 = result.stream().filter(c -> c.studentId() == 7L).findFirst().orElseThrow();
+        assertThat(s7.className()).isEqualTo("CM2 A");
+        assertThat(s7.status()).isEqualTo(PaymentReminderCandidatesService.Status.OVERDUE);
+        var s8 = result.stream().filter(c -> c.studentId() == 8L).findFirst().orElseThrow();
+        assertThat(s8.className()).isEqualTo("6ème A");
+        assertThat(s8.status()).isEqualTo(PaymentReminderCandidatesService.Status.UP_TO_DATE);
+        // En retard trié avant à jour, même entre deux classes différentes.
+        assertThat(result).extracting(PaymentReminderCandidatesService.Candidate::studentId).containsExactly(7L, 8L);
+    }
+
     @Test
     void listByClass_studentWithoutPlatformAccess_hasNoParentContacts() {
         when(academicsDataProvider.findClass(3L)).thenReturn(Optional.empty());

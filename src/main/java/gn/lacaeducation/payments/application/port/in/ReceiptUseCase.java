@@ -8,7 +8,9 @@ public interface ReceiptUseCase {
     Receipt generateGrouped(Long paymentId, String coveredMonths, Integer monthsCount, java.math.BigDecimal remainingAfter);
     /** Renvoie l'URL du PDF du reçu, en le générant/uploadant à la demande s'il manque encore. */
     String pdfUrl(Long receiptId);
-    /** Génère et renvoie les octets du PDF du reçu (pour affichage direct, sans Cloudinary). */
+    /** Génère et renvoie les octets du PDF du reçu (pour affichage direct, sans Cloudinary) — résout le
+     * nom de l'élève à la volée depuis sa fiche actuelle, pas depuis le snapshot figé à l'émission
+     * (§retour comptable : une faute de frappe corrigée après coup doit apparaître immédiatement). */
     byte[] pdfBytes(Long receiptId);
     Optional<Receipt> findById(Long id);
     Optional<Receipt> findByPaymentId(Long paymentId);
