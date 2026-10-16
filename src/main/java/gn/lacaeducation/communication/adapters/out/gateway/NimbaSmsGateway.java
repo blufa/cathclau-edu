@@ -119,6 +119,13 @@ public class NimbaSmsGateway implements NotificationGateway, SmsBalancePort {
             log.info("[SMS] Nimba -> {} : {}", destination, ok ? response.messageId() : "réponse invalide");
             return new DeliveryResult(ok, ok ? "nimba " + response.messageId() : "nimba: réponse invalide",
                     ok ? response.messageId() : null);
+        } catch (org.springframework.web.client.HttpClientErrorException e) {
+            // 4xx (ex. "numéro invalide", "sender_name manquant") : erreur de FOND sur ce message précis,
+            // jamais transitoire — retenter plus tard renverra exactement la même erreur, indéfiniment
+            // (incident de production, §retryable sur DeliveryResult). Distinct des 5xx/pannes réseau
+            // ci-dessous, qui restent retryable comme avant.
+            log.error("[SMS] échec envoi Nimba vers {} (définitif, {}) : {}", destination, e.getStatusCode(), e.getResponseBodyAsString());
+            return new DeliveryResult(false, e.getResponseBodyAsString(), null, false);
         } catch (RuntimeException e) {
             log.error("[SMS] échec envoi Nimba vers {} : {}", destination, e.getMessage());
             return new DeliveryResult(false, e.getMessage());
