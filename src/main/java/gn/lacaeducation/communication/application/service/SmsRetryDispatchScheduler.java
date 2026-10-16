@@ -77,7 +77,19 @@ public class SmsRetryDispatchScheduler {
         int attempts = entry.getAttemptCount() + 1;
         entry.setAttemptCount(attempts);
         entry.setLastError(error);
-        long backoffSeconds = Math.min((long) Math.pow(2, attempts) * BACKOFF_BASE_SECONDS, MAX_BACKOFF_SECONDS);
+        // Bug de production (DateTimeException "Invalid value for EpochDay") : "retente indéfiniment"
+        // signifie que `attempts` grandit sans borne (ex. solde SMS épuisé pendant plusieurs jours).
+        // Math.pow(2, attempts) sature à Long.MAX_VALUE au-delà d'environ 2^63 (attempts ~64, atteint
+        // en ~32h au rythme plafonné de 30 min/tentative), mais Long.MAX_VALUE * BACKOFF_BASE_SECONDS
+        // déborde ensuite silencieusement (overflow long, pas de saturation sur *) vers une valeur
+        // négative absurde — plusSeconds() sur cette valeur pousse la date des millions d'années dans
+        // le passé, hors de la plage représentable par LocalDateTime, qui lève alors l'exception et
+        // fait échouer toute la transaction (donc TOUS les SMS du lot, pas que celui-ci). On plafonne
+        // l'exposant AVANT le calcul : 2^10 * 30s dépasse déjà largement MAX_BACKOFF_SECONDS (30 min),
+        // donc le Math.min ci-dessous continue de s'appliquer normalement sans jamais approcher une
+        // valeur capable de déborder un long.
+        int cappedAttempts = Math.min(attempts, 10);
+        long backoffSeconds = Math.min((long) Math.pow(2, cappedAttempts) * BACKOFF_BASE_SECONDS, MAX_BACKOFF_SECONDS);
         entry.setNextAttemptAt(LocalDateTime.now().plusSeconds(backoffSeconds));
         log.info("SMS en file id={} vers {} : nouvel essai dans {}s (tentative {})",
                 entry.getId(), entry.getDestination(), backoffSeconds, attempts);

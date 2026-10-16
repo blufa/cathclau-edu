@@ -110,6 +110,33 @@ class SmsRetryDispatchSchedulerTest {
         verify(queueRepository).save(entry);
     }
 
+    /**
+     * Régression production : DateTimeException "Invalid value for EpochDay" — l'exposant de
+     * Math.pow(2, attempts) n'était jamais plafonné avant le calcul, seul le résultat final l'était.
+     * Au-delà d'environ 64 tentatives (atteint en un peu plus d'un jour au rythme plafonné de 30 min),
+     * Math.pow(2, attempts) sature à Long.MAX_VALUE, puis Long.MAX_VALUE * BACKOFF_BASE_SECONDS déborde
+     * silencieusement (overflow long) vers une valeur négative absurde, que plusSeconds() ne peut pas
+     * représenter — l'exception faisait alors échouer toute la transaction (donc tout le lot de SMS en
+     * cours, pas que cette entrée). 200 tentatives dépasse largement ce seuil, confirmant qu'il n'y a
+     * plus d'exception et que le délai reste correctement plafonné à 30 min.
+     */
+    @Test
+    void failedRetry_veryManyAttempts_neverOverflowsBackoffCalculation() {
+        when(smsGateway.getChannel()).thenReturn(CommunicationChannel.SMS);
+        SmsRetryEntry entry = entry(200);
+        when(queueRepository.findByStatusAndNextAttemptAtBefore(any(), any())).thenReturn(List.of(entry));
+        when(smsGateway.send(any(), any(), any())).thenReturn(new NotificationGateway.DeliveryResult(false, "solde insuffisant"));
+
+        scheduler.dispatchPendingSms();
+
+        assertThat(entry.getStatus()).isEqualTo(SmsRetryStatus.PENDING);
+        assertThat(entry.getAttemptCount()).isEqualTo(201);
+        assertThat(entry.getNextAttemptAt())
+                .isAfterOrEqualTo(LocalDateTime.now().plusMinutes(29))
+                .isBeforeOrEqualTo(LocalDateTime.now().plusMinutes(31));
+        verify(queueRepository).save(entry);
+    }
+
     @Test
     void gatewayThrows_treatedAsFailureAndRetried() {
         when(smsGateway.getChannel()).thenReturn(CommunicationChannel.SMS);
