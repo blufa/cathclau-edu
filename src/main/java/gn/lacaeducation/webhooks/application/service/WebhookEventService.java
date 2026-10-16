@@ -35,8 +35,14 @@ public class WebhookEventService implements WebhookEventUseCase {
         int attempts = e.getAttemptCount() + 1;
         e.setAttemptCount(attempts);
         e.setStatus(WebhookDeliveryStatus.PENDING);
-        // exponential backoff: 2^attempts * 30 seconds
-        e.setNextAttemptAt(LocalDateTime.now().plusSeconds((long) Math.pow(2, attempts) * 30));
+        // Même bug que SmsRetryDispatchScheduler (incident de production, DateTimeException "Invalid
+        // value for EpochDay") : Math.pow(2, attempts) sature puis déborde au-delà d'environ 64
+        // tentatives, sans aucun plafond ici (même pas un Math.min final). Code actuellement mort
+        // (aucun appelant dans le reste du code), mais corrigé par précaution avant qu'un futur appel
+        // (API manuelle, reprise du mécanisme) ne reproduise le même plantage.
+        int cappedAttempts = Math.min(attempts, 10);
+        long backoffSeconds = Math.min((long) Math.pow(2, cappedAttempts) * 30, 1800);
+        e.setNextAttemptAt(LocalDateTime.now().plusSeconds(backoffSeconds));
         return repo.save(e);
     }
     @Override public WebhookEvent replay(Long id) {

@@ -51,4 +51,22 @@ class WebhookEventServiceTest {
         // 2^2 * 30 = 120s in the future
         assertThat(retried.getNextAttemptAt()).isAfter(LocalDateTime.now().plusSeconds(60));
     }
+
+    /** Régression : même bug de production que SmsRetryDispatchScheduler (DateTimeException "Invalid
+     * value for EpochDay") — Math.pow(2, attempts) sans aucun plafond débordait au-delà d'environ 64
+     * tentatives. 200 dépasse largement ce seuil. */
+    @Test
+    void scheduleRetry_veryManyAttempts_neverOverflowsBackoffCalculation() {
+        WebhookEvent event = WebhookEvent.builder().id(1L).status(WebhookDeliveryStatus.PENDING)
+                .attemptCount(200).build();
+        when(repo.findById(1L)).thenReturn(Optional.of(event));
+        when(repo.save(any(WebhookEvent.class))).thenAnswer(i -> i.getArgument(0));
+
+        WebhookEvent retried = service.scheduleRetry(1L);
+
+        assertThat(retried.getAttemptCount()).isEqualTo(201);
+        assertThat(retried.getNextAttemptAt())
+                .isAfterOrEqualTo(LocalDateTime.now().plusMinutes(29))
+                .isBeforeOrEqualTo(LocalDateTime.now().plusMinutes(31));
+    }
 }
