@@ -7,6 +7,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.SortedMap;
+import java.util.TreeMap;
 
 /**
  * Moyenne semestrielle d'une matière pour un élève — formule confirmée avec la direction pédagogique
@@ -35,7 +37,13 @@ public final class SubjectSemesterAverage {
     private SubjectSemesterAverage() {
     }
 
-    public record Result(BigDecimal finalValue, BigDecimal coursValue, BigDecimal compoValue) {
+    /** @param monthlyCours moyenne "cours" (QUIZ/HOMEWORK) de chaque mois calendaire ayant au moins une
+     * note — jamais nul, vide en Primaire (pas de notion de "cours" dans ce cycle, voir la javadoc de
+     * la classe) ou si aucune évaluation "cours" n'a de date/note exploitable. Pour l'affichage détaillé
+     * du bulletin (colonnes par mois) — n'intervient dans aucun calcul de moyenne, {@code coursValue}
+     * reste la seule source de vérité pour M_cours. */
+    public record Result(BigDecimal finalValue, BigDecimal coursValue, BigDecimal compoValue,
+                         SortedMap<YearMonth, BigDecimal> monthlyCours) {
     }
 
     private static final int SCALE = 2;
@@ -60,7 +68,7 @@ public final class SubjectSemesterAverage {
                     .filter(n -> n.assessment.getType() == AssessmentType.EXAM)
                     .toList();
             BigDecimal simple = simpleAverage(compositions);
-            return new Result(simple, null, null);
+            return new Result(simple, null, null, new TreeMap<>());
         }
 
         List<WeightedNote> cours = noted.stream()
@@ -71,32 +79,35 @@ public final class SubjectSemesterAverage {
                 .filter(n -> n.assessment.getType() == AssessmentType.EXAM)
                 .toList();
 
-        BigDecimal mCours = monthlyAverage(cours);
+        SortedMap<YearMonth, BigDecimal> monthlyCours = monthlyBreakdown(cours);
+        BigDecimal mCours = monthlyAverage(monthlyCours);
         BigDecimal mComp = weightedAverage(compo);
         BigDecimal mSem = combine(mCours, mComp);
 
-        return new Result(mSem, mCours, mComp);
+        return new Result(mSem, mCours, mComp, monthlyCours);
     }
 
-    /** M_cours : moyenne simple des moyennes mensuelles pondérées, mois sans note exclus. */
-    private static BigDecimal monthlyAverage(List<WeightedNote> cours) {
+    /** Moyenne pondérée des évaluations "cours" de chaque mois calendaire ayant au moins une note —
+     * mois sans note absents de la carte (jamais une entrée à {@code null}/zéro). */
+    private static SortedMap<YearMonth, BigDecimal> monthlyBreakdown(List<WeightedNote> cours) {
         Map<YearMonth, List<WeightedNote>> byMonth = new HashMap<>();
         for (WeightedNote n : cours) {
             if (n.assessment.getDate() == null) continue; // pas de mois connu : exclue, pas d'exception
             byMonth.computeIfAbsent(YearMonth.from(n.assessment.getDate()), k -> new ArrayList<>()).add(n);
         }
-        if (byMonth.isEmpty()) return null;
-
-        BigDecimal sum = BigDecimal.ZERO;
-        int monthCount = 0;
-        for (List<WeightedNote> monthNotes : byMonth.values()) {
-            BigDecimal monthAverage = weightedAverage(monthNotes);
-            if (monthAverage == null) continue;
-            sum = sum.add(monthAverage);
-            monthCount++;
+        SortedMap<YearMonth, BigDecimal> result = new TreeMap<>();
+        for (Map.Entry<YearMonth, List<WeightedNote>> entry : byMonth.entrySet()) {
+            BigDecimal monthAverage = weightedAverage(entry.getValue());
+            if (monthAverage != null) result.put(entry.getKey(), monthAverage);
         }
-        if (monthCount == 0) return null;
-        return sum.divide(BigDecimal.valueOf(monthCount), SCALE, ROUNDING);
+        return result;
+    }
+
+    /** M_cours : moyenne simple des moyennes mensuelles déjà calculées, {@code null} si aucune. */
+    private static BigDecimal monthlyAverage(SortedMap<YearMonth, BigDecimal> monthlyCours) {
+        if (monthlyCours.isEmpty()) return null;
+        BigDecimal sum = monthlyCours.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        return sum.divide(BigDecimal.valueOf(monthlyCours.size()), SCALE, ROUNDING);
     }
 
     /** {@code Σ(note) / nombre de notes} — jamais pondérée par coefficient (Primaire, §retour

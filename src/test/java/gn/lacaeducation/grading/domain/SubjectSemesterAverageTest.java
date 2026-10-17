@@ -44,6 +44,10 @@ class SubjectSemesterAverageTest {
         assertThat(r.coursValue()).isEqualByComparingTo("14.50");
         assertThat(r.compoValue()).isNull();
         assertThat(r.finalValue()).isEqualByComparingTo("14.50");
+        // Détail mensuel (§bulletin, colonnes par mois) : une seule entrée, octobre, même valeur que
+        // M_cours puisqu'il n'y a qu'un mois — reproduit le cas "deux évaluations dans le mois".
+        assertThat(r.monthlyCours()).containsExactly(
+                java.util.Map.entry(java.time.YearMonth.of(2026, 10), new BigDecimal("14.50")));
     }
 
     @Test
@@ -60,6 +64,11 @@ class SubjectSemesterAverageTest {
         SubjectSemesterAverage.Result r = SubjectSemesterAverage.compute(CycleGroup.SECONDAIRE, assessments, grades);
 
         assertThat(r.coursValue()).isEqualByComparingTo("10.00");
+        // Détail mensuel : deux mois distincts, chacun avec sa propre moyenne — novembre combine ses
+        // deux notes (0 et 0) en une seule entrée, pas deux.
+        assertThat(r.monthlyCours()).containsExactly(
+                java.util.Map.entry(java.time.YearMonth.of(2026, 10), new BigDecimal("20.00")),
+                java.util.Map.entry(java.time.YearMonth.of(2026, 11), new BigDecimal("0.00")));
     }
 
     @Test
@@ -192,6 +201,8 @@ class SubjectSemesterAverageTest {
         assertThat(r.finalValue()).isEqualByComparingTo("13.00");
         assertThat(r.coursValue()).isNull();
         assertThat(r.compoValue()).isNull();
+        // Pas de notion de "cours" en primaire (§bulletin simplifié, sans colonnes par mois).
+        assertThat(r.monthlyCours()).isEmpty();
     }
 
     @Test

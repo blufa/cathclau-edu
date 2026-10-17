@@ -2,6 +2,7 @@ package gn.lacaeducation.grading.application.port.out;
 
 import gn.lacaeducation.grading.domain.ReportCard;
 import gn.lacaeducation.grading.domain.ReportCardLine;
+import gn.lacaeducation.grading.domain.SubjectMonthlyBreakdown;
 
 import java.util.List;
 import java.util.Map;
@@ -22,10 +23,13 @@ public interface ReportCardPdfGenerator {
             String className,
             String periodLabel,
             String schoolYear,
-            Map<Long, String> subjectNames) {
+            Map<Long, String> subjectNames,
+            /** Détail mensuel "cours" par matière (§colonnes par mois, secondaire uniquement) — vide
+             * en primaire, voir {@link SubjectMonthlyBreakdown}. */
+            List<SubjectMonthlyBreakdown> monthlyBreakdown) {
 
         public static ReportCardContext empty() {
-            return new ReportCardContext(null, null, null, null, null, null, Map.of());
+            return new ReportCardContext(null, null, null, null, null, null, Map.of(), List.of());
         }
 
         public String subjectName(Long subjectId) {

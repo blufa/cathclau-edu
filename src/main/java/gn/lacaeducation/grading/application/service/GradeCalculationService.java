@@ -15,6 +15,7 @@ import gn.lacaeducation.grading.domain.Grade;
 import gn.lacaeducation.grading.domain.ReportCard;
 import gn.lacaeducation.grading.domain.ReportCardLine;
 import gn.lacaeducation.grading.domain.ReportCardStatus;
+import gn.lacaeducation.grading.domain.SubjectMonthlyBreakdown;
 import gn.lacaeducation.grading.domain.SubjectSemesterAverage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -384,6 +385,36 @@ public class GradeCalculationService {
                 .map(Assessment::getClassId).filter(java.util.Objects::nonNull).findFirst().orElse(null);
         return SubjectSemesterAverage.compute(resolveCycleGroup(classId), subjectAssessments, studentGrades)
                 .finalValue();
+    }
+
+    /** Détail mensuel "cours" par matière d'un élève (bulletin §colonnes par mois) — recalculé à la
+     * volée (même pattern que {@code classCentralizerPdf}/{@code subjectGradeReport}), aucune
+     * persistance. Toujours vide en Primaire (pas de notion de "cours" dans ce cycle). */
+    @Transactional(readOnly = true)
+    public List<SubjectMonthlyBreakdown> monthlyBreakdown(Long studentId, Long classId, Long periodId) {
+        CycleGroup cycleGroup = resolveCycleGroup(classId);
+        if (cycleGroup == CycleGroup.PRIMAIRE) {
+            return List.of();
+        }
+        List<Assessment> assessments = assessmentRepository.findByClassIdAndPeriodId(classId, periodId);
+        Map<Long, List<Assessment>> assessmentsBySubject = assessments.stream()
+                .collect(Collectors.groupingBy(Assessment::getSubjectId));
+        Map<Long, BigDecimal> subjectCoeffMap = classSubjectQueryPort.findByClassId(classId).stream()
+                .collect(Collectors.toMap(ClassSubjectInfo::subjectId, ClassSubjectInfo::coefficient, (a, b) -> a));
+
+        List<SubjectMonthlyBreakdown> result = new ArrayList<>();
+        for (Map.Entry<Long, List<Assessment>> entry : assessmentsBySubject.entrySet()) {
+            Long subjectId = entry.getKey();
+            List<Grade> grades = entry.getValue().stream()
+                    .flatMap(a -> gradeRepository.findByAssessmentId(a.getId()).stream())
+                    .filter(g -> studentId.equals(g.getStudentId()))
+                    .toList();
+            if (grades.isEmpty()) continue;
+            SubjectSemesterAverage.Result formulaResult = SubjectSemesterAverage.compute(cycleGroup, entry.getValue(), grades);
+            result.add(new SubjectMonthlyBreakdown(subjectId, subjectCoeffMap.getOrDefault(subjectId, BigDecimal.ONE),
+                    formulaResult.monthlyCours(), formulaResult.compoValue(), formulaResult.finalValue()));
+        }
+        return result;
     }
 
     // -------------------------------------------------------------------------

@@ -341,4 +341,45 @@ class GradeCalculationServiceTest {
         assertThat(rankByStudent.get(studentB)).isEqualTo(1);
         assertThat(rankByStudent.get(studentC)).isEqualTo(3);
     }
+
+    /** Exposition du détail mensuel pour le bulletin (§colonnes par mois, "bulletin-test" de référence). */
+    @Test
+    void monthlyBreakdown_secondaire_exposesMonthsAndCompositionPerSubject() {
+        Long classId = 1L, periodId = 2L, studentId = 10L, subjectId = 100L;
+        Assessment octQuiz = Assessment.builder().id(1L).classId(classId).periodId(periodId).subjectId(subjectId)
+                .type(AssessmentType.QUIZ).date(LocalDate.of(2026, 10, 10)).coefficient(BigDecimal.ONE).build();
+        Assessment exam = Assessment.builder().id(2L).classId(classId).periodId(periodId).subjectId(subjectId)
+                .type(AssessmentType.EXAM).date(LocalDate.of(2026, 12, 1)).coefficient(BigDecimal.ONE).build();
+        when(assessmentRepository.findByClassIdAndPeriodId(classId, periodId)).thenReturn(List.of(octQuiz, exam));
+        when(classSubjectQueryPort.findByClassId(classId))
+                .thenReturn(List.of(new ClassSubjectInfo(subjectId, BigDecimal.valueOf(2), 5L)));
+        when(gradeRepository.findByAssessmentId(1L)).thenReturn(List.of(
+                Grade.builder().assessmentId(1L).studentId(studentId).value(BigDecimal.valueOf(12)).build()));
+        when(gradeRepository.findByAssessmentId(2L)).thenReturn(List.of(
+                Grade.builder().assessmentId(2L).studentId(studentId).value(BigDecimal.valueOf(16)).build()));
+        when(academicsDataProvider.findClass(classId)).thenReturn(Optional.of(
+                new gn.lacaeducation.academics.ClassPublicInfo(classId, "8ème A", "8ème", "NORMALE", null, null, "COLLEGE")));
+
+        List<gn.lacaeducation.grading.domain.SubjectMonthlyBreakdown> breakdown = service.monthlyBreakdown(studentId, classId, periodId);
+
+        assertThat(breakdown).hasSize(1);
+        gn.lacaeducation.grading.domain.SubjectMonthlyBreakdown b = breakdown.get(0);
+        assertThat(b.subjectId()).isEqualTo(subjectId);
+        assertThat(b.coefficient()).isEqualByComparingTo("2");
+        assertThat(b.monthlyCours()).containsExactly(java.util.Map.entry(java.time.YearMonth.of(2026, 10), new BigDecimal("12.00")));
+        assertThat(b.compoAverage()).isEqualByComparingTo("16.00");
+        assertThat(b.subjectAverage()).isEqualByComparingTo("14.00"); // (12+16)/2
+    }
+
+    @Test
+    void monthlyBreakdown_primaire_isAlwaysEmpty() {
+        Long classId = 1L, periodId = 2L, studentId = 10L;
+        when(academicsDataProvider.findClass(classId)).thenReturn(Optional.of(
+                new gn.lacaeducation.academics.ClassPublicInfo(classId, "CM2 A", "CM2", "NORMALE", null, null, "PRIMAIRE")));
+
+        List<gn.lacaeducation.grading.domain.SubjectMonthlyBreakdown> breakdown = service.monthlyBreakdown(studentId, classId, periodId);
+
+        assertThat(breakdown).isEmpty();
+        org.mockito.Mockito.verifyNoInteractions(assessmentRepository);
+    }
 }

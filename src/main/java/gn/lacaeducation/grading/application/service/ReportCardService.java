@@ -217,9 +217,10 @@ public class ReportCardService implements ReportCardUseCase {
         String schoolYear = tenantId == null ? null : academicsProvider.currentAcademicYearLabel(tenantId).orElse(null);
         var subjectIds = lines.stream().map(ReportCardLine::getSubjectId)
                 .filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+        var monthlyBreakdown = calculationService.monthlyBreakdown(rc.getStudentId(), rc.getClassId(), rc.getPeriodId());
         return new ReportCardContext(tenantId, studentName,
                 student != null ? student.studentNumber() : null,
-                className, periodLabel, schoolYear, academicsProvider.subjectLabels(subjectIds));
+                className, periodLabel, schoolYear, academicsProvider.subjectLabels(subjectIds), monthlyBreakdown);
     }
 
     @Override
