@@ -14,8 +14,8 @@ public record TenantCreatedEvent(
         boolean temporaryPassword,
         /** Identifiant de connexion choisi pour l'admin (login par username OU email) ; généré si null. */
         String adminUsername,
-        /** Téléphone de l'école (saisi à la création manuelle) — reporté sur le compte admin pour que
-         * la connexion par numéro de téléphone fonctionne dès la création, comme à l'inscription
-         * libre-service ; null si non renseigné. */
+        /** Téléphone PERSONNEL de l'administrateur (son identifiant de connexion) — distinct du
+         * téléphone de l'école, qui reste sur {@code Tenant#phone}/{@code phone2} ; voir
+         * {@code CreateTenantRequest#adminPhone}. */
         String adminPhone
 ) {}

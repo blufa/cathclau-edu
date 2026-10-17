@@ -66,13 +66,17 @@ public class TenantService implements CreateTenantUseCase, TenantEstablishmentTy
         String effectivePassword = chosen ? c.adminPassword() : TemporaryPasswords.generate();
 
         // iam provisions the (verified) ADMIN_ECOLE + roles; onboarding/communication via TenantActivated.
+        // adminPhone (numéro de connexion personnel) est distinct de saved.getPhone() (numéro de
+        // l'école, affiché sur badges/documents) — voir CreateTenantCommand#adminPhone. Avant ce
+        // correctif, les deux partageaient le même champ, donc le numéro personnel de l'admin
+        // s'affichait par erreur comme numéro de l'école sur les documents officiels.
         eventPublisher.publishEvent(new TenantCreatedEvent(
                 saved.getId(), saved.getSchoolName(), saved.getEmail(), saved.getDirector(),
-                effectivePassword, !chosen, c.adminUsername(), saved.getPhone()));
+                effectivePassword, !chosen, c.adminUsername(), c.adminPhone()));
         if (!chosen) {
             // Envoi des identifiants (email + SMS + mot de passe temporaire) à l'administrateur de l'école.
             eventPublisher.publishEvent(new TenantAdminCredentialsIssuedEvent(
-                    saved.getId(), saved.getSchoolName(), saved.getEmail(), saved.getPhone(), effectivePassword));
+                    saved.getId(), saved.getSchoolName(), saved.getEmail(), c.adminPhone(), effectivePassword));
         }
         eventPublisher.publishEvent(new TenantActivatedEvent(
                 saved.getId(), saved.getSchoolName(), saved.getEmail(), saved.getDirector()));
