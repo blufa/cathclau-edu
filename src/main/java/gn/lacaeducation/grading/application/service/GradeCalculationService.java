@@ -1,6 +1,7 @@
 package gn.lacaeducation.grading.application.service;
 
 import gn.lacaeducation.academics.AcademicsDataProvider;
+import gn.lacaeducation.grading.TeacherNameProvider;
 import gn.lacaeducation.grading.application.event.ReportCardGeneratedEvent;
 import gn.lacaeducation.grading.application.port.out.AssessmentRepository;
 import gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort;
@@ -61,6 +62,7 @@ public class GradeCalculationService {
     private final ReportCardRepository reportCardRepository;
     private final ClassSubjectQueryPort classSubjectQueryPort;
     private final AcademicsDataProvider academicsDataProvider;
+    private final TeacherNameProvider teacherNameProvider;
     private final ApplicationEventPublisher eventPublisher;
 
     /** Internal value object pairing a report card with its computed lines. */
@@ -190,7 +192,9 @@ public class GradeCalculationService {
             BigDecimal weighted = subjectAverage.multiply(subjectCoeff, MC).setScale(SCALE, RoundingMode.HALF_UP);
 
             Long teacherId = subjectTeacherMap.get(subjectId);
-            String teacherLabel = teacherId != null ? "teacher-" + teacherId : null;
+            // Incident trouvé en testant en direct (§retour fondateur, école Notre Mère) : le bulletin
+            // affichait littéralement "teacher-30" (placeholder jamais résolu) au lieu du nom réel.
+            String teacherLabel = teacherId != null ? teacherNameProvider.teacherName(teacherId).orElse(null) : null;
 
             lines.add(ReportCardLine.builder()
                     .subjectId(subjectId)

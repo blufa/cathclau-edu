@@ -1,6 +1,7 @@
 package gn.lacaeducation.grading.application.service;
 
 import gn.lacaeducation.academics.AcademicsDataProvider;
+import gn.lacaeducation.grading.TeacherNameProvider;
 import gn.lacaeducation.grading.application.port.out.AssessmentRepository;
 import gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort;
 import gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort.ClassSubjectInfo;
@@ -38,6 +39,7 @@ class GradeCalculationServiceTest {
     @Mock ReportCardRepository reportCardRepository;
     @Mock ClassSubjectQueryPort classSubjectQueryPort;
     @Mock AcademicsDataProvider academicsDataProvider;
+    @Mock TeacherNameProvider teacherNameProvider;
     @Mock ApplicationEventPublisher eventPublisher;
     @InjectMocks GradeCalculationService service;
 
@@ -95,6 +97,35 @@ class GradeCalculationServiceTest {
         assertThat(rc.getOverallAverage()).isEqualByComparingTo("13.00");
         assertThat(rc.getHonor()).isEqualTo("Passable");
         assertThat(rc.getDecision()).isEqualTo("ADMIS");
+    }
+
+    /**
+     * Régression (testé en direct, école "Notre Mère") : le bulletin affichait littéralement
+     * "teacher-30" (placeholder jamais résolu) au lieu du nom de l'enseignant.
+     */
+    @Test
+    void generateForStudent_resolvesRealTeacherName_notPlaceholder() {
+        Long classId = 1L, periodId = 2L, studentId = 10L, subjectId = 100L, teacherId = 5L;
+        Assessment a1 = Assessment.builder().id(1L).classId(classId).periodId(periodId).subjectId(subjectId)
+                .type(AssessmentType.EXAM).date(LocalDate.of(2026, 10, 5))
+                .coefficient(BigDecimal.ONE).maxScore(BigDecimal.valueOf(20)).build();
+        when(assessmentRepository.findByClassIdAndPeriodId(classId, periodId)).thenReturn(List.of(a1));
+        when(classSubjectQueryPort.findByClassId(classId))
+                .thenReturn(List.of(new ClassSubjectInfo(subjectId, BigDecimal.ONE, teacherId)));
+        when(gradeRepository.findByAssessmentId(1L))
+                .thenReturn(List.of(Grade.builder().assessmentId(1L).studentId(studentId).value(BigDecimal.valueOf(14)).build()));
+        when(teacherNameProvider.teacherName(teacherId)).thenReturn(Optional.of("Lamine Fodé SYLLA"));
+        when(reportCardRepository.findByStudentIdAndPeriodId(studentId, periodId)).thenReturn(Optional.empty());
+        when(reportCardRepository.save(any())).thenAnswer(i -> { ReportCard r = i.getArgument(0); if (r.getId() == null) r.setId(99L); return r; });
+        when(reportCardRepository.saveLine(any())).thenAnswer(i -> i.getArgument(0));
+        when(reportCardRepository.findByClassIdAndPeriodId(classId, periodId)).thenReturn(List.of());
+        when(reportCardRepository.findById(any())).thenAnswer(i -> Optional.of(ReportCard.builder().id(99L).build()));
+
+        service.generateForStudent(studentId, classId, periodId);
+
+        ArgumentCaptor<ReportCardLine> lineCaptor = ArgumentCaptor.forClass(ReportCardLine.class);
+        org.mockito.Mockito.verify(reportCardRepository, atLeastOnce()).saveLine(lineCaptor.capture());
+        assertThat(lineCaptor.getAllValues().get(0).getTeacherName()).isEqualTo("Lamine Fodé SYLLA");
     }
 
     /**
