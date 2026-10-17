@@ -45,12 +45,10 @@ public class StaffMatriculeBackfill implements ApplicationRunner {
         if (missing.isEmpty()) return;
         Map<Long, List<Teacher>> byTenant = missing.stream().collect(Collectors.groupingBy(Teacher::getTenantId));
         byTenant.forEach((tenantId, teachers) -> {
-            long seq = teacherRepository.findByTenantId(tenantId).size() + 1L;
+            java.util.concurrent.atomic.AtomicLong seq = new java.util.concurrent.atomic.AtomicLong(teacherRepository.findByTenantId(tenantId).size() + 1L);
             for (Teacher t : teachers) {
-                String candidate;
-                do {
-                    candidate = MatriculeAllocator.candidate(tenantInfoProvider, tenantId, seq++);
-                } while (teacherRepository.existsByTenantIdAndStaffNumber(tenantId, candidate));
+                String candidate = MatriculeAllocator.resolveUnique(tenantInfoProvider, tenantId, seq,
+                        c -> teacherRepository.existsByTenantIdAndStaffNumber(tenantId, c));
                 t.setStaffNumber(candidate);
                 teacherRepository.save(t);
             }
@@ -63,12 +61,10 @@ public class StaffMatriculeBackfill implements ApplicationRunner {
         if (missing.isEmpty()) return;
         Map<Long, List<Employee>> byTenant = missing.stream().collect(Collectors.groupingBy(Employee::getTenantId));
         byTenant.forEach((tenantId, employees) -> {
-            long seq = employeeRepository.findByTenantId(tenantId).size() + 1L;
+            java.util.concurrent.atomic.AtomicLong seq = new java.util.concurrent.atomic.AtomicLong(employeeRepository.findByTenantId(tenantId).size() + 1L);
             for (Employee e : employees) {
-                String candidate;
-                do {
-                    candidate = MatriculeAllocator.candidate(tenantInfoProvider, tenantId, seq++);
-                } while (employeeRepository.existsByTenantIdAndEmployeeNumber(tenantId, candidate));
+                String candidate = MatriculeAllocator.resolveUnique(tenantInfoProvider, tenantId, seq,
+                        c -> employeeRepository.existsByTenantIdAndEmployeeNumber(tenantId, c));
                 e.setEmployeeNumber(candidate);
                 employeeRepository.save(e);
             }

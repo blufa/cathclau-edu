@@ -122,7 +122,10 @@ public class TenantService implements CreateTenantUseCase, TenantEstablishmentTy
         if (c.payoutMerchantNumber() != null) t.setPayoutMerchantNumber(c.payoutMerchantNumber());
         if (c.payoutOperator() != null) t.setPayoutOperator(c.payoutOperator());
         if (c.payoutAccountName() != null) t.setPayoutAccountName(c.payoutAccountName());
-        if (c.matriculeFormat() != null) t.setMatriculeFormat(c.matriculeFormat());
+        if (c.matriculeFormat() != null) {
+            gn.lacaeducation.common.MatriculeFormatter.validate(c.matriculeFormat());
+            t.setMatriculeFormat(c.matriculeFormat());
+        }
         if (c.matriculeDigits() != null) t.setMatriculeDigits(c.matriculeDigits());
         Tenant saved = tenantRepository.save(t);
         if (brandingChanged) {
