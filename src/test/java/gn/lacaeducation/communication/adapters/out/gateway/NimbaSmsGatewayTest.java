@@ -121,4 +121,51 @@ class NimbaSmsGatewayTest {
         assertThat(result.delivered()).isFalse();
         server.verify();
     }
+
+    /**
+     * Régression incident de production : un 4xx (numéro structurellement invalide, champ manquant...)
+     * est un échec DÉFINITIF — jamais transitoire — donc {@code retryable()} doit être faux, pour que
+     * {@code SmsRetryDispatchScheduler} abandonne au lieu de retenter indéfiniment toutes les 30 min
+     * (des dizaines d'entrées de ce type ont fini par saturer CPU/connexions DB en production).
+     */
+    @Test
+    void configuredSend_400Response_isNotRetryable() {
+        NimbaSmsProperties props = new NimbaSmsProperties(
+                true, "svc-id", "secret-token", "http://nimba.test", "JECCAMTECH", "224");
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        NimbaSmsGateway gateway = new NimbaSmsGateway(props, builder);
+
+        server.expect(requestTo("http://nimba.test/v1/messages"))
+                .andRespond(withStatus(org.springframework.http.HttpStatus.BAD_REQUEST)
+                        .body("{\"to\":\"Aucun numéro valide fourni.\"}")
+                        .contentType(MediaType.APPLICATION_JSON));
+
+        DeliveryResult result = gateway.send("620", "sujet", "Bonjour");
+
+        assertThat(result.delivered()).isFalse();
+        assertThat(result.retryable()).isFalse();
+        server.verify();
+    }
+
+    /** Une panne serveur (5xx) ou réseau reste retryable comme avant — seul un 4xx (erreur définitive
+     * sur CE message précis) ne l'est pas. */
+    @Test
+    void configuredSend_500Response_staysRetryable() {
+        NimbaSmsProperties props = new NimbaSmsProperties(
+                true, "svc-id", "secret-token", "http://nimba.test", "JECCAMTECH", "224");
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        NimbaSmsGateway gateway = new NimbaSmsGateway(props, builder);
+
+        server.expect(requestTo("http://nimba.test/v1/messages"))
+                .andRespond(withStatus(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body("panne serveur"));
+
+        DeliveryResult result = gateway.send("623273737", "sujet", "Bonjour");
+
+        assertThat(result.delivered()).isFalse();
+        assertThat(result.retryable()).isTrue();
+        server.verify();
+    }
 }

@@ -64,15 +64,26 @@ public class SmsRetryDispatchScheduler {
             log.info("SMS en file id={} renvoyé avec succès vers {} (tentative {})",
                     entry.getId(), entry.getDestination(), entry.getAttemptCount() + 1);
             syncRecipient(entry, DeliveryStatus.DELIVERED, result.providerMessageId());
+        } else if (!result.retryable()) {
+            // Échec définitif (ex. numéro structurellement invalide, 4xx fournisseur) — jamais retenté :
+            // incident de production où des dizaines d'entrées de ce type, retentées indéfiniment toutes
+            // les 30 min sans jamais pouvoir réussir, ont fini par saturer CPU/connexions DB.
+            entry.setStatus(SmsRetryStatus.FAILED);
+            entry.setAttemptCount(entry.getAttemptCount() + 1);
+            entry.setLastError(result.detail());
+            log.warn("SMS en file id={} vers {} : échec définitif, abandonné ({})",
+                    entry.getId(), entry.getDestination(), result.detail());
+            syncRecipient(entry, DeliveryStatus.FAILED, null);
         } else {
             scheduleRetry(entry, result.detail());
         }
         queueRepository.save(entry);
     }
 
-    /** Reprogramme indéfiniment (pas d'abandon) — le destinataire reste PENDING tant que la connexion
-     * au fournisseur n'a pas été rétablie ; seul un succès (ou une relance manuelle réinitialisant
-     * l'entrée) en sort. */
+    /** Reprogramme indéfiniment pour un échec RETRYABLE (pas d'abandon) — le destinataire reste PENDING
+     * tant que la connexion au fournisseur n'a pas été rétablie ; seul un succès (ou une relance
+     * manuelle réinitialisant l'entrée) en sort. Un échec définitif (numéro invalide...) ne passe jamais
+     * ici — voir le branchement sur {@code result.retryable()} dans {@link #dispatchEntry}. */
     private void scheduleRetry(SmsRetryEntry entry, String error) {
         int attempts = entry.getAttemptCount() + 1;
         entry.setAttemptCount(attempts);
