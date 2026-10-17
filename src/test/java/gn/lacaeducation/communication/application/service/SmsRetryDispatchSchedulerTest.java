@@ -90,6 +90,31 @@ class SmsRetryDispatchSchedulerTest {
         verify(queueRepository).save(entry);
     }
 
+    /**
+     * Régression incident de production : des dizaines de numéros structurellement invalides,
+     * retentés indéfiniment toutes les 30 min (jamais capables de réussir), ont fini par saturer
+     * CPU/connexions DB. Un échec non-retryable (voir NimbaSmsGatewayTest) doit maintenant abandonner
+     * immédiatement au lieu de reprogrammer une nouvelle tentative.
+     */
+    @Test
+    void failedRetry_notRetryable_marksFailedImmediately_doesNotReschedule() {
+        when(smsGateway.getChannel()).thenReturn(CommunicationChannel.SMS);
+        SmsRetryEntry entry = entry(1);
+        when(queueRepository.findByStatusAndNextAttemptAtBefore(any(), any())).thenReturn(List.of(entry));
+        when(smsGateway.send(any(), any(), any()))
+                .thenReturn(new NotificationGateway.DeliveryResult(false, "Aucun numéro valide fourni.", null, false));
+        MessageRecipient recipient = MessageRecipient.builder().id(20L).deliveryStatus(DeliveryStatus.PENDING).build();
+        when(recipientRepository.findById(20L)).thenReturn(Optional.of(recipient));
+
+        scheduler.dispatchPendingSms();
+
+        assertThat(entry.getStatus()).isEqualTo(SmsRetryStatus.FAILED);
+        assertThat(entry.getAttemptCount()).isEqualTo(2);
+        assertThat(entry.getLastError()).isEqualTo("Aucun numéro valide fourni.");
+        assertThat(recipient.getDeliveryStatus()).isEqualTo(DeliveryStatus.FAILED);
+        verify(queueRepository).save(entry);
+    }
+
     @Test
     void failedRetry_manyAttempts_neverGivesUp_backoffCapped() {
         // Pas d'abandon automatique (§retour direction) : même après de très nombreuses tentatives,
