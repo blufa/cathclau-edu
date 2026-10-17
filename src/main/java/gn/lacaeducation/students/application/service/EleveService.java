@@ -28,6 +28,10 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class EleveService implements StudentUseCase {
 
+    /** Voir le commentaire dans {@link #resolveStudentNumber} — borne dure contre une boucle qui
+     * tournerait indéfiniment sur des collisions de matricule. */
+    private static final int MAX_MATRICULE_ATTEMPTS = 1000;
+
     private final StudentRepository studentRepository;
     private final StudentDocumentRepository documentRepository;
     private final TenantQuotaService tenantQuotaService;
@@ -105,7 +109,18 @@ public class EleveService implements StudentUseCase {
         Integer digits = info.map(gn.lacaeducation.common.TenantPublicInfo::matriculeDigits).orElse(null);
         long seq = studentRepository.countByTenantId(tenantId) + 1;
         String candidate;
+        int attempts = 0;
         do {
+            // Incident de production : un tenant avec un bloc dense de matricules déjà pris à partir
+            // de ce seq (ex. import historique sur une plage qui chevauche la séquence auto-générée) a
+            // fait tourner cette boucle en continu, chaque itération étant une requête SQL — des
+            // centaines de milliers d'itérations en quelques minutes ont saturé le CPU de la base
+            // (même famille de bug que les boucles de renvoi SMS/webhook non bornées, §retryable).
+            if (++attempts > MAX_MATRICULE_ATTEMPTS) {
+                throw new gn.lacaeducation.common.BusinessRuleException(
+                        "Impossible de générer un matricule unique après " + MAX_MATRICULE_ATTEMPTS
+                                + " tentatives — vérifiez le format de matricule de l'école ou saisissez-en un manuellement.");
+            }
             candidate = gn.lacaeducation.common.MatriculeFormatter.generate(format, digits, prefix, seq++);
         } while (studentRepository.existsByTenantIdAndStudentNumber(tenantId, candidate));
         return candidate;

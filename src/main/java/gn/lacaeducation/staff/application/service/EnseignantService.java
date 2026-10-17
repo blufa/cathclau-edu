@@ -71,11 +71,8 @@ public class EnseignantService implements TeacherUseCase {
             return provided;
         }
         long seq = teacherRepository.findByTenantId(tenantId).size() + 1L;
-        String candidate;
-        do {
-            candidate = gn.lacaeducation.common.MatriculeAllocator.candidate(tenantInfoProvider, tenantId, seq++);
-        } while (teacherRepository.existsByTenantIdAndStaffNumber(tenantId, candidate));
-        return candidate;
+        return gn.lacaeducation.common.MatriculeAllocator.resolveUnique(tenantInfoProvider, tenantId, seq,
+                c -> teacherRepository.existsByTenantIdAndStaffNumber(tenantId, c));
     }
 
     @Override

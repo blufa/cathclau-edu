@@ -45,11 +45,8 @@ public class EmployeeService implements EmployeeUseCase {
             return provided;
         }
         long seq = repo.findByTenantId(tenantId).size() + 1L;
-        String candidate;
-        do {
-            candidate = MatriculeAllocator.candidate(tenantInfoProvider, tenantId, seq++);
-        } while (repo.existsByTenantIdAndEmployeeNumber(tenantId, candidate));
-        return candidate;
+        return MatriculeAllocator.resolveUnique(tenantInfoProvider, tenantId, seq,
+                c -> repo.existsByTenantIdAndEmployeeNumber(tenantId, c));
     }
 
     @Override

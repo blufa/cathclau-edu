@@ -15,7 +15,13 @@ public record CreateTenantRequest(
     @Email String email,
     /** Identifiant de connexion de l'admin (login par username OU email) ; généré si vide. */
     String username,
-    @NotBlank String phone,
+    /** Téléphone personnel de l'administrateur — distinct du téléphone de l'école (voir {@code phone}) :
+     * c'est avec CE numéro qu'il se connecte, pas le standard de l'établissement (§retour fondateurs,
+     * incident où le numéro de l'admin s'affichait par erreur comme numéro de l'école sur les documents). */
+    @NotBlank String adminPhone,
+    /** Téléphone de l'école, affiché sur badges/documents — optionnel, renseignable aussi plus tard
+     * dans Paramètres ; distinct du numéro de connexion de l'admin ({@code adminPhone}). */
+    String phone,
     /** Second school phone number (optional), distinct from {@code phone} — see {@code Tenant#phone2}. */
     String phone2,
     String address,
