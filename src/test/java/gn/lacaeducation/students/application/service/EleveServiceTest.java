@@ -74,6 +74,21 @@ class EleveServiceTest {
     }
 
     @Test
+    void create_autoGenerate_everyCandidateCollides_givesUpInsteadOfLoopingForever() {
+        // Incident de production (§MAX_MATRICULE_ATTEMPTS) : un tenant avec un bloc dense de
+        // matricules déjà pris à partir du seq de départ a fait tourner cette boucle en continu,
+        // saturant le CPU de la base — chaque itération était une requête SQL.
+        when(studentRepository.countByTenantId(10L)).thenReturn(41L);
+        when(tenantQuotaService.isQuotaAvailable(10L, 41)).thenReturn(true);
+        when(studentRepository.existsByTenantIdAndStudentNumber(any(), any())).thenReturn(true);
+
+        assertThatThrownBy(() -> service.create(cmd(null)))
+                .isInstanceOf(gn.lacaeducation.common.BusinessRuleException.class);
+        verify(studentRepository, never()).save(any());
+        verify(studentRepository, times(1000)).existsByTenantIdAndStudentNumber(any(), any());
+    }
+
+    @Test
     void create_duplicateProvidedMatricule_throwsConflict() {
         when(studentRepository.countByTenantId(10L)).thenReturn(1L);
         when(tenantQuotaService.isQuotaAvailable(10L, 1)).thenReturn(true);

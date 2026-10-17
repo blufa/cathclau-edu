@@ -5,8 +5,29 @@ import org.junit.jupiter.api.Test;
 import java.time.Year;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatNoException;
 
 class MatriculeFormatterTest {
+
+    /** Incident de production (Groupe Scolaire Barry Dubaï) : "GSBD24 0000" sans {NUM} générait
+     * toujours le même matricule, faisant tourner en boucle la recherche d'un numéro libre. */
+    @Test
+    void validate_formatWithoutNumToken_rejected() {
+        assertThatThrownBy(() -> MatriculeFormatter.validate("GSBD24 0000"))
+                .isInstanceOf(BusinessRuleException.class);
+    }
+
+    @Test
+    void validate_formatWithNumToken_accepted() {
+        assertThatNoException().isThrownBy(() -> MatriculeFormatter.validate("GSBD24-{NUM}"));
+    }
+
+    @Test
+    void validate_nullOrBlank_accepted() {
+        assertThatNoException().isThrownBy(() -> MatriculeFormatter.validate(null));
+        assertThatNoException().isThrownBy(() -> MatriculeFormatter.validate("  "));
+    }
 
     @Test
     void nullFormatAndDigits_useHistoricalDefault() {

@@ -24,8 +24,10 @@ public interface CreateTenantUseCase {
     void changeStatus(Long id, TenantStatus target);
     void delete(Long id);
 
-    /** Manual creation by SUPER_ADMIN. {@code initialState} defaults to TRIAL (null → TRIAL). */
-    record CreateTenantCommand(String schoolName, String slug, String email, String phone, String phone2,
+    /** Manual creation by SUPER_ADMIN. {@code initialState} defaults to TRIAL (null → TRIAL).
+     * {@code adminPhone} (numéro de connexion de l'admin) est distinct de {@code phone}/{@code phone2}
+     * (numéros de l'école, affichés sur badges/documents) — voir {@code CreateTenantRequest#adminPhone}. */
+    record CreateTenantCommand(String schoolName, String slug, String email, String adminPhone, String phone, String phone2,
             String address, String city, String country, String director,
             Set<EstablishmentType> establishmentTypes, TenantStatus initialState, String adminPassword,
             String adminUsername) {}

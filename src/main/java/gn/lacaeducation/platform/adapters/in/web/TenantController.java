@@ -38,7 +38,7 @@ public class TenantController {
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ResponseEntity<TenantResponse> create(@Valid @RequestBody CreateTenantRequest req) {
         var created = tenantUseCase.create(new CreateTenantUseCase.CreateTenantCommand(
-                req.schoolName(), req.slug(), req.email(), req.phone(), req.phone2(), req.address(), req.city(),
+                req.schoolName(), req.slug(), req.email(), req.adminPhone(), req.phone(), req.phone2(), req.address(), req.city(),
                 req.country(), req.director(), req.establishmentTypes(), req.initialState(), req.adminPassword(),
                 req.username()));
         var tenant = created.tenant();
