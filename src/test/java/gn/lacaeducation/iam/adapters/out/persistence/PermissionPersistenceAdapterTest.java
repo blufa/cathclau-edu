@@ -22,10 +22,12 @@ class PermissionPersistenceAdapterTest {
     @Mock PermissionJpaRepository jpaRepository;
     @Mock RolePermissionJpaRepository rolePermissionJpaRepository;
     @Mock UserPermissionJpaRepository userPermissionJpaRepository;
+    @Mock UserRevokedPermissionJpaRepository userRevokedPermissionJpaRepository;
     @Mock IamMapper mapper;
 
     PermissionPersistenceAdapter adapter() {
-        return new PermissionPersistenceAdapter(jpaRepository, rolePermissionJpaRepository, userPermissionJpaRepository, mapper);
+        return new PermissionPersistenceAdapter(jpaRepository, rolePermissionJpaRepository, userPermissionJpaRepository,
+                userRevokedPermissionJpaRepository, mapper);
     }
 
     private UserPermissionJpaEntity existing(Long userId, Long permissionId) {
@@ -33,6 +35,13 @@ class PermissionPersistenceAdapterTest {
         up.setUserId(userId);
         up.setPermissionId(permissionId);
         return up;
+    }
+
+    private UserRevokedPermissionJpaEntity existingRevoked(Long userId, Long permissionId) {
+        UserRevokedPermissionJpaEntity rev = new UserRevokedPermissionJpaEntity();
+        rev.setUserId(userId);
+        rev.setPermissionId(permissionId);
+        return rev;
     }
 
     @Test
@@ -62,5 +71,21 @@ class PermissionPersistenceAdapterTest {
         verify(userPermissionJpaRepository).deleteAll(removedCaptor.capture());
         assertThat(removedCaptor.getValue()).extracting(UserPermissionJpaEntity::getPermissionId).containsExactly(8L);
         verify(userPermissionJpaRepository, never()).save(any());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void revokePermissions_sameDiffPattern_neverReinsertsAlreadyRevoked() {
+        when(userRevokedPermissionJpaRepository.findByUserId(10L)).thenReturn(List.of(existingRevoked(10L, 7L)));
+
+        adapter().revokePermissions(10L, List.of(7L, 9L));
+
+        ArgumentCaptor<UserRevokedPermissionJpaEntity> savedCaptor = ArgumentCaptor.forClass(UserRevokedPermissionJpaEntity.class);
+        verify(userRevokedPermissionJpaRepository).save(savedCaptor.capture());
+        assertThat(savedCaptor.getValue().getPermissionId()).isEqualTo(9L);
+
+        ArgumentCaptor<List<UserRevokedPermissionJpaEntity>> removedCaptor = ArgumentCaptor.forClass(List.class);
+        verify(userRevokedPermissionJpaRepository).deleteAll(removedCaptor.capture());
+        assertThat(removedCaptor.getValue()).isEmpty();
     }
 }

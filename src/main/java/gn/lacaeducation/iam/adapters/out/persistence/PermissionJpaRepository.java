@@ -9,14 +9,19 @@ interface PermissionJpaRepository extends JpaRepository<PermissionJpaEntity, Lon
 
     @Query("""
             SELECT DISTINCT p FROM PermissionJpaEntity p
-            WHERE p.id IN (
-                SELECT rp.permissionId FROM RolePermissionJpaEntity rp
-                WHERE rp.roleId IN (
-                    SELECT ur.roleId FROM UserRoleJpaEntity ur WHERE ur.userId = :userId
+            WHERE (
+                p.id IN (
+                    SELECT rp.permissionId FROM RolePermissionJpaEntity rp
+                    WHERE rp.roleId IN (
+                        SELECT ur.roleId FROM UserRoleJpaEntity ur WHERE ur.userId = :userId
+                    )
+                )
+                OR p.id IN (
+                    SELECT up.permissionId FROM UserPermissionJpaEntity up WHERE up.userId = :userId
                 )
             )
-            OR p.id IN (
-                SELECT up.permissionId FROM UserPermissionJpaEntity up WHERE up.userId = :userId
+            AND p.id NOT IN (
+                SELECT rev.permissionId FROM UserRevokedPermissionJpaEntity rev WHERE rev.userId = :userId
             )
             """)
     List<PermissionJpaEntity> findByUserId(Long userId);
