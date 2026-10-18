@@ -50,13 +50,13 @@ public class AcademicsDataProviderAdapter implements AcademicsDataProvider {
     public Optional<PeriodPublicInfo> findPeriod(Long periodId) {
         return periodeRepo.findById(periodId).map(p ->
                 new PeriodPublicInfo(p.getId(), p.getLabel(), p.getType() != null ? p.getType().name() : null,
-                        p.getStartDate(), p.getEndDate()));
+                        p.getStartDate(), p.getEndDate(), p.getCompositionPeriodId()));
     }
     @Override
     public List<PeriodPublicInfo> findPeriodsByAcademicYear(Long academicYearId) {
         return periodeRepo.findByAcademicYearIdOrderBySortOrder(academicYearId).stream()
                 .map(p -> new PeriodPublicInfo(p.getId(), p.getLabel(), p.getType() != null ? p.getType().name() : null,
-                        p.getStartDate(), p.getEndDate()))
+                        p.getStartDate(), p.getEndDate(), p.getCompositionPeriodId()))
                 .toList();
     }
 

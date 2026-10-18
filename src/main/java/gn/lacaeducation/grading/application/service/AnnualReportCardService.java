@@ -131,10 +131,24 @@ public class AnnualReportCardService implements AnnualReportCardUseCase {
     }
 
     /** Les deux périodes de type SEMESTRE de l'année scolaire, triées par ordre (S1 puis S2). */
+    /**
+     * Les deux "vraies" périodes semestrielles de l'année (S1 puis S2), pour l'agrégation du bulletin
+     * annuel. Certaines écoles déclarent 4 périodes de type SEMESTRE (ex. "1er Semestre" + "Compo 1er
+     * Semestre" + "2ème Semestre" + "Compo Fin Année", école Notre Mère, §retour fondateur) — seules
+     * celles qui SONT la source d'un lien {@code compositionPeriodId} comptent comme un "vrai" semestre
+     * pour cette agrégation (leur composition associée est fusionnée en amont, voir
+     * {@code GradeCalculationService#assessmentsForBulletin}, pas traitée comme un 3ème/4ème semestre
+     * séparé). Repli sur le comportement historique (toutes les périodes SEMESTRE, dans l'ordre) si
+     * aucune n'utilise cette convention — écoles à 2 périodes SEMESTRE simples, inchangées.
+     */
     private List<PeriodPublicInfo> resolveSemesterPeriods(Long academicYearId) {
-        return academicsDataProvider.findPeriodsByAcademicYear(academicYearId).stream()
+        List<PeriodPublicInfo> allSemesters = academicsDataProvider.findPeriodsByAcademicYear(academicYearId).stream()
                 .filter(p -> "SEMESTRE".equals(p.type()))
                 .toList();
+        List<PeriodPublicInfo> withComposition = allSemesters.stream()
+                .filter(p -> p.compositionPeriodId() != null)
+                .toList();
+        return withComposition.isEmpty() ? allSemesters : withComposition;
     }
 
     private AnnualReportCard build(Long studentId, Long classId, Long academicYearId, Long s1Id, Long s2Id,

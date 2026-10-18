@@ -29,4 +29,5 @@ public class PeriodeJpaEntity {
     @Column(name = "start_date") private LocalDate startDate;
     @Column(name = "end_date") private LocalDate endDate;
     private Boolean closed;
+    @Column(name = "composition_period_id") private Long compositionPeriodId;
 }

@@ -382,4 +382,43 @@ class GradeCalculationServiceTest {
         assertThat(breakdown).isEmpty();
         org.mockito.Mockito.verifyNoInteractions(assessmentRepository);
     }
+
+    /**
+     * Régression (§retour fondateur, école Notre Mère) : certaines écoles séparent la période des
+     * évaluations "cours" (ex. "1er Semestre") de celle de sa composition (ex. "Compo 1er Semestre") —
+     * deux {@code Periode} distincts liés par {@code compositionPeriodId}, mais un seul bulletin. Les
+     * évaluations des DEUX périodes doivent entrer dans le calcul.
+     */
+    @Test
+    void generateForStudent_mergesAssessmentsFromLinkedCompositionPeriod() {
+        Long classId = 1L, coursPeriodId = 12L, compoPeriodId = 13L, studentId = 10L, subjectId = 100L;
+        Assessment quiz = Assessment.builder().id(1L).classId(classId).periodId(coursPeriodId).subjectId(subjectId)
+                .type(AssessmentType.QUIZ).date(LocalDate.of(2026, 10, 10)).coefficient(BigDecimal.ONE).build();
+        Assessment exam = Assessment.builder().id(2L).classId(classId).periodId(compoPeriodId).subjectId(subjectId)
+                .type(AssessmentType.EXAM).date(LocalDate.of(2027, 1, 15)).coefficient(BigDecimal.ONE).build();
+        when(assessmentRepository.findByClassIdAndPeriodId(classId, coursPeriodId)).thenReturn(List.of(quiz));
+        when(assessmentRepository.findByClassIdAndPeriodId(classId, compoPeriodId)).thenReturn(List.of(exam));
+        when(academicsDataProvider.findPeriod(coursPeriodId)).thenReturn(Optional.of(
+                new gn.lacaeducation.academics.PeriodPublicInfo(coursPeriodId, "1er Semestre", "SEMESTRE", null, null, compoPeriodId)));
+        when(classSubjectQueryPort.findByClassId(classId))
+                .thenReturn(List.of(new ClassSubjectInfo(subjectId, BigDecimal.ONE, 5L)));
+        when(gradeRepository.findByAssessmentId(1L)).thenReturn(List.of(
+                Grade.builder().assessmentId(1L).studentId(studentId).value(BigDecimal.valueOf(12)).build()));
+        when(gradeRepository.findByAssessmentId(2L)).thenReturn(List.of(
+                Grade.builder().assessmentId(2L).studentId(studentId).value(BigDecimal.valueOf(16)).build()));
+        when(reportCardRepository.findByStudentIdAndPeriodId(studentId, coursPeriodId)).thenReturn(Optional.empty());
+        when(reportCardRepository.save(any())).thenAnswer(i -> { ReportCard r = i.getArgument(0); if (r.getId() == null) r.setId(99L); return r; });
+        when(reportCardRepository.saveLine(any())).thenAnswer(i -> i.getArgument(0));
+        when(reportCardRepository.findByClassIdAndPeriodId(classId, coursPeriodId)).thenReturn(List.of());
+        when(reportCardRepository.findById(any())).thenAnswer(i -> Optional.of(ReportCard.builder().id(99L).build()));
+
+        service.generateForStudent(studentId, classId, coursPeriodId);
+
+        ArgumentCaptor<ReportCardLine> lineCaptor = ArgumentCaptor.forClass(ReportCardLine.class);
+        org.mockito.Mockito.verify(reportCardRepository, atLeastOnce()).saveLine(lineCaptor.capture());
+        ReportCardLine line = lineCaptor.getAllValues().get(0);
+        assertThat(line.getCoursAverage()).isEqualByComparingTo("12.00"); // du périodId demandé
+        assertThat(line.getCompoAverage()).isEqualByComparingTo("16.00"); // de la période composition liée
+        assertThat(line.getSubjectAverage()).isEqualByComparingTo("14.00"); // (12+16)/2
+    }
 }

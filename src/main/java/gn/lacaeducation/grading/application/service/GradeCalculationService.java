@@ -80,7 +80,7 @@ public class GradeCalculationService {
      * @return the saved report cards with ranks populated
      */
     public List<ReportCard> generateForClass(Long classId, Long periodId) {
-        List<Assessment> assessments = assessmentRepository.findByClassIdAndPeriodId(classId, periodId);
+        List<Assessment> assessments = assessmentsForBulletin(classId, periodId);
         List<ClassSubjectInfo> subjectInfos = classSubjectQueryPort.findByClassId(classId);
 
         // Collect all distinct student IDs that have at least one grade
@@ -118,7 +118,7 @@ public class GradeCalculationService {
      * @return the saved, fully populated report card
      */
     public ReportCard generateForStudent(Long studentId, Long classId, Long periodId) {
-        List<Assessment> assessments = assessmentRepository.findByClassIdAndPeriodId(classId, periodId);
+        List<Assessment> assessments = assessmentsForBulletin(classId, periodId);
         List<ClassSubjectInfo> subjectInfos = classSubjectQueryPort.findByClassId(classId);
 
         ReportCardWithLines rcWithLines = buildReportCard(studentId, classId, periodId, assessments, subjectInfos,
@@ -396,7 +396,7 @@ public class GradeCalculationService {
         if (cycleGroup == CycleGroup.PRIMAIRE) {
             return List.of();
         }
-        List<Assessment> assessments = assessmentRepository.findByClassIdAndPeriodId(classId, periodId);
+        List<Assessment> assessments = assessmentsForBulletin(classId, periodId);
         Map<Long, List<Assessment>> assessmentsBySubject = assessments.stream()
                 .collect(Collectors.groupingBy(Assessment::getSubjectId));
         Map<Long, BigDecimal> subjectCoeffMap = classSubjectQueryPort.findByClassId(classId).stream()
@@ -420,6 +420,23 @@ public class GradeCalculationService {
     // -------------------------------------------------------------------------
     // Static helpers (package-private for tests)
     // -------------------------------------------------------------------------
+
+    /**
+     * Évaluations d'un bulletin — fusionne celles de {@code periodId} avec celles de sa période
+     * "composition" associée si elle existe (§retour fondateur, école Notre Mère : certaines écoles
+     * séparent la période des évaluations "cours", ex. "1er Semestre", de celle de la composition
+     * correspondante, ex. "Compo 1er Semestre" — deux enregistrements {@code Periode} distincts, mais
+     * un seul bulletin). Comportement inchangé si aucune période composition n'est configurée (nul).
+     */
+    private List<Assessment> assessmentsForBulletin(Long classId, Long periodId) {
+        List<Assessment> assessments = new ArrayList<>(assessmentRepository.findByClassIdAndPeriodId(classId, periodId));
+        Long compositionPeriodId = academicsDataProvider.findPeriod(periodId)
+                .map(gn.lacaeducation.academics.PeriodPublicInfo::compositionPeriodId).orElse(null);
+        if (compositionPeriodId != null) {
+            assessments.addAll(assessmentRepository.findByClassIdAndPeriodId(classId, compositionPeriodId));
+        }
+        return assessments;
+    }
 
     /**
      * Barème standard, non paramétrable (§retour pédagogique) : plus de surcharge par tenant — la

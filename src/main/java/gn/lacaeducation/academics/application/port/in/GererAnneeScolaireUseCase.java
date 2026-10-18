@@ -45,6 +45,8 @@ public interface GererAnneeScolaireUseCase {
     record CreatePeriodCommand(
             Long academicYearId, String label, TypePeriode type,
             SchoolCycle cycle,
-            Integer sortOrder, LocalDate startDate, LocalDate endDate
+            Integer sortOrder, LocalDate startDate, LocalDate endDate,
+            /** Période "composition" associée (§retour fondateur) — voir {@link Periode#getCompositionPeriodId()}. */
+            Long compositionPeriodId
     ) {}
 }
