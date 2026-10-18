@@ -140,13 +140,14 @@ class OpenPdfAnnualReportCardGenerator implements AnnualReportCardPdfGenerator {
                 bodyCell(table, dec(l.getAnnualAverage()), Element.ALIGN_CENTER, bg);
 
                 sumCoef = sumCoef.add(coef);
-                if (l.getS1Cours() != null) sumS1Cours = sumS1Cours.add(l.getS1Cours());
-                if (l.getS1Compo() != null) sumS1Compo = sumS1Compo.add(l.getS1Compo());
-                if (l.getS2Compo() != null) sumS2Compo = sumS2Compo.add(l.getS2Compo());
+                if (l.getS1Cours() != null) sumS1Cours = sumS1Cours.add(l.getS1Cours().multiply(coef, MC).setScale(SCALE, RoundingMode.HALF_UP));
+                if (l.getS1Compo() != null) sumS1Compo = sumS1Compo.add(l.getS1Compo().multiply(coef, MC).setScale(SCALE, RoundingMode.HALF_UP));
+                if (l.getS2Compo() != null) sumS2Compo = sumS2Compo.add(l.getS2Compo().multiply(coef, MC).setScale(SCALE, RoundingMode.HALF_UP));
             }
 
-            // Ligne TOTAL : somme des colonnes (cours S1 simple, S2/compo pondérées par coefficient —
-            // même règle que le bulletin semestriel).
+            // Ligne TOTAL : Σ(valeur × coefficient) pour chaque colonne — même règle que le bulletin
+            // semestriel et que l'image de référence (vérifié par calcul manuel : Σ(valeur_du_mois ×
+            // coef)). Les colonnes S1 et S2 doivent être pondérées de la même façon, pas seulement S2.
             totalCell(table, "TOTAL", Element.ALIGN_LEFT, 2);
             totalCell(table, dec(sumCoef), Element.ALIGN_CENTER, 1);
             totalCell(table, dec(sumS1Cours), Element.ALIGN_CENTER, 1);
@@ -157,9 +158,10 @@ class OpenPdfAnnualReportCardGenerator implements AnnualReportCardPdfGenerator {
             totalCell(table, "", Element.ALIGN_CENTER, 1);
             totalCell(table, "", Element.ALIGN_CENTER, 1);
 
-            // Ligne MOYENNES : moyenne de cours (simple) / composition (pondérée coef) / générale — même
-            // méthode que la moyenne générale du bulletin.
-            BigDecimal s1CoursGeneral = simpleAverage(lines, AnnualReportCardLine::getS1Cours);
+            // Ligne MOYENNES : TOTAL / Σcoef pour chaque colonne — même méthode que la moyenne générale
+            // du bulletin (cours ET composition pondérées par coefficient, pas de moyenne simple ici :
+            // le Secondaire pondère toujours par coefficient, voir GradeCalculationService).
+            BigDecimal s1CoursGeneral = weightedAverage(lines, AnnualReportCardLine::getS1Cours);
             BigDecimal s1CompoGeneral = weightedAverage(lines, AnnualReportCardLine::getS1Compo);
             BigDecimal s2CompoGeneral = weightedAverage(lines, AnnualReportCardLine::getS2Compo);
             boolean hasCoef = sumCoef.compareTo(BigDecimal.ZERO) > 0;
@@ -259,14 +261,6 @@ class OpenPdfAnnualReportCardGenerator implements AnnualReportCardPdfGenerator {
             case "REDOUBLE" -> "REDOUBLE";
             default -> decision;
         };
-    }
-
-    private static BigDecimal simpleAverage(List<AnnualReportCardLine> lines,
-                                            java.util.function.Function<AnnualReportCardLine, BigDecimal> getter) {
-        List<BigDecimal> values = lines.stream().map(getter).filter(java.util.Objects::nonNull).toList();
-        if (values.isEmpty()) return null;
-        BigDecimal sum = values.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
-        return sum.divide(BigDecimal.valueOf(values.size()), MC).setScale(2, RoundingMode.HALF_UP);
     }
 
     private static BigDecimal weightedAverage(List<AnnualReportCardLine> lines,
