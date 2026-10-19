@@ -111,9 +111,9 @@ public class AnnualReportCardService implements AnnualReportCardUseCase {
         String studentName = student == null ? null
                 : ((student.firstName() != null ? student.firstName() : "") + " "
                    + (student.lastName() != null ? student.lastName() : "")).trim();
-        String className = academicsDataProvider.findClass(card.getClassId())
-                .map(c -> c.levelLabel() != null && !c.levelLabel().isBlank() ? c.label() + " (" + c.levelLabel() + ")" : c.label())
-                .orElse(null);
+        gn.lacaeducation.academics.ClassPublicInfo classInfo = academicsDataProvider.findClass(card.getClassId()).orElse(null);
+        String className = classInfo != null ? classInfo.label() : null;
+        String cycleLabel = classInfo != null ? classInfo.schoolCycle() : null;
         String s1Label = card.getS1PeriodId() == null ? null
                 : academicsDataProvider.findPeriod(card.getS1PeriodId()).map(PeriodPublicInfo::label).orElse(null);
         String s2Label = card.getS2PeriodId() == null ? null
@@ -126,7 +126,7 @@ public class AnnualReportCardService implements AnnualReportCardUseCase {
                 : calculationService.monthlyBreakdown(card.getStudentId(), card.getClassId(), card.getS2PeriodId());
         return new gn.lacaeducation.grading.application.port.out.AnnualReportCardPdfGenerator.AnnualReportCardContext(
                 tenantId, studentName, student != null ? student.studentNumber() : null,
-                className, s1Label, s2Label, schoolYear, academicsDataProvider.subjectLabels(subjectIds),
+                className, cycleLabel, s1Label, s2Label, schoolYear, academicsDataProvider.subjectLabels(subjectIds),
                 s2MonthlyBreakdown);
     }
 

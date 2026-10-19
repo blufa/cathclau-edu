@@ -59,8 +59,9 @@ class OpenPdfGeneratorsTest {
                         .coefficient(new BigDecimal("2")).weightedAverage(new BigDecimal("26.00"))
                         .subjectRank(5).build());
 
-        ReportCardContext ctx = new ReportCardContext(1L, "Awa Diallo", "2026-0007", "6e A (Collège)",
-                "1er trimestre", "2025-2026", Map.of(11L, "Mathématiques", 12L, "Français"), List.of());
+        ReportCardContext ctx = new ReportCardContext(1L, "Awa Diallo", "2026-0007", "6e A", "COLLEGE",
+                "1er trimestre", "2025-2026", Map.of(11L, "Mathématiques", 12L, "Français"), List.of(),
+                null, null, null, null);
         byte[] pdf = reportCardGenerator.generate(rc, lines, ctx);
 
         assertThat(pdf).isNotEmpty();
@@ -103,8 +104,9 @@ class OpenPdfGeneratorsTest {
                         monthlyMap(YearMonth.of(2026, 10), "14.00"),
                         new BigDecimal("12.00"), new BigDecimal("13.00")));
 
-        ReportCardContext ctx = new ReportCardContext(1L, "Awa Diallo", "2026-0007", "8e A (Collège)",
-                "1er semestre", "2025-2026", Map.of(11L, "Mathématiques", 12L, "Anglais"), monthly);
+        ReportCardContext ctx = new ReportCardContext(1L, "Awa Diallo", "2026-0007", "8e A", "COLLEGE",
+                "1er semestre", "2025-2026", Map.of(11L, "Mathématiques", 12L, "Anglais"), monthly,
+                null, null, null, null);
         byte[] pdf = reportCardGenerator.generate(rc, lines, ctx);
 
         assertThat(pdf).isNotEmpty();
@@ -133,8 +135,9 @@ class OpenPdfGeneratorsTest {
                 ReportCardLine.builder().subjectId(21L).subjectAverage(new BigDecimal("18.00"))
                         .coefficient(BigDecimal.ONE).weightedAverage(new BigDecimal("18.00")).subjectRank(1).build());
 
-        ReportCardContext ctx = new ReportCardContext(1L, "Alassane Diallo", "PNM00079", "CM1 (Primaire)",
-                "1er trimestre", "2026-2027", Map.of(21L, "Français (Dictée - Questions)"), List.of());
+        ReportCardContext ctx = new ReportCardContext(1L, "Alassane Diallo", "PNM00079", "CM1", "PRIMAIRE",
+                "1er trimestre", "2026-2027", Map.of(21L, "Français (Dictée - Questions)"), List.of(),
+                null, null, null, null);
         byte[] pdf = reportCardGenerator.generate(rc, lines, ctx);
 
         assertThat(pdf).isNotEmpty();
@@ -158,7 +161,7 @@ class OpenPdfGeneratorsTest {
                 new BigDecimal("14.00"), new BigDecimal("14.50")));
 
         AnnualReportCardContext ctx = new AnnualReportCardContext(1L, "Mariama Korka Diakhaby", "2400241",
-                "7e (Collège)", "1er Semestre", "2ème Semestre", "2026-2027", Map.of(11L, "Mathématiques"), s2Monthly);
+                "7e", "COLLEGE", "1er Semestre", "2ème Semestre", "2026-2027", Map.of(11L, "Mathématiques"), s2Monthly);
         byte[] pdf = annualGenerator.generate(card, ctx);
 
         assertThat(pdf).isNotEmpty();

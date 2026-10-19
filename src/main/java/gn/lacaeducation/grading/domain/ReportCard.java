@@ -22,4 +22,8 @@ public class ReportCard {
     private LocalDateTime generatedAt;
     /** Appréciation du conseil de classe (Félicitations, Compliments, Encouragements…). */
     private Distinction distinction;
+    /** Assiduité sur la période du bulletin (§retour fondateur, "bulletin-test") — null = non calculé
+     * (bulletins générés avant cette fonctionnalité). */
+    private Integer absentCount;
+    private Integer lateCount;
 }

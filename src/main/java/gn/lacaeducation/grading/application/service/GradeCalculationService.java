@@ -1,6 +1,7 @@
 package gn.lacaeducation.grading.application.service;
 
 import gn.lacaeducation.academics.AcademicsDataProvider;
+import gn.lacaeducation.grading.AttendanceSummaryProvider;
 import gn.lacaeducation.grading.TeacherNameProvider;
 import gn.lacaeducation.grading.application.event.ReportCardGeneratedEvent;
 import gn.lacaeducation.grading.application.port.out.AssessmentRepository;
@@ -40,10 +41,10 @@ import java.util.stream.Collectors;
  *
  * Algorithm (CLAUDE.md §7.4) :
  * <pre>
- * subject_average   = voir {@link SubjectSemesterAverage} (formule distincte primaire/secondaire)
- * weighted_subject  = subject_average × subject_coefficient   (coefficient forcé à 1 en Primaire —
- *                     voir buildReportCard — donc weighted_subject = subject_average pour ce cycle)
- * general_average   = Σ(weighted_subject) / Σ(subject_coefficient)
+ * subject_average   = voir {@link SubjectSemesterAverage} (formule distincte primaire/secondaire —
+ *                     Secondaire : le coefficient de la matière y est déjà appliqué, pas de
+ *                     multiplication supplémentaire ici ; Primaire : coefficient forcé à 1)
+ * general_average   = Σ(subject_average) / Σ(subject_coefficient)
  *                     — Secondaire : pondérée par les coefficients de matière (ClasseMatiere/subjects)
  *                     — Primaire   : Σ(subject_average) / nombre de matières notées (coefficients
  *                       neutralisés, voir ci-dessus)
@@ -64,6 +65,7 @@ public class GradeCalculationService {
     private final ClassSubjectQueryPort classSubjectQueryPort;
     private final AcademicsDataProvider academicsDataProvider;
     private final TeacherNameProvider teacherNameProvider;
+    private final AttendanceSummaryProvider attendanceSummaryProvider;
     private final ApplicationEventPublisher eventPublisher;
 
     /** Internal value object pairing a report card with its computed lines. */
@@ -80,6 +82,7 @@ public class GradeCalculationService {
      * @return the saved report cards with ranks populated
      */
     public List<ReportCard> generateForClass(Long classId, Long periodId) {
+        rejectIfCompositionTargetPeriod(periodId);
         List<Assessment> assessments = assessmentsForBulletin(classId, periodId);
         List<ClassSubjectInfo> subjectInfos = classSubjectQueryPort.findByClassId(classId);
 
@@ -118,6 +121,7 @@ public class GradeCalculationService {
      * @return the saved, fully populated report card
      */
     public ReportCard generateForStudent(Long studentId, Long classId, Long periodId) {
+        rejectIfCompositionTargetPeriod(periodId);
         List<Assessment> assessments = assessmentsForBulletin(classId, periodId);
         List<ClassSubjectInfo> subjectInfos = classSubjectQueryPort.findByClassId(classId);
 
@@ -177,12 +181,6 @@ public class GradeCalculationService {
                 continue;
             }
 
-            SubjectSemesterAverage.Result formulaResult =
-                    SubjectSemesterAverage.compute(cycleGroup, subjectAssessments, grades);
-            BigDecimal subjectAverage = formulaResult.finalValue();
-            if (subjectAverage == null) {
-                continue; // notes présentes mais sans valeur exploitable (cas dégradé, voir domaine)
-            }
             // Primaire (§retour pédagogique) : moyenne générale = simple moyenne des moyennes de
             // matière (Σ/nombre de matières), jamais pondérée par un coefficient — contrairement au
             // Secondaire. Forcer le coefficient à 1 ici fait que sumSubjectCoeffs ci-dessous vaut
@@ -190,7 +188,16 @@ public class GradeCalculationService {
             BigDecimal subjectCoeff = cycleGroup == CycleGroup.PRIMAIRE
                     ? BigDecimal.ONE
                     : subjectCoeffMap.getOrDefault(subjectId, BigDecimal.ONE);
-            BigDecimal weighted = subjectAverage.multiply(subjectCoeff, MC).setScale(SCALE, RoundingMode.HALF_UP);
+
+            SubjectSemesterAverage.Result formulaResult =
+                    SubjectSemesterAverage.compute(cycleGroup, subjectCoeff, subjectAssessments, grades);
+            BigDecimal subjectAverage = formulaResult.finalValue();
+            if (subjectAverage == null) {
+                continue; // notes présentes mais sans valeur exploitable (cas dégradé, voir domaine)
+            }
+            // Le coefficient est déjà appliqué dans formulaResult (voir SubjectSemesterAverage) : ne
+            // pas le remultiplier ici, sous peine de compter le coefficient deux fois.
+            BigDecimal weighted = subjectAverage.setScale(SCALE, RoundingMode.HALF_UP);
 
             Long teacherId = subjectTeacherMap.get(subjectId);
             // Incident trouvé en testant en direct (§retour fondateur, école Notre Mère) : le bulletin
@@ -217,6 +224,8 @@ public class GradeCalculationService {
         // (voir GradingScale.defaults) — plus de règles d'élimination/décision personnalisables.
         String decision = scale.decisionFor(generalAverage);
 
+        AttendanceSummaryProvider.Summary attendance = resolveAttendance(studentId, periodId);
+
         ReportCard rc = ReportCard.builder()
                 .studentId(studentId)
                 .classId(classId)
@@ -227,9 +236,27 @@ public class GradeCalculationService {
                 .distinction(scale.distinctionFor(generalAverage, minSubjectAverage(lines)))
                 .status(ReportCardStatus.GENERATED)
                 .generatedAt(LocalDateTime.now())
+                .absentCount(attendance != null ? attendance.absentCount() : null)
+                .lateCount(attendance != null ? attendance.lateCount() : null)
                 .build();
 
         return new ReportCardWithLines(rc, lines);
+    }
+
+    /** Assiduité de l'élève sur la période du bulletin (§retour fondateur : déjà connue via le scan de
+     * badge, voir {@link AttendanceSummaryProvider}) — bornée à la période "cours" fournie, étendue
+     * jusqu'à la fin de sa période "composition" liée si elle existe (même règle que
+     * {@link #assessmentsForBulletin}, pour couvrir tout le semestre, pas juste la partie "cours"). */
+    private AttendanceSummaryProvider.Summary resolveAttendance(Long studentId, Long periodId) {
+        var period = academicsDataProvider.findPeriod(periodId).orElse(null);
+        if (period == null || period.startDate() == null) return null;
+        java.time.LocalDate from = period.startDate();
+        java.time.LocalDate to = period.endDate() != null ? period.endDate() : java.time.LocalDate.now();
+        if (period.compositionPeriodId() != null) {
+            var compo = academicsDataProvider.findPeriod(period.compositionPeriodId()).orElse(null);
+            if (compo != null && compo.endDate() != null) to = compo.endDate();
+        }
+        return attendanceSummaryProvider.summary(studentId, from, to);
     }
 
     /**
@@ -260,17 +287,11 @@ public class GradeCalculationService {
 
     /**
      * Moyenne générale de l'élève (toutes matières confondues) — règle rigoureuse du système guinéen
-     * (confirmée avec exemples chiffrés) : {@code Moyenne_Generale_Eleve = Σ(Points_Matiere) /
-     * Σ(Coefficients_De_La_Classe)}, où {@code Points_Matiere = Moy_Matiere_Brute × coefficient de la
-     * matière} (déjà accumulé dans {@code sumWeighted}/{@code sumSubjectCoeffs} par l'appelant). Le
-     * coefficient n'intervient JAMAIS avant cette étape (ni dans Moy_Cours, ni dans Moy_Matiere_Brute).
-     * <p>
-     * Une version antérieure combinait séparément une « moyenne de cours générale » (simple entre
-     * matières) et une « moyenne de composition générale » (pondérée par coefficient) — ça ne
-     * correspondait pas à la règle confirmée (vérifié par calcul direct sur les exemples fournis : la
-     * moyenne blended donnait 13.25 au lieu de 13.17 attendu) et a été retiré. Les colonnes
-     * {@code coursAverage}/{@code compoAverage} par matière restent affichées sur le bulletin (détail
-     * informatif), simplement plus utilisées pour la moyenne générale.
+     * (confirmée avec exemples chiffrés, features/Calcul-moyenne-2.pdf) : {@code Moyenne_Generale_Eleve
+     * = Σ(Points_Matiere) / Σ(Coefficients_De_La_Classe)}, où {@code Points_Matiere = M_sem_matière}
+     * (déjà multipliée par le coefficient de la matière à l'intérieur de
+     * {@link SubjectSemesterAverage#compute}, accumulée telle quelle dans {@code sumWeighted} par
+     * l'appelant) — cette méthode ne fait que diviser par la somme des coefficients, sans remultiplier.
      */
     private BigDecimal computeOverallAverage(BigDecimal sumWeighted, BigDecimal sumSubjectCoeffs) {
         return sumSubjectCoeffs.compareTo(BigDecimal.ZERO) == 0
@@ -383,7 +404,14 @@ public class GradeCalculationService {
         }
         Long classId = subjectAssessments.stream()
                 .map(Assessment::getClassId).filter(java.util.Objects::nonNull).findFirst().orElse(null);
-        return SubjectSemesterAverage.compute(resolveCycleGroup(classId), subjectAssessments, studentGrades)
+        Long subjectId = subjectAssessments.stream()
+                .map(Assessment::getSubjectId).filter(java.util.Objects::nonNull).findFirst().orElse(null);
+        BigDecimal subjectCoeff = classId == null || subjectId == null ? BigDecimal.ONE
+                : classSubjectQueryPort.findByClassId(classId).stream()
+                        .filter(i -> subjectId.equals(i.subjectId()))
+                        .map(ClassSubjectInfo::coefficient)
+                        .findFirst().orElse(BigDecimal.ONE);
+        return SubjectSemesterAverage.compute(resolveCycleGroup(classId), subjectCoeff, subjectAssessments, studentGrades)
                 .finalValue();
     }
 
@@ -410,8 +438,10 @@ public class GradeCalculationService {
                     .filter(g -> studentId.equals(g.getStudentId()))
                     .toList();
             if (grades.isEmpty()) continue;
-            SubjectSemesterAverage.Result formulaResult = SubjectSemesterAverage.compute(cycleGroup, entry.getValue(), grades);
-            result.add(new SubjectMonthlyBreakdown(subjectId, subjectCoeffMap.getOrDefault(subjectId, BigDecimal.ONE),
+            BigDecimal subjectCoeff = subjectCoeffMap.getOrDefault(subjectId, BigDecimal.ONE);
+            SubjectSemesterAverage.Result formulaResult =
+                    SubjectSemesterAverage.compute(cycleGroup, subjectCoeff, entry.getValue(), grades);
+            result.add(new SubjectMonthlyBreakdown(subjectId, subjectCoeff,
                     formulaResult.monthlyCours(), formulaResult.compoValue(), formulaResult.finalValue()));
         }
         return result;
@@ -436,6 +466,20 @@ public class GradeCalculationService {
             assessments.addAll(assessmentRepository.findByClassIdAndPeriodId(classId, compositionPeriodId));
         }
         return assessments;
+    }
+
+    /**
+     * Refuse de générer un bulletin directement sur une période "composition" (ex. "Compo 1er
+     * Semestre") : elle n'existe que pour être fusionnée dans le bulletin de sa période "cours"
+     * associée ({@link #assessmentsForBulletin}) — la générer elle-même produirait un faux second
+     * bulletin ("bulletin de composition") que l'école ne veut pas voir apparaître (§retour fondateur).
+     */
+    private void rejectIfCompositionTargetPeriod(Long periodId) {
+        if (academicsDataProvider.isCompositionTargetPeriod(periodId)) {
+            throw new gn.lacaeducation.common.BusinessRuleException(
+                    "Cette période est une période de composition : elle est automatiquement fusionnée dans le "
+                            + "bulletin de sa période associée et ne produit pas son propre bulletin.");
+        }
     }
 
     /**

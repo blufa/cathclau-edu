@@ -17,6 +17,9 @@ public interface AnnualReportCardPdfGenerator {
             String studentName,
             String studentNumber,
             String className,
+            /** Cycle de la classe ("COLLEGE"/"LYCEE"/...) — ligne "OPTION / NIVEAU" du bulletin
+             * (§reproduction fidèle bulletin-test.webp), distincte du libellé de classe lui-même. */
+            String cycleLabel,
             String s1Label,
             String s2Label,
             String schoolYear,

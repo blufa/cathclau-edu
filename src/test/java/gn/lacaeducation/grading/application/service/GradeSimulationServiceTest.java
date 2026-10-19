@@ -36,7 +36,7 @@ class GradeSimulationServiceTest {
     @InjectMocks GradeSimulationService service;
 
     private StudentPublicInfo student(long id, String first) {
-        return new StudentPublicInfo(id, 99L, first, "N", null, null, "M-" + id, null, null, "M");
+        return new StudentPublicInfo(id, 99L, first, "N", null, null, "M-" + id, null, null, "M", null);
     }
 
     @Test

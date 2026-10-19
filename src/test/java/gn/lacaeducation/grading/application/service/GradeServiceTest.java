@@ -165,8 +165,8 @@ class GradeServiceTest {
         when(repo.findByAssessmentId(1L)).thenReturn(java.util.List.of(
                 Grade.builder().id(100L).assessmentId(1L).studentId(10L).value(BigDecimal.valueOf(12)).validated(false).build()));
         when(studentDataProvider.findStudentsByClass(55L)).thenReturn(java.util.List.of(
-                new gn.lacaeducation.students.StudentPublicInfo(10L, 3L, "Awa", "Bah", null, null, "MAT-1", null, null, null),
-                new gn.lacaeducation.students.StudentPublicInfo(20L, 3L, "Moussa", "Camara", null, null, "MAT-2", null, null, null)));
+                new gn.lacaeducation.students.StudentPublicInfo(10L, 3L, "Awa", "Bah", null, null, "MAT-1", null, null, null, null),
+                new gn.lacaeducation.students.StudentPublicInfo(20L, 3L, "Moussa", "Camara", null, null, "MAT-2", null, null, null, null)));
 
         java.util.List<gn.lacaeducation.grading.application.port.in.GradeUseCase.GradeSheetRow> rows =
                 service.gradeSheet(1L);

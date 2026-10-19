@@ -85,14 +85,20 @@ public class GradeSimulationService implements GradeSimulationUseCase {
                 missing.add(subject.subjectId());
                 continue;
             }
-            BigDecimal subjectAvg = SubjectSemesterAverage.compute(cycleGroup, subjectAssessments, grades).finalValue();
+            // Primaire (§retour pédagogique, même règle que GradeCalculationService) : coefficient
+            // toujours neutralisé à 1, jamais celui configuré sur la matière.
+            BigDecimal coeff = cycleGroup == CycleGroup.PRIMAIRE
+                    ? BigDecimal.ONE
+                    : subjectCoeff.getOrDefault(subject.subjectId(), BigDecimal.ONE);
+            BigDecimal subjectAvg = SubjectSemesterAverage.compute(cycleGroup, coeff, subjectAssessments, grades).finalValue();
             if (subjectAvg == null) {
                 missing.add(subject.subjectId());
                 continue;
             }
             gradedSubjects++;
-            BigDecimal coeff = subjectCoeff.getOrDefault(subject.subjectId(), BigDecimal.ONE);
-            sumWeighted = sumWeighted.add(subjectAvg.multiply(coeff));
+            // Le coefficient est déjà appliqué dans subjectAvg (voir SubjectSemesterAverage) : ne pas
+            // le remultiplier ici.
+            sumWeighted = sumWeighted.add(subjectAvg);
             sumCoeff = sumCoeff.add(coeff);
         }
 

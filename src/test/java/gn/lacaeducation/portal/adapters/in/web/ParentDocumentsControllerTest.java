@@ -40,7 +40,7 @@ class ParentDocumentsControllerTest {
         when(studentReportProvider.listPublished(10L)).thenReturn(List.of(
                 new StudentReportProvider.PublishedReportInfo(55L, 2L, new BigDecimal("14"), "Bien")));
         when(academicsDataProvider.findPeriod(2L)).thenReturn(
-                java.util.Optional.of(new PeriodPublicInfo(2L, "Trimestre 1", "TRIMESTRE", null, null, null)));
+                java.util.Optional.of(new PeriodPublicInfo(2L, "Trimestre 1", "TRIMESTRE", null, null, null, null)));
         when(studentReceiptProvider.listReceipts(10L)).thenReturn(List.of(
                 new StudentReceiptProvider.ReceiptInfo(88L, "EC-REC-1", new BigDecimal("100"), LocalDateTime.now())));
 
