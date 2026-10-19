@@ -1,6 +1,7 @@
 package gn.lacaeducation.grading.application.service;
 
 import gn.lacaeducation.academics.AcademicsDataProvider;
+import gn.lacaeducation.grading.TeacherNameProvider;
 import gn.lacaeducation.grading.application.port.out.AssessmentRepository;
 import gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort;
 import gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort.ClassSubjectInfo;
@@ -38,6 +39,7 @@ class GradeCalculationServiceTest {
     @Mock ReportCardRepository reportCardRepository;
     @Mock ClassSubjectQueryPort classSubjectQueryPort;
     @Mock AcademicsDataProvider academicsDataProvider;
+    @Mock TeacherNameProvider teacherNameProvider;
     @Mock ApplicationEventPublisher eventPublisher;
     @InjectMocks GradeCalculationService service;
 
@@ -56,13 +58,15 @@ class GradeCalculationServiceTest {
     @Test
     void generateForStudent_secondaire_computesWeightedGeneralAverageFromSubjectSemesterAverages() {
         Long classId = 1L, periodId = 2L, studentId = 10L, subjectId = 100L;
-        // Deux notes « cours » le même mois (pondérées par coefficient d'évaluation), pas de composition.
+        // Deux notes « cours » le même mois. Le coefficient qui compte est celui de la matière
+        // (ClassSubjectInfo, confirmé avec l'utilisateur) — plus celui de chaque évaluation, qui n'est
+        // plus lu par le moteur de calcul (voir SubjectSemesterAverage).
         Assessment a1 = Assessment.builder().id(1L).classId(classId).periodId(periodId).subjectId(subjectId)
                 .type(AssessmentType.QUIZ).date(LocalDate.of(2026, 10, 5))
-                .coefficient(BigDecimal.valueOf(2)).maxScore(BigDecimal.valueOf(20)).build();
+                .maxScore(BigDecimal.valueOf(20)).build();
         Assessment a2 = Assessment.builder().id(2L).classId(classId).periodId(periodId).subjectId(subjectId)
                 .type(AssessmentType.QUIZ).date(LocalDate.of(2026, 10, 20))
-                .coefficient(BigDecimal.valueOf(1)).maxScore(BigDecimal.valueOf(20)).build();
+                .maxScore(BigDecimal.valueOf(20)).build();
         when(assessmentRepository.findByClassIdAndPeriodId(classId, periodId)).thenReturn(List.of(a1, a2));
         when(classSubjectQueryPort.findByClassId(classId))
                 .thenReturn(List.of(new ClassSubjectInfo(subjectId, BigDecimal.valueOf(3), 5L)));
@@ -83,18 +87,47 @@ class GradeCalculationServiceTest {
         org.mockito.Mockito.verify(reportCardRepository, atLeastOnce()).save(rcCaptor.capture());
         org.mockito.Mockito.verify(reportCardRepository, atLeastOnce()).saveLine(lineCaptor.capture());
 
-        // M_oct = (12×2 + 15×1)/3 = 13.00 ; aucune composition → M_cours seul = 13.00
-        // weighted = 13 × 3 = 39.00 ; general = 39/3 = 13.00
+        // M_oct = coef_matière × (12+15)/2 = 3 × 13.5 = 40.50 ; aucune composition → M_cours seul
+        // Points_matière = 40.50 (déjà coefficiée) ; moyenne générale = 40.50 / 3 = 13.50
         ReportCardLine line = lineCaptor.getAllValues().get(0);
-        assertThat(line.getCoursAverage()).isEqualByComparingTo("13.00");
+        assertThat(line.getCoursAverage()).isEqualByComparingTo("40.50");
         assertThat(line.getCompoAverage()).isNull();
-        assertThat(line.getSubjectAverage()).isEqualByComparingTo("13.00");
-        assertThat(line.getWeightedAverage()).isEqualByComparingTo("39.00");
+        assertThat(line.getSubjectAverage()).isEqualByComparingTo("40.50");
+        assertThat(line.getWeightedAverage()).isEqualByComparingTo("40.50");
 
         ReportCard rc = rcCaptor.getAllValues().get(0);
-        assertThat(rc.getOverallAverage()).isEqualByComparingTo("13.00");
+        assertThat(rc.getOverallAverage()).isEqualByComparingTo("13.50");
         assertThat(rc.getHonor()).isEqualTo("Passable");
         assertThat(rc.getDecision()).isEqualTo("ADMIS");
+    }
+
+    /**
+     * Régression (testé en direct, école "Notre Mère") : le bulletin affichait littéralement
+     * "teacher-30" (placeholder jamais résolu) au lieu du nom de l'enseignant.
+     */
+    @Test
+    void generateForStudent_resolvesRealTeacherName_notPlaceholder() {
+        Long classId = 1L, periodId = 2L, studentId = 10L, subjectId = 100L, teacherId = 5L;
+        Assessment a1 = Assessment.builder().id(1L).classId(classId).periodId(periodId).subjectId(subjectId)
+                .type(AssessmentType.EXAM).date(LocalDate.of(2026, 10, 5))
+                .coefficient(BigDecimal.ONE).maxScore(BigDecimal.valueOf(20)).build();
+        when(assessmentRepository.findByClassIdAndPeriodId(classId, periodId)).thenReturn(List.of(a1));
+        when(classSubjectQueryPort.findByClassId(classId))
+                .thenReturn(List.of(new ClassSubjectInfo(subjectId, BigDecimal.ONE, teacherId)));
+        when(gradeRepository.findByAssessmentId(1L))
+                .thenReturn(List.of(Grade.builder().assessmentId(1L).studentId(studentId).value(BigDecimal.valueOf(14)).build()));
+        when(teacherNameProvider.teacherName(teacherId)).thenReturn(Optional.of("Lamine Fodé SYLLA"));
+        when(reportCardRepository.findByStudentIdAndPeriodId(studentId, periodId)).thenReturn(Optional.empty());
+        when(reportCardRepository.save(any())).thenAnswer(i -> { ReportCard r = i.getArgument(0); if (r.getId() == null) r.setId(99L); return r; });
+        when(reportCardRepository.saveLine(any())).thenAnswer(i -> i.getArgument(0));
+        when(reportCardRepository.findByClassIdAndPeriodId(classId, periodId)).thenReturn(List.of());
+        when(reportCardRepository.findById(any())).thenAnswer(i -> Optional.of(ReportCard.builder().id(99L).build()));
+
+        service.generateForStudent(studentId, classId, periodId);
+
+        ArgumentCaptor<ReportCardLine> lineCaptor = ArgumentCaptor.forClass(ReportCardLine.class);
+        org.mockito.Mockito.verify(reportCardRepository, atLeastOnce()).saveLine(lineCaptor.capture());
+        assertThat(lineCaptor.getAllValues().get(0).getTeacherName()).isEqualTo("Lamine Fodé SYLLA");
     }
 
     /**
@@ -161,19 +194,20 @@ class GradeCalculationServiceTest {
         java.util.Map<Long, ReportCardLine> lineBySubject = lineCaptor.getAllValues().stream()
                 .collect(java.util.stream.Collectors.toMap(ReportCardLine::getSubjectId, l -> l, (a, b) -> b));
 
-        // Anglais : M_cours = (16.5+16.5+16.5)/3 = 16.50 ; M_comp = 12.00 ; M_sem = (16.5+12)/2 = 14.25
-        // Points = 14.25 × 2 = 28.50
+        // Anglais (coef matière 2) : chaque mois n'a qu'une note -> M_mois = 2×16.5 = 33.00 (déjà
+        // coefciée, pas normalisée) ; M_cours = 33.00 ; M_comp = 2×12 = 24.00 ; M_sem = (33+24)/2 = 28.50
         ReportCardLine anglaisLine = lineBySubject.get(anglaisId);
-        assertThat(anglaisLine.getCoursAverage()).isEqualByComparingTo("16.50");
-        assertThat(anglaisLine.getCompoAverage()).isEqualByComparingTo("12.00");
-        assertThat(anglaisLine.getSubjectAverage()).isEqualByComparingTo("14.25");
+        assertThat(anglaisLine.getCoursAverage()).isEqualByComparingTo("33.00");
+        assertThat(anglaisLine.getCompoAverage()).isEqualByComparingTo("24.00");
+        assertThat(anglaisLine.getSubjectAverage()).isEqualByComparingTo("28.50");
         assertThat(anglaisLine.getWeightedAverage()).isEqualByComparingTo("28.50");
 
-        // Maths : M_cours = 15.00 ; M_comp = 12.00 ; M_sem = (15+12)/2 = 13.50 ; Points = 13.50 × 4 = 54.00
+        // Maths (coef matière 4) : M_mois = 4×15 = 60.00 ; M_cours = 60.00 ; M_comp = 4×12 = 48.00 ;
+        // M_sem = (60+48)/2 = 54.00
         ReportCardLine mathsLine = lineBySubject.get(mathsId);
-        assertThat(mathsLine.getCoursAverage()).isEqualByComparingTo("15.00");
-        assertThat(mathsLine.getCompoAverage()).isEqualByComparingTo("12.00");
-        assertThat(mathsLine.getSubjectAverage()).isEqualByComparingTo("13.50");
+        assertThat(mathsLine.getCoursAverage()).isEqualByComparingTo("60.00");
+        assertThat(mathsLine.getCompoAverage()).isEqualByComparingTo("48.00");
+        assertThat(mathsLine.getSubjectAverage()).isEqualByComparingTo("54.00");
         assertThat(mathsLine.getWeightedAverage()).isEqualByComparingTo("54.00");
 
         ArgumentCaptor<ReportCard> rcCaptor = ArgumentCaptor.forClass(ReportCard.class);
@@ -309,5 +343,86 @@ class GradeCalculationServiceTest {
         assertThat(rankByStudent.get(studentA)).isEqualTo(1);
         assertThat(rankByStudent.get(studentB)).isEqualTo(1);
         assertThat(rankByStudent.get(studentC)).isEqualTo(3);
+    }
+
+    /** Exposition du détail mensuel pour le bulletin (§colonnes par mois, "bulletin-test" de référence). */
+    @Test
+    void monthlyBreakdown_secondaire_exposesMonthsAndCompositionPerSubject() {
+        Long classId = 1L, periodId = 2L, studentId = 10L, subjectId = 100L;
+        Assessment octQuiz = Assessment.builder().id(1L).classId(classId).periodId(periodId).subjectId(subjectId)
+                .type(AssessmentType.QUIZ).date(LocalDate.of(2026, 10, 10)).coefficient(BigDecimal.ONE).build();
+        Assessment exam = Assessment.builder().id(2L).classId(classId).periodId(periodId).subjectId(subjectId)
+                .type(AssessmentType.EXAM).date(LocalDate.of(2026, 12, 1)).coefficient(BigDecimal.ONE).build();
+        when(assessmentRepository.findByClassIdAndPeriodId(classId, periodId)).thenReturn(List.of(octQuiz, exam));
+        when(classSubjectQueryPort.findByClassId(classId))
+                .thenReturn(List.of(new ClassSubjectInfo(subjectId, BigDecimal.valueOf(2), 5L)));
+        when(gradeRepository.findByAssessmentId(1L)).thenReturn(List.of(
+                Grade.builder().assessmentId(1L).studentId(studentId).value(BigDecimal.valueOf(12)).build()));
+        when(gradeRepository.findByAssessmentId(2L)).thenReturn(List.of(
+                Grade.builder().assessmentId(2L).studentId(studentId).value(BigDecimal.valueOf(16)).build()));
+        when(academicsDataProvider.findClass(classId)).thenReturn(Optional.of(
+                new gn.lacaeducation.academics.ClassPublicInfo(classId, "8ème A", "8ème", "NORMALE", null, null, "COLLEGE")));
+
+        List<gn.lacaeducation.grading.domain.SubjectMonthlyBreakdown> breakdown = service.monthlyBreakdown(studentId, classId, periodId);
+
+        assertThat(breakdown).hasSize(1);
+        gn.lacaeducation.grading.domain.SubjectMonthlyBreakdown b = breakdown.get(0);
+        assertThat(b.subjectId()).isEqualTo(subjectId);
+        assertThat(b.coefficient()).isEqualByComparingTo("2");
+        // Coefficient de matière (2) appliqué directement, pas normalisé : 2×12=24.00, 2×16=32.00.
+        assertThat(b.monthlyCours()).containsExactly(java.util.Map.entry(java.time.YearMonth.of(2026, 10), new BigDecimal("24.00")));
+        assertThat(b.compoAverage()).isEqualByComparingTo("32.00");
+        assertThat(b.subjectAverage()).isEqualByComparingTo("28.00"); // (24+32)/2
+    }
+
+    @Test
+    void monthlyBreakdown_primaire_isAlwaysEmpty() {
+        Long classId = 1L, periodId = 2L, studentId = 10L;
+        when(academicsDataProvider.findClass(classId)).thenReturn(Optional.of(
+                new gn.lacaeducation.academics.ClassPublicInfo(classId, "CM2 A", "CM2", "NORMALE", null, null, "PRIMAIRE")));
+
+        List<gn.lacaeducation.grading.domain.SubjectMonthlyBreakdown> breakdown = service.monthlyBreakdown(studentId, classId, periodId);
+
+        assertThat(breakdown).isEmpty();
+        org.mockito.Mockito.verifyNoInteractions(assessmentRepository);
+    }
+
+    /**
+     * Régression (§retour fondateur, école Notre Mère) : certaines écoles séparent la période des
+     * évaluations "cours" (ex. "1er Semestre") de celle de sa composition (ex. "Compo 1er Semestre") —
+     * deux {@code Periode} distincts liés par {@code compositionPeriodId}, mais un seul bulletin. Les
+     * évaluations des DEUX périodes doivent entrer dans le calcul.
+     */
+    @Test
+    void generateForStudent_mergesAssessmentsFromLinkedCompositionPeriod() {
+        Long classId = 1L, coursPeriodId = 12L, compoPeriodId = 13L, studentId = 10L, subjectId = 100L;
+        Assessment quiz = Assessment.builder().id(1L).classId(classId).periodId(coursPeriodId).subjectId(subjectId)
+                .type(AssessmentType.QUIZ).date(LocalDate.of(2026, 10, 10)).coefficient(BigDecimal.ONE).build();
+        Assessment exam = Assessment.builder().id(2L).classId(classId).periodId(compoPeriodId).subjectId(subjectId)
+                .type(AssessmentType.EXAM).date(LocalDate.of(2027, 1, 15)).coefficient(BigDecimal.ONE).build();
+        when(assessmentRepository.findByClassIdAndPeriodId(classId, coursPeriodId)).thenReturn(List.of(quiz));
+        when(assessmentRepository.findByClassIdAndPeriodId(classId, compoPeriodId)).thenReturn(List.of(exam));
+        when(academicsDataProvider.findPeriod(coursPeriodId)).thenReturn(Optional.of(
+                new gn.lacaeducation.academics.PeriodPublicInfo(coursPeriodId, "1er Semestre", "SEMESTRE", null, null, compoPeriodId, null)));
+        when(classSubjectQueryPort.findByClassId(classId))
+                .thenReturn(List.of(new ClassSubjectInfo(subjectId, BigDecimal.ONE, 5L)));
+        when(gradeRepository.findByAssessmentId(1L)).thenReturn(List.of(
+                Grade.builder().assessmentId(1L).studentId(studentId).value(BigDecimal.valueOf(12)).build()));
+        when(gradeRepository.findByAssessmentId(2L)).thenReturn(List.of(
+                Grade.builder().assessmentId(2L).studentId(studentId).value(BigDecimal.valueOf(16)).build()));
+        when(reportCardRepository.findByStudentIdAndPeriodId(studentId, coursPeriodId)).thenReturn(Optional.empty());
+        when(reportCardRepository.save(any())).thenAnswer(i -> { ReportCard r = i.getArgument(0); if (r.getId() == null) r.setId(99L); return r; });
+        when(reportCardRepository.saveLine(any())).thenAnswer(i -> i.getArgument(0));
+        when(reportCardRepository.findByClassIdAndPeriodId(classId, coursPeriodId)).thenReturn(List.of());
+        when(reportCardRepository.findById(any())).thenAnswer(i -> Optional.of(ReportCard.builder().id(99L).build()));
+
+        service.generateForStudent(studentId, classId, coursPeriodId);
+
+        ArgumentCaptor<ReportCardLine> lineCaptor = ArgumentCaptor.forClass(ReportCardLine.class);
+        org.mockito.Mockito.verify(reportCardRepository, atLeastOnce()).saveLine(lineCaptor.capture());
+        ReportCardLine line = lineCaptor.getAllValues().get(0);
+        assertThat(line.getCoursAverage()).isEqualByComparingTo("12.00"); // du périodId demandé
+        assertThat(line.getCompoAverage()).isEqualByComparingTo("16.00"); // de la période composition liée
+        assertThat(line.getSubjectAverage()).isEqualByComparingTo("14.00"); // (12+16)/2
     }
 }

@@ -104,6 +104,7 @@ public class AssessmentService implements AssessmentUseCase {
                                 java.util.Comparator.nullsLast(String::compareToIgnoreCase)))
                         .map(s -> new gn.lacaeducation.grading.application.port.out.AssessmentGradeSheetPdfGenerator.StudentGradeRow(
                                 ((s.firstName() != null ? s.firstName() : "") + " " + (s.lastName() != null ? s.lastName() : "")).trim(),
+                                s.studentNumber(),
                                 gradeByStudent.get(s.id())))
                         .toList();
         return gradeSheetPdfGenerator.generate(new gn.lacaeducation.grading.application.port.out.AssessmentGradeSheetPdfGenerator.AssessmentGradeSheet(

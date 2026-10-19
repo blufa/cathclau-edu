@@ -12,6 +12,10 @@ public interface AcademicsDataProvider {
     Map<Long, String> subjectLabels(Collection<Long> subjectIds);
     /** True only if the period is not closed and its academic year is EN_COURS (grade entry allowed). */
     boolean isPeriodOpenForGrades(Long periodId);
+    /** True si une autre période pointe vers celle-ci via compositionPeriodId (§retour fondateur) — cette
+     * période n'est qu'une composition fusionnée dans le bulletin de sa période "cours" associée, elle ne
+     * doit jamais produire son propre bulletin indépendant. */
+    boolean isCompositionTargetPeriod(Long periodId);
     List<ClassSubjectPublicInfo> findClassSubjects(Long classId);
     List<ClassPublicInfo> findClassesByHeadTeacher(Long teacherId);
     List<ClassSubjectPublicInfo> findClassSubjectsByTeacher(Long teacherId);

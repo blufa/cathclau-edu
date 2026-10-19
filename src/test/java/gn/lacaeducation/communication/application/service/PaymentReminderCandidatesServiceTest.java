@@ -30,7 +30,7 @@ class PaymentReminderCandidatesServiceTest {
     @InjectMocks PaymentReminderCandidatesService service;
 
     private static StudentPublicInfo student(long id, String first, String last) {
-        return new StudentPublicInfo(id, 1L, first, last, null, null, "MAT-" + id, null, null, "MALE");
+        return new StudentPublicInfo(id, 1L, first, last, null, null, "MAT-" + id, null, null, "MALE", null);
     }
 
     @Test

@@ -26,4 +26,8 @@ public class AnnualReportCard {
     private Integer classSize;
     private String honor;
     private String decision;
+    /** Absences/retards de l'élève sur l'année scolaire (du début du 1er semestre à la fin du 2ème) —
+     * affichés dans le bloc BILAN du bulletin annuel (§retour fondateur). */
+    private Integer absentCount;
+    private Integer lateCount;
 }

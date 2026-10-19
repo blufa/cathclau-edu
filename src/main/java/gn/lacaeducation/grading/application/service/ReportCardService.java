@@ -210,20 +210,63 @@ public class ReportCardService implements ReportCardUseCase {
         String studentName = student == null ? null
                 : ((student.firstName() != null ? student.firstName() : "") + " "
                    + (student.lastName() != null ? student.lastName() : "")).trim();
-        String className = academicsProvider.findClass(rc.getClassId())
-                .map(c -> c.levelLabel() != null && !c.levelLabel().isBlank() ? c.label() + " (" + c.levelLabel() + ")" : c.label())
-                .orElse(null);
-        String periodLabel = academicsProvider.findPeriod(rc.getPeriodId()).map(p -> p.label()).orElse(null);
+        gn.lacaeducation.academics.ClassPublicInfo classInfo = academicsProvider.findClass(rc.getClassId()).orElse(null);
+        String className = classInfo != null ? classInfo.label() : null;
+        String cycleLabel = classInfo != null ? classInfo.schoolCycle() : null;
+        var period = academicsProvider.findPeriod(rc.getPeriodId()).orElse(null);
+        String periodLabel = period != null ? period.label() : null;
         String schoolYear = tenantId == null ? null : academicsProvider.currentAcademicYearLabel(tenantId).orElse(null);
         var subjectIds = lines.stream().map(ReportCardLine::getSubjectId)
                 .filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+        var monthlyBreakdown = calculationService.monthlyBreakdown(rc.getStudentId(), rc.getClassId(), rc.getPeriodId());
+
+        // Semestre précédent (§retour fondateur) : sur le bulletin du 2ème semestre, on affiche aussi la
+        // moyenne déjà connue du 1er — recherche parmi les "vraies" périodes semestrielles (celles reliées
+        // à leur composition via compositionPeriodId, même convention que le bulletin annuel) de la même
+        // année scolaire, celle qui précède immédiatement periodId.
+        String previousSemesterLabel = null;
+        java.math.BigDecimal previousSemesterAverage = null;
+        String previousSemesterHonor = null;
+        if (period != null && period.academicYearId() != null) {
+            List<gn.lacaeducation.academics.PeriodPublicInfo> semesters = resolveSemesterPeriods(period.academicYearId());
+            int idx = -1;
+            for (int i = 0; i < semesters.size(); i++) {
+                if (semesters.get(i).id().equals(rc.getPeriodId())) { idx = i; break; }
+            }
+            if (idx > 0) {
+                var prev = semesters.get(idx - 1);
+                previousSemesterLabel = prev.label();
+                var prevCard = repo.findByStudentIdAndPeriodId(rc.getStudentId(), prev.id());
+                previousSemesterAverage = prevCard.map(ReportCard::getOverallAverage).orElse(null);
+                previousSemesterHonor = prevCard.map(ReportCard::getHonor).orElse(null);
+            }
+        }
+
         return new ReportCardContext(tenantId, studentName,
                 student != null ? student.studentNumber() : null,
-                className, periodLabel, schoolYear, academicsProvider.subjectLabels(subjectIds));
+                className, cycleLabel, periodLabel, schoolYear, academicsProvider.subjectLabels(subjectIds), monthlyBreakdown,
+                previousSemesterLabel, previousSemesterAverage, previousSemesterHonor,
+                student != null ? student.photo() : null);
+    }
+
+    /** Les "vraies" périodes semestrielles d'une année (reliées à leur composition via
+     * compositionPeriodId), dans l'ordre — même convention que {@code AnnualReportCardService}. Repli
+     * sur toutes les périodes SEMESTRE si aucune n'a ce lien (écoles sans ce découpage). */
+    private List<gn.lacaeducation.academics.PeriodPublicInfo> resolveSemesterPeriods(Long academicYearId) {
+        List<gn.lacaeducation.academics.PeriodPublicInfo> all = academicsProvider.findPeriodsByAcademicYear(academicYearId).stream()
+                .filter(p -> "SEMESTRE".equals(p.type()))
+                .toList();
+        List<gn.lacaeducation.academics.PeriodPublicInfo> withComposition = all.stream()
+                .filter(p -> p.compositionPeriodId() != null)
+                .toList();
+        return withComposition.isEmpty() ? all : withComposition;
     }
 
     @Override
     public void delete(Long id) {
+        // Les lignes référencent le bulletin sans cascade DB (V8__grading.sql) : les supprimer d'abord,
+        // sinon deleteById échoue systématiquement en 409 dès qu'un bulletin a des lignes (toujours le cas).
+        repo.deleteLinesByReportCardId(id);
         repo.deleteById(id);
     }
 

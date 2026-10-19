@@ -78,7 +78,18 @@ public class EnseignantService implements TeacherUseCase {
     @Override
     public Teacher update(Long id, UpdateTeacherCommand cmd) {
         Teacher t = load(id);
-        t.setStaffNumber(cmd.staffNumber());
+        // Même correctif que EmployeeService#update (§retour fondateur) : un matricule vide envoyé par
+        // le formulaire d'édition effaçait silencieusement un matricule déjà attribué, rendant le badge
+        // de l'enseignant inexploitable au scan (encodait "Matricule : —"). Un matricule vide ne touche
+        // plus jamais celui déjà en place ; un nouveau matricule non vide reste appliqué normalement,
+        // avec la même vérification d'unicité qu'à la création (jamais vérifiée ici auparavant).
+        String newNumber = cmd.staffNumber() == null || cmd.staffNumber().isBlank() ? null : cmd.staffNumber().trim();
+        if (newNumber != null && !newNumber.equals(t.getStaffNumber())) {
+            if (teacherRepository.existsByTenantIdAndStaffNumber(t.getTenantId(), newNumber)) {
+                throw new ConflictException("Staff number already exists for this tenant: " + newNumber);
+            }
+            t.setStaffNumber(newNumber);
+        }
         t.setFirstName(PersonName.capitalizeFirstName(cmd.firstName()));
         t.setLastName(PersonName.upperCaseLastName(cmd.lastName()));
         t.setPhone(cmd.phone()); t.setEmail(cmd.email()); t.setSpecialization(cmd.specialization()); t.setHireDate(cmd.hireDate());

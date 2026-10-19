@@ -100,7 +100,7 @@ class BillingPayerDirectoryAdapterTest {
                 .issueDate(LocalDate.of(2025, 10, 1)).build();
         when(invoiceRepository.findByStudentId(7L)).thenReturn(List.of(currentYear, pastYear));
         when(studentDataProvider.findStudent(7L)).thenReturn(Optional.of(
-                new StudentPublicInfo(7L, 1L, "Awa", "Diallo", null, null, "MAT-1", null, null, null)));
+                new StudentPublicInfo(7L, 1L, "Awa", "Diallo", null, null, "MAT-1", null, null, null, null)));
         when(academicsDataProvider.currentAcademicYear(1L)).thenReturn(Optional.of(
                 new AcademicYearPublicInfo(20L, "2026-2027", null, null)));
         when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(
@@ -119,7 +119,7 @@ class BillingPayerDirectoryAdapterTest {
                 .issueDate(LocalDate.of(2026, 10, 1)).build();
         when(invoiceRepository.findByStudentId(7L)).thenReturn(List.of(legacy));
         when(studentDataProvider.findStudent(7L)).thenReturn(Optional.of(
-                new StudentPublicInfo(7L, 1L, "Awa", "Diallo", null, null, "MAT-1", null, null, null)));
+                new StudentPublicInfo(7L, 1L, "Awa", "Diallo", null, null, "MAT-1", null, null, null, null)));
         when(academicsDataProvider.currentAcademicYear(1L)).thenReturn(Optional.of(
                 new AcademicYearPublicInfo(20L, "2026-2027", null, null)));
         when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(

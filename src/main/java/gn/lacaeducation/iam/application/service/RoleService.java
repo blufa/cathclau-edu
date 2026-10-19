@@ -25,6 +25,7 @@ public class RoleService implements RoleUseCase {
     private final RoleRepository roleRepository;
     private final PermissionRepository permissionRepository;
     private final UserRepository userRepository;
+    private final gn.lacaeducation.iam.application.port.out.RefreshTokenRepository refreshTokenRepository;
     private final ApplicationEventPublisher eventPublisher;
 
     @Override
@@ -107,6 +108,24 @@ public class RoleService implements RoleUseCase {
             throw new ResourceNotFoundException("User", userId);
         }
         permissionRepository.assignDirectPermissions(userId, permissionIds);
+        eventPublisher.publishEvent(new UserPermissionsModifiedEvent(userId));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Permission> findRevokedPermissionsByUser(Long userId) {
+        return permissionRepository.findRevokedByUserId(userId);
+    }
+
+    @Override
+    public void revokeUserPermissions(Long userId, List<Long> permissionIds) {
+        if (!userRepository.existsById(userId)) {
+            throw new ResourceNotFoundException("User", userId);
+        }
+        permissionRepository.revokePermissions(userId, permissionIds);
+        // Une réduction de privilèges doit s'appliquer tout de suite, pas seulement à la prochaine
+        // expiration du jeton d'accès — même précaution que pour un changement de mot de passe.
+        refreshTokenRepository.revokeAllByUserId(userId);
         eventPublisher.publishEvent(new UserPermissionsModifiedEvent(userId));
     }
 }

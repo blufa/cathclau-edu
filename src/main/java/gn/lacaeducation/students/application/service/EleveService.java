@@ -130,7 +130,18 @@ public class EleveService implements StudentUseCase {
     public Student update(Long id, UpdateStudentCommand cmd) {
         Student s = studentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Student", id));
-        s.setStudentNumber(cmd.studentNumber());
+        // Même correctif que EmployeeService/EnseignantService#update (§retour fondateur) : un
+        // matricule vide envoyé par le formulaire d'édition effaçait silencieusement un matricule déjà
+        // attribué, rendant la carte/le badge de l'élève inexploitable au scan. Un matricule vide ne
+        // touche plus jamais celui déjà en place ; un nouveau matricule non vide reste appliqué
+        // normalement, avec la même vérification d'unicité qu'à la création.
+        String newStudentNumber = cmd.studentNumber() == null || cmd.studentNumber().isBlank() ? null : cmd.studentNumber().trim();
+        if (newStudentNumber != null && !newStudentNumber.equals(s.getStudentNumber())) {
+            if (studentRepository.existsByTenantIdAndStudentNumber(s.getTenantId(), newStudentNumber)) {
+                throw new gn.lacaeducation.common.ConflictException("Un élève porte déjà le matricule " + newStudentNumber);
+            }
+            s.setStudentNumber(newStudentNumber);
+        }
         s.setFirstName(PersonName.capitalizeFirstName(cmd.firstName()));
         s.setLastName(PersonName.upperCaseLastName(cmd.lastName()));
         s.setGender(cmd.gender()); s.setBirthDate(cmd.birthDate()); s.setBirthPlace(cmd.birthPlace());

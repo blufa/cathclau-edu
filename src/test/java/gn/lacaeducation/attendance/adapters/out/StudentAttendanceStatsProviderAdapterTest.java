@@ -34,7 +34,7 @@ class StudentAttendanceStatsProviderAdapterTest {
     }
 
     private StudentPublicInfo student(Long id) {
-        return new StudentPublicInfo(id, 9L, "Prenom" + id, "Nom" + id, null, null, null, null, null, null);
+        return new StudentPublicInfo(id, 9L, "Prenom" + id, "Nom" + id, null, null, null, null, null, null, null);
     }
 
     private StudentAttendance attendance(Long studentId, AttendanceStatus status) {

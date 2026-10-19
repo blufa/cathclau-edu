@@ -58,7 +58,7 @@ class CommunicationEventListenerTest {
     }
 
     private final StudentPublicInfo student = new StudentPublicInfo(
-            7L, 10L, "Awa", "Diallo", null, "620000000", "MAT-1", null, null, null);
+            7L, 10L, "Awa", "Diallo", null, "620000000", "MAT-1", null, null, null, null);
 
     // ── onStudentExit (§retour fondateurs : SMS de sortie avec durée passée à l'école) ──────────────
 

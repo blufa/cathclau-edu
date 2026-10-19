@@ -2,9 +2,12 @@ package gn.lacaeducation.iam.application.service;
 
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.iam.application.event.PermissionsModifiedEvent;
+import gn.lacaeducation.iam.application.event.UserPermissionsModifiedEvent;
 import gn.lacaeducation.iam.application.port.in.RoleUseCase;
 import gn.lacaeducation.iam.application.port.out.PermissionRepository;
+import gn.lacaeducation.iam.application.port.out.RefreshTokenRepository;
 import gn.lacaeducation.iam.application.port.out.RoleRepository;
+import gn.lacaeducation.iam.application.port.out.UserRepository;
 import gn.lacaeducation.iam.domain.Role;
 import gn.lacaeducation.iam.domain.RoleCode;
 import org.junit.jupiter.api.Test;
@@ -25,6 +28,8 @@ class RoleServiceTest {
 
     @Mock private RoleRepository roleRepository;
     @Mock private PermissionRepository permissionRepository;
+    @Mock private UserRepository userRepository;
+    @Mock private RefreshTokenRepository refreshTokenRepository;
     @Mock private org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     @InjectMocks private RoleService roleService;
@@ -55,5 +60,26 @@ class RoleServiceTest {
 
         verify(roleRepository).assignPermissions(3L, List.of(1L, 2L));
         verify(eventPublisher).publishEvent(new PermissionsModifiedEvent(3L));
+    }
+
+    /** §retour comptable : réduire les privilèges d'un admin d'école précis doit s'appliquer tout de
+     * suite, pas attendre l'expiration de son jeton — même précaution qu'un changement de mot de passe. */
+    @Test
+    void revokeUserPermissions_forcesReauth_andPublishesEvent() {
+        when(userRepository.existsById(5L)).thenReturn(true);
+
+        roleService.revokeUserPermissions(5L, List.of(1L, 2L));
+
+        verify(permissionRepository).revokePermissions(5L, List.of(1L, 2L));
+        verify(refreshTokenRepository).revokeAllByUserId(5L);
+        verify(eventPublisher).publishEvent(new UserPermissionsModifiedEvent(5L));
+    }
+
+    @Test
+    void revokeUserPermissions_unknownUser_throws() {
+        when(userRepository.existsById(99L)).thenReturn(false);
+
+        assertThatThrownBy(() -> roleService.revokeUserPermissions(99L, List.of(1L)))
+                .isInstanceOf(gn.lacaeducation.common.ResourceNotFoundException.class);
     }
 }
