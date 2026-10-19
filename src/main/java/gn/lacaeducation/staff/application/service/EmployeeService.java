@@ -52,7 +52,20 @@ public class EmployeeService implements EmployeeUseCase {
     @Override
     public Employee update(Long id, UpdateEmployeeCommand c) {
         Employee e = load(id);
-        e.setEmployeeNumber(c.employeeNumber());
+        // Incident vécu (§retour fondateur) : un matricule vide dans le formulaire était écrit tel
+        // quel, effaçant silencieusement un matricule déjà attribué (champ pré-rempli à l'édition, mais
+        // vide si la modale s'ouvre avant que les données ne soient chargées, ou vidé par erreur) — le
+        // badge personnel de cet employé encodait alors "Matricule : —", introuvable au scan. Un
+        // matricule vide ne touche plus jamais celui déjà en place ; un nouveau matricule non vide reste
+        // appliqué normalement (correction volontaire), avec la même vérification d'unicité qu'à la
+        // création (jamais vérifiée ici auparavant — risque de doublon entre deux employés).
+        String newNumber = c.employeeNumber() == null || c.employeeNumber().isBlank() ? null : c.employeeNumber().trim();
+        if (newNumber != null && !newNumber.equals(e.getEmployeeNumber())) {
+            if (repo.existsByTenantIdAndEmployeeNumber(e.getTenantId(), newNumber)) {
+                throw new ConflictException("Un employé porte déjà le matricule " + newNumber);
+            }
+            e.setEmployeeNumber(newNumber);
+        }
         e.setFirstName(PersonName.capitalizeFirstName(c.firstName()));
         e.setLastName(PersonName.upperCaseLastName(c.lastName()));
         e.setPhone(c.phone());
