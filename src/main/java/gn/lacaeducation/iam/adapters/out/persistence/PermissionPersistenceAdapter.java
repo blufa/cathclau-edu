@@ -20,6 +20,7 @@ class PermissionPersistenceAdapter implements PermissionRepository {
     private final PermissionJpaRepository jpaRepository;
     private final RolePermissionJpaRepository rolePermissionJpaRepository;
     private final UserPermissionJpaRepository userPermissionJpaRepository;
+    private final UserRevokedPermissionJpaRepository userRevokedPermissionJpaRepository;
     private final IamMapper mapper;
 
     @Override
@@ -72,6 +73,36 @@ class PermissionPersistenceAdapter implements PermissionRepository {
             up.setUserId(userId);
             up.setPermissionId(permId);
             userPermissionJpaRepository.save(up);
+        }
+    }
+
+    @Override
+    public List<Permission> findRevokedByUserId(Long userId) {
+        List<Long> permissionIds = userRevokedPermissionJpaRepository.findByUserId(userId)
+                .stream().map(UserRevokedPermissionJpaEntity::getPermissionId).toList();
+        return jpaRepository.findAllById(permissionIds).stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
+    @Transactional
+    public void revokePermissions(Long userId, List<Long> permissionIds) {
+        // Même pattern diff que assignDirectPermissions ci-dessus (delete-then-insert sur les mêmes
+        // paires viole la contrainte unique si Hibernate ordonne les INSERT avant les DELETE au flush).
+        Set<Long> requested = new LinkedHashSet<>(permissionIds);
+        List<UserRevokedPermissionJpaEntity> existing = userRevokedPermissionJpaRepository.findByUserId(userId);
+
+        List<UserRevokedPermissionJpaEntity> toRemove = existing.stream()
+                .filter(rev -> !requested.contains(rev.getPermissionId()))
+                .toList();
+        Set<Long> existingPermissionIds = existing.stream().map(UserRevokedPermissionJpaEntity::getPermissionId).collect(Collectors.toSet());
+
+        userRevokedPermissionJpaRepository.deleteAll(toRemove);
+        for (Long permId : requested) {
+            if (existingPermissionIds.contains(permId)) continue;
+            UserRevokedPermissionJpaEntity rev = new UserRevokedPermissionJpaEntity();
+            rev.setUserId(userId);
+            rev.setPermissionId(permId);
+            userRevokedPermissionJpaRepository.save(rev);
         }
     }
 }

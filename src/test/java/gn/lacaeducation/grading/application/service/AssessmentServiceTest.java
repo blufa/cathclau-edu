@@ -75,8 +75,8 @@ class AssessmentServiceTest {
         when(academicsDataProvider.findClass(1L)).thenReturn(Optional.of(
                 new ClassPublicInfo(1L, "6eme A", "6eme", "NORMALE", null, null, "COLLEGE")));
         when(academicsDataProvider.subjectLabels(java.util.Set.of(100L))).thenReturn(java.util.Map.of(100L, "Anglais"));
-        StudentPublicInfo s1 = new StudentPublicInfo(1L, 10L, "Aissatou", "Diallo", null, null, null, null, null, null);
-        StudentPublicInfo s2 = new StudentPublicInfo(2L, 10L, "Mamadou", "Bah", null, null, null, null, null, null);
+        StudentPublicInfo s1 = new StudentPublicInfo(1L, 10L, "Aissatou", "Diallo", null, null, null, null, null, null, null);
+        StudentPublicInfo s2 = new StudentPublicInfo(2L, 10L, "Mamadou", "Bah", null, null, null, null, null, null, null);
         when(studentDataProvider.findStudentsByClass(1L)).thenReturn(List.of(s1, s2));
         when(gradeRepository.findByAssessmentId(9L)).thenReturn(List.of(
                 Grade.builder().assessmentId(9L).studentId(1L).value(BigDecimal.valueOf(16.5)).build()));

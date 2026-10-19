@@ -138,6 +138,7 @@ public class AnneeScolaireService implements GererAnneeScolaireUseCase {
                 .startDate(command.startDate())
                 .endDate(command.endDate())
                 .closed(false)
+                .compositionPeriodId(command.compositionPeriodId())
                 .build();
         return periodeRepository.save(periode);
     }
@@ -155,6 +156,7 @@ public class AnneeScolaireService implements GererAnneeScolaireUseCase {
         periode.setSortOrder(command.sortOrder());
         periode.setStartDate(command.startDate());
         periode.setEndDate(command.endDate());
+        periode.setCompositionPeriodId(command.compositionPeriodId());
         return periodeRepository.save(periode);
     }
 

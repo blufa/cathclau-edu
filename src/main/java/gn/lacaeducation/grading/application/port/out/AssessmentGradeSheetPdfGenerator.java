@@ -17,5 +17,5 @@ public interface AssessmentGradeSheetPdfGenerator {
                                 String assessmentTypeLabel, LocalDate date, BigDecimal maxScore,
                                 List<StudentGradeRow> rows) {}
 
-    record StudentGradeRow(String studentName, BigDecimal value) {}
+    record StudentGradeRow(String studentName, String studentNumber, BigDecimal value) {}
 }

@@ -22,7 +22,7 @@ public class StudentDataProviderAdapter implements StudentDataProvider {
         return eleveRepo.findById(studentId).map(e ->
                 new StudentPublicInfo(e.getId(), e.getTenantId(), e.getFirstName(), e.getLastName(), e.getEmail(), e.getPhone(),
                         e.getStudentNumber(), e.getBirthDate(), e.getBirthPlace(),
-                        e.getGender() != null ? e.getGender().name() : null));
+                        e.getGender() != null ? e.getGender().name() : null, e.getPhoto()));
     }
 
     @Override

@@ -50,13 +50,13 @@ public class AcademicsDataProviderAdapter implements AcademicsDataProvider {
     public Optional<PeriodPublicInfo> findPeriod(Long periodId) {
         return periodeRepo.findById(periodId).map(p ->
                 new PeriodPublicInfo(p.getId(), p.getLabel(), p.getType() != null ? p.getType().name() : null,
-                        p.getStartDate(), p.getEndDate()));
+                        p.getStartDate(), p.getEndDate(), p.getCompositionPeriodId(), p.getAcademicYearId()));
     }
     @Override
     public List<PeriodPublicInfo> findPeriodsByAcademicYear(Long academicYearId) {
         return periodeRepo.findByAcademicYearIdOrderBySortOrder(academicYearId).stream()
                 .map(p -> new PeriodPublicInfo(p.getId(), p.getLabel(), p.getType() != null ? p.getType().name() : null,
-                        p.getStartDate(), p.getEndDate()))
+                        p.getStartDate(), p.getEndDate(), p.getCompositionPeriodId(), p.getAcademicYearId()))
                 .toList();
     }
 
@@ -67,6 +67,11 @@ public class AcademicsDataProviderAdapter implements AcademicsDataProvider {
                 .flatMap(p -> anneeRepo.findById(p.getAcademicYearId()))
                 .map(y -> y.getStatus() == gn.lacaeducation.academics.domain.valueobject.StatutAnneeScolaire.EN_COURS)
                 .orElse(false);
+    }
+
+    @Override
+    public boolean isCompositionTargetPeriod(Long periodId) {
+        return periodeRepo.existsByCompositionPeriodId(periodId);
     }
 
     @Override

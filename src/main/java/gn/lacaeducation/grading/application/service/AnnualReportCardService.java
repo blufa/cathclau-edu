@@ -2,6 +2,7 @@ package gn.lacaeducation.grading.application.service;
 
 import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.academics.PeriodPublicInfo;
+import gn.lacaeducation.grading.AttendanceSummaryProvider;
 import gn.lacaeducation.grading.application.port.in.AnnualReportCardUseCase;
 import gn.lacaeducation.grading.application.port.out.ReportCardRepository;
 import gn.lacaeducation.grading.domain.AnnualReportCard;
@@ -43,6 +44,8 @@ public class AnnualReportCardService implements AnnualReportCardUseCase {
     private final ReportCardRepository reportCardRepository;
     private final AcademicsDataProvider academicsDataProvider;
     private final StudentDataProvider studentDataProvider;
+    private final AttendanceSummaryProvider attendanceSummaryProvider;
+    private final GradeCalculationService calculationService;
     private final gn.lacaeducation.grading.application.port.out.AnnualReportCardPdfGenerator pdfGenerator;
 
     @Override
@@ -51,8 +54,13 @@ public class AnnualReportCardService implements AnnualReportCardUseCase {
         if (semesters.isEmpty()) {
             return List.of();
         }
-        Long s1Id = semesters.get(0).id();
-        Long s2Id = semesters.size() > 1 ? semesters.get(1).id() : null;
+        PeriodPublicInfo s1 = semesters.get(0);
+        PeriodPublicInfo s2 = semesters.size() > 1 ? semesters.get(1) : null;
+        Long s1Id = s1.id();
+        Long s2Id = s2 != null ? s2.id() : null;
+        // Bloc BILAN (§retour fondateur) : absences/retards sur toute l'année en cours — du début du
+        // 1er semestre à la fin du 2ème s'il existe déjà, sinon jusqu'à aujourd'hui (année en cours).
+        java.time.LocalDate attendanceTo = s2 != null ? s2.endDate() : java.time.LocalDate.now();
 
         Map<Long, ReportCard> s1ByStudent = reportCardRepository.findByClassIdAndPeriodId(classId, s1Id).stream()
                 .collect(Collectors.toMap(ReportCard::getStudentId, rc -> rc, (a, b) -> a));
@@ -75,7 +83,8 @@ public class AnnualReportCardService implements AnnualReportCardUseCase {
         List<AnnualReportCard> results = new ArrayList<>();
         for (Long studentId : studentIds) {
             results.add(build(studentId, classId, academicYearId, s1Id, s2Id,
-                    s1ByStudent.get(studentId), s2ByStudent.get(studentId), scale));
+                    s1ByStudent.get(studentId), s2ByStudent.get(studentId), scale,
+                    s1.startDate(), attendanceTo));
         }
         rankAndStats(results);
         return results;
@@ -102,9 +111,9 @@ public class AnnualReportCardService implements AnnualReportCardUseCase {
         String studentName = student == null ? null
                 : ((student.firstName() != null ? student.firstName() : "") + " "
                    + (student.lastName() != null ? student.lastName() : "")).trim();
-        String className = academicsDataProvider.findClass(card.getClassId())
-                .map(c -> c.levelLabel() != null && !c.levelLabel().isBlank() ? c.label() + " (" + c.levelLabel() + ")" : c.label())
-                .orElse(null);
+        gn.lacaeducation.academics.ClassPublicInfo classInfo = academicsDataProvider.findClass(card.getClassId()).orElse(null);
+        String className = classInfo != null ? classInfo.label() : null;
+        String cycleLabel = classInfo != null ? classInfo.schoolCycle() : null;
         String s1Label = card.getS1PeriodId() == null ? null
                 : academicsDataProvider.findPeriod(card.getS1PeriodId()).map(PeriodPublicInfo::label).orElse(null);
         String s2Label = card.getS2PeriodId() == null ? null
@@ -113,20 +122,38 @@ public class AnnualReportCardService implements AnnualReportCardUseCase {
         Set<Long> subjectIds = card.getLines() == null ? Set.of()
                 : card.getLines().stream().map(AnnualReportCardLine::getSubjectId)
                         .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
+        var s2MonthlyBreakdown = card.getS2PeriodId() == null ? List.<gn.lacaeducation.grading.domain.SubjectMonthlyBreakdown>of()
+                : calculationService.monthlyBreakdown(card.getStudentId(), card.getClassId(), card.getS2PeriodId());
         return new gn.lacaeducation.grading.application.port.out.AnnualReportCardPdfGenerator.AnnualReportCardContext(
                 tenantId, studentName, student != null ? student.studentNumber() : null,
-                className, s1Label, s2Label, schoolYear, academicsDataProvider.subjectLabels(subjectIds));
+                className, cycleLabel, s1Label, s2Label, schoolYear, academicsDataProvider.subjectLabels(subjectIds),
+                s2MonthlyBreakdown);
     }
 
     /** Les deux périodes de type SEMESTRE de l'année scolaire, triées par ordre (S1 puis S2). */
+    /**
+     * Les deux "vraies" périodes semestrielles de l'année (S1 puis S2), pour l'agrégation du bulletin
+     * annuel. Certaines écoles déclarent 4 périodes de type SEMESTRE (ex. "1er Semestre" + "Compo 1er
+     * Semestre" + "2ème Semestre" + "Compo Fin Année", école Notre Mère, §retour fondateur) — seules
+     * celles qui SONT la source d'un lien {@code compositionPeriodId} comptent comme un "vrai" semestre
+     * pour cette agrégation (leur composition associée est fusionnée en amont, voir
+     * {@code GradeCalculationService#assessmentsForBulletin}, pas traitée comme un 3ème/4ème semestre
+     * séparé). Repli sur le comportement historique (toutes les périodes SEMESTRE, dans l'ordre) si
+     * aucune n'utilise cette convention — écoles à 2 périodes SEMESTRE simples, inchangées.
+     */
     private List<PeriodPublicInfo> resolveSemesterPeriods(Long academicYearId) {
-        return academicsDataProvider.findPeriodsByAcademicYear(academicYearId).stream()
+        List<PeriodPublicInfo> allSemesters = academicsDataProvider.findPeriodsByAcademicYear(academicYearId).stream()
                 .filter(p -> "SEMESTRE".equals(p.type()))
                 .toList();
+        List<PeriodPublicInfo> withComposition = allSemesters.stream()
+                .filter(p -> p.compositionPeriodId() != null)
+                .toList();
+        return withComposition.isEmpty() ? allSemesters : withComposition;
     }
 
     private AnnualReportCard build(Long studentId, Long classId, Long academicYearId, Long s1Id, Long s2Id,
-                                   ReportCard s1, ReportCard s2, GradingScale scale) {
+                                   ReportCard s1, ReportCard s2, GradingScale scale,
+                                   java.time.LocalDate attendanceFrom, java.time.LocalDate attendanceTo) {
         Map<Long, ReportCardLine> s1Lines = s1 == null ? Map.of()
                 : reportCardRepository.findLines(s1.getId()).stream()
                         .collect(Collectors.toMap(ReportCardLine::getSubjectId, l -> l, (a, b) -> a));
@@ -163,6 +190,8 @@ public class AnnualReportCardService implements AnnualReportCardUseCase {
 
         String decision = scale.decisionFor(overallAverage);
 
+        var attendance = attendanceSummaryProvider.summary(studentId, attendanceFrom, attendanceTo);
+
         return AnnualReportCard.builder()
                 .studentId(studentId).classId(classId).academicYearId(academicYearId)
                 .s1PeriodId(s1Id).s2PeriodId(s2Id)
@@ -172,6 +201,8 @@ public class AnnualReportCardService implements AnnualReportCardUseCase {
                 .overallAverage(overallAverage)
                 .honor(scale.honorFor(overallAverage))
                 .decision(decision)
+                .absentCount(attendance.absentCount())
+                .lateCount(attendance.lateCount())
                 .build();
     }
 

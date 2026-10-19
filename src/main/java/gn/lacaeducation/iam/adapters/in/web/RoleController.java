@@ -98,6 +98,23 @@ public class RoleController {
         roleUseCase.assignUserPermissions(userId, req.permissionIds());
     }
 
+    @Operation(summary = "Consulter les permissions retirées à un utilisateur précis (même si son rôle les accorde)")
+    @GetMapping("/api/v1/users/{userId}/revoked-permissions")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public List<PermissionResponse> findRevokedPermissionsByUser(@PathVariable Long userId) {
+        return roleUseCase.findRevokedPermissionsByUser(userId).stream().map(this::toPermissionResponse).toList();
+    }
+
+    @Operation(summary = "Réduire les privilèges d'un admin d'école précis — retire ces permissions à CET "
+            + "utilisateur même si son rôle (partagé par toute la plateforme) les accorde ; réservé au "
+            + "SUPER_ADMIN pour ne jamais affecter les autres écoles ni être défait par l'intéressé lui-même")
+    @PostMapping("/api/v1/users/{userId}/revoked-permissions")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void revokeUserPermissions(@PathVariable Long userId, @Valid @RequestBody AssignPermissionsRequest req) {
+        roleUseCase.revokeUserPermissions(userId, req.permissionIds());
+    }
+
     // DTO records
     record CreateRoleRequest(@NotBlank String name, String description) {}
 

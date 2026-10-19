@@ -106,7 +106,7 @@ class AnneeScolaireServiceTest {
         });
 
         Periode result = service.createPeriod(  new CreatePeriodCommand(
-                1L, "Term 1", TypePeriode.TRIMESTRE, SchoolCycle.PRIMAIRE,1, LocalDate.of(2020,6,2),LocalDate.of(2020,6,3)
+                1L, "Term 1", TypePeriode.TRIMESTRE, SchoolCycle.PRIMAIRE,1, LocalDate.of(2020,6,2),LocalDate.of(2020,6,3), null
         ));
 
         assertThat(result.getClosed()).isFalse();

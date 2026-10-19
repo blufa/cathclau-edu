@@ -36,7 +36,7 @@ class RecipientResolverServiceTest {
     @InjectMocks RecipientResolverService resolver;
 
     private static StudentPublicInfo student(long id, String gender) {
-        return new StudentPublicInfo(id, 1L, "P", "N", null, null, "MAT-" + id, null, null, gender);
+        return new StudentPublicInfo(id, 1L, "P", "N", null, null, "MAT-" + id, null, null, gender, null);
     }
 
     @Test

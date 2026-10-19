@@ -26,4 +26,10 @@ public class Periode {
     private LocalDate startDate;
     private LocalDate endDate;
     private Boolean closed;
+    /** Période "composition" associée (§retour fondateur, école Notre Mère) — certaines écoles séparent
+     * la période des évaluations "cours" (ex. "1er Semestre") de celle de la composition correspondante
+     * (ex. "Compo 1er Semestre"), deux enregistrements distincts mais un seul bulletin. Le moteur de
+     * notes fusionne les évaluations des deux périodes lors de la génération ; nul = comportement
+     * historique (une seule période par bulletin). */
+    private Long compositionPeriodId;
 }

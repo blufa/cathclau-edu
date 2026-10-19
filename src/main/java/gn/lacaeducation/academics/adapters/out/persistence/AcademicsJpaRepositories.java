@@ -21,6 +21,7 @@ interface AnneeScolaireJpaRepository extends JpaRepository<AnneeScolaireJpaEntit
 
 interface PeriodeJpaRepository extends JpaRepository<PeriodeJpaEntity, Long> {
     List<PeriodeJpaEntity> findByAcademicYearIdOrderBySortOrder(Long academicYearId);
+    boolean existsByCompositionPeriodId(Long compositionPeriodId);
 }
 
 interface SalleJpaRepository extends JpaRepository<SalleJpaEntity, Long> {

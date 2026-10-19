@@ -34,15 +34,22 @@ class NimbaSmsGatewayTest {
         assertThat(NimbaSmsGateway.normalizeNumber(null, "224")).isNull();
     }
 
+    /** Incident de production (§retour fondateur) : ce repli renvoyait delivered=true ("logged"),
+     * indiscernable d'une vraie livraison — un SMS jamais réellement envoyé (NIMBA_SMS_ENABLED=true
+     * mais clés vides) se retrouvait marqué DELIVERED en base, en silence. Corrigé : delivered=false,
+     * jamais retenté indéfiniment (retryable=false), mais pas d'exception (ne bloque pas le flux
+     * appelant). */
     @Test
-    void degradesToLoggingWhenNotConfigured() {
+    void degradesToLoggingWhenNotConfigured_withoutClaimingDelivery() {
         NimbaSmsProperties props = new NimbaSmsProperties(false, null, null, null, null, null);
         NimbaSmsGateway gateway = new NimbaSmsGateway(props, RestClient.builder());
 
         DeliveryResult result = gateway.send("623273737", "sujet", "contenu du message");
 
-        assertThat(result.delivered()).isTrue();
-        assertThat(result.detail()).contains("logged");
+        assertThat(result.delivered()).isFalse();
+        assertThat(result.retryable()).isFalse();
+        assertThat(result.providerMessageId()).isNull();
+        assertThat(result.detail()).contains("non configuré");
     }
 
     @Test
