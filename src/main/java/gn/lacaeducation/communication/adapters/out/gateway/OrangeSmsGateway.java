@@ -64,9 +64,12 @@ public class OrangeSmsGateway implements NotificationGateway, SmsBalancePort {
             return new DeliveryResult(false, "empty message");
         }
         if (!props.isConfigured()) {
-            // Repli tant qu'Orange n'est pas configuré : on journalise (comme un stub), sans échouer.
-            log.info("[SMS] (Orange non configuré) -> {} | {}", destination, message);
-            return new DeliveryResult(true, "logged (orange disabled)");
+            // Même correctif que NimbaSmsGateway (§retour fondateur) : delivered=true ici rendait un SMS
+            // jamais réellement envoyé indiscernable d'une vraie livraison. delivered=false +
+            // retryable=false : échec définitif visible, pas de blocage du flux appelant (paiement…), pas
+            // de retenter indéfiniment une config manquante.
+            log.warn("[SMS] Orange NON CONFIGURÉ — SMS NON envoyé (pas d'appel réseau) vers {} : {}", destination, message);
+            return new DeliveryResult(false, "orange non configuré (clés manquantes) : SMS non envoyé", null, false);
         }
         try {
             String to = toE164(destination, props.defaultDialingCode());

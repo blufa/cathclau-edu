@@ -88,12 +88,20 @@ public class NimbaSmsGateway implements NotificationGateway, SmsBalancePort {
             return new DeliveryResult(false, "empty message");
         }
         if (!props.isConfigured()) {
-            // Repli tant que Nimba n'est pas configuré : on journalise (comme un stub), sans échouer.
-            log.info("[SMS] (Nimba non configuré) -> {} | {}", destination, message);
-            return new DeliveryResult(true, "logged (nimba disabled)");
+            // Incident vécu (§retour fondateur) : ce repli renvoyait delivered=true ("logged (nimba
+            // disabled)") — un SMS jamais réellement envoyé (aucun appel réseau à Nimba) se retrouvait
+            // marqué DELIVERED en base, indiscernable d'une vraie livraison (même providerMessageId nul,
+            // mais rien ne le signalait). Résultat en production : NIMBA_SMS_ENABLED=true mais
+            // SERVICE_ID/SECRET_TOKEN/SENDER_NAME vides dans .env.prod, donc isConfigured()=false — tous
+            // les SMS "partaient" selon la base de données sans jamais atteindre l'API Nimba, en silence.
+            // Toujours pas d'exception levée (ne doit pas bloquer paiement/inscription/etc.), mais
+            // delivered=false + retryable=false désormais : visible comme échec définitif (pas retenté
+            // indéfiniment), jamais confondu avec une vraie livraison.
+            log.warn("[SMS] Nimba NON CONFIGURÉ — SMS NON envoyé (pas d'appel réseau) vers {} : {}", destination, message);
+            return new DeliveryResult(false, "nimba non configuré (clés manquantes) : SMS non envoyé", null, false);
         }
         try {
-            MessageRequest body = new MessageRequest(props.senderName(), List.of(normalizeNumber(destination, props.defaultDialingCode())), message);
+            MessageRequest body = new MessageRequest(props.senderName().trim(), List.of(normalizeNumber(destination, props.defaultDialingCode())), message);
             // Sérialisé nous-mêmes (au lieu de laisser RestClient choisir/instancier son propre
             // convertisseur JSON) : après un premier correctif (retrait du champ `channel`) qui n'a PAS
             // suffi à faire disparaître l'erreur 400 "sender_name/to obligatoires" malgré un JSON
@@ -153,8 +161,12 @@ public class NimbaSmsGateway implements NotificationGateway, SmsBalancePort {
     }
 
     private String basicToken() {
+        // .trim() : une variable d'environnement copiée depuis le tableau de bord Nimba avec un espace
+        // ou un retour à la ligne superflu corrompt silencieusement les identifiants encodés en Base64
+        // — Nimba répond alors 401 UNAUTHORIZED sans indiquer que c'est un problème de format, pas
+        // d'identifiants invalides (incident vécu, §retour fondateur).
         return Base64.getEncoder().encodeToString(
-                (props.serviceId() + ":" + props.secretToken()).getBytes(StandardCharsets.UTF_8));
+                (props.serviceId().trim() + ":" + props.secretToken().trim()).getBytes(StandardCharsets.UTF_8));
     }
 
     /**
