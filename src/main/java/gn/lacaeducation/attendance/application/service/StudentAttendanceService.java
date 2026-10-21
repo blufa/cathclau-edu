@@ -70,6 +70,17 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
                 .orElseGet(() -> AttendanceSettings.defaults().studentTransitionMarginMinutesOrDefault());
     }
 
+    /** Fenêtre de course réseau (§16) : une ligne créée il y a moins de {@code RACE_WINDOW_SECONDS}
+     * vient très probablement de la retentative du MÊME tap physique (voir javadoc de recordEntry),
+     * pas d'un second scan humain — un vrai re-scan arrive toujours bien après (au minimum le temps
+     * de refaire le trajet jusqu'au lecteur). */
+    private static final long RACE_WINDOW_SECONDS = 5;
+
+    private boolean createdWithinRaceWindow(StudentCheckin checkin) {
+        return checkin.getCreatedAt() != null
+                && Duration.between(checkin.getCreatedAt(), LocalDateTime.now()).getSeconds() < RACE_WINDOW_SECONDS;
+    }
+
     @Override
     public StudentCheckin recordEntry(Long studentId, Long scannerUserId) {
         Long classId = studentDataProvider.findCurrentClassId(studentId)
@@ -82,8 +93,21 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
         if (block == null) {
             throw new BusinessRuleException("Aucun cours programmé aujourd'hui pour cette classe.");
         }
-        StudentCheckin checkin = checkinRepository.findByStudentIdAndDateAndSlot(studentId, today, block.firstSlotId())
-                .orElseGet(() -> {
+        // Scan d'entrée répété avant toute sortie (§16 cahier des charges) : refus explicite plutôt que
+        // de recalculer/écraser silencieusement le premier pointage. Exclut volontairement la ligne
+        // tout juste créée par la PROPRE retentative de ce même appel (voir AttendanceScanController
+        // #idempotent : deux requêtes quasi simultanées peuvent violer la contrainte d'unicité, la
+        // retentative retrouve alors la ligne créée par l'autre — ce n'est PAS un second scan humain,
+        // juste une course gagnée par l'autre requête du même tap physique) : seule une ligne déjà
+        // vieille de plus de quelques secondes est traitée comme un vrai double-scan. Un re-scan APRÈS
+        // une sortie valide sur ce même créneau reste accepté (silencieux, voir orElseGet) : cas
+        // volontairement hors scope ici (pas de double-scan, c'est une vraie ré-entrée).
+        Optional<StudentCheckin> existing = checkinRepository.findByStudentIdAndDateAndSlot(studentId, today, block.firstSlotId());
+        if (existing.isPresent() && existing.get().getCheckOutTime() == null && !createdWithinRaceWindow(existing.get())) {
+            throw new BusinessRuleException(
+                    "Ce badge a déjà été scanné à l'entrée. Scannez-le à la sortie avant un nouvel accès.");
+        }
+        StudentCheckin checkin = existing.orElseGet(() -> {
                     LocalTime start = block.start();
                     LocalTime end = block.end();
                     LocalTime deadline = graceDeadline(start);
@@ -109,9 +133,20 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
         if (block == null) {
             throw new BusinessRuleException("Aucun cours programmé aujourd'hui pour cette classe.");
         }
-        StudentCheckin checkin = checkinRepository.findByStudentIdAndDateAndSlot(studentId, today, block.firstSlotId())
+        // Verrou pessimiste (§15 : "le SMS doit être envoyé une seule fois... malgré les reprises") :
+        // contrairement à l'entrée (protégée par la contrainte d'unicité à l'insertion), rien n'empêche
+        // nativement deux scans de sortie quasi simultanés de mettre à jour la MÊME ligne en parallèle
+        // et de publier chacun leur StudentExitEvent (deux SMS avec des heures légèrement différentes).
+        StudentCheckin checkin = checkinRepository.lockByStudentIdAndDateAndSlot(studentId, today, block.firstSlotId())
                 .orElseThrow(() -> new BusinessRuleException(
                         "Aucun pointage d'entrée trouvé pour cette séance : scannez d'abord l'entrée."));
+        if (checkin.getCheckOutTime() != null) {
+            // Déjà sorti pour cette séance (second scan de sortie, retentative réseau…) : on renvoie le
+            // pointage existant SANS écraser l'heure de sortie ni republier l'événement — sinon chaque
+            // nouveau scan de sortie décalerait silencieusement l'heure enregistrée et renverrait un
+            // second SMS avec une durée différente.
+            return checkin;
+        }
         checkin.setCheckOutTime(now);
         if (checkin.getSessionEnd() == null) checkin.setSessionEnd(block.end());
         // Départ anticipé : sortie pointée avant la fin prévue de la séance (symétrique du retard à

@@ -161,7 +161,7 @@ public class UserController {
     private UserResponse toResponse(gn.lacaeducation.iam.domain.User u) {
         return new UserResponse(u.getId(), u.getTenantId(), u.getFirstName(), u.getLastName(),
                 u.getUsername(), u.getEmail(), u.getPhone(), u.getPhoto(), u.getActive(), u.isMustChangePassword(),
-                u.getPlainTemporaryPassword(), u.getLastLoginAt(), u.getCreatedAt());
+                u.getPlainTemporaryPassword(), u.getLastLoginAt(), u.getLastActivityAt(), u.getCreatedAt());
     }
 
     record UpdateUserRequest(String firstName, String lastName, String phone, Boolean active) {}

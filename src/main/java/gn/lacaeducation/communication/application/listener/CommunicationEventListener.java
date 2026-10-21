@@ -179,13 +179,14 @@ public class CommunicationEventListener {
         });
     }
 
-    /** "1h30" / "45min" — null si la durée est inconnue (aucune entrée pointée ce jour-là). */
+    /** "6 h 12 min" / "45 min" / "3 h" (§15 cahier des charges : lisible, jamais de secondes brutes) —
+     * null si la durée est inconnue (aucune entrée pointée ce jour-là, jamais inventée). */
     private String formatDuration(int minutesAtSchool) {
         if (minutesAtSchool <= 0) return null;
         int hours = minutesAtSchool / 60;
         int minutes = minutesAtSchool % 60;
-        if (hours == 0) return minutes + "min";
-        return minutes == 0 ? hours + "h" : hours + "h" + minutes;
+        if (hours == 0) return minutes + " min";
+        return minutes == 0 ? hours + " h" : hours + " h " + minutes + " min";
     }
 
     /**
