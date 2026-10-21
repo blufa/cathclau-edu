@@ -187,6 +187,43 @@ class InvoiceServiceTest {
     }
 
     @Test
+    void applyPayment_overpaid_capsInvoiceAtTotalAndPublishesOverpaidEventWithExcess() {
+        // §4 cahier des charges : facture de 1 150 000, paiement de 1 250 000 reçu — la facture ne
+        // doit jamais afficher un solde négatif, et l'excédent (100 000) doit être signalé comme
+        // trop-perçu (StudentCreditFromOverpaymentListener le pose ensuite en crédit disponible).
+        Invoice existing = Invoice.builder().id(1L).tenantId(10L).studentId(7L).reference("FAC-1")
+                .totalAmount(new BigDecimal("1150000")).paidAmount(BigDecimal.ZERO)
+                .remainingBalance(new BigDecimal("1150000")).status(InvoiceStatus.UNPAID).build();
+        when(repo.findById(1L)).thenReturn(Optional.of(existing));
+        when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Invoice inv = service().applyPayment(1L, new BigDecimal("1250000"));
+
+        assertThat(inv.getStatus()).isEqualTo(InvoiceStatus.PAID);
+        assertThat(inv.getRemainingBalance()).isEqualByComparingTo("0");
+        assertThat(inv.getPaidAmount()).isEqualByComparingTo("1150000");
+        ArgumentCaptor<gn.lacaeducation.billing.application.event.InvoiceOverpaidEvent> captor =
+                ArgumentCaptor.forClass(gn.lacaeducation.billing.application.event.InvoiceOverpaidEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        assertThat(captor.getValue().excessAmount()).isEqualByComparingTo("100000");
+        assertThat(captor.getValue().studentId()).isEqualTo(7L);
+        assertThat(captor.getValue().invoiceId()).isEqualTo(1L);
+    }
+
+    @Test
+    void applyPayment_exactAmount_doesNotPublishOverpaidEvent() {
+        Invoice existing = Invoice.builder().id(1L).tenantId(10L).studentId(7L)
+                .totalAmount(new BigDecimal("100.00")).paidAmount(BigDecimal.ZERO)
+                .remainingBalance(new BigDecimal("100.00")).status(InvoiceStatus.UNPAID).build();
+        when(repo.findById(1L)).thenReturn(Optional.of(existing));
+        when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service().applyPayment(1L, new BigDecimal("100.00"));
+
+        verify(eventPublisher, never()).publishEvent(any(gn.lacaeducation.billing.application.event.InvoiceOverpaidEvent.class));
+    }
+
+    @Test
     void reversePayment_reducesPaidAmountAndRevertsStatusToPartial() {
         // Régression : le remboursement doit se répercuter sur la facture (avant ce correctif, seul
         // le statut du Payment changeait, la facture restait affichée soldée).
