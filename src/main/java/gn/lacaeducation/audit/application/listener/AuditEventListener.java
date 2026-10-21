@@ -23,6 +23,7 @@ import gn.lacaeducation.platform.application.event.TenantArchivedEvent;
 import gn.lacaeducation.platform.application.event.TenantCreatedEvent;
 import gn.lacaeducation.platform.application.event.TenantReactivatedEvent;
 import gn.lacaeducation.platform.application.event.TenantSuspendedEvent;
+import gn.lacaeducation.students.application.event.ClassCapacityOverriddenEvent;
 import gn.lacaeducation.students.application.event.EnrollmentAbandonedEvent;
 import gn.lacaeducation.students.application.event.EnrollmentCancelledEvent;
 import gn.lacaeducation.students.application.event.EnrollmentCreatedEvent;
@@ -177,6 +178,15 @@ public class AuditEventListener {
     public void onEnrollmentAbandoned(EnrollmentAbandonedEvent event) {
         save(event.tenantId(), null, "ENROLLMENT_ABANDONED", "Student", event.studentId(),
                 "classId=" + event.classId() + ";academicYearId=" + event.academicYearId());
+    }
+
+    @TransactionalEventListener
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onClassCapacityOverridden(ClassCapacityOverriddenEvent event) {
+        // Pas de tenantId porté par cet événement : résolu depuis le contexte de la requête d'origine
+        // (même thread, voir onEnrollmentCreated ci-dessus pour le même raisonnement).
+        save(TenantContext.get(), event.overriddenByUserId(), "CLASS_CAPACITY_OVERRIDDEN", "Classe", event.classId(),
+                "countBeforeOverride=" + event.countBeforeOverride() + ";maxCapacity=" + event.maxCapacity());
     }
 
     // ── Factures/exonérations (§retour fondateurs : qui a généré quoi, qui a accordé quelle remise). ──

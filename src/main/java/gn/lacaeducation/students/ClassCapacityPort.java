@@ -9,4 +9,10 @@ package gn.lacaeducation.students;
 public interface ClassCapacityPort {
     /** Maximum capacity of the class, or {@code null} if unlimited/unknown. */
     Integer maxCapacity(Long classId);
+
+    /** Même chose, mais pose d'abord un verrou pessimiste sur la ligne de la classe (dans la
+     * transaction appelante) — à utiliser juste avant de compter les inscriptions déjà validées et
+     * d'en valider une nouvelle, pour que deux validations concurrentes sur la même classe ne
+     * puissent jamais dépasser la capacité ensemble (§6 cahier des charges). */
+    Integer lockAndGetMaxCapacity(Long classId);
 }

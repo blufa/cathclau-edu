@@ -31,6 +31,11 @@ public interface EnrollmentUseCase {
     /** Modifie après coup le choix de paiement mensuel (le parent peut changer d'avis en cours d'année). */
     Enrollment updateMonthlyPaymentOptIn(Long id, boolean optIn);
     Enrollment validate(Long id);
+    /** Comme {@link #validate}, mais si {@code overrideCapacity} vaut {@code true}, ignore un
+     * dépassement de la capacité de la classe (toujours bloqué sinon) — publie en plus
+     * {@code ClassCapacityOverriddenEvent} (traçabilité, §6 cahier des charges) quand le dépassement a
+     * effectivement eu lieu. {@code overriddenByUserId} identifie qui a forcé le dépassement. */
+    Enrollment validate(Long id, boolean overrideCapacity, Long overriddenByUserId);
     Enrollment cancel(Long id);
     /** Marque une inscription validée comme abandonnée (élève parti en cours d'année) — distinct de
      * {@link #cancel}, qui reste réservé aux annulations (n'a jamais vraiment commencé). */
@@ -40,6 +45,9 @@ public interface EnrollmentUseCase {
      * pour annuler les mensualités de l'ancienne classe et reporter le crédit déjà payé sur les
      * nouvelles mensualités. */
     Enrollment transferClass(Long id, Long newClassId);
+    /** Comme {@link #transferClass}, avec le même mécanisme de dépassement explicite — voir
+     * {@link #validate(Long, boolean, Long)}. */
+    Enrollment transferClass(Long id, Long newClassId, boolean overrideCapacity, Long overriddenByUserId);
     Enrollment findById(Long id);
     List<Enrollment> findByStudent(Long studentId);
     List<Enrollment> findByClass(Long classId);

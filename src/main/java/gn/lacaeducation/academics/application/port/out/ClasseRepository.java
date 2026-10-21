@@ -7,6 +7,9 @@ import java.util.Optional;
 public interface ClasseRepository {
     Classe save(Classe schoolClass);
     Optional<Classe> findById(Long id);
+    /** Comme {@link #findById}, mais pose un verrou pessimiste (SELECT ... FOR UPDATE) sur la ligne,
+     * dans la transaction appelante — voir {@code ClassCapacityPort#lockAndGetMaxCapacity}. */
+    Optional<Classe> lockById(Long id);
     List<Classe> findByAcademicYearId(Long academicYearId);
     List<Classe> findByTenantId(Long tenantId);
     void deleteById(Long id);
