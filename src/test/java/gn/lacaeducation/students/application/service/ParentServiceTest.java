@@ -202,4 +202,18 @@ class ParentServiceTest {
         assertThat(result).extracting(gn.lacaeducation.students.domain.Student::getId)
                 .containsExactlyInAnyOrder(10L, 11L);
     }
+
+    @Test
+    void findLinkedParentIds_excludesLinkedIdsFromOtherTenantsAndUnlinkedParents() {
+        // Parent 1 et 2 appartiennent à cette école ; parent 2 est un prospect sans enfant ; parent 99
+        // a un lien enfant mais appartient à une AUTRE école (ne doit jamais apparaître ici).
+        Parent p1 = Parent.builder().id(1L).tenantId(50L).build();
+        Parent p2 = Parent.builder().id(2L).tenantId(50L).build();
+        when(parentRepository.findByTenantId(50L)).thenReturn(List.of(p1, p2));
+        when(studentParentRepository.findDistinctLinkedParentIds()).thenReturn(List.of(1L, 99L));
+
+        List<Long> result = service.findLinkedParentIds(50L);
+
+        assertThat(result).containsExactly(1L);
+    }
 }
