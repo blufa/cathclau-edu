@@ -16,6 +16,8 @@ import gn.lacaeducation.iam.application.event.UserLoggedInEvent;
 import gn.lacaeducation.iam.application.event.UserPermissionsModifiedEvent;
 import gn.lacaeducation.lessons.application.event.LessonValidatedWithoutCheckinEvent;
 import gn.lacaeducation.payments.application.event.CashCollectedWithoutOpenSessionEvent;
+import gn.lacaeducation.payments.application.event.CashDepositCreatedEvent;
+import gn.lacaeducation.payments.application.event.CashDepositDecidedEvent;
 import gn.lacaeducation.payments.application.event.CashierSessionClosedEvent;
 import gn.lacaeducation.payments.application.event.PaymentRefundedEvent;
 import gn.lacaeducation.payments.application.event.PaymentSucceededEvent;
@@ -260,6 +262,23 @@ public class AuditEventListener {
     public void onCashCollectedWithoutOpenSession(CashCollectedWithoutOpenSessionEvent event) {
         save(event.tenantId(), event.cashierId(), "CASH_COLLECTED_WITHOUT_OPEN_SESSION", "Payment", event.paymentId(),
                 "amount=" + event.amount());
+    }
+
+    // ── Dépôts comptable → fondateur (§5 cahier des charges) : qui a déposé/décidé quoi et quand. ──
+
+    @TransactionalEventListener
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onCashDepositCreated(CashDepositCreatedEvent event) {
+        save(event.tenantId(), event.accountantId(), "CASH_DEPOSIT_CREATED", "CashDeposit", event.depositId(),
+                "amount=" + event.amount() + ";currency=" + event.currency() + ";method=" + event.method());
+    }
+
+    @TransactionalEventListener
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onCashDepositDecided(CashDepositDecidedEvent event) {
+        save(event.tenantId(), event.decidedBy(), "CASH_DEPOSIT_" + event.status(), "CashDeposit", event.depositId(),
+                "accountantId=" + event.accountantId() + ";amount=" + event.amount()
+                        + (event.rejectionReason() != null ? ";reason=" + event.rejectionReason() : ""));
     }
 
     @TransactionalEventListener
