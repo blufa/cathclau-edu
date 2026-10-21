@@ -24,7 +24,8 @@ public class SchoolFeeService implements SchoolFeeUseCase {
     private final ApplicationEventPublisher eventPublisher;
     @Override public SchoolFee create(CreateFeeCommand c, Long createdBy) {
         SchoolFee saved = repo.save(SchoolFee.builder().tenantId(c.tenantId()).classId(c.classId()).routeId(c.routeId())
-                .type(c.type()).amount(c.amount()).academicYear(c.academicYear()).label(c.label()).build());
+                .type(c.type()).amount(c.amount()).academicYear(c.academicYear()).label(c.label())
+                .mandatory(c.mandatory() != null ? c.mandatory() : Boolean.TRUE).build());
         eventPublisher.publishEvent(new SchoolFeeCreatedEvent(saved.getTenantId(), saved.getId(), saved.getLabel(),
                 saved.getType() == null ? null : saved.getType().name(), saved.getAmount(), saved.getAcademicYear(), createdBy));
         return saved;
@@ -32,6 +33,7 @@ public class SchoolFeeService implements SchoolFeeUseCase {
     @Override public SchoolFee update(Long id, UpdateFeeCommand c) {
         SchoolFee f = load(id); f.setClassId(c.classId()); f.setRouteId(c.routeId()); f.setType(c.type()); f.setAmount(c.amount());
         f.setAcademicYear(c.academicYear()); f.setLabel(c.label());
+        f.setMandatory(c.mandatory() != null ? c.mandatory() : Boolean.TRUE);
         return repo.save(f);
     }
     @Override

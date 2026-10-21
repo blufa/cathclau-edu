@@ -36,7 +36,7 @@ class EnrollmentBillingServiceTest {
 
     private SchoolFee fee(Long id, FeeType type, Long classId, Long routeId) {
         return SchoolFee.builder().id(id).tenantId(1L).classId(classId).routeId(routeId)
-                .type(type).amount(BigDecimal.valueOf(50_000)).build();
+                .type(type).amount(BigDecimal.valueOf(50_000)).mandatory(true).build();
     }
 
     @Test
@@ -150,6 +150,22 @@ class EnrollmentBillingServiceTest {
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).fee().getType()).isEqualTo(FeeType.TRANSPORT);
+    }
+
+    @Test
+    void excludesOptionalFee_fromAutomaticGeneration() {
+        // §13 cahier des charges : un frais facultatif (ex. paquet de RAM) ne doit jamais être facturé
+        // automatiquement à l'inscription — seulement via une action explicite du comptable ailleurs.
+        SchoolFee optionalFee = SchoolFee.builder().id(6L).tenantId(1L).classId(10L)
+                .type(FeeType.OTHER).amount(BigDecimal.valueOf(50_000)).mandatory(false).build();
+        when(schoolFeeRepository.findByClassId(10L)).thenReturn(List.of(optionalFee));
+
+        List<GeneratedFeeInvoices> result = service.generateAllForEnrollment(
+                new GenerateAllFeesCommand(1L, 7L, 10L, 5L, EnrollmentType.NEW, false, null));
+
+        assertThat(result).isEmpty();
+        verify(invoiceUseCase, never()).create(any());
+        verify(invoiceUseCase, never()).generateMonthly(any());
     }
 
     @Test

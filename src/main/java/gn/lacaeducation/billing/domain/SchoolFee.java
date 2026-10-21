@@ -15,4 +15,8 @@ public class SchoolFee {
     private String academicYear;
     /** Nom de la catégorie quand {@code type == OTHER} (ex. "Tenue scolaire", "Bus de transport"). */
     private String label;
+    /** Facturé automatiquement à l'inscription (true, comportement historique) ou seulement sur
+     * ajout explicite du comptable à l'élève concerné (false) — ex. un paquet de RAM facultatif
+     * (§13 cahier des charges). Jamais null en base (défaut TRUE, voir migration). */
+    private Boolean mandatory;
 }

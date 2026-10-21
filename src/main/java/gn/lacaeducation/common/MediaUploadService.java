@@ -46,6 +46,15 @@ public class MediaUploadService {
         if (file == null || file.isEmpty()) {
             throw new BusinessRuleException("Fichier vide");
         }
+        // §11.3 cahier des charges : contrôler le type de fichier côté serveur pour un upload de photo
+        // (élève/enseignant/personnel, tous dans un dossier "*/photos" par convention frontend) — la
+        // taille globale est déjà plafonnée par spring.servlet.multipart.max-file-size (15 Mo).
+        if (folder != null && folder.endsWith("/photos")) {
+            String contentType = file.getContentType();
+            if (contentType == null || !contentType.startsWith("image/")) {
+                throw new BusinessRuleException("Le fichier doit être une image (JPEG, PNG…) pour une photo de profil.");
+            }
+        }
         byte[] content;
         try {
             content = file.getBytes();

@@ -41,8 +41,13 @@ public class EnrollmentBillingService implements EnrollmentBillingUseCase {
         // et inversement (§retour comptable).
         FeeType excludedType = cmd.enrollmentType() == gn.lacaeducation.students.EnrollmentType.RE_ENROLLMENT
                 ? FeeType.ENROLLMENT : FeeType.RE_ENROLLMENT;
+        // §13 cahier des charges : un frais facultatif (ex. paquet de RAM) n'est jamais facturé
+        // automatiquement ici — seulement via une action explicite du comptable sur l'élève concerné
+        // (POST /billing/invoices ou /generate-monthly, mêmes primitives, volontairement non filtrées
+        // elles-mêmes puisque c'est exactement ce canal explicite).
         List<SchoolFee> classFees = schoolFeeRepository.findByClassId(cmd.classId()).stream()
                 .filter(fee -> fee.getType() != excludedType)
+                .filter(fee -> Boolean.TRUE.equals(fee.getMandatory()))
                 .toList();
 
         List<GeneratedFeeInvoices> result = new ArrayList<>();
