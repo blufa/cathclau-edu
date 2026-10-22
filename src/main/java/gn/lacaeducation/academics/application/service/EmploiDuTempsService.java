@@ -81,12 +81,26 @@ public class EmploiDuTempsService implements GererEmploiDuTempsUseCase {
      */
     private void checkConflicts(Long roomId, Long teacherId, Long classId,
                                   JourSemaine day, LocalTime startTime, LocalTime endTime, Long excludeId) {
-        boolean roomConflict = excludeId == null
-                ? edtRepository.existsRoomConflict(roomId, day, startTime, endTime)
-                : edtRepository.existsRoomConflictExcluding(roomId, day, startTime, endTime, excludeId);
-        if (roomConflict) {
-            throw new ConflictException("Cette salle est déjà occupée le " + dayLabel(day)
-                    + " de " + hhmm(startTime) + " à " + hhmm(endTime) + " par un autre cours.");
+        // §3.1 cahier des charges — bug réel corrigé ici : sans ce garde-fou, roomId=null (aucune
+        // salle assignée, courant au Primaire/Maternelle qui n'a souvent pas de salle dédiée dans le
+        // système) liait `e.roomId = :roomId` à NULL dans la requête — en HQL/JPQL (Hibernate), une
+        // comparaison `= :param` avec un paramètre NULL est réécrite en `IS NULL`, ce qui faisait
+        // matcher N'IMPORTE QUEL AUTRE créneau lui aussi sans salle au même horaire, MÊME dans un
+        // cycle totalement différent (ex. une classe de Primaire ET une classe de 7ème toutes deux
+        // "sans salle" à la même heure étaient jugées en faux conflit de salle, alors qu'aucune salle
+        // n'est réellement partagée). Chaque dimension de conflit (salle/enseignant/classe) reste donc
+        // scopée à une VRAIE ressource physique partagée, jamais à "l'absence" de cette ressource — ce
+        // qui rend les cycles Primaire/Maternelle et Secondaire naturellement indépendants dès lors
+        // qu'ils ne partagent ni salle, ni enseignant, ni classe réels, sans logique de cycle séparée
+        // à maintenir (voir `teacherId != null` et `classId != null` ci-dessous, déjà corrects).
+        if (roomId != null) {
+            boolean roomConflict = excludeId == null
+                    ? edtRepository.existsRoomConflict(roomId, day, startTime, endTime)
+                    : edtRepository.existsRoomConflictExcluding(roomId, day, startTime, endTime, excludeId);
+            if (roomConflict) {
+                throw new ConflictException("Cette salle est déjà occupée le " + dayLabel(day)
+                        + " de " + hhmm(startTime) + " à " + hhmm(endTime) + " par un autre cours.");
+            }
         }
 
         // Un enseignant exceptionnel (ex. EPS) peut couvrir plusieurs classes en même temps — voir
