@@ -8,6 +8,10 @@ public interface EmployeeAttendanceRepository {
     EmployeeAttendance save(EmployeeAttendance attendance);
     Optional<EmployeeAttendance> findById(Long id);
     Optional<EmployeeAttendance> findByEmployeeIdAndDate(Long employeeId, LocalDate date);
+    /** Comme {@link #findByEmployeeIdAndDate}, mais pose un verrou pessimiste sur la ligne (si elle
+     * existe) — même usage que {@code StudentCheckinRepository#lockByStudentIdAndDateAndSlot} (§15/§16) :
+     * sérialise deux scans de sortie quasi simultanés du même badge. */
+    Optional<EmployeeAttendance> lockByEmployeeIdAndDate(Long employeeId, LocalDate date);
     List<EmployeeAttendance> findByEmployeeIdAndDateBetween(Long employeeId, LocalDate from, LocalDate to);
     long countByEmployeeIdAndDateBetween(Long employeeId, LocalDate from, LocalDate to);
     long countByEmployeeIdAndDateBetweenAndStatus(Long employeeId, LocalDate from, LocalDate to, EmployeeAttendanceStatus status);

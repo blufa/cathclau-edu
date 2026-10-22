@@ -20,7 +20,8 @@ public interface EmployeeAttendanceUseCase {
     MonthlySummary monthlySummary(Long employeeId, int year, int month);
     EmployeeAttendance record(RecordEmployeeAttendanceCommand command);
     /** Pointage d'entrée (scan) : calcule automatiquement le retard vs l'horaire configuré et upsert
-     * la présence du jour. Idempotent (le 1er scan du jour fait foi). */
+     * la présence du jour. Rejette explicitement un second scan tant qu'aucune sortie valide n'a été
+     * pointée (§16), sauf retentative réseau du même tap (fenêtre de course de quelques secondes). */
     EmployeeAttendance recordEntry(Long employeeId);
     /** Pointage de sortie (scan) : renseigne l'heure de sortie réelle du pointage d'entrée déjà
      * enregistré pour aujourd'hui. */
