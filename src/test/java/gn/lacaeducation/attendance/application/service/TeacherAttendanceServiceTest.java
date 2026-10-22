@@ -140,8 +140,29 @@ class TeacherAttendanceServiceTest {
     }
 
     @Test
-    void recordEntry_idempotent_secondScanSameSessionReturnsExisting() {
-        TeacherCheckin existing = TeacherCheckin.builder().id(9L).teacherId(5L).scheduleSlotId(1L).lateMinutes(3).build();
+    void recordEntry_secondScanBeforeExit_rejectedWithClearMessage() {
+        // §16 cahier des charges : un badge déjà scanné à l'entrée (session encore ouverte, pas de
+        // sortie) doit être refusé explicitement, pas silencieusement accepté — createdAt ancien pour
+        // exclure la fenêtre de course réseau (voir createdWithinRaceWindow). Même règle que pour
+        // l'élève (StudentAttendanceService), étendue à l'enseignant.
+        TeacherCheckin existing = TeacherCheckin.builder().id(9L).teacherId(5L).scheduleSlotId(1L)
+                .lateMinutes(3).createdAt(LocalDateTime.now().minusMinutes(10)).build();
+        when(academics.findScheduleByTeacher(5L)).thenReturn(List.of());
+        when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("00:00", "23:59"));
+        when(checkinRepository.findByTeacherIdAndDateAndSlot(eq(5L), any(), eq(1L))).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> service.recordEntry(5L))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("déjà été scanné");
+        verify(checkinRepository, never()).save(any());
+    }
+
+    @Test
+    void recordEntry_raceRetryJustCreated_returnsExistingWithoutRejecting() {
+        // Deux requêtes quasi simultanées du même tap physique : la retentative retrouve la ligne tout
+        // juste créée par l'autre — ce n'est pas un second scan humain, ne doit jamais être rejeté.
+        TeacherCheckin existing = TeacherCheckin.builder().id(9L).teacherId(5L).scheduleSlotId(1L)
+                .lateMinutes(3).createdAt(LocalDateTime.now()).build();
         when(academics.findScheduleByTeacher(5L)).thenReturn(List.of());
         when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("00:00", "23:59"));
         when(checkinRepository.findByTeacherIdAndDateAndSlot(eq(5L), any(), eq(1L))).thenReturn(Optional.of(existing));
@@ -227,7 +248,7 @@ class TeacherAttendanceServiceTest {
     void recordExit_withoutPriorEntry_throws() {
         when(academics.findScheduleByTeacher(5L)).thenReturn(List.of());
         when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("08:00", "10:00"));
-        when(checkinRepository.findByTeacherIdAndDateAndSlot(eq(5L), any(), eq(1L))).thenReturn(Optional.empty());
+        when(checkinRepository.lockByTeacherIdAndDateAndSlot(eq(5L), any(), eq(1L))).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.recordExit(5L)).isInstanceOf(BusinessRuleException.class);
     }
@@ -238,13 +259,31 @@ class TeacherAttendanceServiceTest {
                 .checkInTime(java.time.LocalTime.of(8, 5)).lateMinutes(5).createdAt(LocalDateTime.now()).build();
         when(academics.findScheduleByTeacher(5L)).thenReturn(List.of());
         when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("08:00", "10:00"));
-        when(checkinRepository.findByTeacherIdAndDateAndSlot(eq(5L), any(), eq(1L))).thenReturn(Optional.of(existing));
+        when(checkinRepository.lockByTeacherIdAndDateAndSlot(eq(5L), any(), eq(1L))).thenReturn(Optional.of(existing));
         when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         TeacherCheckin result = service.recordExit(5L);
 
         assertThat(result.getCheckOutTime()).isNotNull();
         assertThat(result.getSessionEnd()).isEqualTo(java.time.LocalTime.of(10, 0));
+    }
+
+    @Test
+    void recordExit_alreadyExited_returnsExistingWithoutRepublishingEvent() {
+        // §16 : un second scan de sortie (retentative réseau…) ne doit jamais écraser l'heure de
+        // sortie déjà enregistrée ni republier l'événement — même règle que pour l'élève.
+        TeacherCheckin existing = TeacherCheckin.builder().id(9L).teacherId(5L).scheduleSlotId(1L)
+                .checkInTime(java.time.LocalTime.of(8, 5)).checkOutTime(java.time.LocalTime.of(9, 55))
+                .lateMinutes(5).earlyMinutes(5).createdAt(LocalDateTime.now()).build();
+        when(academics.findScheduleByTeacher(5L)).thenReturn(List.of());
+        when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("08:00", "10:00"));
+        when(checkinRepository.lockByTeacherIdAndDateAndSlot(eq(5L), any(), eq(1L))).thenReturn(Optional.of(existing));
+
+        TeacherCheckin result = service.recordExit(5L);
+
+        assertThat(result).isSameAs(existing);
+        verify(checkinRepository, never()).save(any());
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     // §retour fondateurs : même mécanique côté enseignant, mais sans SMS (voir TeacherExitEvent).
@@ -255,7 +294,7 @@ class TeacherAttendanceServiceTest {
                 .checkInTime(java.time.LocalTime.of(8, 5)).lateMinutes(5).createdAt(LocalDateTime.now()).build();
         when(academics.findScheduleByTeacher(5L)).thenReturn(List.of());
         when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("08:00", "10:00"));
-        when(checkinRepository.findByTeacherIdAndDateAndSlot(eq(5L), any(), eq(1L))).thenReturn(Optional.of(existing));
+        when(checkinRepository.lockByTeacherIdAndDateAndSlot(eq(5L), any(), eq(1L))).thenReturn(Optional.of(existing));
         when(checkinRepository.findByTeacherIdAndDate(eq(5L), any())).thenReturn(List.of(existing));
         when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
