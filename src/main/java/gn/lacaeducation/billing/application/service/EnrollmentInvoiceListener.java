@@ -58,6 +58,13 @@ public class EnrollmentInvoiceListener {
         }
 
         for (SchoolFee fee : fees) {
+            // §13 cahier des charges : un frais d'inscription/réinscription marqué facultatif n'est
+            // jamais facturé automatiquement ici (rare en pratique, mais la configuration l'autorise).
+            if (!Boolean.TRUE.equals(fee.getMandatory())) {
+                log.info("Frais {} id={} facultatif ; aucune facture automatique pour l'élève id={}",
+                        feeType, fee.getId(), event.studentId());
+                continue;
+            }
             // Idempotence : on saute si une facture existe déjà pour ce couple élève + frais
             if (invoiceUseCase.existsByStudentIdAndFeeId(event.studentId(), fee.getId())) {
                 log.info("Facture déjà existante pour l'élève id={} frais id={}, ignorée (idempotent)",

@@ -22,6 +22,8 @@ import gn.lacaeducation.iam.application.event.PasswordResetRequestedEvent;
 import gn.lacaeducation.iam.application.event.UserAccountCreatedEvent;
 import gn.lacaeducation.payments.PayerDirectory;
 import gn.lacaeducation.payments.PaymentDataProvider;
+import gn.lacaeducation.payments.application.event.CashDepositCreatedEvent;
+import gn.lacaeducation.payments.application.event.CashDepositDecidedEvent;
 import gn.lacaeducation.payments.application.event.CashierSessionClosedEvent;
 import gn.lacaeducation.payments.application.event.PaymentSucceededEvent;
 import gn.lacaeducation.payroll.application.event.PayslipPaidEvent;
@@ -177,13 +179,14 @@ public class CommunicationEventListener {
         });
     }
 
-    /** "1h30" / "45min" — null si la durée est inconnue (aucune entrée pointée ce jour-là). */
+    /** "6 h 12 min" / "45 min" / "3 h" (§15 cahier des charges : lisible, jamais de secondes brutes) —
+     * null si la durée est inconnue (aucune entrée pointée ce jour-là, jamais inventée). */
     private String formatDuration(int minutesAtSchool) {
         if (minutesAtSchool <= 0) return null;
         int hours = minutesAtSchool / 60;
         int minutes = minutesAtSchool % 60;
-        if (hours == 0) return minutes + "min";
-        return minutes == 0 ? hours + "h" : hours + "h" + minutes;
+        if (hours == 0) return minutes + " min";
+        return minutes == 0 ? hours + " h" : hours + " h " + minutes + " min";
     }
 
     /**
@@ -296,6 +299,58 @@ public class CommunicationEventListener {
                 + " à la clôture de " + cashierName + " (comptant " + event.physicalCount() + " GNF, système "
                 + event.systemTotal() + " GNF). Vérifiez le rapprochement de caisse.";
         notifySchoolAdmins(event.tenantId(), "Écart de caisse", content);
+    }
+
+    /**
+     * SMS au fondateur dès qu'un comptable enregistre un dépôt (§5.2) : indique clairement qu'il s'agit
+     * d'une DEMANDE en attente, pas d'un dépôt déjà comptabilisé — la validation reste à faire dans la
+     * plateforme. Un échec d'envoi (voir {@code CashDepositService}, jamais annulé par un échec SMS)
+     * laisse le dépôt PENDING, consultable sans dépendre du SMS (§5.4).
+     */
+    @TransactionalEventListener
+    @Async
+    public void onCashDepositCreated(CashDepositCreatedEvent event) {
+        String accountantName = userPublicInfoProvider.findUser(event.accountantId())
+                .map(u -> ((u.firstName() != null ? u.firstName() : "") + " " + (u.lastName() != null ? u.lastName() : "")).trim())
+                .filter(n -> !n.isBlank())
+                .orElse("Comptable #" + event.accountantId());
+        String content = "École " + schoolName(event.tenantId()) + " : " + accountantName
+                + " a enregistré un dépôt de " + event.amount() + " " + event.currency()
+                + " (" + depositMethodLabel(event.method()) + ") remis le "
+                + event.depositedAt().format(DATE_FMT) + " à " + event.depositedAt().format(TIME_FMT)
+                + ". Une validation est attendue dans la plateforme.";
+        notifySchoolAdmins(event.tenantId(), "Dépôt en attente de validation", content);
+    }
+
+    /**
+     * Retour SMS au comptable après la décision du fondateur (§5.4) — contenu identique quel que soit
+     * le canal de dépôt, jamais le comptable n'apprend l'issue uniquement par ce SMS : le statut reste
+     * visible dans la plateforme même si cet envoi échoue.
+     */
+    @TransactionalEventListener
+    @Async
+    public void onCashDepositDecided(CashDepositDecidedEvent event) {
+        userPublicInfoProvider.findUser(event.accountantId()).ifPresent(accountant -> {
+            if (accountant.phone() == null || accountant.phone().isBlank()) return;
+            boolean validated = "VALIDATED".equals(event.status());
+            String content = "École " + schoolName(event.tenantId()) + " : votre dépôt de " + event.amount() + " "
+                    + event.currency() + " (" + depositMethodLabel(event.method()) + ") a été "
+                    + (validated ? "VALIDÉ par le fondateur." : "REJETÉ par le fondateur.")
+                    + (!validated && event.rejectionReason() != null && !event.rejectionReason().isBlank()
+                            ? " Motif : " + event.rejectionReason() : "");
+            communicationUseCase.send(new SendCommunicationCommand(event.tenantId(), null, CommunicationChannel.SMS,
+                    RecipientType.GROUP, validated ? "Dépôt validé" : "Dépôt rejeté", content,
+                    CommunicationReason.GENERAL, List.of(new RecipientTarget(null, accountant.phone()))));
+        });
+    }
+
+    private String depositMethodLabel(String method) {
+        return switch (method) {
+            case "CASH" -> "espèces";
+            case "ORANGE_MONEY" -> "Orange Money";
+            case "BANK_CARD" -> "virement bancaire";
+            default -> method;
+        };
     }
 
     /**

@@ -51,4 +51,8 @@ public interface ParentUseCase {
     /** Enfants de toutes les fiches Parent partageant ce compte (voir {@link #findByUserId}) : une
      *  fiche dupliquée peut porter des liens enfant différents de la fiche "canonique". */
     List<Student> findStudentsByUserId(Long userId);
+    /** Parmi les parents de cette école, ceux qui ont au moins un enfant lié — le complément (les
+     * autres ids de {@link #findByTenantId}) sont des prospects/contacts sans enfant (§7 cahier des
+     * charges). Ne renvoie que des ids, pas de comptage détaillé : évite le N+1 sur un annuaire. */
+    List<Long> findLinkedParentIds(Long tenantId);
 }

@@ -26,7 +26,7 @@ class CourseBillingApiImpl implements CourseBillingApi {
     @Override
     public Long createCourseFee(Long tenantId, Long classId, BigDecimal amount, String academicYear, String label) {
         SchoolFee fee = schoolFeeUseCase.create(new SchoolFeeUseCase.CreateFeeCommand(
-                tenantId, classId, null, FeeType.OTHER, amount, academicYear, label), null);
+                tenantId, classId, null, FeeType.OTHER, amount, academicYear, label, null), null);
         return fee.getId();
     }
 
@@ -35,7 +35,7 @@ class CourseBillingApiImpl implements CourseBillingApi {
         SchoolFee fee = schoolFeeUseCase.findById(feeId)
                 .orElseThrow(() -> new ResourceNotFoundException("SchoolFee", feeId));
         schoolFeeUseCase.update(feeId, new SchoolFeeUseCase.UpdateFeeCommand(
-                fee.getClassId(), fee.getRouteId(), fee.getType(), amount, fee.getAcademicYear(), label));
+                fee.getClassId(), fee.getRouteId(), fee.getType(), amount, fee.getAcademicYear(), label, fee.getMandatory()));
     }
 
     @Override

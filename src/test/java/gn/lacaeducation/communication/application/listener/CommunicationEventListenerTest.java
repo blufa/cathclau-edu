@@ -80,7 +80,7 @@ class CommunicationEventListenerTest {
         verify(communicationUseCase).send(captor.capture());
         SendCommunicationCommand cmd = captor.getValue();
         assertThat(cmd.channel()).isEqualTo(CommunicationChannel.SMS);
-        assertThat(cmd.content()).contains("Awa Diallo").contains("7h55").doesNotContain("http");
+        assertThat(cmd.content()).contains("Awa Diallo").contains("7 h 55 min").doesNotContain("http");
     }
 
     // ── onTeacherAbsent (§retour fondateurs : direction ET enseignant alertés, pas de lien) ────────

@@ -22,4 +22,11 @@ public class ClassCapacityAdapter implements ClassCapacityPort {
                 .map(c -> c.getMaxCapacity())
                 .orElse(null);
     }
+
+    @Override
+    public Integer lockAndGetMaxCapacity(Long classId) {
+        return classeRepository.lockById(classId)
+                .map(c -> c.getMaxCapacity())
+                .orElse(null);
+    }
 }

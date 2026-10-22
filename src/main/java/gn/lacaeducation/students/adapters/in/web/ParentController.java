@@ -145,4 +145,12 @@ public class ParentController {
     public List<gn.lacaeducation.students.ParentPublicInfo> findAllWithPlatformAccess() {
         return studentDataProvider.findAllParentsWithPlatformAccess(TenantContext.get());
     }
+
+    @Operation(summary = "Ids des parents de l'école ayant au moins un enfant lié — le complément (parmi "
+            + "ceux renvoyés par GET /parents) sont des prospects/contacts sans enfant (§7 répertoire)")
+    @GetMapping("/linked-ids")
+    @PreAuthorize("hasAuthority('parent:manage')")
+    public List<Long> linkedParentIds() {
+        return parentUseCase.findLinkedParentIds(TenantContext.get());
+    }
 }

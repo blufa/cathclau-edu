@@ -1,10 +1,12 @@
 package gn.lacaeducation.students.application.service;
 
 import gn.lacaeducation.common.BusinessRuleException;
+import gn.lacaeducation.common.ClassCapacityExceededException;
 import gn.lacaeducation.common.ConflictException;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.students.ArrearsPort;
 import gn.lacaeducation.students.EnrollmentValidationApi;
+import gn.lacaeducation.students.application.event.ClassCapacityOverriddenEvent;
 import gn.lacaeducation.students.application.event.EnrollmentAbandonedEvent;
 import gn.lacaeducation.students.application.event.EnrollmentCancelledEvent;
 import gn.lacaeducation.students.application.event.EnrollmentClassChangedEvent;
@@ -130,40 +132,58 @@ public class InscriptionService implements EnrollmentUseCase, EnrollmentValidati
 
     @Override
     public Enrollment validate(Long id) {
+        return validate(id, false, null);
+    }
+
+    @Override
+    public Enrollment validate(Long id, boolean overrideCapacity, Long overriddenByUserId) {
         Enrollment e = load(id);
         if (e.getStatus() == EnrollmentStatus.VALIDATED) {
             throw new BusinessRuleException("Enrollment is already validated: id=" + id);
         }
-        return doValidate(e);
+        return doValidate(e, overrideCapacity, overriddenByUserId);
     }
 
     @Override
     public void validatePaidEnrollment(Long studentId, Long classId) {
+        // Validation automatique déclenchée par le paiement (pas d'utilisateur humain dans la boucle) :
+        // jamais de dépassement de capacité forcé ici, voir doc de classe de ClassCapacityExceededException.
         enrollmentRepository.findPendingByStudentAndClass(studentId, classId)
-                .ifPresent(this::doValidate);
+                .ifPresent(e -> doValidate(e, false, null));
     }
 
-    /** Shared validation: capacity + one-validated-per-year checks, then transition to VALIDATED. */
-    private Enrollment doValidate(Enrollment e) {
+    /** Shared validation: capacity + one-validated-per-year checks, then transition to VALIDATED.
+     * {@code overrideCapacity} ne contourne QUE le contrôle de capacité (jamais la règle "un seul
+     * dossier validé par élève et par année", qui reste absolue) — et seulement pour cet appel précis,
+     * jamais en augmentant silencieusement {@code Classe.maxCapacity} (§6 cahier des charges). */
+    private Enrollment doValidate(Enrollment e, boolean overrideCapacity, Long overriddenByUserId) {
         if (e.getStatus() == EnrollmentStatus.VALIDATED) return e;
         // One validated enrollment per student and academic year
         if (enrollmentRepository.existsValidatedForStudentYear(e.getStudentId(), e.getAcademicYearId())) {
             throw new ConflictException("Student " + e.getStudentId()
                     + " already has a validated enrollment for academic year " + e.getAcademicYearId());
         }
-        // Class capacity check
-        Integer max = classCapacityPort.maxCapacity(e.getClassId());
-        if (max != null) {
-            long validated = enrollmentRepository.countByClassIdAndStatus(e.getClassId(), EnrollmentStatus.VALIDATED);
-            if (validated >= max) {
-                throw new ConflictException("Class " + e.getClassId() + " has reached its capacity (" + max + ").");
-            }
-        }
+        checkCapacityOrOverride(e.getClassId(), overrideCapacity, overriddenByUserId);
         e.setStatus(EnrollmentStatus.VALIDATED);
         Enrollment saved = enrollmentRepository.save(e);
         eventPublisher.publishEvent(new EnrollmentValidatedEvent(
                 null, e.getStudentId(), e.getClassId(), e.getAcademicYearId()));
         return saved;
+    }
+
+    /** Verrouille la classe (sérialise les validations concurrentes, §6) puis compare l'effectif
+     * validé à sa capacité maximale : au-delà, bloque (ConflictException structurée) sauf si
+     * {@code overrideCapacity} est explicitement demandé — dans ce cas, publie un événement d'audit
+     * plutôt que de bloquer ou d'augmenter la capacité enregistrée. */
+    private void checkCapacityOrOverride(Long classId, boolean overrideCapacity, Long overriddenByUserId) {
+        Integer max = classCapacityPort.lockAndGetMaxCapacity(classId);
+        if (max == null) return;
+        long validated = enrollmentRepository.countByClassIdAndStatus(classId, EnrollmentStatus.VALIDATED);
+        if (validated < max) return;
+        if (!overrideCapacity) {
+            throw new ClassCapacityExceededException(classId, validated, max);
+        }
+        eventPublisher.publishEvent(new ClassCapacityOverriddenEvent(classId, validated, max, overriddenByUserId));
     }
 
     @Override
@@ -194,6 +214,11 @@ public class InscriptionService implements EnrollmentUseCase, EnrollmentValidati
 
     @Override
     public Enrollment transferClass(Long id, Long newClassId) {
+        return transferClass(id, newClassId, false, null);
+    }
+
+    @Override
+    public Enrollment transferClass(Long id, Long newClassId, boolean overrideCapacity, Long overriddenByUserId) {
         Enrollment e = load(id);
         if (e.getStatus() != EnrollmentStatus.VALIDATED) {
             throw new BusinessRuleException(
@@ -202,13 +227,7 @@ public class InscriptionService implements EnrollmentUseCase, EnrollmentValidati
         if (e.getClassId().equals(newClassId)) {
             throw new BusinessRuleException("L'élève est déjà inscrit dans cette classe.");
         }
-        Integer max = classCapacityPort.maxCapacity(newClassId);
-        if (max != null) {
-            long validated = enrollmentRepository.countByClassIdAndStatus(newClassId, EnrollmentStatus.VALIDATED);
-            if (validated >= max) {
-                throw new ConflictException("Class " + newClassId + " has reached its capacity (" + max + ").");
-            }
-        }
+        checkCapacityOrOverride(newClassId, overrideCapacity, overriddenByUserId);
         Long oldClassId = e.getClassId();
         e.setClassId(newClassId);
         Enrollment saved = enrollmentRepository.save(e);

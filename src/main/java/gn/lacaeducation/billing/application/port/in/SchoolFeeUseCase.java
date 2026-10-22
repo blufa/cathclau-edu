@@ -5,9 +5,10 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 public interface SchoolFeeUseCase {
-    /** {@code routeId} : ligne de transport pour un frais TRANSPORT — remplace classId dans ce cas (§billing). */
-    record CreateFeeCommand(Long tenantId, Long classId, Long routeId, FeeType type, BigDecimal amount, String academicYear, String label) {}
-    record UpdateFeeCommand(Long classId, Long routeId, FeeType type, BigDecimal amount, String academicYear, String label) {}
+    /** {@code routeId} : ligne de transport pour un frais TRANSPORT — remplace classId dans ce cas (§billing).
+     * {@code mandatory} : null traité comme true (comportement historique, §13 cahier des charges). */
+    record CreateFeeCommand(Long tenantId, Long classId, Long routeId, FeeType type, BigDecimal amount, String academicYear, String label, Boolean mandatory) {}
+    record UpdateFeeCommand(Long classId, Long routeId, FeeType type, BigDecimal amount, String academicYear, String label, Boolean mandatory) {}
     /** {@code createdBy} : null pour une création automatique par le système (ex. frais de
      * transport/cours, voir CourseBillingApiImpl) — jamais null depuis l'écran "Frais scolaires". */
     SchoolFee create(CreateFeeCommand command, Long createdBy);

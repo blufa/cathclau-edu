@@ -143,8 +143,51 @@ class StudentAttendanceServiceTest {
     }
 
     @Test
-    void recordEntry_idempotent_secondScanSameSessionReturnsExisting() {
-        StudentCheckin existing = StudentCheckin.builder().id(9L).studentId(10L).classId(20L).scheduleSlotId(1L).lateMinutes(3).build();
+    void recordEntry_secondScanBeforeExit_rejectedWithClearMessage() {
+        // §16 cahier des charges : un badge déjà scanné à l'entrée (session encore ouverte, pas de
+        // sortie) doit être refusé explicitement, pas silencieusement accepté — createdAt ancien pour
+        // exclure la fenêtre de course réseau (voir createdWithinRaceWindow).
+        StudentCheckin existing = StudentCheckin.builder().id(9L).studentId(10L).classId(20L).scheduleSlotId(1L)
+                .lateMinutes(3).createdAt(java.time.LocalDateTime.now().minusMinutes(10)).build();
+        when(studentDataProvider.findCurrentClassId(10L)).thenReturn(Optional.of(20L));
+        when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
+        when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("00:00", "23:59"));
+        when(checkinRepository.findByStudentIdAndDateAndSlot(eq(10L), any(), eq(1L))).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> service.recordEntry(10L, null))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("déjà été scanné");
+        verify(checkinRepository, never()).save(any());
+    }
+
+    @Test
+    void recordEntry_raceRetryJustCreated_returnsExistingWithoutRejecting() {
+        // Deux requêtes quasi simultanées du même tap physique (voir AttendanceScanController
+        // #idempotent) : la retentative retrouve la ligne tout juste créée par l'autre — ce n'est pas
+        // un second scan humain, ne doit jamais être rejeté.
+        StudentCheckin existing = StudentCheckin.builder().id(9L).studentId(10L).classId(20L).scheduleSlotId(1L)
+                .lateMinutes(3).createdAt(java.time.LocalDateTime.now()).build();
+        when(studentDataProvider.findCurrentClassId(10L)).thenReturn(Optional.of(20L));
+        when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
+        when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("00:00", "23:59"));
+        when(checkinRepository.findByStudentIdAndDateAndSlot(eq(10L), any(), eq(1L))).thenReturn(Optional.of(existing));
+        when(checkinRepository.findByStudentIdAndDate(eq(10L), any())).thenReturn(List.of(existing));
+        when(repo.findByStudentIdAndClassIdAndDate(eq(10L), eq(20L), any())).thenReturn(Optional.empty());
+        when(repo.save(any())).thenAnswer(i -> { StudentAttendance a = i.getArgument(0); a.setId(7L); return a; });
+
+        StudentCheckin result = service.recordEntry(10L, null);
+
+        assertThat(result).isSameAs(existing);
+        verify(checkinRepository, never()).save(any());
+    }
+
+    @Test
+    void recordEntry_sameSlotAfterExit_returnsExistingWithoutRejecting() {
+        // Hors scope du correctif §16 (documenté dans IMPLEMENTATION_TRACKER.md) : une ré-entrée sur le
+        // même créneau APRÈS une sortie valide n'est pas un double-scan — reste acceptée silencieusement.
+        StudentCheckin existing = StudentCheckin.builder().id(9L).studentId(10L).classId(20L).scheduleSlotId(1L)
+                .lateMinutes(3).checkOutTime(java.time.LocalTime.of(9, 0))
+                .createdAt(java.time.LocalDateTime.now().minusHours(1)).build();
         when(studentDataProvider.findCurrentClassId(10L)).thenReturn(Optional.of(20L));
         when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
         when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("00:00", "23:59"));
@@ -195,7 +238,7 @@ class StudentAttendanceServiceTest {
         when(studentDataProvider.findCurrentClassId(10L)).thenReturn(Optional.of(20L));
         when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
         when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("08:00", "10:00"));
-        when(checkinRepository.findByStudentIdAndDateAndSlot(eq(10L), any(), eq(1L))).thenReturn(Optional.empty());
+        when(checkinRepository.lockByStudentIdAndDateAndSlot(eq(10L), any(), eq(1L))).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.recordExit(10L, null)).isInstanceOf(BusinessRuleException.class);
     }
@@ -207,13 +250,33 @@ class StudentAttendanceServiceTest {
         when(studentDataProvider.findCurrentClassId(10L)).thenReturn(Optional.of(20L));
         when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
         when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("08:00", "10:00"));
-        when(checkinRepository.findByStudentIdAndDateAndSlot(eq(10L), any(), eq(1L))).thenReturn(Optional.of(existing));
+        when(checkinRepository.lockByStudentIdAndDateAndSlot(eq(10L), any(), eq(1L))).thenReturn(Optional.of(existing));
         when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         StudentCheckin result = service.recordExit(10L, null);
 
         assertThat(result.getCheckOutTime()).isNotNull();
         assertThat(result.getSessionEnd()).isEqualTo(java.time.LocalTime.of(10, 0));
+    }
+
+    @Test
+    void recordExit_alreadyExited_returnsExistingWithoutRepublishingEvent() {
+        // §15 cahier des charges : un second scan de sortie (retentative réseau, double-clic…) ne doit
+        // jamais republier StudentExitEvent (double SMS) ni écraser l'heure de sortie déjà enregistrée.
+        StudentCheckin alreadyExited = StudentCheckin.builder().id(9L).studentId(10L).classId(20L).scheduleSlotId(1L)
+                .checkInTime(java.time.LocalTime.of(8, 5)).checkOutTime(java.time.LocalTime.of(9, 50))
+                .lateMinutes(5).earlyMinutes(10).build();
+        when(studentDataProvider.findCurrentClassId(10L)).thenReturn(Optional.of(20L));
+        when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
+        when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("08:00", "10:00"));
+        when(checkinRepository.lockByStudentIdAndDateAndSlot(eq(10L), any(), eq(1L))).thenReturn(Optional.of(alreadyExited));
+
+        StudentCheckin result = service.recordExit(10L, null);
+
+        assertThat(result).isSameAs(alreadyExited);
+        assertThat(result.getCheckOutTime()).isEqualTo(java.time.LocalTime.of(9, 50));
+        verify(checkinRepository, never()).save(any());
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     // §retour fondateurs : notification de sortie avec la durée passée à l'école.
@@ -229,7 +292,7 @@ class StudentAttendanceServiceTest {
         when(studentDataProvider.findCurrentClassId(10L)).thenReturn(Optional.of(20L));
         when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
         when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("13:00", "16:00"));
-        when(checkinRepository.findByStudentIdAndDateAndSlot(eq(10L), any(), eq(1L))).thenReturn(Optional.of(afternoon));
+        when(checkinRepository.lockByStudentIdAndDateAndSlot(eq(10L), any(), eq(1L))).thenReturn(Optional.of(afternoon));
         when(checkinRepository.findByStudentIdAndDate(eq(10L), any())).thenReturn(List.of(morning, afternoon));
         when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 

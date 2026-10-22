@@ -1,7 +1,9 @@
 package gn.lacaeducation.academics.adapters.out.persistence;
 
 import gn.lacaeducation.academics.domain.valueobject.JourSemaine;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -39,6 +41,13 @@ interface ClasseJpaRepository extends JpaRepository<ClasseJpaEntity, Long> {
     List<ClasseJpaEntity> findByTenantId(Long tenantId);
     List<ClasseJpaEntity> findByHeadTeacherId(Long headTeacherId);
     long countByTenantIdAndAcademicYearId(Long tenantId, Long academicYearId);
+    /** Verrou pessimiste (§6 capacité de classe) : sérialise le contrôle "effectif < capacité" puis
+     * la validation d'une inscription entre deux transactions concurrentes visant la même classe —
+     * sans lui, deux validations lancées au même instant peuvent toutes les deux lire un effectif
+     * sous la capacité et la dépasser ensemble. Relâché au commit/rollback de la transaction appelante. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT c FROM ClasseJpaEntity c WHERE c.id = :id")
+    Optional<ClasseJpaEntity> lockById(@Param("id") Long id);
 }
 
 interface MatiereJpaRepository extends JpaRepository<MatiereJpaEntity, Long> {

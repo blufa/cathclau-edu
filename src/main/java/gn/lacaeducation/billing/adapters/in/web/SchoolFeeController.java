@@ -16,17 +16,17 @@ import java.util.List;
 @RestController @RequestMapping("/api/v1/billing/fees") @RequiredArgsConstructor
 public class SchoolFeeController {
     private final SchoolFeeUseCase useCase;
-    public record CreateRequest(Long tenantId, Long classId, Long routeId, FeeType type, BigDecimal amount, String academicYear, String label) {}
-    public record UpdateRequest(Long classId, Long routeId, FeeType type, BigDecimal amount, String academicYear, String label) {}
+    public record CreateRequest(Long tenantId, Long classId, Long routeId, FeeType type, BigDecimal amount, String academicYear, String label, Boolean mandatory) {}
+    public record UpdateRequest(Long classId, Long routeId, FeeType type, BigDecimal amount, String academicYear, String label, Boolean mandatory) {}
     @Operation(summary = "Créer une nouvelle configuration de frais scolaire")
     @PreAuthorize("hasAuthority('frais_scolaire:create')")
     @PostMapping public ResponseEntity<SchoolFee> create(@RequestBody CreateRequest r, @AuthenticationPrincipal Jwt jwt) {
-        return ResponseEntity.ok(useCase.create(new SchoolFeeUseCase.CreateFeeCommand(r.tenantId(), r.classId(), r.routeId(), r.type(), r.amount(), r.academicYear(), r.label()), currentUserId(jwt)));
+        return ResponseEntity.ok(useCase.create(new SchoolFeeUseCase.CreateFeeCommand(r.tenantId(), r.classId(), r.routeId(), r.type(), r.amount(), r.academicYear(), r.label(), r.mandatory()), currentUserId(jwt)));
     }
     @Operation(summary = "Modifier une configuration de frais scolaire existante")
     @PreAuthorize("hasAuthority('frais_scolaire:update')")
     @PutMapping("/{id}") public ResponseEntity<SchoolFee> update(@PathVariable Long id, @RequestBody UpdateRequest r) {
-        return ResponseEntity.ok(useCase.update(id, new SchoolFeeUseCase.UpdateFeeCommand(r.classId(), r.routeId(), r.type(), r.amount(), r.academicYear(), r.label())));
+        return ResponseEntity.ok(useCase.update(id, new SchoolFeeUseCase.UpdateFeeCommand(r.classId(), r.routeId(), r.type(), r.amount(), r.academicYear(), r.label(), r.mandatory())));
     }
     @Operation(summary = "Consulter une configuration de frais scolaire par son ID")
     @PreAuthorize("hasAuthority('frais_scolaire:read')")
