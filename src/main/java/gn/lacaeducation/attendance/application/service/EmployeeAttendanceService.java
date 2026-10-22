@@ -17,8 +17,10 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Présence du personnel non-enseignant (§staff.Employee) : un seul pointage par jour, retard/départ
@@ -35,6 +37,17 @@ public class EmployeeAttendanceService implements EmployeeAttendanceUseCase {
         return settingsRepository.findByTenantId(tenantId).orElse(AttendanceSettings.defaults());
     }
 
+    /** Fenêtre de course réseau (§16) : même mécanisme que
+     * {@code StudentAttendanceService#createdWithinRaceWindow} — une ligne créée il y a moins de
+     * {@code RACE_WINDOW_SECONDS} vient très probablement de la retentative du MÊME tap physique,
+     * pas d'un second scan humain. */
+    private static final long RACE_WINDOW_SECONDS = 5;
+
+    private boolean createdWithinRaceWindow(EmployeeAttendance a) {
+        return a.getCreatedAt() != null
+                && Duration.between(a.getCreatedAt(), LocalDateTime.now()).getSeconds() < RACE_WINDOW_SECONDS;
+    }
+
     @Override
     public EmployeeAttendance record(RecordEmployeeAttendanceCommand cmd) {
         return attendanceRepository.save(EmployeeAttendance.builder()
@@ -46,9 +59,17 @@ public class EmployeeAttendanceService implements EmployeeAttendanceUseCase {
     public EmployeeAttendance recordEntry(Long employeeId) {
         LocalDate today = LocalDate.now();
         LocalTime now = LocalTime.now();
-        // Idempotent comme le scan enseignant : le 1er scan du jour fait foi, un second scan d'entrée
-        // ne modifie rien (la sortie se pointe via recordExit, pas un second appel ici).
-        return attendanceRepository.findByEmployeeIdAndDate(employeeId, today).orElseGet(() -> {
+        // Scan d'entrée répété avant toute sortie (§16, même règle que pour l'élève/l'enseignant — voir
+        // StudentAttendanceService#recordEntry pour le détail de la fenêtre de course réseau) : refus
+        // explicite plutôt que de recalculer/écraser silencieusement le premier pointage. Un seul
+        // pointage par jour ici (pas par séance comme l'enseignant) : "déjà scanné à l'entrée" se
+        // vérifie donc sur checkOutTime == null du pointage du jour, pas sur un créneau précis.
+        Optional<EmployeeAttendance> existing = attendanceRepository.findByEmployeeIdAndDate(employeeId, today);
+        if (existing.isPresent() && existing.get().getCheckOutTime() == null && !createdWithinRaceWindow(existing.get())) {
+            throw new BusinessRuleException(
+                    "Ce badge a déjà été scanné à l'entrée. Scannez-le à la sortie avant un nouvel accès.");
+        }
+        return existing.orElseGet(() -> {
             AttendanceSettings s = settings(TenantContext.get());
             // Marge de tolérance générale (§réglages) : une entrée dans les N minutes après l'horaire de
             // référence n'est jamais comptée en retard — même règle que pour élève/enseignant.
@@ -56,7 +77,8 @@ public class EmployeeAttendanceService implements EmployeeAttendanceUseCase {
             int late = (int) Math.max(0, Duration.between(deadline, now).toMinutes());
             return attendanceRepository.save(EmployeeAttendance.builder()
                     .tenantId(TenantContext.get()).employeeId(employeeId).date(today)
-                    .status(EmployeeAttendanceStatus.PRESENT).checkInTime(now).lateMinutes(late).earlyMinutes(0).build());
+                    .status(EmployeeAttendanceStatus.PRESENT).checkInTime(now).lateMinutes(late).earlyMinutes(0)
+                    .createdAt(LocalDateTime.now()).build());
         });
     }
 
@@ -64,8 +86,15 @@ public class EmployeeAttendanceService implements EmployeeAttendanceUseCase {
     public EmployeeAttendance recordExit(Long employeeId) {
         LocalDate today = LocalDate.now();
         LocalTime now = LocalTime.now();
-        EmployeeAttendance a = attendanceRepository.findByEmployeeIdAndDate(employeeId, today)
+        // Verrou pessimiste (§15/§16) : voir StudentAttendanceService#recordExit — sérialise deux
+        // scans de sortie quasi simultanés du même badge.
+        EmployeeAttendance a = attendanceRepository.lockByEmployeeIdAndDate(employeeId, today)
                 .orElseThrow(() -> new BusinessRuleException("Aucun pointage d'entrée trouvé aujourd'hui : scannez d'abord l'entrée."));
+        if (a.getCheckOutTime() != null) {
+            // Déjà sorti aujourd'hui (second scan de sortie, retentative réseau…) : renvoie le
+            // pointage existant sans écraser l'heure de sortie.
+            return a;
+        }
         AttendanceSettings s = settings(TenantContext.get());
         int early = (int) Math.max(0, Duration.between(now, s.employeeCheckOutTimeOrDefault()).toMinutes());
         a.setCheckOutTime(now);

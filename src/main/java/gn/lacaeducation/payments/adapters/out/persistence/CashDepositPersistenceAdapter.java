@@ -21,10 +21,16 @@ class CashDepositPersistenceAdapter implements CashDepositRepository {
         return jpa.findByTenantIdAndIdempotencyKey(tenantId, key).map(CashDepositPersistenceAdapter::toDomain);
     }
 
+    // Bornes larges par défaut quand l'appelant ne filtre pas par période — voir CashDepositJpaRepository
+    // #search pour pourquoi (un paramètre temporel null fait échouer la requête côté driver PostgreSQL).
+    private static final LocalDateTime DISTANT_PAST = LocalDateTime.of(2000, 1, 1, 0, 0);
+    private static final LocalDateTime DISTANT_FUTURE = LocalDateTime.of(2100, 1, 1, 0, 0);
+
     @Override public List<CashDeposit> search(Long tenantId, Long accountantId, CashDepositStatus status,
                                                PaymentChannel method, LocalDateTime from, LocalDateTime to) {
-        return jpa.search(tenantId, accountantId, status, method, from, to).stream()
-                .map(CashDepositPersistenceAdapter::toDomain).toList();
+        return jpa.search(tenantId, accountantId, status, method,
+                        from != null ? from : DISTANT_PAST, to != null ? to : DISTANT_FUTURE)
+                .stream().map(CashDepositPersistenceAdapter::toDomain).toList();
     }
 
     private static CashDepositJpaEntity toEntity(CashDeposit d) {

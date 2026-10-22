@@ -59,6 +59,18 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
                 .map(AttendanceSettings::transitionMarginMinutesOrDefault)
                 .orElseGet(() -> AttendanceSettings.defaults().transitionMarginMinutesOrDefault());
     }
+
+    /** Fenêtre de course réseau (§16) : même mécanisme que
+     * {@code StudentAttendanceService#createdWithinRaceWindow} — une ligne créée il y a moins de
+     * {@code RACE_WINDOW_SECONDS} vient très probablement de la retentative du MÊME tap physique,
+     * pas d'un second scan humain. */
+    private static final long RACE_WINDOW_SECONDS = 5;
+
+    private boolean createdWithinRaceWindow(TeacherCheckin checkin) {
+        return checkin.getCreatedAt() != null
+                && Duration.between(checkin.getCreatedAt(), LocalDateTime.now()).getSeconds() < RACE_WINDOW_SECONDS;
+    }
+
     @Override
     public TeacherAttendance record(RecordTeacherAttendanceCommand cmd) {
         return attendanceRepository.save(TeacherAttendance.builder()
@@ -74,8 +86,15 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
         if (block == null) {
             throw new gn.lacaeducation.common.BusinessRuleException("Aucune séance programmée aujourd'hui pour cet enseignant.");
         }
-        TeacherCheckin checkin = checkinRepository.findByTeacherIdAndDateAndSlot(teacherId, today, block.firstSlotId())
-                .orElseGet(() -> {
+        // Scan d'entrée répété avant toute sortie (§16, même règle que pour l'élève — voir
+        // StudentAttendanceService#recordEntry pour le détail de la fenêtre de course réseau) : refus
+        // explicite plutôt que de recalculer/écraser silencieusement le premier pointage.
+        java.util.Optional<TeacherCheckin> existing = checkinRepository.findByTeacherIdAndDateAndSlot(teacherId, today, block.firstSlotId());
+        if (existing.isPresent() && existing.get().getCheckOutTime() == null && !createdWithinRaceWindow(existing.get())) {
+            throw new gn.lacaeducation.common.BusinessRuleException(
+                    "Ce badge a déjà été scanné à l'entrée. Scannez-le à la sortie avant un nouvel accès.");
+        }
+        TeacherCheckin checkin = existing.orElseGet(() -> {
                     LocalTime start = block.start();
                     LocalTime end = block.end();
                     LocalTime deadline = graceDeadline(start);
@@ -97,9 +116,16 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
         if (block == null) {
             throw new gn.lacaeducation.common.BusinessRuleException("Aucune séance programmée aujourd'hui pour cet enseignant.");
         }
-        TeacherCheckin checkin = checkinRepository.findByTeacherIdAndDateAndSlot(teacherId, today, block.firstSlotId())
+        // Verrou pessimiste (§15/§16) : voir StudentAttendanceService#recordExit — sérialise deux
+        // scans de sortie quasi simultanés du même badge.
+        TeacherCheckin checkin = checkinRepository.lockByTeacherIdAndDateAndSlot(teacherId, today, block.firstSlotId())
                 .orElseThrow(() -> new gn.lacaeducation.common.BusinessRuleException(
                         "Aucun pointage d'entrée trouvé pour cette séance : scannez d'abord l'entrée."));
+        if (checkin.getCheckOutTime() != null) {
+            // Déjà sorti pour cette séance (second scan de sortie, retentative réseau…) : renvoie le
+            // pointage existant sans écraser l'heure de sortie ni republier l'événement.
+            return checkin;
+        }
         checkin.setCheckOutTime(now);
         if (checkin.getSessionEnd() == null) checkin.setSessionEnd(block.end());
         // Départ anticipé : sortie pointée avant la fin prévue de la séance (symétrique du retard

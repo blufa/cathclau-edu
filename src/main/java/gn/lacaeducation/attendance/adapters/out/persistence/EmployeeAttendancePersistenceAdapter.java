@@ -14,6 +14,7 @@ class EmployeeAttendancePersistenceAdapter implements EmployeeAttendanceReposito
     @Override public EmployeeAttendance save(EmployeeAttendance a) { return mapper.toDomain(repo.save(mapper.toEntity(a))); }
     @Override public Optional<EmployeeAttendance> findById(Long id) { return repo.findById(id).map(mapper::toDomain); }
     @Override public Optional<EmployeeAttendance> findByEmployeeIdAndDate(Long e, LocalDate d) { return repo.findByEmployeeIdAndDate(e, d).map(mapper::toDomain); }
+    @Override public Optional<EmployeeAttendance> lockByEmployeeIdAndDate(Long e, LocalDate d) { return repo.lockByEmployeeIdAndDate(e, d).map(mapper::toDomain); }
     @Override public List<EmployeeAttendance> findByEmployeeIdAndDateBetween(Long e, LocalDate f, LocalDate to) { return repo.findByEmployeeIdAndDateBetween(e,f,to).stream().map(mapper::toDomain).toList(); }
     @Override public long countByEmployeeIdAndDateBetween(Long e, LocalDate f, LocalDate to) { return repo.countByEmployeeIdAndDateBetween(e,f,to); }
     @Override public long countByEmployeeIdAndDateBetweenAndStatus(Long e, LocalDate f, LocalDate to, EmployeeAttendanceStatus st) { return repo.countByEmployeeIdAndDateBetweenAndStatus(e,f,to,st); }

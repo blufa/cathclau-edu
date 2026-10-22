@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 @Entity @Table(name = "employee_attendances")
 @Getter @Setter @NoArgsConstructor
@@ -20,4 +21,5 @@ class EmployeeAttendanceJpaEntity {
     @Column(name = "check_out_time") private LocalTime checkOutTime;
     @Column(name = "late_minutes") private Integer lateMinutes;
     @Column(name = "early_minutes") private Integer earlyMinutes;
+    @Column(name = "created_at") private LocalDateTime createdAt;
 }
