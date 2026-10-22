@@ -18,5 +18,6 @@ public interface ClassHonorRollPdfGenerator {
             List<Row> rows) {}
 
     /** One ranked student line. */
-    record Row(Integer rank, String studentName, BigDecimal average, String honor) {}
+    record Row(Integer rank, String studentName, String studentFirstName, String studentLastName,
+              BigDecimal average, String honor, String studentPhoto) {}
 }

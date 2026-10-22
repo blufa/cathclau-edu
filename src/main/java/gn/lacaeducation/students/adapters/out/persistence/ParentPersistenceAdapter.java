@@ -55,4 +55,5 @@ class ParentPersistenceAdapter implements ParentRepository, StudentParentReposit
         return studentParentRepo.findByParentId(parentId).stream()
                 .map(gn.lacaeducation.students.adapters.out.persistence.EleveParentJpaEntity::getStudentId).toList();
     }
+    @Override public List<Long> findDistinctLinkedParentIds() { return studentParentRepo.findDistinctParentIds(); }
 }

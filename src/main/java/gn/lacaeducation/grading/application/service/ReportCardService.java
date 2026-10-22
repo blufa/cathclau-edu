@@ -132,8 +132,13 @@ public class ReportCardService implements ReportCardUseCase {
                         .comparing((ReportCard rc) -> rc.getRank() == null ? Integer.MAX_VALUE : rc.getRank())
                         .thenComparing(rc -> rc.getOverallAverage() == null ? java.math.BigDecimal.valueOf(-1) : rc.getOverallAverage(),
                                 java.util.Comparator.reverseOrder()))
-                .map(rc -> new gn.lacaeducation.grading.application.port.out.ClassHonorRollPdfGenerator.Row(
-                        rc.getRank(), studentName(rc.getStudentId()), rc.getOverallAverage(), rc.getHonor()))
+                .map(rc -> {
+                    StudentPublicInfo s = studentProvider.findStudent(rc.getStudentId()).orElse(null);
+                    return new gn.lacaeducation.grading.application.port.out.ClassHonorRollPdfGenerator.Row(
+                            rc.getRank(), studentName(rc.getStudentId()),
+                            s != null ? s.firstName() : null, s != null ? s.lastName() : null,
+                            rc.getOverallAverage(), rc.getHonor(), s != null ? s.photo() : null);
+                })
                 .toList();
         Long tenantId = cards.stream()
                 .map(rc -> studentProvider.findStudent(rc.getStudentId()).map(StudentPublicInfo::tenantId).orElse(null))

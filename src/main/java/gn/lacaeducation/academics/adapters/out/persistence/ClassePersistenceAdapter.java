@@ -17,6 +17,7 @@ class ClassePersistenceAdapter implements ClasseRepository {
     private final AcademicsMapper mapper;
     @Override public Classe save(Classe c) { return mapper.toDomain(classeRepo.save(mapper.toEntity(c))); }
     @Override public Optional<Classe> findById(Long id) { return classeRepo.findById(id).map(mapper::toDomain); }
+    @Override public Optional<Classe> lockById(Long id) { return classeRepo.lockById(id).map(mapper::toDomain); }
     @Override public List<Classe> findByAcademicYearId(Long yrId) { return classeRepo.findByAcademicYearId(yrId).stream().map(mapper::toDomain).toList(); }
     @Override public List<Classe> findByTenantId(Long tenantId) { return classeRepo.findByTenantId(tenantId).stream().map(mapper::toDomain).toList(); }
     @Override public void deleteById(Long id) { classeRepo.deleteById(id); }

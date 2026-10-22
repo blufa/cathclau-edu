@@ -88,7 +88,7 @@ class InscriptionServiceTest {
                 .academicYearId(30L).status(EnrollmentStatus.PENDING).build();
         when(enrollmentRepository.findPendingByStudentAndClass(10L, 20L)).thenReturn(Optional.of(pending));
         when(enrollmentRepository.existsValidatedForStudentYear(10L, 30L)).thenReturn(false);
-        when(classCapacityPort.maxCapacity(20L)).thenReturn(null);
+        when(classCapacityPort.lockAndGetMaxCapacity(20L)).thenReturn(null);
         when(enrollmentRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         service.validatePaidEnrollment(10L, 20L);
@@ -117,7 +117,7 @@ class InscriptionServiceTest {
                 .academicYearId(30L).status(EnrollmentStatus.PENDING).build();
         when(enrollmentRepository.findById(1L)).thenReturn(Optional.of(pending));
         when(enrollmentRepository.existsValidatedForStudentYear(10L, 30L)).thenReturn(false);
-        when(classCapacityPort.maxCapacity(20L)).thenReturn(null);
+        when(classCapacityPort.lockAndGetMaxCapacity(20L)).thenReturn(null);
         when(enrollmentRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         service.validate(1L);
@@ -134,13 +134,39 @@ class InscriptionServiceTest {
                 .academicYearId(30L).status(EnrollmentStatus.PENDING).build();
         when(enrollmentRepository.findById(1L)).thenReturn(Optional.of(pending));
         when(enrollmentRepository.existsValidatedForStudentYear(10L, 30L)).thenReturn(false);
-        when(classCapacityPort.maxCapacity(20L)).thenReturn(2);
+        when(classCapacityPort.lockAndGetMaxCapacity(20L)).thenReturn(2);
         when(enrollmentRepository.countByClassIdAndStatus(20L, EnrollmentStatus.VALIDATED)).thenReturn(2L);
 
         assertThatThrownBy(() -> service.validate(1L))
-                .isInstanceOf(ConflictException.class)
-                .hasMessageContaining("capacity");
+                .isInstanceOf(gn.lacaeducation.common.ClassCapacityExceededException.class)
+                .hasMessageContaining("capacité");
         verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void validate_classFullButOverrideRequested_validatesAnywayAndPublishesOverrideEvent() {
+        Enrollment pending = Enrollment.builder().id(1L).studentId(10L).classId(20L)
+                .academicYearId(30L).status(EnrollmentStatus.PENDING).build();
+        when(enrollmentRepository.findById(1L)).thenReturn(Optional.of(pending));
+        when(enrollmentRepository.existsValidatedForStudentYear(10L, 30L)).thenReturn(false);
+        when(classCapacityPort.lockAndGetMaxCapacity(20L)).thenReturn(2);
+        when(enrollmentRepository.countByClassIdAndStatus(20L, EnrollmentStatus.VALIDATED)).thenReturn(2L);
+        when(enrollmentRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        Enrollment result = service.validate(1L, true, 99L);
+
+        assertThat(result.getStatus()).isEqualTo(EnrollmentStatus.VALIDATED);
+        // Deux événements : le dépassement forcé (audit) ET la validation elle-même.
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(eventPublisher, times(2)).publishEvent(captor.capture());
+        var overrideEvent = captor.getAllValues().stream()
+                .filter(gn.lacaeducation.students.application.event.ClassCapacityOverriddenEvent.class::isInstance)
+                .map(gn.lacaeducation.students.application.event.ClassCapacityOverriddenEvent.class::cast)
+                .findFirst().orElseThrow();
+        assertThat(overrideEvent.classId()).isEqualTo(20L);
+        assertThat(overrideEvent.countBeforeOverride()).isEqualTo(2L);
+        assertThat(overrideEvent.maxCapacity()).isEqualTo(2);
+        assertThat(overrideEvent.overriddenByUserId()).isEqualTo(99L);
     }
 
     @Test
@@ -207,7 +233,7 @@ class InscriptionServiceTest {
         Enrollment validated = Enrollment.builder().id(1L).studentId(10L).classId(20L)
                 .academicYearId(30L).status(EnrollmentStatus.VALIDATED).build();
         when(enrollmentRepository.findById(1L)).thenReturn(Optional.of(validated));
-        when(classCapacityPort.maxCapacity(21L)).thenReturn(null);
+        when(classCapacityPort.lockAndGetMaxCapacity(21L)).thenReturn(null);
         when(enrollmentRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         Enrollment result = service.transferClass(1L, 21L);
@@ -246,12 +272,31 @@ class InscriptionServiceTest {
     void transferClass_targetClassFull_throwsConflict() {
         Enrollment validated = Enrollment.builder().id(1L).classId(20L).status(EnrollmentStatus.VALIDATED).build();
         when(enrollmentRepository.findById(1L)).thenReturn(Optional.of(validated));
-        when(classCapacityPort.maxCapacity(21L)).thenReturn(2);
+        when(classCapacityPort.lockAndGetMaxCapacity(21L)).thenReturn(2);
         when(enrollmentRepository.countByClassIdAndStatus(21L, EnrollmentStatus.VALIDATED)).thenReturn(2L);
 
         assertThatThrownBy(() -> service.transferClass(1L, 21L))
-                .isInstanceOf(ConflictException.class);
+                .isInstanceOf(gn.lacaeducation.common.ClassCapacityExceededException.class);
         verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void transferClass_targetClassFullButOverrideRequested_transfersAnyway() {
+        Enrollment validated = Enrollment.builder().id(1L).studentId(10L).classId(20L)
+                .academicYearId(30L).status(EnrollmentStatus.VALIDATED).build();
+        when(enrollmentRepository.findById(1L)).thenReturn(Optional.of(validated));
+        when(classCapacityPort.lockAndGetMaxCapacity(21L)).thenReturn(2);
+        when(enrollmentRepository.countByClassIdAndStatus(21L, EnrollmentStatus.VALIDATED)).thenReturn(2L);
+        when(enrollmentRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        Enrollment result = service.transferClass(1L, 21L, true, 99L);
+
+        assertThat(result.getClassId()).isEqualTo(21L);
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(eventPublisher, times(2)).publishEvent(captor.capture());
+        assertThat(captor.getAllValues())
+                .hasAtLeastOneElementOfType(gn.lacaeducation.students.application.event.ClassCapacityOverriddenEvent.class)
+                .hasAtLeastOneElementOfType(gn.lacaeducation.students.application.event.EnrollmentClassChangedEvent.class);
     }
 
     @Test

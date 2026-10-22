@@ -11,6 +11,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
@@ -92,11 +94,15 @@ public class EnrollmentController {
 
     public record MonthlyPaymentRequest(Boolean optIn) {}
 
-    @Operation(summary = "Valider une inscription en attente (vérifie la capacité et l'unicité par année)")
+    @Operation(summary = "Valider une inscription en attente (vérifie la capacité et l'unicité par année) — "
+            + "overrideCapacity=true force la validation malgré une classe déjà à sa capacité maximale "
+            + "(§6 cahier des charges : jamais silencieux, consigné dans le journal d'audit)")
     @PatchMapping("/{id}/validate")
     @PreAuthorize("hasAuthority('inscription:validate')")
-    public Enrollment validate(@PathVariable Long id) {
-        return useCase.validate(id);
+    public Enrollment validate(@PathVariable Long id,
+                                @RequestParam(defaultValue = "false") boolean overrideCapacity,
+                                @AuthenticationPrincipal Jwt jwt) {
+        return useCase.validate(id, overrideCapacity, currentUserId(jwt));
     }
 
     @Operation(summary = "Annuler une inscription")
@@ -119,11 +125,17 @@ public class EnrollmentController {
             + "et ce qui a déjà été payé est reporté en crédit sur les nouvelles mensualités")
     @PatchMapping("/{id}/transfer-class")
     @PreAuthorize("hasAuthority('inscription:validate')")
-    public Enrollment transferClass(@PathVariable Long id, @RequestBody TransferClassRequest r) {
-        return useCase.transferClass(id, r.newClassId());
+    public Enrollment transferClass(@PathVariable Long id, @RequestBody TransferClassRequest r,
+                                     @AuthenticationPrincipal Jwt jwt) {
+        return useCase.transferClass(id, r.newClassId(), Boolean.TRUE.equals(r.overrideCapacity()), currentUserId(jwt));
     }
 
-    public record TransferClassRequest(Long newClassId) {}
+    public record TransferClassRequest(Long newClassId, Boolean overrideCapacity) {}
+
+    private Long currentUserId(Jwt jwt) {
+        if (jwt == null) return null;
+        try { return Long.parseLong(jwt.getSubject()); } catch (RuntimeException e) { return null; }
+    }
 
     @Operation(summary = "Supprimer une inscription")
     @DeleteMapping("/{id}")

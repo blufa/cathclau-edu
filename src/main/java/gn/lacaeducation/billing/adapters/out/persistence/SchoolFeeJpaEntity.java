@@ -28,4 +28,7 @@ public class SchoolFeeJpaEntity {
 
     @Column(name = "label")
     private String label;
+
+    @Column(nullable = false)
+    private Boolean mandatory;
 }

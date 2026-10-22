@@ -70,6 +70,19 @@ public class GlobalExceptionHandler {
         return pd;
     }
 
+    @ExceptionHandler(ClassCapacityExceededException.class)
+    public ProblemDetail handleClassCapacityExceeded(ClassCapacityExceededException ex) {
+        ProblemDetail pd = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        pd.setType(URI.create("https://api.lacaeducation.gn/errors/class-capacity-exceeded"));
+        pd.setTitle("Capacité de classe atteinte");
+        pd.setDetail(ex.getMessage());
+        pd.setProperty("classId", ex.getClassId());
+        pd.setProperty("currentCount", ex.getCurrentCount());
+        pd.setProperty("maxCapacity", ex.getMaxCapacity());
+        pd.setProperty("raison", "CAPACITE_ATTEINTE");
+        return pd;
+    }
+
     @ExceptionHandler(ModuleInactiveException.class)
     public ProblemDetail handleModuleInactive(ModuleInactiveException ex) {
         ProblemDetail pd = ProblemDetail.forStatus(HttpStatus.FORBIDDEN);

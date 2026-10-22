@@ -173,4 +173,13 @@ public class ParentService implements ParentUseCase {
                 .flatMap(id -> studentRepository.findById(id).stream())
                 .toList();
     }
+
+    @Override @Transactional(readOnly = true)
+    public List<Long> findLinkedParentIds(Long tenantId) {
+        var tenantParentIds = parentRepository.findByTenantId(tenantId).stream().map(Parent::getId)
+                .collect(java.util.stream.Collectors.toSet());
+        return studentParentRepository.findDistinctLinkedParentIds().stream()
+                .filter(tenantParentIds::contains)
+                .toList();
+    }
 }

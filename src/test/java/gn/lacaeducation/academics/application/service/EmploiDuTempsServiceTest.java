@@ -114,6 +114,52 @@ class EmploiDuTempsServiceTest {
         org.assertj.core.api.Assertions.assertThat(result.getDay()).isEqualTo(JourSemaine.LUNDI);
     }
 
+    /**
+     * §3.1 cahier des charges — bug réel : sans salle assignée (roomId=null, courant au
+     * Primaire/Maternelle), `existsRoomConflict(null, ...)` ne doit JAMAIS être appelé, sinon la
+     * comparaison `= :roomId` liée à NULL est réécrite en HQL en `IS NULL`, ce qui ferait matcher
+     * n'importe quel AUTRE créneau lui aussi sans salle au même horaire — y compris dans un cycle
+     * totalement différent (ex. Primaire vs 7ème), un faux conflit sans aucune salle réellement
+     * partagée.
+     */
+    @Test
+    void create_nullRoomId_neverCallsExistsRoomConflict() {
+        CreateScheduleCommand noRoom = new CreateScheduleCommand(10L, 1L, 2L, 3L, null,
+                JourSemaine.LUNDI, LocalTime.of(8, 0), LocalTime.of(10, 0), null);
+        when(repo.existsTeacherConflict(any(), any(), any(), any())).thenReturn(false);
+        when(repo.existsClassConflict(any(), any(), any(), any())).thenReturn(false);
+        when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        service.create(noRoom);
+
+        verify(repo, never()).existsRoomConflict(any(), any(), any(), any());
+        verify(repo, never()).existsRoomConflictExcluding(any(), any(), any(), any(), any());
+    }
+
+    /**
+     * Scénario littéral du cahier des charges : un créneau Primaire (classId=100) et un créneau
+     * Secondaire (classId=200) se chevauchent EXACTEMENT sur l'horaire, mais ne partagent ni salle
+     * (toutes deux sans salle assignée), ni enseignant, ni classe — la création du second ne doit
+     * jamais être rejetée. Les vrais conflits au sein d'un même cycle (même salle/enseignant/classe,
+     * voir les tests ci-dessus) restent, eux, détectés normalement.
+     */
+    @Test
+    void create_overlappingSlotDifferentCycleNoSharedResource_persistsWithoutConflict() {
+        CreateScheduleCommand primaryNoRoom = new CreateScheduleCommand(10L, 100L, 50L, 7L, null,
+                JourSemaine.LUNDI, LocalTime.of(8, 0), LocalTime.of(10, 0), null);
+        CreateScheduleCommand secondaryNoRoomOverlapping = new CreateScheduleCommand(10L, 200L, 60L, 8L, null,
+                JourSemaine.LUNDI, LocalTime.of(8, 30), LocalTime.of(9, 30), null);
+        when(repo.existsTeacherConflict(any(), any(), any(), any())).thenReturn(false);
+        when(repo.existsClassConflict(any(), any(), any(), any())).thenReturn(false);
+        when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        service.create(primaryNoRoom);
+        EmploiDuTemps result = service.create(secondaryNoRoomOverlapping);
+
+        org.assertj.core.api.Assertions.assertThat(result.getSchoolClassId()).isEqualTo(200L);
+        verify(repo, never()).existsRoomConflict(any(), any(), any(), any());
+    }
+
     @Test
     void create_teacherAllowsConcurrentClasses_stillChecksRoomAndClassConflicts() {
         when(teacherProvider.allowsConcurrentClasses(3L)).thenReturn(true);

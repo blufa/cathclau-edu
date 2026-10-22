@@ -32,7 +32,7 @@ class EnrollmentInvoiceListenerTest {
     @Test
     void createsEnrollmentInvoiceWhenFeeConfigured() {
         when(schoolFeeRepository.findByClassIdAndType(3L, FeeType.ENROLLMENT)).thenReturn(List.of(
-                SchoolFee.builder().id(99L).tenantId(10L).amount(new BigDecimal("250.00")).build()));
+                SchoolFee.builder().id(99L).tenantId(10L).amount(new BigDecimal("250.00")).mandatory(true).build()));
         when(invoiceUseCase.existsByStudentIdAndFeeId(7L, 99L)).thenReturn(false);
 
         listener.onEnrollmentCreated(event);
@@ -50,9 +50,20 @@ class EnrollmentInvoiceListenerTest {
     }
 
     @Test
+    void skipsOptionalFee_noAutomaticInvoice() {
+        // §13 cahier des charges.
+        when(schoolFeeRepository.findByClassIdAndType(3L, FeeType.ENROLLMENT)).thenReturn(List.of(
+                SchoolFee.builder().id(99L).tenantId(10L).amount(new BigDecimal("250.00")).mandatory(false).build()));
+
+        listener.onEnrollmentCreated(event);
+
+        verify(invoiceUseCase, never()).create(any());
+    }
+
+    @Test
     void idempotent_skipsWhenInvoiceAlreadyExists() {
         when(schoolFeeRepository.findByClassIdAndType(3L, FeeType.ENROLLMENT)).thenReturn(List.of(
-                SchoolFee.builder().id(99L).tenantId(10L).amount(new BigDecimal("250.00")).build()));
+                SchoolFee.builder().id(99L).tenantId(10L).amount(new BigDecimal("250.00")).mandatory(true).build()));
         when(invoiceUseCase.existsByStudentIdAndFeeId(7L, 99L)).thenReturn(true);
 
         listener.onEnrollmentCreated(event);

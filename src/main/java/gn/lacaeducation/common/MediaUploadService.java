@@ -41,10 +41,22 @@ public class MediaUploadService {
         this.objectMapper = objectMapper;
     }
 
-    /** Uploads the file under the given folder and returns its secure URL. */
+    /** Uploads the file under the given folder and returns its secure URL. Le fond blanc d'une photo
+     * d'identité (§11.2 cahier des charges) est traité CÔTÉ CLIENT avant l'appel à cet endpoint (voir
+     * {@code lib/background-removal.ts}, @imgly/background-removal — gratuit, local, sans service
+     * externe payant) : le fichier reçu ici est déjà le résultat final, rien à faire de spécial ici. */
     public String upload(MultipartFile file, String folder) {
         if (file == null || file.isEmpty()) {
             throw new BusinessRuleException("Fichier vide");
+        }
+        // §11.3 cahier des charges : contrôler le type de fichier côté serveur pour un upload de photo
+        // (élève/enseignant/personnel, tous dans un dossier "*/photos" par convention frontend) — la
+        // taille globale est déjà plafonnée par spring.servlet.multipart.max-file-size (15 Mo).
+        if (folder != null && folder.endsWith("/photos")) {
+            String contentType = file.getContentType();
+            if (contentType == null || !contentType.startsWith("image/")) {
+                throw new BusinessRuleException("Le fichier doit être une image (JPEG, PNG…) pour une photo de profil.");
+            }
         }
         byte[] content;
         try {

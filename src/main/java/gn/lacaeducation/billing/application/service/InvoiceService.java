@@ -354,7 +354,20 @@ public class InvoiceService implements InvoiceUseCase {
 
     @Override public Invoice applyPayment(Long invoiceId, BigDecimal amount, boolean notify, List<String> paidMonths, Long collectedByUserId) {
         Invoice inv = load(invoiceId);
-        inv.setPaidAmount(inv.getPaidAmount().add(amount));
+        // Trop-perçu (§4 cahier des charges) : un encaissement supérieur au solde dû ne doit plus
+        // gonfler paidAmount au-delà du total (remainingBalance négatif, perdu dans la nature) — on
+        // plafonne ce qui est imputé à CETTE facture à son solde dû avant ce paiement, et l'excédent
+        // part en StudentCreditOverpaidEvent (posé comme crédit disponible de l'élève, applicable à
+        // une facture future). Le Payment/reçu d'origine, lui, garde bien le montant RÉELLEMENT reçu
+        // (amount, non plafonné) — seule l'imputation à cette facture précise est plafonnée.
+        BigDecimal remainingBefore = inv.getRemainingBalance() != null ? inv.getRemainingBalance() : amount;
+        BigDecimal appliedToThisInvoice = amount;
+        BigDecimal excess = BigDecimal.ZERO;
+        if (remainingBefore.signum() >= 0 && amount.compareTo(remainingBefore) > 0) {
+            appliedToThisInvoice = remainingBefore;
+            excess = amount.subtract(remainingBefore);
+        }
+        inv.setPaidAmount(inv.getPaidAmount().add(appliedToThisInvoice));
         if (paidMonths != null && !paidMonths.isEmpty()) {
             java.util.LinkedHashSet<String> merged = new java.util.LinkedHashSet<>(
                     inv.getPaidMonths() != null ? inv.getPaidMonths() : List.of());
@@ -373,20 +386,27 @@ public class InvoiceService implements InvoiceUseCase {
         Invoice saved = repo.save(inv);
         if (notify) {
             eventPublisher.publishEvent(new InvoicePaymentAppliedEvent(inv.getTenantId(), inv.getStudentId(),
-                    inv.getId(), inv.getReference(), amount, inv.getRemainingBalance(), collectedByUserId));
+                    inv.getId(), inv.getReference(), appliedToThisInvoice, inv.getRemainingBalance(), collectedByUserId));
         }
         if (fullySettled) {
             eventPublisher.publishEvent(
                     new InvoicePaidEvent(inv.getTenantId(), inv.getStudentId(), inv.getId(), inv.getReference()));
         }
+        if (excess.signum() > 0) {
+            eventPublisher.publishEvent(new gn.lacaeducation.billing.application.event.InvoiceOverpaidEvent(
+                    inv.getTenantId(), inv.getStudentId(), inv.getId(), null, excess));
+        }
         // Frais plateforme (§billing) : désormais un frais annexe comme un autre, configuré par
         // l'école elle-même (FeeType.PLATFORM, nom et montant à sa discrétion) — tout encaissement sur
         // une facture de ce type alimente le solde dû à l'éditeur de la plateforme (voir
-        // platform.PlatformFeeSettlementService, resté inchangé).
+        // platform.PlatformFeeSettlementService, resté inchangé). Montant réellement imputé à CETTE
+        // facture (jamais l'excédent parti en crédit, qui alimentera son propre frais plateforme le
+        // jour où il sera appliqué à une facture future).
         if (inv.getFeeId() != null) {
+            BigDecimal platformFeeBasis = appliedToThisInvoice;
             schoolFeeRepository.findById(inv.getFeeId())
                     .filter(fee -> fee.getType() == FeeType.PLATFORM)
-                    .ifPresent(fee -> platformFeeLedgerApi.record(inv.getTenantId(), inv.getId(), amount));
+                    .ifPresent(fee -> platformFeeLedgerApi.record(inv.getTenantId(), inv.getId(), platformFeeBasis));
         }
         return saved;
     }
