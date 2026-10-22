@@ -19,7 +19,9 @@ public class UploadController {
 
     private final MediaUploadService uploadService;
 
-    @Operation(summary = "Téléverser un fichier (image ou document) ; retourne son URL sécurisée")
+    @Operation(summary = "Téléverser un fichier (image ou document) ; retourne son URL sécurisée. "
+            + "Le fond blanc d'une photo d'identité (§11.2) est traité côté client avant l'appel — voir "
+            + "lib/background-removal.ts (gratuit, local, @imgly/background-removal).")
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Map<String, String> upload(@RequestParam("file") MultipartFile file,
                                       @RequestParam(value = "folder", required = false) String folder) {
