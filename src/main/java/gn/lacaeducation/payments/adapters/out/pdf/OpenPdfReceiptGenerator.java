@@ -372,7 +372,7 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
         // 2 (décembre, janvier, février)"), où même +0.4pt se répercute sur CHAQUE ligne du libellé.
         boolean tight = invoices.size() > 18;
         boolean medium = !tight && invoices.size() > 10;
-        float pad = tight ? 1.3f : medium ? 1.9f : 2.6f;
+        float pad = tight ? 1.5f : medium ? 2.2f : 3.2f;
         float bodyFont = tight ? 7.6f : medium ? 7.9f : 8.3f;
         float smallFont = tight ? 7f : medium ? 7.1f : 7.3f;
 
@@ -623,14 +623,16 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
         String phone = payerDirectory.operatorPhone(collectedByUserId).orElse(null);
 
         float availableBeforeRow = writer.getVerticalPosition(true) - doc.bottom();
-        // Même logique défensive que l'ancienne version : jamais laisser le nom/téléphone du comptable
-        // basculer seuls sur une 2e page — l'espace de signature se réduit si la place restante est
-        // déjà faible plutôt que d'imposer une hauteur fixe.
-        float spacerHeight = Math.max(6f, Math.min(mm(9), availableBeforeRow - mm(20)));
+        // Bloc sceau+signature COMPACT, hauteur fixe (pas proportionnelle à la place restante) —
+        // fidèle à la référence, où le sceau et la signature sont poussés en bas de page ("flex:1" en
+        // CSS avant ce bloc), jamais étirés pour occuper tout l'espace restant (laissait un grand vide
+        // entre le tableau de totaux et la signature sur un reçu court, §retour fondateur : "le logo
+        // de cercle est en bas avec la partie signature" dans l'original).
+        float spacerHeight = mm(14f);
 
         PdfPTable row = new PdfPTable(new float[]{1f, 2f});
         row.setWidthPercentage(100);
-        row.setSpacingBefore(availableBeforeRow > mm(40) ? mm(2.2f) : 2f);
+        row.setSpacingBefore(2f);
 
         // Rayon borné par la place réellement disponible pour toute la ligne (mesurée avant de
         // l'ajouter) — jamais une taille fixe : un bloc signature déjà réduit au minimum (voir
@@ -666,7 +668,7 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
         lineCell.setBorderWidthTop(0.6f);
         lineCell.setFixedHeight(1f);
         PdfPTable lineTable = new PdfPTable(1);
-        lineTable.setWidthPercentage(80f);
+        lineTable.setWidthPercentage(92f);
         lineTable.addCell(lineCell);
         sigCell.addElement(lineTable);
         if (operator != null && !operator.isBlank()) {
@@ -681,6 +683,19 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
             sigCell.addElement(phoneLine);
         }
         row.addCell(sigCell);
+
+        // Pousse le bloc en bas de page via la marge de la TABLE elle-même (spacingBefore), jamais un
+        // Paragraphe séparé : un Paragraphe ajoute la hauteur de sa propre ligne de texte en plus du
+        // spacingBefore demandé, ce qui faisait déborder la ligne sur une 2e page dans les cas déjà
+        // serrés (beaucoup de factures — couverts par OpenPdfReceiptGeneratorTest, "stays on single
+        // page"). Hauteur mesurée via getTotalHeight(), mais cette estimation reste approximative :
+        // une marge de sécurité de 15mm (pas 1-2mm) absorbe l'écart entre cette estimation et la
+        // disposition réelle d'OpenPDF — sans quoi un reçu déjà serré bascule sur une 2e page.
+        row.setTotalWidth(doc.right() - doc.left());
+        float pushDown = availableBeforeRow - row.getTotalHeight() - mm(15f);
+        if (pushDown > 2f) {
+            row.setSpacingBefore(pushDown);
+        }
         doc.add(row);
     }
 

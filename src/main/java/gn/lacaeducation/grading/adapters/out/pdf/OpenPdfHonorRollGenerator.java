@@ -222,20 +222,6 @@ class OpenPdfHonorRollGenerator implements HonorRollPdfGenerator {
         content.setPadding(mm(1.8f));
         content.setCellEvent(RoundedCellBorder.fillOnly(mm(3.2f), CREAM));
 
-        if (l.exAequo()) {
-            Paragraph exAequo = new Paragraph("EX ÆQUO", font(SANS_BOLD, FontFactory.HELVETICA_BOLD, 6, LABEL_GREY));
-            exAequo.setAlignment(Element.ALIGN_CENTER);
-            content.addElement(exAequo);
-        }
-        // Rang en texte coloré (pas de badge circulaire chevauchant la photo, trop fragile à obtenir
-        // de façon fiable avec PdfPTable — la référence CSS utilise un margin-top négatif qu'OpenPDF
-        // ne reproduit pas) : une couleur par palier (or/argent/vert) reste un repère visuel clair.
-        Color medalColor = l.rank() != null && l.rank() == 1 ? GOLD : l.rank() != null && l.rank() <= 3 ? SILVER_MEDAL : DARK_GREEN;
-        Paragraph medal = new Paragraph((l.rank() != null ? l.rank() : 0) + (l.rank() != null && l.rank() == 1 ? "er" : "e"),
-                font(SERIF_BOLD, FontFactory.TIMES_BOLD, 18, medalColor));
-        medal.setAlignment(Element.ALIGN_CENTER);
-        content.addElement(medal);
-
         PdfPCell photoCell = new PdfPCell();
         photoCell.setBorder(0);
         photoCell.setFixedHeight(mm(24));
@@ -254,6 +240,29 @@ class OpenPdfHonorRollGenerator implements HonorRollPdfGenerator {
         photoWrap.setSpacingBefore(1.5f);
         photoWrap.addCell(photoCell);
         content.addElement(photoWrap);
+
+        // Médaille circulaire CHEVAUCHANT le bas de la photo (fidèle à la maquette de référence,
+        // "margin-top:-6mm" en CSS) : dessinée via un PdfPCellEvent attaché à une cellule-espaceur
+        // placée juste après la photo — son centre vertical est la jonction photo/espaceur (moitié du
+        // cercle dans chacune), connue seulement une fois la pagination tranchée par iText, jamais
+        // positionnée à la main après coup.
+        Color medalColor = l.rank() != null && l.rank() == 1 ? GOLD : l.rank() != null && l.rank() <= 3 ? SILVER_MEDAL : DARK_GREEN;
+        float medalRadius = mm(6);
+        PdfPCell medalSpacer = new PdfPCell();
+        medalSpacer.setBorder(0);
+        medalSpacer.setFixedHeight(medalRadius);
+        medalSpacer.setCellEvent(medalCellEvent(l, medalColor, medalRadius));
+        PdfPTable medalWrap = new PdfPTable(1);
+        medalWrap.setWidthPercentage(100);
+        medalWrap.addCell(medalSpacer);
+        content.addElement(medalWrap);
+
+        if (l.exAequo()) {
+            Paragraph exAequo = new Paragraph("EX ÆQUO", font(SANS_BOLD, FontFactory.HELVETICA_BOLD, 6, LABEL_GREY));
+            exAequo.setAlignment(Element.ALIGN_CENTER);
+            exAequo.setSpacingBefore(1f);
+            content.addElement(exAequo);
+        }
 
         Paragraph first = new Paragraph(safe(l.studentFirstName(), ""), font(SANS, FontFactory.HELVETICA, 7.5f, TEXT_GREY));
         first.setAlignment(Element.ALIGN_CENTER);
@@ -305,6 +314,32 @@ class OpenPdfHonorRollGenerator implements HonorRollPdfGenerator {
         return outer;
     }
 
+    /** Médaille circulaire (rang + suffixe, fond or/argent/vert, liseré crème) — voir {@link #card}. */
+    private static com.lowagie.text.pdf.PdfPCellEvent medalCellEvent(Row l, Color medalColor, float radius) {
+        return (cell, position, canvases) -> {
+            try {
+                float cx = (position.getLeft() + position.getRight()) / 2f;
+                float cy = position.getTop();
+                com.lowagie.text.pdf.PdfContentByte cb = canvases[PdfPTable.LINECANVAS];
+                cb.saveState();
+                cb.setColorFill(medalColor);
+                cb.ellipse(cx - radius, cy - radius, cx + radius, cy + radius);
+                cb.fill();
+                cb.setColorStroke(CREAM);
+                cb.setLineWidth(mm(0.8f));
+                cb.ellipse(cx - radius, cy - radius, cx + radius, cy + radius);
+                cb.stroke();
+                int rank = l.rank() != null ? l.rank() : 0;
+                String rankText = rank + (rank == 1 ? "er" : "e");
+                com.lowagie.text.pdf.ColumnText.showTextAligned(cb, Element.ALIGN_CENTER,
+                        new Phrase(rankText, font(SERIF_BOLD, FontFactory.TIMES_BOLD, 12.5f, WHITE)), cx, cy - radius * 0.32f, 0);
+                cb.restoreState();
+            } catch (RuntimeException e) {
+                // Cosmétique uniquement — jamais faire échouer le tableau d'honneur pour une médaille manquée.
+            }
+        };
+    }
+
     private static void footer(Document doc, TenantPublicInfo info) {
         PdfPTable t = new PdfPTable(new float[]{1f, 1f});
         t.setWidthPercentage(100);
@@ -316,18 +351,28 @@ class OpenPdfHonorRollGenerator implements HonorRollPdfGenerator {
         left.setVerticalAlignment(Element.ALIGN_BOTTOM);
         t.addCell(left);
 
+        // Bloc "Le Principal" + nom : positionné à droite de la ligne (comme la référence), mais le
+        // texte est CENTRÉ par rapport à lui-même (align-items:center en CSS), pas aligné sur le bord
+        // droit de toute la colonne — une table imbriquée étroite, alignée à droite, reproduit ce
+        // comportement (un simple "right" sur tout le texte collerait les deux lignes au bord droit
+        // de la page au lieu de les centrer l'une sur l'autre).
         PdfPCell right = new PdfPCell();
         right.setBorder(0);
-        right.setHorizontalAlignment(Element.ALIGN_RIGHT);
-        Paragraph role = new Paragraph("Le Principal", font(SANS_BOLD, FontFactory.HELVETICA_BOLD, 8, WHITE));
-        role.setAlignment(Element.ALIGN_RIGHT);
-        right.addElement(role);
+        PdfPTable rightInner = new PdfPTable(1);
+        rightInner.setWidthPercentage(46);
+        rightInner.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        PdfPCell roleCell = new PdfPCell(new Phrase("Le Principal", font(SANS_BOLD, FontFactory.HELVETICA_BOLD, 8, WHITE)));
+        roleCell.setBorder(0);
+        roleCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+        rightInner.addCell(roleCell);
         if (info != null && info.director() != null && !info.director().isBlank()) {
-            Paragraph director = new Paragraph(info.director(), font(SERIF_BOLD, FontFactory.TIMES_BOLD, 10.5f, WHITE));
-            director.setAlignment(Element.ALIGN_RIGHT);
-            director.setSpacingBefore(1f);
-            right.addElement(director);
+            PdfPCell directorCell = new PdfPCell(new Phrase(info.director(), font(SERIF_BOLD, FontFactory.TIMES_BOLD, 10.5f, WHITE)));
+            directorCell.setBorder(0);
+            directorCell.setHorizontalAlignment(Element.ALIGN_CENTER);
+            directorCell.setPaddingTop(1f);
+            rightInner.addCell(directorCell);
         }
+        right.addElement(rightInner);
         t.addCell(right);
         doc.add(t);
     }
