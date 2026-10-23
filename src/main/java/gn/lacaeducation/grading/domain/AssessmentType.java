@@ -6,19 +6,27 @@ package gn.lacaeducation.grading.domain;
  * composition ou un examen final.
  */
 public enum AssessmentType {
-    QUIZ(30),      // interrogation
-    HOMEWORK(60),  // devoir
-    EXAM(120),     // composition / devoir surveillé
-    FINAL(180);    // examen de fin de période
+    QUIZ(30, "Interrogation"),
+    HOMEWORK(60, "Devoir"),
+    EXAM(120, "Composition"),
+    FINAL(180, "Examen");
 
     private final int sessionMinutes;
+    private final String frenchLabel;
 
-    AssessmentType(int sessionMinutes) {
+    AssessmentType(int sessionMinutes, String frenchLabel) {
         this.sessionMinutes = sessionMinutes;
+        this.frenchLabel = frenchLabel;
     }
 
     /** Durée par défaut (minutes) de la séance d'enseignement générée pour ce type d'évaluation. */
     public int sessionMinutes() {
         return sessionMinutes;
+    }
+
+    /** Libellé affichable (jamais le nom brut de l'enum, qui n'a de sens qu'en interne) — miroir de
+     * {@code ASSESSMENT_TYPE_LABEL} côté frontend (lacaeducation-ui, src/lib/types/grading.ts). */
+    public String frenchLabel() {
+        return frenchLabel;
     }
 }

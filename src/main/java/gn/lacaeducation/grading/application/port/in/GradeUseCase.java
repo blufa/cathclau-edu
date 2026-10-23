@@ -46,18 +46,32 @@ public interface GradeUseCase {
     List<GradeSheetRow> gradeSheet(Long assessmentId);
 
     // ── Relevé de notes par matière (classe + matière + période) ─────────────────
-    /** Une évaluation (colonne du relevé) avec son barème et son coefficient. */
+    /** Une évaluation (colonne du relevé) avec son barème. {@code type} = {@code AssessmentType} brut
+     * (QUIZ/HOMEWORK/EXAM/FINAL), utilisé UNIQUEMENT pour répartir les colonnes entre Évaluations et
+     * Compositions (voir {@link ReleveSection}) — jamais affiché tel quel : le relevé affiche toujours
+     * {@code label}, le texte réellement saisi par l'enseignant (§retour utilisateur, "ce n'est pas le
+     * type"). {@code coefficient} = coefficient par évaluation, déprécié pour le calcul de la moyenne
+     * (voir {@code SubjectSemesterAverage}) — gardé seulement pour affichage historique, jamais utilisé
+     * pour la "note coefciée" (qui applique {@link SubjectGradeReport#subjectCoefficient}). */
     record ReleveAssessment(Long id, String label, String type, LocalDate date, BigDecimal maxScore, BigDecimal coefficient) {}
-    /** Une ligne élève : sa note à chaque évaluation (map assessmentId → note) et sa moyenne calculée. */
+    /** Une ligne élève : sa note à chaque évaluation de la section (map assessmentId → note) et sa
+     * moyenne de section (M. Cours pour les Évaluations, M. Composition pour les Compositions — déjà
+     * "coefciée" par {@code SubjectSemesterAverage}, jamais recalculée côté PDF). */
     record ReleveRow(Long studentId, String studentNumber, String fullName, Map<Long, BigDecimal> notes, BigDecimal average) {}
+    /** Une section du relevé (Évaluations OU Compositions) : ses colonnes et ses lignes élèves — jamais
+     * mélangées entre les deux catégories (§retour utilisateur, "il doit avoir les évaluations à part,
+     * et une liste des compositions"). */
+    record ReleveSection(List<ReleveAssessment> assessments, List<ReleveRow> rows) {}
     /**
-     * Relevé de notes d'une matière pour une classe et une période : chaque évaluation en colonne
-     * (éval 1, éval 2, …) plus la moyenne calculée selon le paramétrage de l'établissement. Se complète
-     * au fur et à mesure que l'enseignant ajoute des évaluations.
+     * Relevé de notes d'une matière pour une classe et une période : les évaluations "cours"
+     * (interrogations/devoirs) et les compositions dans deux sections distinctes, jamais une colonne
+     * commune. {@code subjectCoefficient} : coefficient configuré de la matière (Classes → Matières),
+     * affiché une fois (carte d'en-tête du PDF) et utilisé pour la "note coefciée" sous chaque note —
+     * les enseignants ne saisissent que la note brute, le coefficient est appliqué par le système.
      */
     record SubjectGradeReport(Long tenantId, Long classId, Long subjectId, Long periodId,
                               String className, String subjectName, String periodLabel, String schoolYear,
-                              List<ReleveAssessment> assessments, List<ReleveRow> rows) {}
+                              BigDecimal subjectCoefficient, ReleveSection evaluations, ReleveSection compositions) {}
 
     SubjectGradeReport subjectGradeReport(Long classId, Long subjectId, Long periodId);
     /** @param month si non nul (1-12), limite le PDF aux évaluations de ce mois (relevé mensuel). */

@@ -183,4 +183,48 @@ class OpenPdfGeneratorsTest {
         assertThat(pdf).isNotEmpty();
         assertThat(new String(pdf, 0, 5)).isEqualTo("%PDF-");
     }
+
+    @Test
+    void subjectGradeReport_withBothSections_producesValidPdfBytes() {
+        OpenPdfSubjectGradeReportGenerator generator = new OpenPdfSubjectGradeReportGenerator(
+                new gn.lacaeducation.common.TenantInfoProvider() {
+                    @Override public Optional<gn.lacaeducation.common.TenantPublicInfo> findTenantInfo(Long tenantId) { return Optional.empty(); }
+                    @Override public boolean isTenantActive(Long tenantId) { return true; }
+                });
+        var evalAssessment = new gn.lacaeducation.grading.application.port.in.GradeUseCase.ReleveAssessment(
+                1L, "Évaluation Écrite", "QUIZ", LocalDate.of(2026, 10, 5), new BigDecimal("20"), BigDecimal.ONE);
+        var compoAssessment = new gn.lacaeducation.grading.application.port.in.GradeUseCase.ReleveAssessment(
+                2L, "Composition Octobre", "EXAM", LocalDate.of(2026, 10, 20), new BigDecimal("20"), BigDecimal.ONE);
+        var evalRow = new gn.lacaeducation.grading.application.port.in.GradeUseCase.ReleveRow(
+                10L, "MAT-1", "Awa Bah", Map.of(1L, new BigDecimal("14")), new BigDecimal("28.00"));
+        var compoRow = new gn.lacaeducation.grading.application.port.in.GradeUseCase.ReleveRow(
+                10L, "MAT-1", "Awa Bah", Map.of(2L, new BigDecimal("16")), new BigDecimal("32.00"));
+        var report = new gn.lacaeducation.grading.application.port.in.GradeUseCase.SubjectGradeReport(
+                1L, 55L, 3L, 2L, "6ème A", "Mathématiques", "Octobre", "2026-2027", new BigDecimal("2"),
+                new gn.lacaeducation.grading.application.port.in.GradeUseCase.ReleveSection(List.of(evalAssessment), List.of(evalRow)),
+                new gn.lacaeducation.grading.application.port.in.GradeUseCase.ReleveSection(List.of(compoAssessment), List.of(compoRow)));
+
+        byte[] pdf = generator.generate(report);
+
+        assertThat(pdf).isNotEmpty();
+        assertThat(new String(pdf, 0, 5)).isEqualTo("%PDF-");
+    }
+
+    @Test
+    void subjectGradeReport_noAssessmentsAtAll_stillProducesValidPdfBytes() {
+        OpenPdfSubjectGradeReportGenerator generator = new OpenPdfSubjectGradeReportGenerator(
+                new gn.lacaeducation.common.TenantInfoProvider() {
+                    @Override public Optional<gn.lacaeducation.common.TenantPublicInfo> findTenantInfo(Long tenantId) { return Optional.empty(); }
+                    @Override public boolean isTenantActive(Long tenantId) { return true; }
+                });
+        var report = new gn.lacaeducation.grading.application.port.in.GradeUseCase.SubjectGradeReport(
+                1L, 55L, 3L, 2L, "6ème A", "Mathématiques", "Octobre", "2026-2027", BigDecimal.ONE,
+                new gn.lacaeducation.grading.application.port.in.GradeUseCase.ReleveSection(List.of(), List.of()),
+                new gn.lacaeducation.grading.application.port.in.GradeUseCase.ReleveSection(List.of(), List.of()));
+
+        byte[] pdf = generator.generate(report);
+
+        assertThat(pdf).isNotEmpty();
+        assertThat(new String(pdf, 0, 5)).isEqualTo("%PDF-");
+    }
 }
