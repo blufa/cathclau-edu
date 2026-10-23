@@ -42,8 +42,11 @@ import java.util.Set;
  * Paie (inspiré OpenEduCat Payroll) : règles de paie, structures salariales, génération de fiches
  * (individuelle ou en lot) avec calcul base → brut → net, puis workflow DRAFT → VALIDATED → PAID.
  * Le salaire de base provient de la rémunération de la fiche enseignant (transmis par l'appelant) ;
- * aucune dépendance directe au module staff.
+ * aucune dépendance directe au module staff (le module iam, lui, est utilisé — voir
+ * {@link #resolveAccountantName} — pour résoudre le nom du comptable ayant payé une fiche, une
+ * préoccupation différente de « connaître le personnel enseignant/administratif »).
  */
+@lombok.extern.slf4j.Slf4j
 @Service
 @Transactional
 @RequiredArgsConstructor
@@ -63,6 +66,7 @@ public class PayrollService {
     private final AcademicsDataProvider academics;
     private final CalendarDataProvider calendar;
     private final ApplicationEventPublisher eventPublisher;
+    private final gn.lacaeducation.iam.UserPublicInfoProvider userPublicInfoProvider;
 
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
 
@@ -813,7 +817,7 @@ public class PayrollService {
         return payslipRepo.save(p);
     }
 
-    public Payslip markPaid(Long id, String paymentMethod) {
+    public Payslip markPaid(Long id, String paymentMethod, Long paidByUserId) {
         Payslip p = loadPayslip(id);
         if (p.getStatus() == PayslipStatus.DRAFT) throw new BusinessRuleException("Validez la fiche avant de la payer");
         // Empêche un double-clic/rejeu de repayer une fiche déjà payée — sans ce garde-fou, la retenue
@@ -822,6 +826,10 @@ public class PayrollService {
         p.setStatus(PayslipStatus.PAID);
         p.setPaymentMethod(paymentMethod != null ? paymentMethod : "BANK_TRANSFER");
         p.setPaidAt(LocalDateTime.now());
+        // Comptable ayant traité le paiement — imprimé sous la signature "Signature et Cachet de
+        // l'Établissement" du PDF (demande utilisateur), résolu en nom à l'impression (voir pdfBytes),
+        // jamais stocké en dur ici.
+        p.setPaidByUserId(paidByUserId);
         Payslip saved = payslipRepo.save(p);
         // Répercute la retenue de scolarité (si applicable) sur les factures de mensualité des enfants
         // du salarié, maintenant que la fiche est réellement payée (§payroll ↔ billing) — sans ça,
@@ -860,9 +868,16 @@ public class PayrollService {
     @Transactional(readOnly = true)
     public List<PayslipLine> lines(Long payslipId) { return lineRepo.findByPayslipId(payslipId); }
 
-    /** Octets du PDF (A5 stylé) de la fiche de paie, avec les heures dues/réalisées du mois pour un enseignant. */
+    /** Octets du PDF (A4 stylé, couleur d'école personnalisable) de la fiche de paie, avec les heures
+     * dues/réalisées du mois pour un enseignant. {@code role}/{@code photoUrl} : résolus par l'appelant
+     * (voir {@link gn.lacaeducation.payroll.application.port.out.PayslipPdfGenerator.Presentation}) —
+     * cette méthode reste décorrélée du module staff, mais résout elle-même le nom du comptable ayant
+     * payé la fiche (module iam, jamais staff). */
     @Transactional(readOnly = true)
-    public byte[] pdfBytes(Long id) {
+    public byte[] pdfBytes(Long id) { return pdfBytes(id, null, null); }
+
+    @Transactional(readOnly = true)
+    public byte[] pdfBytes(Long id, String beneficiaryRole, String beneficiaryPhotoUrl) {
         Payslip p = loadPayslip(id);
         gn.lacaeducation.payroll.application.port.out.PayslipPdfGenerator.TeacherHours hours = null;
         boolean isTeacher = p.getEmployeeType() == null || p.getEmployeeType() == gn.lacaeducation.payroll.domain.EmployeeType.TEACHER;
@@ -876,7 +891,24 @@ public class PayrollService {
                     due, mp.realizedMinutes(), Math.max(0, due - mp.realizedMinutes()), mp.lateMinutes(), mp.earlyMinutes(),
                     mp.effectiveMinutes());
         }
-        return pdfGenerator.generate(p, lineRepo.findByPayslipId(id), hours);
+        var presentation = new gn.lacaeducation.payroll.application.port.out.PayslipPdfGenerator.Presentation(
+                beneficiaryRole, beneficiaryPhotoUrl, resolveAccountantName(p.getPaidByUserId()));
+        return pdfGenerator.generate(p, lineRepo.findByPayslipId(id), hours, presentation);
+    }
+
+    /** Nom du comptable ayant marqué la fiche payée, pour la signature du PDF — ne bloque jamais la
+     * génération si non résolu (même logique défensive que {@code ReceiptService#resolveCollectedByName}). */
+    private String resolveAccountantName(Long userId) {
+        if (userId == null) return null;
+        try {
+            return userPublicInfoProvider.findUser(userId)
+                    .map(u -> (u.firstName() + " " + u.lastName()).trim())
+                    .filter(n -> !n.isBlank())
+                    .orElse(null);
+        } catch (RuntimeException e) {
+            log.warn("Nom du comptable non résolu pour la fiche de paie (utilisateur {}) : {}", userId, e.getMessage());
+            return null;
+        }
     }
 
     private Payslip mutable(Long id) {

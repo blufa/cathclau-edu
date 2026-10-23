@@ -147,6 +147,37 @@ public final class AdminDocumentLayout {
         doc.add(t);
     }
 
+    /** Deux cadres de signature côte à côte — bénéficiaire (gauche) et comptable/établissement
+     * (droite) — chacun avec son nom imprimé sous le libellé quand connu (jamais un nom inventé : un
+     * {@code name} {@code null}/vide laisse juste le libellé, comme avant). Utilisé partout où une
+     * fiche de paie/bon d'avance doit toujours faire apparaître QUI a bénéficié et QUI a traité
+     * l'opération, pas seulement un espace de signature anonyme (demande utilisateur). */
+    public static void twoSignatureBoxes(Document doc, String leftLabel, String leftName,
+                                         String rightLabel, String rightName) {
+        PdfPTable t = new PdfPTable(new float[]{1f, 1f});
+        t.setWidthPercentage(100);
+        t.setSpacingBefore(22f);
+        t.addCell(signatureCell(leftLabel, leftName));
+        t.addCell(signatureCell(rightLabel, rightName));
+        doc.add(t);
+    }
+
+    private static PdfPCell signatureCell(String label, String name) {
+        PdfPCell c = new PdfPCell();
+        c.setBorder(Rectangle.BOX);
+        c.setBorderColor(LINE);
+        c.setFixedHeight(70f);
+        c.setPadding(8f);
+        c.setVerticalAlignment(Element.ALIGN_TOP);
+        c.addElement(new Phrase(label, font(FontFactory.HELVETICA_BOLD, 9.5f, DARK)));
+        if (name != null && !name.isBlank()) {
+            Paragraph p = new Paragraph(name, font(FontFactory.HELVETICA, 8.5f, GREY));
+            p.setSpacingBefore(2f);
+            c.addElement(p);
+        }
+        return c;
+    }
+
     public static Font font(String base, float size, Color color) {
         Font f = FontFactory.getFont(base, size);
         f.setColor(color);

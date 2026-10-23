@@ -13,6 +13,8 @@ import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
 import gn.lacaeducation.common.TenantInfoProvider;
 import gn.lacaeducation.common.TenantPublicInfo;
+import gn.lacaeducation.common.pdf.PremiumPageBackground;
+import gn.lacaeducation.common.pdf.RoundedCellBorder;
 import gn.lacaeducation.common.pdf.SchoolPdfHeader;
 import gn.lacaeducation.common.pdf.SchoolPdfPageFooter;
 import gn.lacaeducation.grading.application.port.out.ReportCardPdfGenerator;
@@ -73,14 +75,14 @@ class OpenPdfReportCardGenerator implements ReportCardPdfGenerator {
     public byte[] generate(ReportCard rc, List<ReportCardLine> lines, ReportCardContext ctx) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         // Marge gauche = 12mm de la référence + 3mm occupés par le liseré tricolore (dessiné par
-        // BulletinPageBackground, hors-marge, au bord physique de la page).
+        // PremiumPageBackground, hors-marge, au bord physique de la page).
         Document doc = new Document(PageSize.A4, mm(15), mm(12), mm(10), mm(16));
         try {
             TenantPublicInfo info = ctx.tenantId() == null ? null
                     : tenantInfoProvider.findTenantInfo(ctx.tenantId()).orElse(null);
 
             PdfWriter writer = PdfWriter.getInstance(doc, out);
-            writer.setPageEvent(new BulletinPageBackground());
+            writer.setPageEvent(new PremiumPageBackground());
             writer.setPageEvent(new SchoolPdfPageFooter(info, FOOTER_BORDER));
             doc.open();
 

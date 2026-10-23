@@ -11,6 +11,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -47,9 +49,19 @@ public class SalaryAdvanceController {
 
     @Operation(summary = "Accorder une avance sur salaire (plafonnée au salaire de référence du salarié)")
     @PostMapping
-    public SalaryAdvance grant(@RequestBody GrantRequest r) {
+    public SalaryAdvance grant(@RequestBody GrantRequest r, @AuthenticationPrincipal Jwt jwt) {
         return service.grant(new SalaryAdvanceUseCase.GrantCommand(TenantContext.get(), r.employeeType(),
-                r.teacherId(), r.teacherName(), r.amount(), r.reason()));
+                r.teacherId(), r.teacherName(), r.amount(), r.reason(), currentUserId(jwt)));
+    }
+
+    /** Comptable connecté ayant accordé l'avance (imprimé sur le bon) — extrait du JWT (sub), même
+     * principe que {@code PaymentController#currentUserId}. */
+    private static Long currentUserId(Jwt jwt) {
+        try {
+            return jwt == null ? null : Long.valueOf(jwt.getSubject());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     @Operation(summary = "Annuler une avance non encore déduite")

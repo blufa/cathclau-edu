@@ -8,7 +8,9 @@ import gn.lacaeducation.payroll.application.service.PayrollService.TeacherWage;
 import gn.lacaeducation.payroll.domain.Payslip;
 import gn.lacaeducation.payroll.domain.PayslipLine;
 import gn.lacaeducation.payroll.domain.PayslipLineType;
+import gn.lacaeducation.payroll.domain.EmployeeType;
 import gn.lacaeducation.payroll.domain.PayslipStatus;
+import gn.lacaeducation.staff.EmployeePublicInfoProvider;
 import gn.lacaeducation.staff.TeacherPublicInfoProvider;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -34,6 +36,7 @@ public class PayslipController {
 
     private final PayrollService service;
     private final TeacherPublicInfoProvider teacherPublicInfoProvider;
+    private final EmployeePublicInfoProvider employeePublicInfoProvider;
 
     public record GenerateRequest(gn.lacaeducation.payroll.domain.EmployeeType employeeType,
                                   Long teacherId, String teacherName, String periodLabel, LocalDate periodStart,
@@ -110,21 +113,30 @@ public class PayslipController {
 
     @Operation(summary = "Marquer la fiche comme payée (virement par défaut)")
     @PatchMapping("/{id}/pay")
-    public Payslip pay(@PathVariable Long id, @RequestBody(required = false) PayRequest r) {
-        return service.markPaid(id, r != null ? r.paymentMethod() : null);
+    public Payslip pay(@PathVariable Long id, @RequestBody(required = false) PayRequest r,
+                       @AuthenticationPrincipal Jwt jwt) {
+        return service.markPaid(id, r != null ? r.paymentMethod() : null, currentUserId(jwt));
+    }
+
+    /** Comptable connecté ayant marqué la fiche payée (imprimé sur le PDF) — extrait du JWT (sub),
+     * même principe que {@code PaymentController#currentUserId}. */
+    private static Long currentUserId(Jwt jwt) {
+        try {
+            return jwt == null ? null : Long.valueOf(jwt.getSubject());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     @Operation(summary = "Supprimer une fiche en brouillon")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) { service.delete(id); return ResponseEntity.noContent().build(); }
 
-    @Operation(summary = "Télécharger la fiche de paie en PDF (A5 stylé, inline)")
+    @Operation(summary = "Télécharger la fiche de paie en PDF (A4 stylé, couleur d'école personnalisable, inline)")
     @GetMapping("/{id}/pdf/download")
     public ResponseEntity<byte[]> pdfDownload(@PathVariable Long id) {
-        return ResponseEntity.ok()
-                .contentType(MediaType.APPLICATION_PDF)
-                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"fiche-paie-" + id + ".pdf\"")
-                .body(service.pdfBytes(id));
+        Payslip p = service.findById(id);
+        return pdfResponse(id, p);
     }
 
     // ── Self-service enseignant (§Vision enseignant) ────────────────────────
@@ -151,11 +163,39 @@ public class PayslipController {
     @PreAuthorize("hasRole('TEACHER')")
     @GetMapping("/mine/{id}/pdf/download")
     public ResponseEntity<byte[]> minePdfDownload(@AuthenticationPrincipal Jwt jwt, @PathVariable Long id) {
-        requireOwn(jwt, id);
+        Payslip p = requireOwn(jwt, id);
+        return pdfResponse(id, p);
+    }
+
+    private ResponseEntity<byte[]> pdfResponse(Long id, Payslip p) {
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_PDF)
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"fiche-paie-" + id + ".pdf\"")
-                .body(service.pdfBytes(id));
+                .body(service.pdfBytes(id, beneficiaryRole(p), beneficiaryPhotoUrl(p)));
+    }
+
+    /** Sous-titre affiché sous le nom du salarié sur le PDF (ex. "Mathématiques", "Principal") — résolu
+     * ici (pas dans {@code PayrollService}, volontairement découplée du module staff) ; le suffixe
+     * "payé à l'heure"/"salaire fixe" est ajouté par le générateur PDF lui-même (déjà au courant via
+     * {@code TeacherHours}, pas besoin de le dupliquer ici). */
+    private String beneficiaryRole(Payslip p) {
+        if (p.getTeacherId() == null) return null;
+        if (p.getEmployeeType() == null || p.getEmployeeType() == EmployeeType.TEACHER) {
+            return teacherPublicInfoProvider.findTeacher(p.getTeacherId())
+                    .map(TeacherPublicInfoProvider.TeacherInfo::specialization).orElse(null);
+        }
+        return employeePublicInfoProvider.findEmployee(p.getTeacherId())
+                .map(EmployeePublicInfoProvider.EmployeeInfo::jobTitle).orElse(null);
+    }
+
+    private String beneficiaryPhotoUrl(Payslip p) {
+        if (p.getTeacherId() == null) return null;
+        if (p.getEmployeeType() == null || p.getEmployeeType() == EmployeeType.TEACHER) {
+            return teacherPublicInfoProvider.findTeacher(p.getTeacherId())
+                    .map(TeacherPublicInfoProvider.TeacherInfo::photo).orElse(null);
+        }
+        return employeePublicInfoProvider.findEmployee(p.getTeacherId())
+                .map(EmployeePublicInfoProvider.EmployeeInfo::photo).orElse(null);
     }
 
     private Payslip requireOwn(Jwt jwt, Long payslipId) {

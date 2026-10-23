@@ -8,7 +8,12 @@ import java.util.Optional;
  * et la présence (§attendance). */
 public interface EmployeePublicInfoProvider {
     record EmployeeInfo(Long id, String fullName, String category, BigDecimal baseSalary, boolean active,
-                        String phone, String email) {}
+                        String phone, String email,
+                        /** Intitulé de poste libre (ex. « Principal », « Comptable ») — pour les
+                         * documents imprimés (fiche de paie…), distinct de {@link #category}. */
+                        String jobTitle,
+                        /** Photo (URL Cloudinary) pour les documents imprimés — null si jamais capturée. */
+                        String photo) {}
 
     /** Tout le personnel non-enseignant d'un tenant (actifs et inactifs — filtrer côté appelant). */
     List<EmployeeInfo> listEmployees(Long tenantId);

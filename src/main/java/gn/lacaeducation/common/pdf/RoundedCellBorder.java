@@ -1,4 +1,4 @@
-package gn.lacaeducation.grading.adapters.out.pdf;
+package gn.lacaeducation.common.pdf;
 
 import com.lowagie.text.Rectangle;
 import com.lowagie.text.pdf.PdfContentByte;
@@ -11,9 +11,12 @@ import java.awt.Color;
 /** Dessine un fond et/ou une bordure à coins arrondis pour une {@link PdfPCell} — OpenPDF ne supporte
  * pas nativement les coins arrondis sur une cellule (seulement des rectangles droits), d'où cet
  * événement personnalisé. Partagé par les documents "design premium" (§retour fondateur, refonte des
- * documents de /features/document-school) : bulletin, fiche de notes, tableau d'honneur, etc. —
- * n'utilise PAS {@code cell.setBackgroundColor}/{@code setBorder} (carrés, dessinés par-dessus). */
-final class RoundedCellBorder implements PdfPCellEvent {
+ * documents de /features/document-school) : bulletin, fiche de notes, tableau d'honneur, fiche de
+ * paie, etc. — n'utilise PAS {@code cell.setBackgroundColor}/{@code setBorder} (carrés, dessinés
+ * par-dessus). Public (partagé entre modules) : déplacé de {@code grading.adapters.out.pdf} vers ce
+ * paquet commun quand la fiche de paie (module {@code payroll}) en a eu besoin à son tour.
+ */
+public final class RoundedCellBorder implements PdfPCellEvent {
 
     private final float radius;
     private final Color fillColor;
@@ -27,15 +30,15 @@ final class RoundedCellBorder implements PdfPCellEvent {
         this.borderWidth = borderWidth;
     }
 
-    static RoundedCellBorder fillAndBorder(float radius, Color fill, Color border, float borderWidth) {
+    public static RoundedCellBorder fillAndBorder(float radius, Color fill, Color border, float borderWidth) {
         return new RoundedCellBorder(radius, fill, border, borderWidth);
     }
 
-    static RoundedCellBorder fillOnly(float radius, Color fill) {
+    public static RoundedCellBorder fillOnly(float radius, Color fill) {
         return new RoundedCellBorder(radius, fill, null, 0);
     }
 
-    static RoundedCellBorder borderOnly(float radius, Color border, float borderWidth) {
+    public static RoundedCellBorder borderOnly(float radius, Color border, float borderWidth) {
         return new RoundedCellBorder(radius, null, border, borderWidth);
     }
 

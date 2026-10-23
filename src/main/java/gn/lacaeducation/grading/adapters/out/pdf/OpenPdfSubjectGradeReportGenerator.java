@@ -12,6 +12,8 @@ import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
 import gn.lacaeducation.common.TenantInfoProvider;
 import gn.lacaeducation.common.TenantPublicInfo;
+import gn.lacaeducation.common.pdf.PremiumPageBackground;
+import gn.lacaeducation.common.pdf.RoundedCellBorder;
 import gn.lacaeducation.grading.application.port.in.GradeUseCase.ReleveAssessment;
 import gn.lacaeducation.grading.application.port.in.GradeUseCase.ReleveRow;
 import gn.lacaeducation.grading.application.port.in.GradeUseCase.SubjectGradeReport;
@@ -64,7 +66,7 @@ class OpenPdfSubjectGradeReportGenerator implements SubjectGradeReportPdfGenerat
                     : tenantInfoProvider.findTenantInfo(rep.tenantId()).orElse(null);
 
             PdfWriter writer = PdfWriter.getInstance(doc, out);
-            writer.setPageEvent(new BulletinPageBackground());
+            writer.setPageEvent(new PremiumPageBackground());
             writer.setPageEvent(new gn.lacaeducation.common.pdf.SchoolPdfPageFooter(info, BORDER_LIGHT));
             doc.open();
 

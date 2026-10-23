@@ -11,7 +11,7 @@ import java.awt.Color;
  * Fond "cérémonial" du tableau d'honneur (§document-school, "Tableau d'honneur.dc.html") : plein cadre
  * vert foncé, bandeau tricolore en haut (pas à gauche comme les autres documents — fidèle à la
  * référence), double cadre doré en retrait (plein + translucide). Dessiné sur la couche BACKGROUND
- * (sous le contenu), comme {@link BulletinPageBackground}.
+ * (sous le contenu), comme {@link PremiumPageBackground}.
  */
 class HonorRollPageBackground extends PdfPageEventHelper {
 

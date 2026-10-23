@@ -42,6 +42,7 @@ class SalaryAdvancePersistenceAdapter implements SalaryAdvanceRepository {
                 .teacherId(e.getTeacherId()).teacherName(e.getTeacherName())
                 .amount(e.getAmount()).remainingBalance(e.getRemainingBalance()).reason(e.getReason())
                 .status(e.getStatus()).grantedAt(e.getGrantedAt()).lastDeductedAt(e.getLastDeductedAt())
+                .grantedByUserId(e.getGrantedByUserId())
                 .build();
     }
 
@@ -51,6 +52,7 @@ class SalaryAdvancePersistenceAdapter implements SalaryAdvanceRepository {
         e.setTeacherId(d.getTeacherId()); e.setTeacherName(d.getTeacherName());
         e.setAmount(d.getAmount()); e.setRemainingBalance(d.getRemainingBalance()); e.setReason(d.getReason());
         e.setStatus(d.getStatus()); e.setGrantedAt(d.getGrantedAt()); e.setLastDeductedAt(d.getLastDeductedAt());
+        e.setGrantedByUserId(d.getGrantedByUserId());
         return e;
     }
 }

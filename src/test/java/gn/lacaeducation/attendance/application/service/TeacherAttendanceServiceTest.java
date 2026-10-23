@@ -192,7 +192,7 @@ class TeacherAttendanceServiceTest {
                 TeacherCheckin.builder().checkInTime(java.time.LocalTime.of(0, 10)).lateMinutes(10).build()));
         when(repo.findByTeacherIdAndDateBetween(eq(5L), any(), any())).thenReturn(List.of());
         when(teacherPublicInfoProvider.findTeacher(5L)).thenReturn(Optional.of(
-                new TeacherPublicInfoProvider.TeacherInfo(5L, "Awa", "Diallo", "T1", null, null, "620000000")));
+                new TeacherPublicInfoProvider.TeacherInfo(5L, "Awa", "Diallo", "T1", null, null, "620000000", null)));
 
         service.recordEntry(5L);
 
@@ -231,7 +231,7 @@ class TeacherAttendanceServiceTest {
         when(repo.findByTeacherIdAndDateBetween(eq(5L), any(), any())).thenReturn(List.of());
         when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
         when(teacherPublicInfoProvider.findTeacher(5L)).thenReturn(Optional.of(
-                new TeacherPublicInfoProvider.TeacherInfo(5L, "Awa", "Diallo", "T1", null, null, "620000000")));
+                new TeacherPublicInfoProvider.TeacherInfo(5L, "Awa", "Diallo", "T1", null, null, "620000000", null)));
 
         service.markAbsent(5L, "Absence automatique — aucun pointage détecté");
 
@@ -431,7 +431,7 @@ class TeacherAttendanceServiceTest {
                 .date(LocalDate.of(2026, 9, 10)).status(TeacherAttendanceStatus.ABSENT).reason("Grippe").build();
         when(repo.findByTeacherIdAndDateBetween(eq(5L), any(), any())).thenReturn(List.of(absent));
         when(teacherPublicInfoProvider.findTeacher(5L)).thenReturn(Optional.of(
-                new TeacherPublicInfoProvider.TeacherInfo(5L, "Aboubacar", "Diallo", "M001", null, null, null)));
+                new TeacherPublicInfoProvider.TeacherInfo(5L, "Aboubacar", "Diallo", "M001", null, null, null, null)));
         ArgumentCaptor<AttendanceReportPdfGenerator.TeacherLatenessReport> captor =
                 ArgumentCaptor.forClass(AttendanceReportPdfGenerator.TeacherLatenessReport.class);
         when(pdfGenerator.teacherLatenessReport(any())).thenReturn(new byte[]{1, 2, 3});

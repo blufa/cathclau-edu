@@ -57,6 +57,7 @@ class PayrollServiceTest {
     @Mock AcademicsDataProvider academics;
     @Mock CalendarDataProvider calendar;
     @Mock org.springframework.context.ApplicationEventPublisher eventPublisher;
+    @Mock gn.lacaeducation.iam.UserPublicInfoProvider userPublicInfoProvider;
 
     @InjectMocks PayrollService payrollService;
 
@@ -387,7 +388,7 @@ class PayrollServiceTest {
         when(payslipRepo.findById(1L)).thenReturn(java.util.Optional.of(validated));
         when(payslipRepo.save(any())).thenAnswer(i -> i.getArgument(0));
 
-        payrollService.markPaid(1L, "BANK_TRANSFER");
+        payrollService.markPaid(1L, "BANK_TRANSFER", 42L);
 
         org.mockito.Mockito.verify(eventPublisher).publishEvent(
                 new gn.lacaeducation.payroll.application.event.PayslipPaidEvent(9L, 1L, new BigDecimal("850000"),
@@ -408,7 +409,7 @@ class PayrollServiceTest {
                 .netSalary(new BigDecimal("850000")).build();
         when(payslipRepo.findById(1L)).thenReturn(java.util.Optional.of(paid));
 
-        assertThatThrownBy(() -> payrollService.markPaid(1L, "BANK_TRANSFER"))
+        assertThatThrownBy(() -> payrollService.markPaid(1L, "BANK_TRANSFER", 42L))
                 .isInstanceOf(gn.lacaeducation.common.BusinessRuleException.class);
         org.mockito.Mockito.verify(salaryFeeDeductionUseCase, org.mockito.Mockito.never())
                 .applyDeductionAsInvoicePayment(any(), any(), any());

@@ -57,7 +57,7 @@ class AttendanceScanControllerTest {
         TeacherCheckin checkin = TeacherCheckin.builder().checkInTime(LocalTime.of(8, 0)).lateMinutes(0).build();
         when(teacherAttendance.recordEntry(3L)).thenReturn(checkin);
         when(teacherPublicInfoProvider.findTeacher(3L))
-                .thenReturn(Optional.of(new TeacherInfo(3L, "Mamadou", "Diallo", "ENS-3", null, null, null)));
+                .thenReturn(Optional.of(new TeacherInfo(3L, "Mamadou", "Diallo", "ENS-3", null, null, null, null)));
 
         ScanResponse res = controller.scan(new ScanRequest(SubjectType.TEACHER, 3L, ScanDirection.ENTRY), null);
 

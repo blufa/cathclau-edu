@@ -13,6 +13,7 @@ import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
 import gn.lacaeducation.common.TenantInfoProvider;
 import gn.lacaeducation.common.TenantPublicInfo;
+import gn.lacaeducation.common.pdf.RoundedCellBorder;
 import gn.lacaeducation.common.pdf.SchoolPdfHeader;
 import gn.lacaeducation.grading.application.port.out.ClassHonorRollPdfGenerator;
 import lombok.RequiredArgsConstructor;
