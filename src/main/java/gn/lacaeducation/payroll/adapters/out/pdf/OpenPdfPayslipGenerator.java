@@ -265,7 +265,7 @@ class OpenPdfPayslipGenerator implements PayslipPdfGenerator {
         PdfPCell leftOuter = new PdfPCell();
         leftOuter.setBorder(0);
         leftOuter.setPadding(0);
-        leftOuter.setPaddingRight(mm(2));
+        leftOuter.setPaddingRight(mm(2.5f));
         leftOuter.setCellEvent(RoundedCellBorder.fillAndBorder(mm(3), WHITE, BORDER, 0.8f));
         leftOuter.addElement(padded(left, mm(4), mm(4)));
         t.addCell(leftOuter);
@@ -281,7 +281,7 @@ class OpenPdfPayslipGenerator implements PayslipPdfGenerator {
         PdfPCell rightOuter = new PdfPCell();
         rightOuter.setBorder(0);
         rightOuter.setPadding(0);
-        rightOuter.setPaddingLeft(mm(2));
+        rightOuter.setPaddingLeft(mm(2.5f));
         rightOuter.setCellEvent(RoundedCellBorder.fillAndBorder(mm(3), WHITE, BORDER, 0.8f));
         rightOuter.addElement(padded(right, mm(3.5f), mm(4)));
         t.addCell(rightOuter);
@@ -526,7 +526,7 @@ class OpenPdfPayslipGenerator implements PayslipPdfGenerator {
         PdfPTable t = new PdfPTable(new float[]{1f, 1f});
         t.setWidthPercentage(100);
         signatureCell(t, "Signature du bénéficiaire", p.getTeacherName());
-        signatureCell(t, "Signature et Cachet de l'Établissement", presentation.accountantName());
+        signatureCell(t, "Signature et Cachet du Comptable", presentation.accountantName());
         doc.add(t);
     }
 

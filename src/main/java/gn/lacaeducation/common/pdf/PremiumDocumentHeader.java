@@ -22,7 +22,6 @@ public final class PremiumDocumentHeader {
 
     public static final Color DARK_TEXT = new Color(19, 38, 31);
     public static final Color TEXT_GREY = new Color(94, 107, 101);
-    public static final Color BORDER = new Color(217, 210, 192);
 
     private static final com.lowagie.text.pdf.BaseFont SANS_BOLD = DesignFonts.SANS_SEMIBOLD;
     private static final com.lowagie.text.pdf.BaseFont SERIF_BOLD = DesignFonts.SERIF_BOLD;
@@ -34,7 +33,7 @@ public final class PremiumDocumentHeader {
     public static void render(Document doc, TenantPublicInfo info) {
         PdfPTable t = new PdfPTable(new float[]{1.3f, 1f});
         t.setWidthPercentage(100);
-        t.setSpacingAfter(mm(4));
+        t.setSpacingAfter(mm(3));
 
         PdfPCell left = new PdfPCell();
         left.setBorder(0);
@@ -44,8 +43,11 @@ public final class PremiumDocumentHeader {
         PdfPCell logoCell = new PdfPCell();
         logoCell.setBorder(0);
         logoCell.setFixedHeight(mm(19));
+        logoCell.setHorizontalAlignment(Element.ALIGN_CENTER);
         logoCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
-        logoCell.setCellEvent(RoundedCellBorder.fillAndBorder(mm(4), Color.WHITE, BORDER, 0.8f));
+        // Pas de fond/bordure derrière le logo (demande utilisateur) — le logo flotte directement sur
+        // le fond crème de la page, sans boîte blanche qui tranche visuellement une fois un vrai logo
+        // (souvent déjà sur fond blanc/transparent) en place.
         Image logo = info != null ? SchoolPdfHeader.loadLogo(info.logo()) : null;
         if (logo != null) {
             logo.scaleToFit(mm(16), mm(16));

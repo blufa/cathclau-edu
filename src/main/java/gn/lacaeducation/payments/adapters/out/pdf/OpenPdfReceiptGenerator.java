@@ -221,10 +221,26 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
     private void studentAndPaymentRow(Document doc, Color accent, Long studentId, Receipt receipt, Payment payment, String qrContent) {
         PdfPTable t = new PdfPTable(new float[]{1f, 1f});
         t.setWidthPercentage(100);
-        t.setSpacingAfter(mm(2.2f));
-        t.addCell(studentCardCell(receipt.getStudentName(), studentId));
-        t.addCell(paymentInfoCell(payment, qrContent));
+        t.setSpacingAfter(mm(2.6f));
+        // Un écart visible entre les deux cartes (padding sur une cellule ENVELOPPANTE, pas sur la
+        // cellule à fond arrondi elle-même — son fond remplit tout son rectangle de cellule quel que
+        // soit son padding, donc un padding posé directement dessus ne créerait aucun écart visuel).
+        t.addCell(gapWrap(studentCardCell(receipt.getStudentName(), studentId), 0, mm(2.5f)));
+        t.addCell(gapWrap(paymentInfoCell(payment, qrContent), mm(2.5f), 0));
         doc.add(t);
+    }
+
+    private static PdfPCell gapWrap(PdfPCell inner, float paddingLeft, float paddingRight) {
+        PdfPCell c = new PdfPCell();
+        c.setBorder(0);
+        c.setPadding(0);
+        c.setPaddingLeft(paddingLeft);
+        c.setPaddingRight(paddingRight);
+        PdfPTable t = new PdfPTable(1);
+        t.setWidthPercentage(100);
+        t.addCell(inner);
+        c.addElement(t);
+        return c;
     }
 
     private void studentCard(Document doc, String studentName, Long studentId) {
@@ -347,34 +363,47 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
     // ── Tableau des factures (coins arrondis) : Réf. / Observation / Montant / Date & heure / Payé / Reste ──
     private PdfPTable invoicesTable(List<PayerDirectory.InvoiceRowInfo> invoices,
                                      java.util.Map<Long, java.time.LocalDateTime> paidAtByInvoiceId) {
+        // Lignes confortables par défaut (demande utilisateur : "trop condensé") — ne se resserrent
+        // (padding ET taille de police) que si le nombre de factures menace réellement le budget d'une
+        // page (reçu avec plusieurs années de mensualités + frais annexes, §retour comptable,
+        // contrainte historique "jamais de 2e page"). La grande majorité des reçus (quelques factures)
+        // gardent donc des lignes larges. La police compte presque autant que le padding ici : la
+        // colonne "Observation" passe souvent sur 2 lignes (libellés longs type "Mensualité — Tranche
+        // 2 (décembre, janvier, février)"), où même +0.4pt se répercute sur CHAQUE ligne du libellé.
+        boolean tight = invoices.size() > 18;
+        boolean medium = !tight && invoices.size() > 10;
+        float pad = tight ? 1.3f : medium ? 1.9f : 2.6f;
+        float bodyFont = tight ? 7.6f : medium ? 7.9f : 8.3f;
+        float smallFont = tight ? 7f : medium ? 7.1f : 7.3f;
+
         PdfPTable table = new PdfPTable(new float[]{1f, 1.8f, 0.9f, 1f, 0.6f, 0.9f});
         table.setWidthPercentage(100);
-        headerCell(table, "Réf.", Element.ALIGN_LEFT);
-        headerCell(table, "Observation", Element.ALIGN_LEFT);
-        headerCell(table, "Montant", Element.ALIGN_RIGHT);
-        headerCell(table, "Date & heure", Element.ALIGN_CENTER);
-        headerCell(table, "Payé", Element.ALIGN_CENTER);
-        headerCell(table, "Reste", Element.ALIGN_RIGHT);
+        headerCell(table, "Réf.", Element.ALIGN_LEFT, pad);
+        headerCell(table, "Observation", Element.ALIGN_LEFT, pad);
+        headerCell(table, "Montant", Element.ALIGN_RIGHT, pad);
+        headerCell(table, "Date & heure", Element.ALIGN_CENTER, pad);
+        headerCell(table, "Payé", Element.ALIGN_CENTER, pad);
+        headerCell(table, "Reste", Element.ALIGN_RIGHT, pad);
 
         DateTimeFormatter paidAtFormat = DateTimeFormatter.ofPattern("dd/MM/yyyy HH'h'mm");
         boolean zebra = false;
         for (PayerDirectory.InvoiceRowInfo inv : invoices) {
             Color bg = zebra ? ROW_STRIPE : WHITE;
             zebra = !zebra;
-            bodyCellMono(table, inv.reference(), Element.ALIGN_LEFT, bg, 7f, TEXT_GREY);
-            bodyCell(table, inv.label(), Element.ALIGN_LEFT, bg);
-            bodyCellMono(table, money(inv.amount()) + " GNF", Element.ALIGN_RIGHT, bg, 7.6f, DARK_TEXT);
+            bodyCellMono(table, inv.reference(), Element.ALIGN_LEFT, bg, smallFont, TEXT_GREY, pad);
+            bodyCell(table, inv.label(), Element.ALIGN_LEFT, bg, pad, bodyFont);
+            bodyCellMono(table, money(inv.amount()) + " GNF", Element.ALIGN_RIGHT, bg, bodyFont, DARK_TEXT, pad);
             java.time.LocalDateTime paidAt = paidAtByInvoiceId.get(inv.id());
             java.time.LocalDateTime shown = paidAt != null ? paidAt : inv.creditedAt();
             PdfPCell dateCell = new PdfPCell(new Phrase(shown != null ? shown.format(paidAtFormat) : "-",
-                    font(SANS, FontFactory.HELVETICA, 7f, TEXT_GREY)));
+                    font(SANS, FontFactory.HELVETICA, smallFont, TEXT_GREY)));
             dateCell.setBackgroundColor(bg);
             dateCell.setBorderColor(BORDER_LIGHT);
             dateCell.setHorizontalAlignment(Element.ALIGN_CENTER);
-            dateCell.setPadding(1.6f);
+            dateCell.setPadding(pad);
             table.addCell(dateCell);
-            table.addCell(paidPill(inv.paid(), bg));
-            remainingCell(table, inv.remainingBalance(), bg);
+            table.addCell(paidPill(inv.paid(), bg, pad));
+            remainingCell(table, inv.remainingBalance(), bg, pad, bodyFont);
         }
         if (invoices.isEmpty()) {
             PdfPCell empty = new PdfPCell(new Phrase("Aucune facture.", font(SANS, FontFactory.HELVETICA_OBLIQUE, 9, TEXT_GREY)));
@@ -397,55 +426,55 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
         return wrapper;
     }
 
-    private static void headerCell(PdfPTable t, String label, int align) {
+    private static void headerCell(PdfPTable t, String label, int align, float pad) {
         PdfPCell c = new PdfPCell(new Phrase(label, font(SANS_BOLD, FontFactory.HELVETICA_BOLD, 8, WHITE)));
         c.setBackgroundColor(DARK_TEXT);
         c.setBorderColor(DARK_TEXT);
         c.setHorizontalAlignment(align);
-        c.setPadding(1.6f);
+        c.setPadding(pad);
         t.addCell(c);
     }
 
-    private static void bodyCell(PdfPTable t, String value, int align, Color bg) {
-        PdfPCell c = new PdfPCell(new Phrase(value == null ? "-" : value, font(SANS_BOLD, FontFactory.HELVETICA_BOLD, 7.6f, DARK_TEXT)));
+    private static void bodyCell(PdfPTable t, String value, int align, Color bg, float pad, float size) {
+        PdfPCell c = new PdfPCell(new Phrase(value == null ? "-" : value, font(SANS_BOLD, FontFactory.HELVETICA_BOLD, size, DARK_TEXT)));
         c.setBackgroundColor(bg);
         c.setBorderColor(BORDER_LIGHT);
         c.setHorizontalAlignment(align);
-        c.setPadding(1.6f);
+        c.setPadding(pad);
         t.addCell(c);
     }
 
-    private static void bodyCellMono(PdfPTable t, String value, int align, Color bg, float size, Color color) {
+    private static void bodyCellMono(PdfPTable t, String value, int align, Color bg, float size, Color color, float pad) {
         PdfPCell c = new PdfPCell(new Phrase(value == null ? "-" : value, font(MONO, FontFactory.COURIER, size, color)));
         c.setBackgroundColor(bg);
         c.setBorderColor(BORDER_LIGHT);
         c.setHorizontalAlignment(align);
-        c.setPadding(1.6f);
+        c.setPadding(pad);
         t.addCell(c);
     }
 
     /** Pastille OUI (vert)/NON (rouge) — même teintes que le tableau de bord (statut de règlement). */
-    private static PdfPCell paidPill(boolean paid, Color rowBg) {
+    private static PdfPCell paidPill(boolean paid, Color rowBg, float pad) {
         Color bg = paid ? PAID_BG : UNPAID_BG;
         Color text = paid ? PAID_TEXT : UNPAID_TEXT;
         PdfPCell pill = new PdfPCell(new Phrase(paid ? "OUI" : "NON", font(SANS_BOLD, FontFactory.HELVETICA_BOLD, 6.8f, text)));
         pill.setCellEvent(RoundedCellBorder.fillOnly(mm(1.6f), bg));
         pill.setHorizontalAlignment(Element.ALIGN_CENTER);
-        pill.setPadding(1.0f);
+        pill.setPadding(pad);
         pill.setBackgroundColor(rowBg);
         pill.setBorderColor(BORDER_LIGHT);
         return pill;
     }
 
-    private static void remainingCell(PdfPTable t, BigDecimal remaining, Color bg) {
+    private static void remainingCell(PdfPTable t, BigDecimal remaining, Color bg, float pad, float size) {
         boolean due = remaining != null && remaining.signum() > 0;
         PdfPCell c = new PdfPCell(new Phrase(due ? money(remaining) + " GNF" : "-",
-                font(due ? MONO_BOLD : MONO, due ? FontFactory.COURIER_BOLD : FontFactory.COURIER, 7.6f,
+                font(due ? MONO_BOLD : MONO, due ? FontFactory.COURIER_BOLD : FontFactory.COURIER, size,
                         due ? REMAINING_TEXT : TEXT_GREY)));
         c.setBackgroundColor(bg);
         c.setBorderColor(BORDER_LIGHT);
         c.setHorizontalAlignment(Element.ALIGN_RIGHT);
-        c.setPadding(1.6f);
+        c.setPadding(pad);
         t.addCell(c);
     }
 
@@ -492,21 +521,21 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
         l.setBorder(topBorder ? Rectangle.TOP : Rectangle.BOTTOM);
         l.setBorderColor(invisibleBorder);
         l.setVerticalAlignment(Element.ALIGN_MIDDLE);
-        l.setPadding(emphasis ? mm(2.4f) : mm(1.8f));
+        l.setPadding(emphasis ? mm(2.0f) : mm(1.5f));
         PdfPCell v = new PdfPCell(new Phrase(amount, font(MONO_BOLD, FontFactory.COURIER_BOLD, emphasis ? 14 : 10, amountColor)));
         v.setBackgroundColor(bg);
         v.setBorder(topBorder ? Rectangle.TOP : Rectangle.BOTTOM);
         v.setBorderColor(invisibleBorder);
         v.setVerticalAlignment(Element.ALIGN_MIDDLE);
         v.setHorizontalAlignment(Element.ALIGN_RIGHT);
-        v.setPadding(emphasis ? mm(2.4f) : mm(1.8f));
+        v.setPadding(emphasis ? mm(2.0f) : mm(1.5f));
         t.addCell(l);
         t.addCell(v);
     }
 
     private void noteLine(Document doc, String text, Color color, boolean bold) {
         Paragraph p = new Paragraph(text, font(bold ? SANS_BOLD : SANS, bold ? FontFactory.HELVETICA_BOLD : FontFactory.HELVETICA, 8.5f, color));
-        p.setSpacingAfter(mm(1.5f));
+        p.setSpacingAfter(mm(1.1f));
         doc.add(p);
     }
 
