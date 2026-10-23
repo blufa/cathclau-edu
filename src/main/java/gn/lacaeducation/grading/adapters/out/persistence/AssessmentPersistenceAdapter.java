@@ -14,5 +14,6 @@ class AssessmentPersistenceAdapter implements AssessmentRepository {
     @Override public List<Assessment> findByClassId(Long id) { return jpa.findByClassId(id).stream().map(mapper::toDomain).toList(); }
     @Override public List<Assessment> findByPeriodId(Long id) { return jpa.findByPeriodId(id).stream().map(mapper::toDomain).toList(); }
     @Override public List<Assessment> findByClassIdAndPeriodId(Long classId, Long periodId) { return jpa.findByClassIdAndPeriodId(classId, periodId).stream().map(mapper::toDomain).toList(); }
+    @Override public List<Assessment> findByExamId(Long examId) { return jpa.findByExamId(examId).stream().map(mapper::toDomain).toList(); }
     @Override public void deleteById(Long id) { jpa.deleteById(id); }
 }
