@@ -55,6 +55,22 @@ public class ParentService implements ParentUseCase {
                 return sameTenant.get();
             }
         }
+        // Barrière anti-doublon par numéro de téléphone (§retour comptable, incident réel) : une
+        // coupure réseau pendant l'inscription d'un parent (à l'inscription d'un enfant) peut laisser
+        // croire à l'agent que la création a échoué alors qu'elle a réussi côté serveur — il
+        // ressaisit alors le même parent, créant une fiche en double. Plutôt qu'une erreur bloquante,
+        // on renvoie la fiche déjà existante (même principe que les gardes userId/staffId ci-dessus) :
+        // le flux d'inscription peut enchaîner normalement sur le lien parent-enfant sans que l'agent
+        // ait besoin de nettoyer un doublon après coup. Teste toutes les variantes de format du numéro
+        // (voir PhoneNumbers), un numéro ressaisi dans un format différent doit rester détecté.
+        if (cmd.phone() != null && !cmd.phone().isBlank()) {
+            for (String candidate : gn.lacaeducation.common.PhoneNumbers.candidates(cmd.phone())) {
+                Optional<Parent> existing = parentRepository.findByTenantIdAndPhone(cmd.tenantId(), candidate);
+                if (existing.isPresent()) {
+                    return existing.get();
+                }
+            }
+        }
         return parentRepository.save(Parent.builder()
                 .tenantId(cmd.tenantId()).userId(cmd.userId())
                 .firstName(PersonName.capitalizeFirstName(cmd.firstName()))
@@ -122,7 +138,13 @@ public class ParentService implements ParentUseCase {
     public List<Parent> findByTenantId(Long tenantId) { return parentRepository.findByTenantId(tenantId); }
 
     @Override
-    public void delete(Long id) { parentRepository.deleteById(id); }
+    public void delete(Long id) {
+        // Purge D'ABORD les liens parent-enfant de cette fiche (jamais les fiches Student elles-mêmes)
+        // — sans ça, supprimer un parent dupliqué (§retour comptable) laisse des liens orphelins
+        // pointant vers un parent_id inexistant (pas de contrainte FK en base sur student_parents).
+        studentParentRepository.unlinkAllByParentId(id);
+        parentRepository.deleteById(id);
+    }
 
     @Override @Transactional(readOnly = true)
     public boolean existsById(Long id) { return parentRepository.existsById(id); }

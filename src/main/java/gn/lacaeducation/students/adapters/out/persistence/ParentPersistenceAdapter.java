@@ -24,6 +24,9 @@ class ParentPersistenceAdapter implements ParentRepository, StudentParentReposit
         return parentRepo.findAllByLinkedStaffTypeAndLinkedStaffId(staffType, staffId).stream().map(mapper::toDomain).toList();
     }
     @Override public Optional<Parent> findByIdempotencyKey(String key) { return parentRepo.findByIdempotencyKey(key).map(mapper::toDomain); }
+    @Override public Optional<Parent> findByTenantIdAndPhone(Long tenantId, String phone) {
+        return parentRepo.findByTenantIdAndPhone(tenantId, phone).map(mapper::toDomain);
+    }
     @Override public List<Parent> findByTenantId(Long t) { return parentRepo.findByTenantId(t).stream().map(mapper::toDomain).toList(); }
     @Override public void deleteById(Long id) { parentRepo.deleteById(id); }
     @Override public boolean existsById(Long id) { return parentRepo.existsById(id); }
@@ -51,6 +54,7 @@ class ParentPersistenceAdapter implements ParentRepository, StudentParentReposit
     @Override public List<StudentParent> findLinksByStudentId(Long sid) { return studentParentRepo.findByStudentId(sid).stream().map(mapper::toDomain).toList(); }
     @Override public void unlinkStudentParent(Long id) { studentParentRepo.deleteById(id); }
     @Override public void unlinkByStudentAndParent(Long studentId, Long parentId) { studentParentRepo.deleteByStudentIdAndParentId(studentId, parentId); }
+    @Override public void unlinkAllByParentId(Long parentId) { studentParentRepo.deleteByParentId(parentId); }
     @Override public List<Long> findStudentIdsByParentId(Long parentId) {
         return studentParentRepo.findByParentId(parentId).stream()
                 .map(gn.lacaeducation.students.adapters.out.persistence.EleveParentJpaEntity::getStudentId).toList();
