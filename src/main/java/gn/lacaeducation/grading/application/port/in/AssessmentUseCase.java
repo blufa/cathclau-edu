@@ -5,7 +5,18 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 public interface AssessmentUseCase {
-    record CreateAssessmentCommand(Long tenantId, Long classId, Long subjectId, Long teacherId, Long periodId, AssessmentType type, Long assessmentTypeId, String label, LocalDate date, BigDecimal coefficient, BigDecimal maxScore) {}
+    /** @param examId composition (§Exam) qui fait naître cette évaluation — {@code null} pour une
+     * création normale (Nouvelle évaluation) ; voir {@code ExamService#gradeEntryAssessment}. */
+    record CreateAssessmentCommand(Long tenantId, Long classId, Long subjectId, Long teacherId, Long periodId,
+                                    AssessmentType type, Long assessmentTypeId, String label, LocalDate date,
+                                    BigDecimal coefficient, BigDecimal maxScore, Long examId) {
+        public CreateAssessmentCommand(Long tenantId, Long classId, Long subjectId, Long teacherId, Long periodId,
+                                        AssessmentType type, Long assessmentTypeId, String label, LocalDate date,
+                                        BigDecimal coefficient, BigDecimal maxScore) {
+            this(tenantId, classId, subjectId, teacherId, periodId, type, assessmentTypeId, label, date,
+                    coefficient, maxScore, null);
+        }
+    }
     Assessment create(CreateAssessmentCommand command);
     Assessment update(Long id, CreateAssessmentCommand command);
     Optional<Assessment> findById(Long id);

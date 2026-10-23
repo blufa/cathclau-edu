@@ -85,17 +85,19 @@ class EmployeeAttendanceServiceTest {
     }
 
     @Test
-    void recordEntry_sameDayAfterExit_returnsExistingWithoutRejecting() {
-        // Hors scope du correctif §16 : une ré-entrée le même jour APRÈS une sortie valide n'est pas
-        // un double-scan — reste acceptée silencieusement (même règle que l'élève/l'enseignant).
+    void recordEntry_sameDayAfterExit_rejectedWithClearMessage() {
+        // §retour fondateur : un seul cycle entrée/sortie par jour — avant ce correctif, une ré-entrée
+        // après une sortie valide le même jour était acceptée silencieusement (orElseGet n'exécute
+        // jamais son fournisseur quand l'Optional est déjà présent) : l'utilisateur croyait avoir
+        // "re-scanné avec succès" sans que rien ne soit réellement enregistré. Désormais refusée.
         EmployeeAttendance existing = EmployeeAttendance.builder().id(9L).employeeId(5L)
                 .checkInTime(LocalTime.of(8, 0)).checkOutTime(LocalTime.of(12, 0))
                 .createdAt(LocalDateTime.now().minusHours(2)).build();
         when(repo.findByEmployeeIdAndDate(eq(5L), any())).thenReturn(Optional.of(existing));
 
-        EmployeeAttendance result = service.recordEntry(5L);
-
-        assertThat(result).isSameAs(existing);
+        assertThatThrownBy(() -> service.recordEntry(5L))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("déjà fait son entrée et sa sortie");
         verify(repo, never()).save(any());
     }
 

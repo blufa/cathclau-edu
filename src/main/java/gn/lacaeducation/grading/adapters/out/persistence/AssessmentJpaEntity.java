@@ -20,4 +20,5 @@ public class AssessmentJpaEntity {
     @Column(nullable = false) private LocalDate date;
     @Column(nullable = false, precision = 5, scale = 2) private BigDecimal coefficient;
     @Column(name = "max_score", nullable = false, precision = 5, scale = 2) private BigDecimal maxScore;
+    @Column(name = "exam_id") private Long examId;
 }

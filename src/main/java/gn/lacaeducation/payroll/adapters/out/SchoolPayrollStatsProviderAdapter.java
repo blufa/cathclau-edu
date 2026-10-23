@@ -45,7 +45,7 @@ class SchoolPayrollStatsProviderAdapter implements SchoolPayrollStatsProvider {
     @Override
     @Transactional(readOnly = true)
     public PayrollMassSummary payrollMassSummary(Long tenantId, int year, int month) {
-        PayrollService.TeacherPayrollMass teachers = payrollService.teacherPayrollMass(tenantId, year, month);
+        PayrollService.TeacherPayrollMass teachers = payrollService.teacherPayrollMass(tenantId, year, month, validTeacherIds(tenantId));
         BigDecimal staffPayroll = activeStaffPayroll(tenantId);
         int staffCount = (int) employeePublicInfoProvider.listEmployees(tenantId).stream()
                 .filter(EmployeePublicInfoProvider.EmployeeInfo::active).count();
@@ -57,11 +57,21 @@ class SchoolPayrollStatsProviderAdapter implements SchoolPayrollStatsProvider {
     @Override
     @Transactional(readOnly = true)
     public RealPayrollSummary realPayrollSummary(Long tenantId, int year, int month) {
-        PayrollService.RealTeacherPayrollMass teachers = payrollService.realTeacherPayrollMass(tenantId, year, month);
+        PayrollService.RealTeacherPayrollMass teachers = payrollService.realTeacherPayrollMass(tenantId, year, month, validTeacherIds(tenantId));
         BigDecimal staffPayroll = activeStaffPayroll(tenantId);
         return new RealPayrollSummary(teachers.monthlyPayroll(), staffPayroll,
                 teachers.monthlyPayroll().add(staffPayroll), teachers.totalLateMinutes(), teachers.totalEarlyMinutes(),
                 teachers.totalRealizedMinutes());
+    }
+
+    /** Enseignants actuellement existants d'un tenant — pour ignorer, dans les masses salariales
+     * agrégées ci-dessus, toute fiche {@code TeacherCompensation} orpheline d'un enseignant supprimé
+     * (§retour utilisateur, Vision Fondateur en production : un enseignant du primaire à salaire fixe
+     * supprimé continuait de gonfler la masse salariale théorique indéfiniment). */
+    private java.util.Set<Long> validTeacherIds(Long tenantId) {
+        return teacherPublicInfoProvider.listTeachers(tenantId).stream()
+                .map(gn.lacaeducation.staff.TeacherPublicInfoProvider.TeacherInfo::id)
+                .collect(Collectors.toSet());
     }
 
     private BigDecimal activeStaffPayroll(Long tenantId) {
@@ -97,9 +107,10 @@ class SchoolPayrollStatsProviderAdapter implements SchoolPayrollStatsProvider {
 
         List<MonthProjection> months = new ArrayList<>();
         BigDecimal totalTeachers = BigDecimal.ZERO;
+        java.util.Set<Long> validTeacherIds = validTeacherIds(tenantId);
         YearMonth cursor = YearMonth.of(startYear, startMonth);
         for (int i = 0; i < monthsCount; i++) {
-            BigDecimal teacherMonthly = payrollService.teacherPayrollMass(tenantId, cursor.getYear(), cursor.getMonthValue()).monthlyPayroll();
+            BigDecimal teacherMonthly = payrollService.teacherPayrollMass(tenantId, cursor.getYear(), cursor.getMonthValue(), validTeacherIds).monthlyPayroll();
             totalTeachers = totalTeachers.add(teacherMonthly);
             months.add(new MonthProjection(cursor.getYear(), cursor.getMonthValue(), teacherMonthly, staffMonthly,
                     teacherMonthly.add(staffMonthly)));
@@ -112,13 +123,24 @@ class SchoolPayrollStatsProviderAdapter implements SchoolPayrollStatsProvider {
     @Override
     @Transactional(readOnly = true)
     public List<TeacherSalary> teacherSalaries(Long tenantId, int year, int month, int monthsCount) {
-        Map<Long, String> nameById = teacherPublicInfoProvider.listTeachers(tenantId).stream()
-                .collect(Collectors.toMap(
-                        t -> t.id(),
-                        t -> ((t.firstName() != null ? t.firstName() : "") + " " + (t.lastName() != null ? t.lastName() : "")).trim()));
-        return payrollService.teacherSalaryBreakdown(tenantId, year, month, monthsCount).stream()
-                .map(b -> new TeacherSalary(b.teacherId(), nameById.getOrDefault(b.teacherId(), "#" + b.teacherId()),
-                        b.monthlyPay(), b.annualProjection()))
+        // Toujours construit à partir du référentiel enseignant ACTUEL (jamais seulement des fiches
+        // de compensation configurées en paie) — §retour utilisateur (Vision Fondateur en production) :
+        // une carte "#35" apparaissait pour un enseignant supprimé (sa fiche TeacherCompensation reste
+        // orpheline en base, jamais nettoyée à la suppression), et un enseignant tout juste créé
+        // n'apparaissait pas du tout tant que sa compensation n'était pas configurée. Un enseignant
+        // sans compensation configurée apparaît désormais avec un salaire à 0, jamais absent ; un
+        // enseignant supprimé n'apparaît plus jamais, même avec une fiche de compensation orpheline.
+        Map<Long, PayrollService.TeacherSalaryBreakdown> breakdownByTeacherId = payrollService
+                .teacherSalaryBreakdown(tenantId, year, month, monthsCount).stream()
+                .collect(Collectors.toMap(PayrollService.TeacherSalaryBreakdown::teacherId, b -> b, (a, b) -> a));
+        return teacherPublicInfoProvider.listTeachers(tenantId).stream()
+                .map(t -> {
+                    String name = ((t.firstName() != null ? t.firstName() : "") + " " + (t.lastName() != null ? t.lastName() : "")).trim();
+                    PayrollService.TeacherSalaryBreakdown b = breakdownByTeacherId.get(t.id());
+                    return new TeacherSalary(t.id(), name,
+                            b != null ? b.monthlyPay() : BigDecimal.ZERO,
+                            b != null ? b.annualProjection() : BigDecimal.ZERO);
+                })
                 .toList();
     }
 }

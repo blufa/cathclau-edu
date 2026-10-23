@@ -18,14 +18,14 @@ class TeacherPublicInfoProviderAdapter implements TeacherPublicInfoProvider {
     public Optional<TeacherInfo> findTeacher(Long teacherId) {
         return teacherRepository.findById(teacherId).map(t -> new TeacherInfo(
                 t.getId(), t.getFirstName(), t.getLastName(), t.getStaffNumber(),
-                t.getSpecialization(), t.getEmail(), t.getPhone()));
+                t.getSpecialization(), t.getEmail(), t.getPhone(), t.getPhoto()));
     }
 
     @Override
     public List<TeacherInfo> listTeachers(Long tenantId) {
         return teacherRepository.findByTenantId(tenantId).stream()
                 .map(t -> new TeacherInfo(t.getId(), t.getFirstName(), t.getLastName(), t.getStaffNumber(),
-                        t.getSpecialization(), t.getEmail(), t.getPhone()))
+                        t.getSpecialization(), t.getEmail(), t.getPhone(), t.getPhoto()))
                 .toList();
     }
 

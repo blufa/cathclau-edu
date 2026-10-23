@@ -48,6 +48,7 @@ class PayrollAbsenceDeductionTest {
     @Mock gn.lacaeducation.academics.AcademicsDataProvider academics;
     @Mock gn.lacaeducation.calendar.CalendarDataProvider calendar;
     @Mock org.springframework.context.ApplicationEventPublisher eventPublisher;
+    @Mock gn.lacaeducation.iam.UserPublicInfoProvider userPublicInfoProvider;
 
     PayrollService service;
     List<PayslipLine> savedLines;
@@ -56,7 +57,7 @@ class PayrollAbsenceDeductionTest {
     void setUp() {
         service = new PayrollService(payslipRepo, lineRepo, structureRepo, ruleRepo, pdfGenerator,
                 compRepo, vacationPayRepo, teachingProvider, workProvider, salaryFeeDeductionUseCase,
-                salaryAdvanceUseCase, academics, calendar, eventPublisher);
+                salaryAdvanceUseCase, academics, calendar, eventPublisher, userPublicInfoProvider);
         savedLines = new ArrayList<>();
         when(salaryAdvanceUseCase.applyDeduction(any(), any(), any(), any()))
                 .thenReturn(new SalaryAdvanceUseCase.AdvanceDeductionResult(BigDecimal.ZERO, null));

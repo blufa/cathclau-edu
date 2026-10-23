@@ -160,6 +160,54 @@ class ParentServiceTest {
     }
 
     @Test
+    void create_samePhoneSameTenant_reusesExistingParent_doesNotDuplicate() {
+        // Retour comptable direct : une coupure réseau pendant l'inscription d'un parent (à
+        // l'inscription d'un enfant) laisse croire à l'agent que la création a échoué alors qu'elle a
+        // réussi côté serveur — il ressaisit le même parent (même numéro), ce qui créait une 2e fiche.
+        Parent existing = Parent.builder().id(5L).tenantId(10L).firstName("Mamadou").lastName("Bah")
+                .phone("+224620000002").build();
+        when(parentRepository.findByTenantIdAndPhone(10L, "620000002")).thenReturn(Optional.empty());
+        when(parentRepository.findByTenantIdAndPhone(10L, "+224620000002")).thenReturn(Optional.of(existing));
+
+        CreateParentCommand cmd = new CreateParentCommand(10L, null, "Mamadou", "Bah", "620000002",
+                null, null, null, null, null, null);
+
+        Parent result = service.create(cmd);
+
+        assertThat(result.getId()).isEqualTo(5L);
+        verify(parentRepository, never()).save(any(Parent.class));
+    }
+
+    @Test
+    void create_newPhoneNotTaken_createsNewParent() {
+        when(parentRepository.findByTenantIdAndPhone(any(), any())).thenReturn(Optional.empty());
+        when(parentRepository.save(any())).thenAnswer(i -> {
+            Parent p = i.getArgument(0);
+            p.setId(20L);
+            return p;
+        });
+
+        CreateParentCommand cmd = new CreateParentCommand(10L, null, "Oumar", "Sylla", "620000099",
+                null, null, null, null, null, null);
+
+        Parent result = service.create(cmd);
+
+        assertThat(result.getId()).isEqualTo(20L);
+        verify(parentRepository, times(1)).save(any(Parent.class));
+    }
+
+    @Test
+    void delete_purgesStudentParentLinksBeforeDeletingTheParent() {
+        // §retour comptable : supprimer un parent (ex. doublon créé par une coupure réseau) ne doit
+        // jamais laisser de lien élève-parent orphelin (pas de contrainte FK en base sur
+        // student_parents) — purge d'abord les liens, jamais les fiches Student elles-mêmes.
+        service.delete(5L);
+
+        verify(studentParentRepository, times(1)).unlinkAllByParentId(5L);
+        verify(parentRepository, times(1)).deleteById(5L);
+    }
+
+    @Test
     void update_withUserId_linksAccountWithoutClearingOnNull() {
         Parent existing = Parent.builder().id(1L).firstName("Awa").lastName("Diallo").userId(null).build();
         when(parentRepository.findById(1L)).thenReturn(Optional.of(existing));

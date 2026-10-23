@@ -33,6 +33,7 @@ class GradeServiceTest {
     @Mock gn.lacaeducation.grading.application.port.out.GradeHistoryRepository historyRepository;
     @Mock gn.lacaeducation.students.StudentDataProvider studentDataProvider;
     @Mock ApplicationEventPublisher eventPublisher;
+    @Mock GradeCalculationService calculationService;
     @InjectMocks GradeService service;
 
     private Assessment assessment() {
@@ -182,5 +183,54 @@ class GradeServiceTest {
         org.assertj.core.api.Assertions.assertThat(blank.value()).isNull();
         org.assertj.core.api.Assertions.assertThat(blank.gradeId()).isNull();
         org.assertj.core.api.Assertions.assertThat(blank.studentNumber()).isEqualTo("MAT-2");
+    }
+
+    @Test
+    void subjectGradeReport_splitsEvaluationsFromCompositions_neverMixed() {
+        Assessment quiz = Assessment.builder().id(1L).tenantId(10L).classId(55L).subjectId(3L).periodId(2L)
+                .type(gn.lacaeducation.grading.domain.AssessmentType.QUIZ).label("Évaluation Écrite")
+                .date(java.time.LocalDate.of(2026, 10, 5)).maxScore(BigDecimal.valueOf(20)).build();
+        Assessment homework = Assessment.builder().id(2L).tenantId(10L).classId(55L).subjectId(3L).periodId(2L)
+                .type(gn.lacaeducation.grading.domain.AssessmentType.HOMEWORK).label("Évaluation Orale")
+                .date(java.time.LocalDate.of(2026, 10, 12)).maxScore(BigDecimal.valueOf(20)).build();
+        Assessment exam = Assessment.builder().id(3L).tenantId(10L).classId(55L).subjectId(3L).periodId(2L)
+                .type(gn.lacaeducation.grading.domain.AssessmentType.EXAM).label("Composition Octobre")
+                .date(java.time.LocalDate.of(2026, 10, 20)).maxScore(BigDecimal.valueOf(20)).build();
+        // Une évaluation d'une AUTRE matière, même classe/période — jamais incluse dans ce relevé.
+        Assessment otherSubject = Assessment.builder().id(4L).tenantId(10L).classId(55L).subjectId(99L).periodId(2L)
+                .type(gn.lacaeducation.grading.domain.AssessmentType.QUIZ).label("Autre matière").build();
+
+        when(assessmentRepository.findByClassIdAndPeriodId(55L, 2L))
+                .thenReturn(java.util.List.of(quiz, homework, exam, otherSubject));
+        when(repo.findByAssessmentId(1L)).thenReturn(java.util.List.of(
+                Grade.builder().id(10L).assessmentId(1L).studentId(10L).value(BigDecimal.valueOf(14)).build()));
+        when(repo.findByAssessmentId(2L)).thenReturn(java.util.List.of(
+                Grade.builder().id(11L).assessmentId(2L).studentId(10L).value(BigDecimal.valueOf(15)).build()));
+        when(repo.findByAssessmentId(3L)).thenReturn(java.util.List.of(
+                Grade.builder().id(12L).assessmentId(3L).studentId(10L).value(BigDecimal.valueOf(16)).build()));
+        when(studentDataProvider.findStudentsByClass(55L)).thenReturn(java.util.List.of(
+                new gn.lacaeducation.students.StudentPublicInfo(10L, 10L, "Awa", "Bah", null, null, "MAT-1", null, null, null, null)));
+        when(calculationService.subjectCoefficient(55L, 3L)).thenReturn(BigDecimal.valueOf(2));
+        when(calculationService.subjectAverageDetail(any(), any())).thenReturn(
+                new gn.lacaeducation.grading.domain.SubjectSemesterAverage.Result(
+                        new BigDecimal("30.50"), new BigDecimal("29.00"), new BigDecimal("32.00"), new java.util.TreeMap<>()));
+
+        gn.lacaeducation.grading.application.port.in.GradeUseCase.SubjectGradeReport report =
+                service.subjectGradeReport(55L, 3L, 2L);
+
+        org.assertj.core.api.Assertions.assertThat(report.subjectCoefficient()).isEqualByComparingTo("2");
+        org.assertj.core.api.Assertions.assertThat(report.evaluations().assessments())
+                .extracting(gn.lacaeducation.grading.application.port.in.GradeUseCase.ReleveAssessment::label)
+                .containsExactly("Évaluation Écrite", "Évaluation Orale");
+        org.assertj.core.api.Assertions.assertThat(report.compositions().assessments())
+                .extracting(gn.lacaeducation.grading.application.port.in.GradeUseCase.ReleveAssessment::label)
+                .containsExactly("Composition Octobre");
+        // Chaque section a sa propre moyenne (M. Cours / M. Composition), jamais la moyenne combinée
+        // des deux — et la composition n'apparaît jamais dans les notes de la section Évaluations.
+        org.assertj.core.api.Assertions.assertThat(report.evaluations().rows()).hasSize(1);
+        org.assertj.core.api.Assertions.assertThat(report.evaluations().rows().get(0).notes()).containsOnlyKeys(1L, 2L);
+        org.assertj.core.api.Assertions.assertThat(report.evaluations().rows().get(0).average()).isEqualByComparingTo("29.00");
+        org.assertj.core.api.Assertions.assertThat(report.compositions().rows().get(0).notes()).containsOnlyKeys(3L);
+        org.assertj.core.api.Assertions.assertThat(report.compositions().rows().get(0).average()).isEqualByComparingTo("32.00");
     }
 }

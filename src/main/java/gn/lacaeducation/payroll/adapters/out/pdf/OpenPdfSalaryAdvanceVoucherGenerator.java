@@ -33,7 +33,7 @@ class OpenPdfSalaryAdvanceVoucherGenerator implements SalaryAdvanceVoucherPdfGen
     private final TenantInfoProvider tenantInfoProvider;
 
     @Override
-    public byte[] generate(SalaryAdvance a) {
+    public byte[] generate(SalaryAdvance a, String accountantName) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         Document doc = new Document(PageSize.A5, 28, 28, 24, 36);
         try {
@@ -61,7 +61,8 @@ class OpenPdfSalaryAdvanceVoucherGenerator implements SalaryAdvanceVoucherPdfGen
             row(balance, "Solde restant à déduire", money(a.getRemainingBalance()) + " GNF");
             doc.add(balance);
 
-            signatureBox(doc, "Signature et Cachet de l'Établissement");
+            twoSignatureBoxes(doc, "Signature du bénéficiaire", a.getTeacherName(),
+                    "Signature et Cachet de l'Établissement", accountantName);
 
             doc.close();
             return out.toByteArray();

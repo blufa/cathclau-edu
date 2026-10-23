@@ -41,6 +41,7 @@ class EmployeePublicInfoProviderAdapter implements EmployeePublicInfoProvider {
     private EmployeeInfo toInfo(gn.lacaeducation.staff.domain.Employee e) {
         return new EmployeeInfo(e.getId(), e.fullName(),
                 e.getCategory() != null ? e.getCategory().name() : null,
-                e.getBaseSalary(), Boolean.TRUE.equals(e.getActive()), e.getPhone(), e.getEmail());
+                e.getBaseSalary(), Boolean.TRUE.equals(e.getActive()), e.getPhone(), e.getEmail(),
+                e.getJobTitle(), e.getPhoto());
     }
 }

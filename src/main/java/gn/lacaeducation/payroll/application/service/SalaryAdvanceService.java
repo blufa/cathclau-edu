@@ -12,8 +12,10 @@ import gn.lacaeducation.payroll.domain.PayMode;
 import gn.lacaeducation.payroll.domain.Payslip;
 import gn.lacaeducation.payroll.domain.SalaryAdvance;
 import gn.lacaeducation.payroll.domain.SalaryAdvanceStatus;
+import gn.lacaeducation.iam.UserPublicInfoProvider;
 import gn.lacaeducation.staff.EmployeePublicInfoProvider;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +29,7 @@ import java.util.List;
  * automatique par retenue sur les fiches de paie suivantes jusqu'à épuisement du solde — voir
  * {@link #applyDeduction}, appelée depuis {@code PayrollService.generate}.
  */
+@Slf4j
 @Service
 @Transactional
 @RequiredArgsConstructor
@@ -37,6 +40,7 @@ public class SalaryAdvanceService implements SalaryAdvanceUseCase {
     private final TeacherCompensationRepository compRepo;
     private final EmployeePublicInfoProvider employeeProvider;
     private final SalaryAdvanceVoucherPdfGenerator pdfGenerator;
+    private final UserPublicInfoProvider userPublicInfoProvider;
 
     @Override
     public SalaryAdvance grant(GrantCommand c) {
@@ -69,7 +73,8 @@ public class SalaryAdvanceService implements SalaryAdvanceUseCase {
         return repo.save(SalaryAdvance.builder()
                 .tenantId(c.tenantId()).employeeType(type).teacherId(c.teacherId()).teacherName(c.teacherName())
                 .amount(c.amount()).remainingBalance(c.amount()).reason(c.reason())
-                .status(SalaryAdvanceStatus.ACTIVE).grantedAt(LocalDateTime.now()).build());
+                .status(SalaryAdvanceStatus.ACTIVE).grantedAt(LocalDateTime.now())
+                .grantedByUserId(c.grantedByUserId()).build());
     }
 
     /** Salaire de référence pour le plafond : net de la dernière fiche de paie générée pour ce salarié
@@ -124,7 +129,23 @@ public class SalaryAdvanceService implements SalaryAdvanceUseCase {
     @Override
     @Transactional(readOnly = true)
     public byte[] voucherPdf(Long id) {
-        return pdfGenerator.generate(load(id));
+        SalaryAdvance a = load(id);
+        return pdfGenerator.generate(a, resolveAccountantName(a.getGrantedByUserId()));
+    }
+
+    /** Nom de l'agent ayant accordé l'avance, pour la signature du bon PDF — ne bloque jamais la
+     * génération si non résolu (même logique défensive que {@code ReceiptService#resolveCollectedByName}). */
+    private String resolveAccountantName(Long userId) {
+        if (userId == null) return null;
+        try {
+            return userPublicInfoProvider.findUser(userId)
+                    .map(u -> (u.firstName() + " " + u.lastName()).trim())
+                    .filter(n -> !n.isBlank())
+                    .orElse(null);
+        } catch (RuntimeException e) {
+            log.warn("Nom du comptable non résolu pour le bon d'avance (utilisateur {}) : {}", userId, e.getMessage());
+            return null;
+        }
     }
 
     @Override

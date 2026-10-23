@@ -9,7 +9,10 @@ import java.util.List;
 public interface SalaryAdvanceUseCase {
 
     record GrantCommand(Long tenantId, EmployeeType employeeType, Long teacherId, String teacherName,
-                        BigDecimal amount, String reason) {}
+                        BigDecimal amount, String reason,
+                        /** Compte de l'agent qui accorde l'avance (§payroll) — imprimé sur le bon PDF,
+                         * sous le bloc signature. */
+                        Long grantedByUserId) {}
 
     /** Résultat de la déduction automatique appliquée à la génération d'une fiche de paie —
      * {@code amount} = 0 et {@code label} = null si le salarié n'a aucune avance active. */

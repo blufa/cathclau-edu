@@ -24,6 +24,10 @@ class StudentCheckinPersistenceAdapter implements StudentCheckinRepository {
         return jpa.lockByStudentIdAndCheckinDateAndScheduleSlotId(s, d, slot).map(this::toDomain);
     }
 
+    @Override public Optional<StudentCheckin> lockOpenByStudentIdAndDate(Long s, LocalDate d) {
+        return jpa.lockOpenByStudentIdAndCheckinDate(s, d).stream().findFirst().map(this::toDomain);
+    }
+
     @Override public List<StudentCheckin> findByStudentIdAndDate(Long s, LocalDate d) {
         return jpa.findByStudentIdAndCheckinDate(s, d).stream().map(this::toDomain).toList();
     }

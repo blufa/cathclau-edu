@@ -398,6 +398,15 @@ public class GradeCalculationService {
      * l'élève n'a aucune note exploitable. Exposée pour le relevé de notes par matière.
      */
     public BigDecimal subjectAverage(List<Assessment> subjectAssessments, List<Grade> studentGrades) {
+        SubjectSemesterAverage.Result r = subjectAverageDetail(subjectAssessments, studentGrades);
+        return r == null ? null : r.finalValue();
+    }
+
+    /** Même formule que {@link #subjectAverage}, mais expose le détail cours/composition
+     * ({@code coursValue}/{@code compoValue}) en plus de la moyenne finale combinée — pour le relevé de
+     * notes, qui affiche désormais les Évaluations et les Compositions dans deux tableaux séparés
+     * (jamais mélangés, §retour utilisateur), chacun avec sa propre moyenne. */
+    public SubjectSemesterAverage.Result subjectAverageDetail(List<Assessment> subjectAssessments, List<Grade> studentGrades) {
         if (subjectAssessments == null || subjectAssessments.isEmpty()
                 || studentGrades == null || studentGrades.isEmpty()) {
             return null;
@@ -406,13 +415,19 @@ public class GradeCalculationService {
                 .map(Assessment::getClassId).filter(java.util.Objects::nonNull).findFirst().orElse(null);
         Long subjectId = subjectAssessments.stream()
                 .map(Assessment::getSubjectId).filter(java.util.Objects::nonNull).findFirst().orElse(null);
-        BigDecimal subjectCoeff = classId == null || subjectId == null ? BigDecimal.ONE
-                : classSubjectQueryPort.findByClassId(classId).stream()
-                        .filter(i -> subjectId.equals(i.subjectId()))
-                        .map(ClassSubjectInfo::coefficient)
-                        .findFirst().orElse(BigDecimal.ONE);
-        return SubjectSemesterAverage.compute(resolveCycleGroup(classId), subjectCoeff, subjectAssessments, studentGrades)
-                .finalValue();
+        BigDecimal subjectCoeff = subjectCoefficient(classId, subjectId);
+        return SubjectSemesterAverage.compute(resolveCycleGroup(classId), subjectCoeff, subjectAssessments, studentGrades);
+    }
+
+    /** Coefficient configuré de la matière pour la classe (Classes → Matières), {@code
+     * BigDecimal.ONE} si inconnu — jamais le coefficient par évaluation ({@code Assessment.coefficient},
+     * déprécié pour ce calcul, voir Javadoc de {@link SubjectSemesterAverage}). */
+    public BigDecimal subjectCoefficient(Long classId, Long subjectId) {
+        if (classId == null || subjectId == null) return BigDecimal.ONE;
+        return classSubjectQueryPort.findByClassId(classId).stream()
+                .filter(i -> subjectId.equals(i.subjectId()))
+                .map(ClassSubjectInfo::coefficient)
+                .findFirst().orElse(BigDecimal.ONE);
     }
 
     /** Détail mensuel "cours" par matière d'un élève (bulletin §colonnes par mois) — recalculé à la

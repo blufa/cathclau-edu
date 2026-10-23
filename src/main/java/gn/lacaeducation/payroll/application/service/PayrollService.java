@@ -42,8 +42,11 @@ import java.util.Set;
  * Paie (inspiré OpenEduCat Payroll) : règles de paie, structures salariales, génération de fiches
  * (individuelle ou en lot) avec calcul base → brut → net, puis workflow DRAFT → VALIDATED → PAID.
  * Le salaire de base provient de la rémunération de la fiche enseignant (transmis par l'appelant) ;
- * aucune dépendance directe au module staff.
+ * aucune dépendance directe au module staff (le module iam, lui, est utilisé — voir
+ * {@link #resolveAccountantName} — pour résoudre le nom du comptable ayant payé une fiche, une
+ * préoccupation différente de « connaître le personnel enseignant/administratif »).
  */
+@lombok.extern.slf4j.Slf4j
 @Service
 @Transactional
 @RequiredArgsConstructor
@@ -63,6 +66,7 @@ public class PayrollService {
     private final AcademicsDataProvider academics;
     private final CalendarDataProvider calendar;
     private final ApplicationEventPublisher eventPublisher;
+    private final gn.lacaeducation.iam.UserPublicInfoProvider userPublicInfoProvider;
 
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
 
@@ -368,7 +372,20 @@ public class PayrollService {
 
     @Transactional(readOnly = true)
     public TeacherPayrollMass teacherPayrollMass(Long tenantId, int year, int month) {
-        List<TeacherCompensation> comps = compRepo.findByTenantId(tenantId);
+        return teacherPayrollMass(tenantId, year, month, null);
+    }
+
+    /** @param validTeacherIds si non nul, ignore les fiches de compensation dont l'enseignant n'y
+     * figure plus — une fiche {@code TeacherCompensation} reste orpheline en base après la suppression
+     * de l'enseignant (jamais nettoyée automatiquement), ce qui gonflait la masse salariale théorique
+     * d'un enseignant supprimé indéfiniment (§retour utilisateur, Vision Fondateur en production, cas
+     * observé avec un enseignant du primaire à salaire fixe). {@code null} = pas de filtre
+     * (comportement historique, ex. tests qui n'ont pas de référentiel enseignant à fournir). */
+    @Transactional(readOnly = true)
+    public TeacherPayrollMass teacherPayrollMass(Long tenantId, int year, int month, java.util.Set<Long> validTeacherIds) {
+        List<TeacherCompensation> comps = compRepo.findByTenantId(tenantId).stream()
+                .filter(c -> validTeacherIds == null || validTeacherIds.contains(c.getTeacherId()))
+                .toList();
         BigDecimal totalNormal = BigDecimal.ZERO;
         BigDecimal totalExam = BigDecimal.ZERO;
         BigDecimal monthly = BigDecimal.ZERO;
@@ -381,7 +398,12 @@ public class PayrollService {
                 monthly = monthly.add(computeTheoreticalMonthlyPay(c.getTeacherId(), year, month).grossPay());
             }
         }
-        return new TeacherPayrollMass(totalNormal, totalExam, monthly, comps.size());
+        // Avec un filtre fourni, le compte reflète le référentiel enseignant réel (pas seulement ceux
+        // ayant une compensation configurée) : un enseignant tout juste créé, sans salaire renseigné,
+        // doit compter — §retour utilisateur, "peu importe primaire/secondaire, salaire configuré ou
+        // non, il doit être affiché sur la vision fondateur".
+        int teacherCount = validTeacherIds != null ? validTeacherIds.size() : comps.size();
+        return new TeacherPayrollMass(totalNormal, totalExam, monthly, teacherCount);
     }
 
     /** Masse salariale RÉELLE des enseignants d'un tenant (Vision Fondateur) : contrairement à
@@ -396,7 +418,16 @@ public class PayrollService {
 
     @Transactional(readOnly = true)
     public RealTeacherPayrollMass realTeacherPayrollMass(Long tenantId, int year, int month) {
-        List<TeacherCompensation> comps = compRepo.findByTenantId(tenantId);
+        return realTeacherPayrollMass(tenantId, year, month, null);
+    }
+
+    /** @param validTeacherIds voir {@link #teacherPayrollMass(Long, int, int, java.util.Set)} — même
+     * filtrage anti-orphelin, {@code null} = pas de filtre. */
+    @Transactional(readOnly = true)
+    public RealTeacherPayrollMass realTeacherPayrollMass(Long tenantId, int year, int month, java.util.Set<Long> validTeacherIds) {
+        List<TeacherCompensation> comps = compRepo.findByTenantId(tenantId).stream()
+                .filter(c -> validTeacherIds == null || validTeacherIds.contains(c.getTeacherId()))
+                .toList();
         BigDecimal monthly = BigDecimal.ZERO;
         int totalLate = 0, totalEarly = 0, totalRealized = 0;
         for (TeacherCompensation c : comps) {
@@ -411,7 +442,8 @@ public class PayrollService {
                     ? (c.getFixedSalary() != null ? c.getFixedSalary() : BigDecimal.ZERO)
                     : mp.grossPay());
         }
-        return new RealTeacherPayrollMass(monthly, totalLate, totalEarly, totalRealized, comps.size());
+        int teacherCount = validTeacherIds != null ? validTeacherIds.size() : comps.size();
+        return new RealTeacherPayrollMass(monthly, totalLate, totalEarly, totalRealized, teacherCount);
     }
 
     /** Salaire (mensuel courant + estimation cumulée sur monthsCount mois) de chaque enseignant du
@@ -813,7 +845,7 @@ public class PayrollService {
         return payslipRepo.save(p);
     }
 
-    public Payslip markPaid(Long id, String paymentMethod) {
+    public Payslip markPaid(Long id, String paymentMethod, Long paidByUserId) {
         Payslip p = loadPayslip(id);
         if (p.getStatus() == PayslipStatus.DRAFT) throw new BusinessRuleException("Validez la fiche avant de la payer");
         // Empêche un double-clic/rejeu de repayer une fiche déjà payée — sans ce garde-fou, la retenue
@@ -822,6 +854,10 @@ public class PayrollService {
         p.setStatus(PayslipStatus.PAID);
         p.setPaymentMethod(paymentMethod != null ? paymentMethod : "BANK_TRANSFER");
         p.setPaidAt(LocalDateTime.now());
+        // Comptable ayant traité le paiement — imprimé sous la signature "Signature et Cachet de
+        // l'Établissement" du PDF (demande utilisateur), résolu en nom à l'impression (voir pdfBytes),
+        // jamais stocké en dur ici.
+        p.setPaidByUserId(paidByUserId);
         Payslip saved = payslipRepo.save(p);
         // Répercute la retenue de scolarité (si applicable) sur les factures de mensualité des enfants
         // du salarié, maintenant que la fiche est réellement payée (§payroll ↔ billing) — sans ça,
@@ -860,9 +896,26 @@ public class PayrollService {
     @Transactional(readOnly = true)
     public List<PayslipLine> lines(Long payslipId) { return lineRepo.findByPayslipId(payslipId); }
 
-    /** Octets du PDF (A5 stylé) de la fiche de paie, avec les heures dues/réalisées du mois pour un enseignant. */
+    /** Octets du PDF (A4 stylé, couleur d'école personnalisable) de la fiche de paie, avec les heures
+     * dues/réalisées du mois pour un enseignant. {@code role}/{@code photoUrl} : résolus par l'appelant
+     * (voir {@link gn.lacaeducation.payroll.application.port.out.PayslipPdfGenerator.Presentation}) —
+     * cette méthode reste décorrélée du module staff, mais résout elle-même le nom du comptable ayant
+     * payé la fiche (module iam, jamais staff). */
     @Transactional(readOnly = true)
-    public byte[] pdfBytes(Long id) {
+    public byte[] pdfBytes(Long id) { return pdfBytes(id, null, null); }
+
+    @Transactional(readOnly = true)
+    public byte[] pdfBytes(Long id, String beneficiaryRole, String beneficiaryPhotoUrl) {
+        return pdfBytes(id, beneficiaryRole, beneficiaryPhotoUrl, null);
+    }
+
+    /** @param generatedByUserId comptable en train de télécharger la fiche MAINTENANT (JWT de
+     * l'appelant, {@code PayslipController#pdfDownload}) — nom de secours pour la signature quand la
+     * fiche n'est pas encore payée ({@code paidByUserId} reste prioritaire : il désigne précisément qui
+     * a traité le paiement, plus fiable qu'un simple téléchargement). {@code null} pour le self-service
+     * enseignant ({@code minePdfDownload}), qui ne doit jamais apparaître comme comptable. */
+    @Transactional(readOnly = true)
+    public byte[] pdfBytes(Long id, String beneficiaryRole, String beneficiaryPhotoUrl, Long generatedByUserId) {
         Payslip p = loadPayslip(id);
         gn.lacaeducation.payroll.application.port.out.PayslipPdfGenerator.TeacherHours hours = null;
         boolean isTeacher = p.getEmployeeType() == null || p.getEmployeeType() == gn.lacaeducation.payroll.domain.EmployeeType.TEACHER;
@@ -876,7 +929,25 @@ public class PayrollService {
                     due, mp.realizedMinutes(), Math.max(0, due - mp.realizedMinutes()), mp.lateMinutes(), mp.earlyMinutes(),
                     mp.effectiveMinutes());
         }
-        return pdfGenerator.generate(p, lineRepo.findByPayslipId(id), hours);
+        Long accountantUserId = p.getPaidByUserId() != null ? p.getPaidByUserId() : generatedByUserId;
+        var presentation = new gn.lacaeducation.payroll.application.port.out.PayslipPdfGenerator.Presentation(
+                beneficiaryRole, beneficiaryPhotoUrl, resolveAccountantName(accountantUserId));
+        return pdfGenerator.generate(p, lineRepo.findByPayslipId(id), hours, presentation);
+    }
+
+    /** Nom du comptable ayant marqué la fiche payée, pour la signature du PDF — ne bloque jamais la
+     * génération si non résolu (même logique défensive que {@code ReceiptService#resolveCollectedByName}). */
+    private String resolveAccountantName(Long userId) {
+        if (userId == null) return null;
+        try {
+            return userPublicInfoProvider.findUser(userId)
+                    .map(u -> (u.firstName() + " " + u.lastName()).trim())
+                    .filter(n -> !n.isBlank())
+                    .orElse(null);
+        } catch (RuntimeException e) {
+            log.warn("Nom du comptable non résolu pour la fiche de paie (utilisateur {}) : {}", userId, e.getMessage());
+            return null;
+        }
     }
 
     private Payslip mutable(Long id) {

@@ -13,6 +13,9 @@ public interface TeacherCheckinRepository {
      * elle existe) — même usage que {@code StudentCheckinRepository#lockByStudentIdAndDateAndSlot}
      * (§15/§16) : sérialise deux scans de sortie quasi simultanés du même badge. */
     Optional<TeacherCheckin> lockByTeacherIdAndDateAndSlot(Long teacherId, LocalDate date, Long scheduleSlotId);
+    /** Verrou pessimiste sur le pointage OUVERT (sans sortie) du jour, toutes séances confondues — un
+     * seul cycle entrée/sortie par jour pour le flux de SCAN (§retour fondateur). */
+    Optional<TeacherCheckin> lockOpenByTeacherIdAndDate(Long teacherId, LocalDate date);
     List<TeacherCheckin> findByTeacherIdAndDate(Long teacherId, LocalDate date);
     List<TeacherCheckin> findByTeacherIdAndDateBetween(Long teacherId, LocalDate from, LocalDate to);
 }

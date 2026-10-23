@@ -1,12 +1,17 @@
 package gn.lacaeducation.grading.application.service;
 import gn.lacaeducation.academics.AcademicsDataProvider;
+import gn.lacaeducation.grading.application.port.in.AssessmentUseCase;
 import gn.lacaeducation.grading.application.port.in.ExamUseCase;
+import gn.lacaeducation.grading.application.port.out.AssessmentRepository;
+import gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort;
 import gn.lacaeducation.grading.application.port.out.DocumentStoragePort;
 import gn.lacaeducation.grading.application.port.out.ExamConvocationPdfGenerator;
 import gn.lacaeducation.grading.application.port.out.ExamConvocationPdfGenerator.ExamConvocationContext;
 import gn.lacaeducation.grading.application.port.out.ExamRepository;
 import gn.lacaeducation.grading.application.port.out.ExamSupervisionRepository;
 import gn.lacaeducation.common.BusinessRuleException;
+import gn.lacaeducation.grading.domain.Assessment;
+import gn.lacaeducation.grading.domain.AssessmentType;
 import gn.lacaeducation.grading.domain.Exam;
 import gn.lacaeducation.grading.domain.ExamStatus;
 import gn.lacaeducation.grading.domain.ExamSupervision;
@@ -14,7 +19,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 @Service @Transactional @RequiredArgsConstructor
 public class ExamService implements ExamUseCase {
@@ -23,6 +30,9 @@ public class ExamService implements ExamUseCase {
     private final ExamConvocationPdfGenerator pdfGenerator;
     private final DocumentStoragePort documentStorage;
     private final AcademicsDataProvider academicsProvider;
+    private final AssessmentRepository assessmentRepository;
+    private final ClassSubjectQueryPort classSubjectQueryPort;
+    private final AssessmentUseCase assessmentUseCase;
     @Override public Exam create(CreateExamCommand c) {
         return repo.save(Exam.builder().tenantId(c.tenantId()).classId(c.classId()).periodId(c.periodId())
                 .type(c.type()).label(c.label()).scheduledDate(c.scheduledDate()).status(ExamStatus.PLANNED).build());
@@ -71,6 +81,39 @@ public class ExamService implements ExamUseCase {
     public List<ExamSupervision> supervisions(Long examId) { return supervisionRepo.findByExamId(examId); }
 
     @Override public void removeSupervision(Long supervisionId) { supervisionRepo.deleteById(supervisionId); }
+
+    // ── Saisie des notes par matière (§retour utilisateur) ────────────────────────
+    @Override
+    @Transactional(readOnly = true)
+    public List<Assessment> assessmentsByExam(Long examId) {
+        return assessmentRepository.findByExamId(examId);
+    }
+
+    @Override
+    public Assessment gradeEntryAssessment(Long examId, Long subjectId) {
+        Exam exam = load(examId);
+        Optional<Assessment> existing = assessmentRepository.findByExamId(examId).stream()
+                .filter(a -> subjectId.equals(a.getSubjectId()))
+                .findFirst();
+        if (existing.isPresent()) return existing.get();
+
+        if (exam.getScheduledDate() == null) {
+            throw new BusinessRuleException("Renseignez une date pour cette composition avant de saisir les notes");
+        }
+        // Coefficient/barème neutres (jamais utilisés par SubjectSemesterAverage pour une composition,
+        // qui applique le coefficient de la MATIÈRE — voir sa Javadoc) : juste des valeurs valides pour
+        // les colonnes NOT NULL d'assessments.
+        Long teacherId = classSubjectQueryPort.findByClassId(exam.getClassId()).stream()
+                .filter(i -> subjectId.equals(i.subjectId()))
+                .map(ClassSubjectQueryPort.ClassSubjectInfo::teacherId)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElseThrow(() -> new BusinessRuleException("Aucun enseignant affecté à cette matière pour cette classe"));
+        return assessmentUseCase.create(new AssessmentUseCase.CreateAssessmentCommand(
+                exam.getTenantId(), exam.getClassId(), subjectId, teacherId, exam.getPeriodId(),
+                AssessmentType.EXAM, null, exam.getLabel(), exam.getScheduledDate(),
+                BigDecimal.ONE, new BigDecimal("20"), examId));
+    }
 
     private Exam load(Long id) { return repo.findById(id).orElseThrow(() -> new gn.lacaeducation.common.ResourceNotFoundException("Exam", id)); }
 

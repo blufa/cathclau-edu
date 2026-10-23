@@ -17,6 +17,11 @@ public interface ParentRepository {
      *  sans compte ne doit pas créer une fiche Parent par enfant). */
     List<Parent> findAllByLinkedStaff(gn.lacaeducation.students.domain.StaffLinkType staffType, Long staffId);
     Optional<Parent> findByIdempotencyKey(String idempotencyKey);
+    /** Un seul format exact à la fois — l'appelant doit tester les variantes de format
+     * ({@link gn.lacaeducation.common.PhoneNumbers#candidates}) pour détecter un doublon quel que soit
+     * le format sous lequel le numéro a été saisi (voir la garde anti-duplication de
+     * {@code ParentService#create}). */
+    Optional<Parent> findByTenantIdAndPhone(Long tenantId, String phone);
     List<Parent> findByTenantId(Long tenantId);
     void deleteById(Long id);
     boolean existsById(Long id);

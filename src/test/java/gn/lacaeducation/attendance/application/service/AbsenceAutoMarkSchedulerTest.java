@@ -54,7 +54,7 @@ class AbsenceAutoMarkSchedulerTest {
         return new StudentPublicInfo(id, 1L, "Prenom", "Nom", null, null, "M-" + id, null, null, "F", null);
     }
     private static TeacherInfo teacher(long id) {
-        return new TeacherInfo(id, "Prenom", "Nom", "E-" + id, null, null, null);
+        return new TeacherInfo(id, "Prenom", "Nom", "E-" + id, null, null, null, null);
     }
 
     @Test
