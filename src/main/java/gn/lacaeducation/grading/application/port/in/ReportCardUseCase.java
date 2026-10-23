@@ -16,8 +16,11 @@ public interface ReportCardUseCase {
     List<ReportCard> findByStudentId(Long studentId);
     List<ReportCardLine> findLines(Long reportCardId);
     Optional<String> getPdf(Long id);
-    /** Palmarès / tableau d'honneur d'une classe pour une période (PDF, élèves classés par rang). */
-    byte[] classHonorRollPdf(Long classId, Long periodId);
+    /** Palmarès / tableau d'honneur de l'établissement pour une période (PDF) : les meilleurs élèves
+     * TOUTES CLASSES CONFONDUES, classés par moyenne générale décroissante — pas un classement par
+     * classe (§retour fondateur : "ce n'est pas pour une classe, c'est pour les meilleurs élèves de
+     * l'école, parmi toutes les classes"). Portée = tenant courant (TenantContext). */
+    byte[] honorRollPdf(Long periodId);
     /** Centralisateur de classe (PDF) : une ligne par élève, colonnes Cours/Composition par matière. */
     byte[] classCentralizerPdf(Long classId, Long periodId);
     /** Génère et renvoie les octets du PDF du bulletin (pour affichage direct, sans Cloudinary). */

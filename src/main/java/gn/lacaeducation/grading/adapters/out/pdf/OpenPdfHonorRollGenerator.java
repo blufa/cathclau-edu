@@ -15,7 +15,7 @@ import gn.lacaeducation.common.TenantInfoProvider;
 import gn.lacaeducation.common.TenantPublicInfo;
 import gn.lacaeducation.common.pdf.RoundedCellBorder;
 import gn.lacaeducation.common.pdf.SchoolPdfHeader;
-import gn.lacaeducation.grading.application.port.out.ClassHonorRollPdfGenerator;
+import gn.lacaeducation.grading.application.port.out.HonorRollPdfGenerator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -27,13 +27,14 @@ import java.util.Locale;
 
 /**
  * Tableau d'honneur (§document-school, "Tableau d'honneur.dc.html") : affiche cérémoniale paysage vert
- * foncé, cadre doré, jusqu'à 5 lauréats (les mieux classés) en cartes blanches avec photo, médaille de
- * rang, moyenne et mention — reproduit fidèlement la maquette de référence. N'inclut PAS les pages
- * "Satisfecit" individuelles de la maquette (certificats par lauréat) — hors scope de cette passe.
+ * foncé, cadre doré, jusqu'à 5 lauréats (les mieux classés DE TOUTE L'ÉCOLE, toutes classes confondues)
+ * en cartes blanches avec photo, médaille de rang, moyenne, classe d'origine et mention — reproduit
+ * fidèlement la maquette de référence. N'inclut PAS les pages "Satisfecit" individuelles de la maquette
+ * (certificats par lauréat) — hors scope de cette passe.
  */
 @Component
 @RequiredArgsConstructor
-class OpenPdfClassHonorRollGenerator implements ClassHonorRollPdfGenerator {
+class OpenPdfHonorRollGenerator implements HonorRollPdfGenerator {
 
     private static final int MAX_LAUREATES = 5;
 
@@ -158,7 +159,7 @@ class OpenPdfClassHonorRollGenerator implements ClassHonorRollPdfGenerator {
         l1.setBorderWidthBottom(0.6f);
         l1.setFixedHeight(mm(5));
         rule.addCell(l1);
-        String sub = join(" · ", roll.className() != null ? roll.className().toUpperCase(Locale.FRENCH) : null,
+        String sub = join(" · ", "TOUTES CLASSES",
                 roll.schoolYear() != null ? "ANNÉE SCOLAIRE " + roll.schoolYear() : null);
         PdfPCell mid = new PdfPCell(new Phrase(sub, font(SANS_BOLD, FontFactory.HELVETICA_BOLD, 9, WHITE)));
         mid.setBorder(0);
@@ -179,7 +180,7 @@ class OpenPdfClassHonorRollGenerator implements ClassHonorRollPdfGenerator {
 
     private static void cards(Document doc, HonorRoll roll, List<Row> laureates) {
         if (laureates.isEmpty()) {
-            Paragraph empty = new Paragraph("Aucun bulletin généré pour cette classe et cette période.",
+            Paragraph empty = new Paragraph("Aucun bulletin généré pour cette période.",
                     font(SANS, FontFactory.HELVETICA_OBLIQUE, 10, GOLD_TEXT));
             empty.setAlignment(Element.ALIGN_CENTER);
             empty.setSpacingBefore(mm(10));
@@ -193,12 +194,12 @@ class OpenPdfClassHonorRollGenerator implements ClassHonorRollPdfGenerator {
         row.setHorizontalAlignment(Element.ALIGN_CENTER);
         row.setSpacingBefore(mm(2));
         for (Row l : laureates) {
-            row.addCell(card(l, roll.className()));
+            row.addCell(card(l));
         }
         doc.add(row);
     }
 
-    private static PdfPCell card(Row l, String className) {
+    private static PdfPCell card(Row l) {
         PdfPCell outer = new PdfPCell();
         outer.setBorder(0);
         outer.setPadding(1f);
@@ -274,7 +275,7 @@ class OpenPdfClassHonorRollGenerator implements ClassHonorRollPdfGenerator {
         Paragraph classLabel = new Paragraph("CLASSE", font(SANS_BOLD, FontFactory.HELVETICA_BOLD, 5.5f, LABEL_GREY));
         classLabel.setAlignment(Element.ALIGN_RIGHT);
         classCell.addElement(classLabel);
-        Paragraph classValue = new Paragraph(safe(className, "—"), font(SANS_BOLD, FontFactory.HELVETICA_BOLD, 7.5f, DARK_TEXT));
+        Paragraph classValue = new Paragraph(safe(l.className(), "—"), font(SANS_BOLD, FontFactory.HELVETICA_BOLD, 7.5f, DARK_TEXT));
         classValue.setAlignment(Element.ALIGN_RIGHT);
         classCell.addElement(classValue);
         statRow.addCell(classCell);

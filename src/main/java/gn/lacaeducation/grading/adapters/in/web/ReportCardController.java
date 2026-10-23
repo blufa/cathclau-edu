@@ -120,15 +120,15 @@ public class ReportCardController {
         return useCase.findByClass(classId, periodId);
     }
 
-    @Operation(summary = "Palmarès / tableau d'honneur d'une classe (PDF) : élèves classés par rang avec mention")
+    @Operation(summary = "Palmarès / tableau d'honneur de l'établissement (PDF) : meilleurs élèves toutes classes confondues, classés par moyenne générale")
     @PreAuthorize("hasAuthority('bulletin:read')")
-    @GetMapping("/class/{classId}/period/{periodId}/palmares/download")
-    public ResponseEntity<byte[]> honorRollDownload(@PathVariable Long classId, @PathVariable Long periodId) {
+    @GetMapping("/period/{periodId}/palmares/download")
+    public ResponseEntity<byte[]> honorRollDownload(@PathVariable Long periodId) {
         return ResponseEntity.ok()
                 .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
                 .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
-                        "inline; filename=\"palmares-classe-" + classId + "-periode-" + periodId + ".pdf\"")
-                .body(useCase.classHonorRollPdf(classId, periodId));
+                        "inline; filename=\"palmares-periode-" + periodId + ".pdf\"")
+                .body(useCase.honorRollPdf(periodId));
     }
 
     @Operation(summary = "Centralisateur de classe (PDF) : une ligne par élève, colonnes Cours/Composition par matière")

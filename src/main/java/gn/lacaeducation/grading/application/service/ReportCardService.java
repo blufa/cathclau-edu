@@ -35,7 +35,7 @@ public class ReportCardService implements ReportCardUseCase {
     private final StudentDataProvider studentProvider;
     private final AcademicsDataProvider academicsProvider;
     private final gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort classSubjectQueryPort;
-    private final gn.lacaeducation.grading.application.port.out.ClassHonorRollPdfGenerator honorRollGenerator;
+    private final gn.lacaeducation.grading.application.port.out.HonorRollPdfGenerator honorRollGenerator;
     private final gn.lacaeducation.grading.application.port.out.ClassCentralizerPdfGenerator centralizerGenerator;
 
     @Override
@@ -124,33 +124,33 @@ public class ReportCardService implements ReportCardUseCase {
 
     @Override
     @Transactional(readOnly = true)
-    public byte[] classHonorRollPdf(Long classId, Long periodId) {
-        List<ReportCard> cards = repo.findByClassIdAndPeriodId(classId, periodId);
-        // Classement : par rang (croissant, nuls en fin), puis moyenne décroissante.
-        var rows = cards.stream()
-                .sorted(java.util.Comparator
-                        .comparing((ReportCard rc) -> rc.getRank() == null ? Integer.MAX_VALUE : rc.getRank())
-                        .thenComparing(rc -> rc.getOverallAverage() == null ? java.math.BigDecimal.valueOf(-1) : rc.getOverallAverage(),
-                                java.util.Comparator.reverseOrder()))
-                .map(rc -> {
-                    StudentPublicInfo s = studentProvider.findStudent(rc.getStudentId()).orElse(null);
-                    return new gn.lacaeducation.grading.application.port.out.ClassHonorRollPdfGenerator.Row(
-                            rc.getRank(), studentName(rc.getStudentId()),
-                            s != null ? s.firstName() : null, s != null ? s.lastName() : null,
-                            rc.getOverallAverage(), rc.getHonor(), s != null ? s.photo() : null);
-                })
+    public byte[] honorRollPdf(Long periodId) {
+        Long tenantId = gn.lacaeducation.common.TenantContext.get();
+        // Toutes les classes de la période (pas une seule) : le palmarès classe les meilleurs élèves
+        // DE L'ÉTABLISSEMENT, pas d'une classe isolée (§retour fondateur). Le rang stocké sur chaque
+        // bulletin (ReportCard.rank) est un rang PAR CLASSE — inutilisable ici ; on reclasse tout le
+        // monde par moyenne générale décroissante pour obtenir une position école entière.
+        List<ReportCard> cards = repo.findByPeriodId(periodId).stream()
+                .filter(rc -> rc.getOverallAverage() != null)
+                .sorted(java.util.Comparator.comparing(ReportCard::getOverallAverage, java.util.Comparator.reverseOrder()))
                 .toList();
-        Long tenantId = cards.stream()
-                .map(rc -> studentProvider.findStudent(rc.getStudentId()).map(StudentPublicInfo::tenantId).orElse(null))
-                .filter(java.util.Objects::nonNull).findFirst().orElse(null);
-        String className = academicsProvider.findClass(classId)
-                .map(c -> c.levelLabel() != null && !c.levelLabel().isBlank() ? c.label() + " (" + c.levelLabel() + ")" : c.label())
-                .orElse(null);
+        var rows = new java.util.ArrayList<gn.lacaeducation.grading.application.port.out.HonorRollPdfGenerator.Row>();
+        int position = 0;
+        for (ReportCard rc : cards) {
+            position++;
+            StudentPublicInfo s = studentProvider.findStudent(rc.getStudentId()).orElse(null);
+            String className = academicsProvider.findClass(rc.getClassId())
+                    .map(c -> c.levelLabel() != null && !c.levelLabel().isBlank() ? c.label() + " (" + c.levelLabel() + ")" : c.label())
+                    .orElse(null);
+            rows.add(new gn.lacaeducation.grading.application.port.out.HonorRollPdfGenerator.Row(
+                    position, studentName(rc.getStudentId()),
+                    s != null ? s.firstName() : null, s != null ? s.lastName() : null,
+                    rc.getOverallAverage(), rc.getHonor(), s != null ? s.photo() : null, className));
+        }
         String periodLabel = academicsProvider.findPeriod(periodId).map(p -> p.label()).orElse(null);
         String schoolYear = tenantId == null ? null : academicsProvider.currentAcademicYearLabel(tenantId).orElse(null);
-        java.math.BigDecimal classAvg = cards.isEmpty() ? null : cards.get(0).getClassAverage();
-        return honorRollGenerator.generate(new gn.lacaeducation.grading.application.port.out.ClassHonorRollPdfGenerator.HonorRoll(
-                tenantId, className, periodLabel, schoolYear, classAvg, rows));
+        return honorRollGenerator.generate(new gn.lacaeducation.grading.application.port.out.HonorRollPdfGenerator.HonorRoll(
+                tenantId, periodLabel, schoolYear, rows));
     }
 
     @Override
