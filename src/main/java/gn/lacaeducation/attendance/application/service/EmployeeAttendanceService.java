@@ -59,27 +59,35 @@ public class EmployeeAttendanceService implements EmployeeAttendanceUseCase {
     public EmployeeAttendance recordEntry(Long employeeId) {
         LocalDate today = LocalDate.now();
         LocalTime now = LocalTime.now();
-        // Scan d'entrée répété avant toute sortie (§16, même règle que pour l'élève/l'enseignant — voir
-        // StudentAttendanceService#recordEntry pour le détail de la fenêtre de course réseau) : refus
-        // explicite plutôt que de recalculer/écraser silencieusement le premier pointage. Un seul
-        // pointage par jour ici (pas par séance comme l'enseignant) : "déjà scanné à l'entrée" se
-        // vérifie donc sur checkOutTime == null du pointage du jour, pas sur un créneau précis.
+        // Un seul scan d'ENTRÉE et un seul scan de SORTIE par jour, sans aucune fenêtre de temps côté
+        // utilisateur (§retour fondateur — voir StudentAttendanceService#recordEntry pour le détail).
+        // Un seul pointage par jour ici (pas par séance comme l'enseignant).
         Optional<EmployeeAttendance> existing = attendanceRepository.findByEmployeeIdAndDate(employeeId, today);
-        if (existing.isPresent() && existing.get().getCheckOutTime() == null && !createdWithinRaceWindow(existing.get())) {
+        if (existing.isPresent()) {
+            EmployeeAttendance last = existing.get();
+            if (createdWithinRaceWindow(last)) {
+                return last;
+            }
+            if (last.getCheckOutTime() == null) {
+                throw new BusinessRuleException(
+                        "Ce badge a déjà été scanné à l'entrée aujourd'hui. Scannez-le à la sortie avant un nouvel accès.");
+            }
+            // Avant ce correctif, une entrée rescannée après un cycle déjà complet (entrée+sortie)
+            // renvoyait silencieusement l'ancien pointage sans erreur (orElseGet n'exécute jamais son
+            // fournisseur quand l'Optional est déjà présent) — l'utilisateur croyait avoir "re-scanné
+            // avec succès" alors que rien n'était enregistré (§retour fondateur, incident réel).
             throw new BusinessRuleException(
-                    "Ce badge a déjà été scanné à l'entrée. Scannez-le à la sortie avant un nouvel accès.");
+                    "Ce badge a déjà fait son entrée et sa sortie aujourd'hui. Un seul passage par jour est autorisé.");
         }
-        return existing.orElseGet(() -> {
-            AttendanceSettings s = settings(TenantContext.get());
-            // Marge de tolérance générale (§réglages) : une entrée dans les N minutes après l'horaire de
-            // référence n'est jamais comptée en retard — même règle que pour élève/enseignant.
-            LocalTime deadline = s.employeeCheckInTimeOrDefault().plusMinutes(s.transitionMarginMinutesOrDefault());
-            int late = (int) Math.max(0, Duration.between(deadline, now).toMinutes());
-            return attendanceRepository.save(EmployeeAttendance.builder()
-                    .tenantId(TenantContext.get()).employeeId(employeeId).date(today)
-                    .status(EmployeeAttendanceStatus.PRESENT).checkInTime(now).lateMinutes(late).earlyMinutes(0)
-                    .createdAt(LocalDateTime.now()).build());
-        });
+        AttendanceSettings s = settings(TenantContext.get());
+        // Marge de tolérance générale (§réglages) : une entrée dans les N minutes après l'horaire de
+        // référence n'est jamais comptée en retard — même règle que pour élève/enseignant.
+        LocalTime deadline = s.employeeCheckInTimeOrDefault().plusMinutes(s.transitionMarginMinutesOrDefault());
+        int late = (int) Math.max(0, Duration.between(deadline, now).toMinutes());
+        return attendanceRepository.save(EmployeeAttendance.builder()
+                .tenantId(TenantContext.get()).employeeId(employeeId).date(today)
+                .status(EmployeeAttendanceStatus.PRESENT).checkInTime(now).lateMinutes(late).earlyMinutes(0)
+                .createdAt(LocalDateTime.now()).build());
     }
 
     @Override

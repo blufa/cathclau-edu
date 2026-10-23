@@ -130,7 +130,6 @@ class StudentAttendanceServiceTest {
         when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
         when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("00:00", "23:59"));
         when(sessionResolver.graceDeadline(any(), anyInt(), any())).thenReturn(java.time.LocalTime.of(0, 0));
-        when(checkinRepository.findByStudentIdAndDateAndSlot(eq(10L), any(), eq(1L))).thenReturn(Optional.empty());
         when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
         when(checkinRepository.findByStudentIdAndDate(eq(10L), any())).thenReturn(List.of());
         when(repo.findByStudentIdAndClassIdAndDate(eq(10L), eq(20L), any())).thenReturn(Optional.empty());
@@ -144,15 +143,15 @@ class StudentAttendanceServiceTest {
 
     @Test
     void recordEntry_secondScanBeforeExit_rejectedWithClearMessage() {
-        // §16 cahier des charges : un badge déjà scanné à l'entrée (session encore ouverte, pas de
-        // sortie) doit être refusé explicitement, pas silencieusement accepté — createdAt ancien pour
-        // exclure la fenêtre de course réseau (voir createdWithinRaceWindow).
+        // §16 cahier des charges : un badge déjà scanné à l'entrée AUJOURD'HUI (toutes séances
+        // confondues, pas de sortie) doit être refusé explicitement, pas silencieusement accepté —
+        // createdAt ancien pour exclure la fenêtre de course réseau (voir createdWithinRaceWindow).
         StudentCheckin existing = StudentCheckin.builder().id(9L).studentId(10L).classId(20L).scheduleSlotId(1L)
                 .lateMinutes(3).createdAt(java.time.LocalDateTime.now().minusMinutes(10)).build();
         when(studentDataProvider.findCurrentClassId(10L)).thenReturn(Optional.of(20L));
         when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
         when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("00:00", "23:59"));
-        when(checkinRepository.findByStudentIdAndDateAndSlot(eq(10L), any(), eq(1L))).thenReturn(Optional.of(existing));
+        when(checkinRepository.findByStudentIdAndDate(eq(10L), any())).thenReturn(List.of(existing));
 
         assertThatThrownBy(() -> service.recordEntry(10L, null))
                 .isInstanceOf(BusinessRuleException.class)
@@ -170,10 +169,7 @@ class StudentAttendanceServiceTest {
         when(studentDataProvider.findCurrentClassId(10L)).thenReturn(Optional.of(20L));
         when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
         when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("00:00", "23:59"));
-        when(checkinRepository.findByStudentIdAndDateAndSlot(eq(10L), any(), eq(1L))).thenReturn(Optional.of(existing));
         when(checkinRepository.findByStudentIdAndDate(eq(10L), any())).thenReturn(List.of(existing));
-        when(repo.findByStudentIdAndClassIdAndDate(eq(10L), eq(20L), any())).thenReturn(Optional.empty());
-        when(repo.save(any())).thenAnswer(i -> { StudentAttendance a = i.getArgument(0); a.setId(7L); return a; });
 
         StudentCheckin result = service.recordEntry(10L, null);
 
@@ -182,23 +178,21 @@ class StudentAttendanceServiceTest {
     }
 
     @Test
-    void recordEntry_sameSlotAfterExit_returnsExistingWithoutRejecting() {
-        // Hors scope du correctif §16 (documenté dans IMPLEMENTATION_TRACKER.md) : une ré-entrée sur le
-        // même créneau APRÈS une sortie valide n'est pas un double-scan — reste acceptée silencieusement.
+    void recordEntry_secondScanAfterExitSameDay_rejectedWithClearMessage() {
+        // §retour fondateur : contrairement à l'ancien comportement (une ré-entrée après sortie était
+        // acceptée silencieusement, perçue comme "je peux scanner plusieurs fois par jour"), UN SEUL
+        // cycle entrée/sortie est désormais autorisé par jour — une 3e tentative est refusée.
         StudentCheckin existing = StudentCheckin.builder().id(9L).studentId(10L).classId(20L).scheduleSlotId(1L)
                 .lateMinutes(3).checkOutTime(java.time.LocalTime.of(9, 0))
                 .createdAt(java.time.LocalDateTime.now().minusHours(1)).build();
         when(studentDataProvider.findCurrentClassId(10L)).thenReturn(Optional.of(20L));
         when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
         when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("00:00", "23:59"));
-        when(checkinRepository.findByStudentIdAndDateAndSlot(eq(10L), any(), eq(1L))).thenReturn(Optional.of(existing));
         when(checkinRepository.findByStudentIdAndDate(eq(10L), any())).thenReturn(List.of(existing));
-        when(repo.findByStudentIdAndClassIdAndDate(eq(10L), eq(20L), any())).thenReturn(Optional.empty());
-        when(repo.save(any())).thenAnswer(i -> { StudentAttendance a = i.getArgument(0); a.setId(7L); return a; });
 
-        StudentCheckin result = service.recordEntry(10L, null);
-
-        assertThat(result).isSameAs(existing);
+        assertThatThrownBy(() -> service.recordEntry(10L, null))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("déjà fait son entrée et sa sortie");
         verify(checkinRepository, never()).save(any());
     }
 
@@ -222,7 +216,6 @@ class StudentAttendanceServiceTest {
         when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
         when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("00:00", "23:59"));
         when(sessionResolver.graceDeadline(any(), anyInt(), any())).thenReturn(java.time.LocalTime.of(0, 0));
-        when(checkinRepository.findByStudentIdAndDateAndSlot(eq(10L), any(), eq(1L))).thenReturn(Optional.empty());
         when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
         when(checkinRepository.findByStudentIdAndDate(eq(10L), any())).thenReturn(List.of());
         when(repo.findByStudentIdAndClassIdAndDate(eq(10L), eq(20L), any())).thenReturn(Optional.empty());
@@ -238,7 +231,7 @@ class StudentAttendanceServiceTest {
         when(studentDataProvider.findCurrentClassId(10L)).thenReturn(Optional.of(20L));
         when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
         when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("08:00", "10:00"));
-        when(checkinRepository.lockByStudentIdAndDateAndSlot(eq(10L), any(), eq(1L))).thenReturn(Optional.empty());
+        when(checkinRepository.lockOpenByStudentIdAndDate(eq(10L), any())).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.recordExit(10L, null)).isInstanceOf(BusinessRuleException.class);
     }
@@ -250,7 +243,7 @@ class StudentAttendanceServiceTest {
         when(studentDataProvider.findCurrentClassId(10L)).thenReturn(Optional.of(20L));
         when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
         when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("08:00", "10:00"));
-        when(checkinRepository.lockByStudentIdAndDateAndSlot(eq(10L), any(), eq(1L))).thenReturn(Optional.of(existing));
+        when(checkinRepository.lockOpenByStudentIdAndDate(eq(10L), any())).thenReturn(Optional.of(existing));
         when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         StudentCheckin result = service.recordExit(10L, null);
@@ -269,7 +262,7 @@ class StudentAttendanceServiceTest {
         when(studentDataProvider.findCurrentClassId(10L)).thenReturn(Optional.of(20L));
         when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
         when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("08:00", "10:00"));
-        when(checkinRepository.lockByStudentIdAndDateAndSlot(eq(10L), any(), eq(1L))).thenReturn(Optional.of(alreadyExited));
+        when(checkinRepository.lockOpenByStudentIdAndDate(eq(10L), any())).thenReturn(Optional.of(alreadyExited));
 
         StudentCheckin result = service.recordExit(10L, null);
 
@@ -292,7 +285,7 @@ class StudentAttendanceServiceTest {
         when(studentDataProvider.findCurrentClassId(10L)).thenReturn(Optional.of(20L));
         when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
         when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("13:00", "16:00"));
-        when(checkinRepository.lockByStudentIdAndDateAndSlot(eq(10L), any(), eq(1L))).thenReturn(Optional.of(afternoon));
+        when(checkinRepository.lockOpenByStudentIdAndDate(eq(10L), any())).thenReturn(Optional.of(afternoon));
         when(checkinRepository.findByStudentIdAndDate(eq(10L), any())).thenReturn(List.of(morning, afternoon));
         when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
