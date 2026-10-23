@@ -17,7 +17,9 @@ public interface HonorRollPdfGenerator {
             List<Row> rows) {}
 
     /** One ranked student line. {@code className} is per-row (not a single roll-wide class) since
-     * laureates come from different classes. */
-    record Row(Integer rank, String studentName, String studentFirstName, String studentLastName,
+     * laureates come from different classes. {@code exAequo} : moyenne générale strictement égale à
+     * au moins un autre élève du même rang (classement standard "1,1,3,4,4…" — jamais "1,2,3" en cas
+     * d'égalité, reproduit fidèlement la maquette de référence "Tableau d'honneur.dc.html"). */
+    record Row(Integer rank, boolean exAequo, String studentName, String studentFirstName, String studentLastName,
               BigDecimal average, String honor, String studentPhoto, String className) {}
 }

@@ -109,4 +109,32 @@ class ReportCardServiceTest {
         verify(honorRollGenerator).generate(captor.capture());
         assertThat(captor.getValue().rows()).isEmpty();
     }
+
+    /**
+     * Classement standard (§maquette "Tableau d'honneur.dc.html", EX ÆQUO) : deux moyennes
+     * strictement égales partagent le même rang ("1, 1, 3"), jamais "1, 2, 3" — sinon le 2e élève à
+     * égalité avec le 1er se retrouverait classé en dessous d'un 3e qui a une moyenne strictement
+     * inférieure, ce qui serait faux.
+     */
+    @Test
+    void honorRollPdf_tiedAverages_shareTheSameRankAndAreFlaggedExAequo() {
+        TenantContext.set(4L);
+        ReportCard first = card(1L, 101L, 49L, BigDecimal.valueOf(18));
+        ReportCard tiedWithFirst = card(2L, 102L, 49L, BigDecimal.valueOf(18));
+        ReportCard third = card(3L, 103L, 49L, BigDecimal.valueOf(15));
+        when(repo.findByPeriodId(99L)).thenReturn(List.of(first, tiedWithFirst, third));
+        when(studentProvider.findStudent(anyLong())).thenReturn(Optional.of(student(1L, "A", "B")));
+        when(academicsProvider.findClass(anyLong())).thenReturn(Optional.empty());
+        when(academicsProvider.findPeriod(anyLong())).thenReturn(Optional.empty());
+        when(honorRollGenerator.generate(any())).thenReturn(new byte[]{1});
+
+        service.honorRollPdf(99L);
+
+        ArgumentCaptor<HonorRoll> captor = ArgumentCaptor.forClass(HonorRoll.class);
+        verify(honorRollGenerator).generate(captor.capture());
+        List<Row> rows = captor.getValue().rows();
+
+        assertThat(rows).extracting(Row::rank).containsExactly(1, 1, 3);
+        assertThat(rows).extracting(Row::exAequo).containsExactly(true, true, false);
+    }
 }

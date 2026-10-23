@@ -71,13 +71,22 @@ class OpenPdfHonorRollGenerator implements HonorRollPdfGenerator {
             header(doc, info);
             title(doc, roll);
 
-            List<Row> laureates = roll.rows().stream()
+            List<Row> ranked = roll.rows().stream()
                     .filter(r -> r.rank() != null)
                     .sorted((a, b) -> Integer.compare(a.rank(), b.rank()))
-                    .limit(MAX_LAUREATES)
                     .toList();
+            // Coupure par RANG (pas par nombre de lignes) : un groupe ex æquo à cheval sur la limite
+            // reste entier (ex. 2 élèves à égalité en 5e position sont tous les deux affichés), plutôt
+            // que de couper arbitrairement l'un des deux et laisser l'autre de côté.
+            int cutoffRank = ranked.stream().map(Row::rank).distinct().sorted()
+                    .limit(MAX_LAUREATES).reduce((a, b) -> b).orElse(0);
+            List<Row> laureates = ranked.stream().filter(r -> r.rank() <= cutoffRank).toList();
             cards(doc, roll, laureates);
             footer(doc, info);
+
+            for (Row laureate : laureates) {
+                satisfecitPage(doc, roll, laureate, info, ranked.size());
+            }
 
             doc.close();
             return out.toByteArray();
@@ -213,6 +222,11 @@ class OpenPdfHonorRollGenerator implements HonorRollPdfGenerator {
         content.setPadding(mm(1.8f));
         content.setCellEvent(RoundedCellBorder.fillOnly(mm(3.2f), CREAM));
 
+        if (l.exAequo()) {
+            Paragraph exAequo = new Paragraph("EX ÆQUO", font(SANS_BOLD, FontFactory.HELVETICA_BOLD, 6, LABEL_GREY));
+            exAequo.setAlignment(Element.ALIGN_CENTER);
+            content.addElement(exAequo);
+        }
         // Rang en texte coloré (pas de badge circulaire chevauchant la photo, trop fragile à obtenir
         // de façon fiable avec PdfPTable — la référence CSS utilise un margin-top négatif qu'OpenPDF
         // ne reproduit pas) : une couleur par palier (or/argent/vert) reste un repère visuel clair.
@@ -316,6 +330,241 @@ class OpenPdfHonorRollGenerator implements HonorRollPdfGenerator {
         }
         t.addCell(right);
         doc.add(t);
+    }
+
+    /** Certificat "Satisfecit" individuel d'un lauréat (§document-school, "satifaicit-tableau-
+     * honneur.pdf") : une page par élève du tableau d'honneur, sur le fond crème à cadre décoratif
+     * (voir {@link HonorRollPageBackground}). "Intègre les satisfecits" au même document que le
+     * tableau d'honneur (demande utilisateur) plutôt qu'un document séparé à générer à part. */
+    private static void satisfecitPage(Document doc, HonorRoll roll, Row row, TenantPublicInfo info, int totalRanked) {
+        doc.newPage();
+
+        PdfPTable head = new PdfPTable(new float[]{1f, 1f});
+        head.setWidthPercentage(100);
+        PdfPCell logoCell = new PdfPCell();
+        logoCell.setBorder(0);
+        logoCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        Image logo = info != null ? SchoolPdfHeader.loadLogo(info.logo()) : null;
+        PdfPTable logoInner = new PdfPTable(new float[]{1f, 4f});
+        logoInner.setWidthPercentage(100);
+        PdfPCell logoImgCell = new PdfPCell();
+        logoImgCell.setBorder(0);
+        logoImgCell.setFixedHeight(mm(12));
+        logoImgCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        if (logo != null) {
+            logo.scaleToFit(mm(11), mm(11));
+            logo.setAlignment(Element.ALIGN_MIDDLE);
+            logoImgCell.addElement(logo);
+        }
+        logoInner.addCell(logoImgCell);
+        PdfPCell schoolCell = new PdfPCell();
+        schoolCell.setBorder(0);
+        schoolCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        schoolCell.setPaddingLeft(mm(2.5f));
+        schoolCell.addElement(new Paragraph(safe(info != null ? info.schoolName() : null, "École"),
+                font(SERIF_BOLD, FontFactory.TIMES_BOLD, 11, DARK_GREEN)));
+        Paragraph addr = new Paragraph(safe(join(" · ", info != null ? info.city() : null, "République de Guinée"), ""),
+                font(SANS, FontFactory.HELVETICA, 7, TEXT_GREY));
+        addr.setSpacingBefore(0.5f);
+        schoolCell.addElement(addr);
+        logoInner.addCell(schoolCell);
+        logoCell.addElement(logoInner);
+        head.addCell(logoCell);
+        PdfPCell blank = new PdfPCell();
+        blank.setBorder(0);
+        head.addCell(blank);
+        doc.add(head);
+
+        Paragraph title = new Paragraph("Satisfecit", font(SERIF_ITALIC, FontFactory.TIMES_BOLDITALIC, 34, DARK_GREEN));
+        title.setAlignment(Element.ALIGN_CENTER);
+        title.setSpacingBefore(mm(6));
+        doc.add(title);
+
+        PdfPTable tricolor = new PdfPTable(new float[]{1f, 1f, 1f});
+        tricolor.setWidthPercentage(14);
+        tricolor.setHorizontalAlignment(Element.ALIGN_CENTER);
+        tricolor.setSpacingBefore(1.5f);
+        tricolor.setSpacingAfter(mm(5));
+        tricolor.addCell(flagBar(new Color(206, 17, 38)));
+        tricolor.addCell(flagBar(new Color(252, 209, 22)));
+        tricolor.addCell(flagBar(new Color(0, 148, 96)));
+        doc.add(tricolor);
+
+        Paragraph kicker = new Paragraph("DÉCERNÉ À", font(SANS_BOLD, FontFactory.HELVETICA_BOLD, 8.5f, LABEL_GREY));
+        kicker.setAlignment(Element.ALIGN_CENTER);
+        doc.add(kicker);
+
+        String fullName = join(" ", row.studentFirstName(), row.studentLastName() == null ? null : row.studentLastName().toUpperCase(Locale.FRENCH));
+        Paragraph name = new Paragraph(safe(fullName.isBlank() ? row.studentName() : fullName, "—"),
+                font(SERIF_BOLD, FontFactory.TIMES_BOLD, 24, DARK_TEXT));
+        name.setAlignment(Element.ALIGN_CENTER);
+        name.setSpacingBefore(2f);
+        doc.add(name);
+
+        PdfPTable rule = new PdfPTable(1);
+        rule.setWidthPercentage(16);
+        rule.setHorizontalAlignment(Element.ALIGN_CENTER);
+        rule.setSpacingBefore(2f);
+        rule.setSpacingAfter(mm(5));
+        PdfPCell ruleCell = new PdfPCell();
+        ruleCell.setBorder(Rectangle.BOTTOM);
+        ruleCell.setBorderColorBottom(GOLD);
+        ruleCell.setBorderWidthBottom(0.8f);
+        ruleCell.setFixedHeight(mm(2));
+        rule.addCell(ruleCell);
+        doc.add(rule);
+
+        String description = "Élève de la classe de " + safe(row.className(), "—") + ", en reconnaissance de son excellent "
+                + "travail, de sa régularité et de sa conduite exemplaire. " + safe(roll.periodLabel(), "")
+                + " de l'année scolaire " + safe(roll.schoolYear(), "") + ".";
+        Paragraph desc = new Paragraph(description, font(SANS, FontFactory.HELVETICA, 10, TEXT_GREY));
+        desc.setAlignment(Element.ALIGN_CENTER);
+        PdfPTable descWrap = new PdfPTable(1);
+        descWrap.setWidthPercentage(62);
+        descWrap.setHorizontalAlignment(Element.ALIGN_CENTER);
+        PdfPCell descCell = new PdfPCell(desc);
+        descCell.setBorder(0);
+        descWrap.addCell(descCell);
+        doc.add(descWrap);
+
+        PdfPTable stats = new PdfPTable(new float[]{1f, 1f, 1f});
+        stats.setWidthPercentage(46);
+        stats.setHorizontalAlignment(Element.ALIGN_CENTER);
+        stats.setSpacingBefore(mm(6));
+        stats.addCell(statBox("MOYENNE", dec(row.average()) + " / 20", DARK_GREEN));
+        String rangValue = row.rank() + (row.exAequo() ? "e ex æquo" : (row.rank() == 1 ? "er" : "e")) + " / " + totalRanked;
+        stats.addCell(statBox("RANG", rangValue, DARK_TEXT));
+        stats.addCell(statBox("MENTION", safe(row.honor(), "—"), GOLD));
+        doc.add(stats);
+
+        // Bloc signatures ancré visuellement en bas de page via un grand espaceur — document à contenu
+        // fixe (toujours une seule page), comme le reste des documents de ce générateur.
+        Paragraph spacer = new Paragraph(" ", font(SANS, FontFactory.HELVETICA, 6, WHITE));
+        spacer.setSpacingBefore(mm(42));
+        doc.add(spacer);
+
+        PdfPTable sign = new PdfPTable(new float[]{1f, 1f, 1f});
+        sign.setWidthPercentage(100);
+        PdfPCell leftSign = new PdfPCell();
+        leftSign.setBorder(0);
+        leftSign.setVerticalAlignment(Element.ALIGN_BOTTOM);
+        Paragraph leftLabel = new Paragraph("Le Professeur principal", font(SANS_BOLD, FontFactory.HELVETICA_BOLD, 8.5f, DARK_TEXT));
+        leftSign.addElement(leftLabel);
+        leftSign.addElement(new Paragraph(" ", font(SANS, FontFactory.HELVETICA, 9, WHITE)));
+        PdfPCell leftLine = new PdfPCell();
+        leftLine.setBorder(Rectangle.TOP);
+        leftLine.setBorderColorTop(BORDER_LIGHT);
+        leftLine.setPadding(0);
+        PdfPTable leftLineWrap = new PdfPTable(1);
+        leftLineWrap.setWidthPercentage(70);
+        leftLineWrap.addCell(leftLine);
+        leftSign.addElement(leftLineWrap);
+        sign.addCell(leftSign);
+
+        PdfPCell seal = new PdfPCell();
+        seal.setBorder(0);
+        seal.setFixedHeight(mm(22));
+        seal.setCellEvent(sealCellEvent(info, roll.schoolYear()));
+        sign.addCell(seal);
+
+        PdfPCell rightSign = new PdfPCell();
+        rightSign.setBorder(0);
+        rightSign.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        rightSign.setVerticalAlignment(Element.ALIGN_BOTTOM);
+        Paragraph rightLabel = new Paragraph("Le Principal", font(SANS_BOLD, FontFactory.HELVETICA_BOLD, 8.5f, DARK_TEXT));
+        rightLabel.setAlignment(Element.ALIGN_RIGHT);
+        rightSign.addElement(rightLabel);
+        if (info != null && info.director() != null && !info.director().isBlank()) {
+            Paragraph director = new Paragraph(info.director(), font(SERIF_BOLD, FontFactory.TIMES_BOLD, 11, DARK_TEXT));
+            director.setAlignment(Element.ALIGN_RIGHT);
+            director.setSpacingBefore(2f);
+            rightSign.addElement(director);
+        } else {
+            rightSign.addElement(new Paragraph(" ", font(SANS, FontFactory.HELVETICA, 9, WHITE)));
+        }
+        PdfPCell rightLine = new PdfPCell();
+        rightLine.setBorder(Rectangle.TOP);
+        rightLine.setBorderColorTop(BORDER_LIGHT);
+        rightLine.setPadding(0);
+        PdfPTable rightLineWrap = new PdfPTable(1);
+        rightLineWrap.setWidthPercentage(70);
+        rightLineWrap.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        rightLineWrap.addCell(rightLine);
+        rightSign.addElement(rightLineWrap);
+        sign.addCell(rightSign);
+        doc.add(sign);
+
+        String city = info != null ? info.city() : null;
+        String date = java.time.format.DateTimeFormatter.ofPattern("dd MMMM yyyy", Locale.FRENCH).format(java.time.LocalDate.now());
+        Paragraph faitA = new Paragraph((city != null && !city.isBlank() ? "Fait à " + city + ", " : "Fait ") + "le " + date,
+                font(SANS, FontFactory.HELVETICA, 7.5f, TEXT_GREY));
+        faitA.setAlignment(Element.ALIGN_CENTER);
+        faitA.setSpacingBefore(1.5f);
+        doc.add(faitA);
+    }
+
+    private static PdfPCell flagBar(Color color) {
+        PdfPCell c = new PdfPCell();
+        c.setBorder(0);
+        c.setFixedHeight(mm(1));
+        c.setBackgroundColor(color);
+        return c;
+    }
+
+    private static PdfPCell statBox(String label, String value, Color valueColor) {
+        PdfPCell c = new PdfPCell();
+        c.setBorder(Rectangle.BOX);
+        c.setBorderColor(BORDER_LIGHT);
+        c.setBorderWidth(0.8f);
+        c.setPadding(mm(2.5f));
+        c.setBackgroundColor(WHITE);
+        Paragraph l = new Paragraph(label, font(SANS_BOLD, FontFactory.HELVETICA_BOLD, 6.5f, LABEL_GREY));
+        l.setAlignment(Element.ALIGN_CENTER);
+        c.addElement(l);
+        Paragraph v = new Paragraph(value, font(SANS_BOLD, FontFactory.HELVETICA_BOLD, 12, valueColor));
+        v.setAlignment(Element.ALIGN_CENTER);
+        v.setSpacingBefore(1.5f);
+        c.addElement(v);
+        return c;
+    }
+
+    /** Sceau circulaire "PNM [année]" (simple, sans rotation ni pointillés) — cosmétique uniquement,
+     * ne doit jamais faire échouer la génération du certificat. */
+    private static com.lowagie.text.pdf.PdfPCellEvent sealCellEvent(TenantPublicInfo info, String schoolYear) {
+        return (cell, position, canvases) -> {
+            try {
+                float radius = mm(10);
+                float cx = (position.getLeft() + position.getRight()) / 2f;
+                float cy = (position.getBottom() + position.getTop()) / 2f;
+                com.lowagie.text.pdf.PdfContentByte cb = canvases[PdfPTable.LINECANVAS];
+                cb.saveState();
+                cb.setColorStroke(GOLD);
+                cb.setLineWidth(1f);
+                cb.ellipse(cx - radius, cy - radius, cx + radius, cy + radius);
+                cb.stroke();
+                String code = info != null && info.schoolName() != null && !info.schoolName().isBlank()
+                        ? initials(info.schoolName()) : "ÉC";
+                com.lowagie.text.pdf.ColumnText.showTextAligned(cb, Element.ALIGN_CENTER,
+                        new Phrase(code, font(SERIF_BOLD, FontFactory.TIMES_BOLD, 11, GOLD)), cx, cy + mm(1.5f), 0);
+                if (schoolYear != null && !schoolYear.isBlank()) {
+                    com.lowagie.text.pdf.ColumnText.showTextAligned(cb, Element.ALIGN_CENTER,
+                            new Phrase(schoolYear, font(SANS_BOLD, FontFactory.HELVETICA_BOLD, 5.5f, LABEL_GREY)), cx, cy - mm(2.5f), 0);
+                }
+                cb.restoreState();
+            } catch (RuntimeException e) {
+                // Cosmétique uniquement — jamais faire échouer le certificat pour un sceau manqué.
+            }
+        };
+    }
+
+    private static String initials(String schoolName) {
+        StringBuilder sb = new StringBuilder();
+        for (String word : schoolName.trim().split("\\s+")) {
+            if (!word.isEmpty() && Character.isLetter(word.charAt(0)) && sb.length() < 3) {
+                sb.append(Character.toUpperCase(word.charAt(0)));
+            }
+        }
+        return sb.length() == 0 ? "ÉC" : sb.toString();
     }
 
     private static com.lowagie.text.Font font(com.lowagie.text.pdf.BaseFont base, String fallbackFamily, float size, Color color) {

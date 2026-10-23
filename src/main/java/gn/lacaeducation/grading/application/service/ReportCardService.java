@@ -19,6 +19,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
@@ -134,16 +135,33 @@ public class ReportCardService implements ReportCardUseCase {
                 .filter(rc -> rc.getOverallAverage() != null)
                 .sorted(java.util.Comparator.comparing(ReportCard::getOverallAverage, java.util.Comparator.reverseOrder()))
                 .toList();
+        // Classement standard ("1, 1, 3, 4, 4…") : deux moyennes strictement égales partagent le même
+        // rang, jamais "1, 2" (fidèle à la maquette de référence, "EX ÆQUO"). Deux passes : d'abord les
+        // rangs (égalité = même rang que le précédent), puis repérage des rangs partagés par 2+ élèves.
+        List<Integer> ranks = new java.util.ArrayList<>();
+        BigDecimal prevAverage = null;
+        int prevRank = 0;
+        for (int i = 0; i < cards.size(); i++) {
+            BigDecimal average = cards.get(i).getOverallAverage();
+            int rank = (prevAverage != null && prevAverage.compareTo(average) == 0) ? prevRank : i + 1;
+            ranks.add(rank);
+            prevAverage = average;
+            prevRank = rank;
+        }
+        java.util.Map<Integer, Long> rankCounts = ranks.stream()
+                .collect(java.util.stream.Collectors.groupingBy(r -> r, java.util.stream.Collectors.counting()));
+
         var rows = new java.util.ArrayList<gn.lacaeducation.grading.application.port.out.HonorRollPdfGenerator.Row>();
-        int position = 0;
-        for (ReportCard rc : cards) {
-            position++;
+        for (int i = 0; i < cards.size(); i++) {
+            ReportCard rc = cards.get(i);
+            int rank = ranks.get(i);
+            boolean exAequo = rankCounts.get(rank) > 1;
             StudentPublicInfo s = studentProvider.findStudent(rc.getStudentId()).orElse(null);
             String className = academicsProvider.findClass(rc.getClassId())
                     .map(c -> c.levelLabel() != null && !c.levelLabel().isBlank() ? c.label() + " (" + c.levelLabel() + ")" : c.label())
                     .orElse(null);
             rows.add(new gn.lacaeducation.grading.application.port.out.HonorRollPdfGenerator.Row(
-                    position, studentName(rc.getStudentId()),
+                    rank, exAequo, studentName(rc.getStudentId()),
                     s != null ? s.firstName() : null, s != null ? s.lastName() : null,
                     rc.getOverallAverage(), rc.getHonor(), s != null ? s.photo() : null, className));
         }
