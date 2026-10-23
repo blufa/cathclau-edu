@@ -25,9 +25,12 @@ public interface PayslipPdfGenerator {
      * @param beneficiaryRole sous-titre sous le nom du salarié (ex. "Mathématiques · payé à l'heure",
      *                        "Principal · salaire fixe") — {@code null} si inconnu.
      * @param beneficiaryPhotoUrl photo du salarié (badge/fiche), {@code null} si jamais capturée.
-     * @param accountantName nom du comptable ayant marqué la fiche payée ({@code Payslip#paidByUserId}
-     *                       résolu), imprimé sous la signature "Signature et Cachet de
-     *                       l'Établissement" — {@code null} si la fiche n'est pas encore payée.
+     * @param accountantName nom imprimé sous la signature "Signature et Cachet du Comptable" :
+     *                       celui ayant marqué la fiche payée ({@code Payslip#paidByUserId} résolu) si
+     *                       elle l'est déjà, sinon celui qui télécharge la fiche maintenant (comptable
+     *                       imprimant un brouillon/une fiche validée, voir {@code
+     *                       PayrollService#pdfBytes}) — {@code null} seulement pour le self-service
+     *                       enseignant ou si aucun des deux n'est résolu.
      */
     record Presentation(String beneficiaryRole, String beneficiaryPhotoUrl, String accountantName) {
         public static final Presentation EMPTY = new Presentation(null, null, null);

@@ -372,7 +372,20 @@ public class PayrollService {
 
     @Transactional(readOnly = true)
     public TeacherPayrollMass teacherPayrollMass(Long tenantId, int year, int month) {
-        List<TeacherCompensation> comps = compRepo.findByTenantId(tenantId);
+        return teacherPayrollMass(tenantId, year, month, null);
+    }
+
+    /** @param validTeacherIds si non nul, ignore les fiches de compensation dont l'enseignant n'y
+     * figure plus — une fiche {@code TeacherCompensation} reste orpheline en base après la suppression
+     * de l'enseignant (jamais nettoyée automatiquement), ce qui gonflait la masse salariale théorique
+     * d'un enseignant supprimé indéfiniment (§retour utilisateur, Vision Fondateur en production, cas
+     * observé avec un enseignant du primaire à salaire fixe). {@code null} = pas de filtre
+     * (comportement historique, ex. tests qui n'ont pas de référentiel enseignant à fournir). */
+    @Transactional(readOnly = true)
+    public TeacherPayrollMass teacherPayrollMass(Long tenantId, int year, int month, java.util.Set<Long> validTeacherIds) {
+        List<TeacherCompensation> comps = compRepo.findByTenantId(tenantId).stream()
+                .filter(c -> validTeacherIds == null || validTeacherIds.contains(c.getTeacherId()))
+                .toList();
         BigDecimal totalNormal = BigDecimal.ZERO;
         BigDecimal totalExam = BigDecimal.ZERO;
         BigDecimal monthly = BigDecimal.ZERO;
@@ -385,7 +398,12 @@ public class PayrollService {
                 monthly = monthly.add(computeTheoreticalMonthlyPay(c.getTeacherId(), year, month).grossPay());
             }
         }
-        return new TeacherPayrollMass(totalNormal, totalExam, monthly, comps.size());
+        // Avec un filtre fourni, le compte reflète le référentiel enseignant réel (pas seulement ceux
+        // ayant une compensation configurée) : un enseignant tout juste créé, sans salaire renseigné,
+        // doit compter — §retour utilisateur, "peu importe primaire/secondaire, salaire configuré ou
+        // non, il doit être affiché sur la vision fondateur".
+        int teacherCount = validTeacherIds != null ? validTeacherIds.size() : comps.size();
+        return new TeacherPayrollMass(totalNormal, totalExam, monthly, teacherCount);
     }
 
     /** Masse salariale RÉELLE des enseignants d'un tenant (Vision Fondateur) : contrairement à
@@ -400,7 +418,16 @@ public class PayrollService {
 
     @Transactional(readOnly = true)
     public RealTeacherPayrollMass realTeacherPayrollMass(Long tenantId, int year, int month) {
-        List<TeacherCompensation> comps = compRepo.findByTenantId(tenantId);
+        return realTeacherPayrollMass(tenantId, year, month, null);
+    }
+
+    /** @param validTeacherIds voir {@link #teacherPayrollMass(Long, int, int, java.util.Set)} — même
+     * filtrage anti-orphelin, {@code null} = pas de filtre. */
+    @Transactional(readOnly = true)
+    public RealTeacherPayrollMass realTeacherPayrollMass(Long tenantId, int year, int month, java.util.Set<Long> validTeacherIds) {
+        List<TeacherCompensation> comps = compRepo.findByTenantId(tenantId).stream()
+                .filter(c -> validTeacherIds == null || validTeacherIds.contains(c.getTeacherId()))
+                .toList();
         BigDecimal monthly = BigDecimal.ZERO;
         int totalLate = 0, totalEarly = 0, totalRealized = 0;
         for (TeacherCompensation c : comps) {
@@ -415,7 +442,8 @@ public class PayrollService {
                     ? (c.getFixedSalary() != null ? c.getFixedSalary() : BigDecimal.ZERO)
                     : mp.grossPay());
         }
-        return new RealTeacherPayrollMass(monthly, totalLate, totalEarly, totalRealized, comps.size());
+        int teacherCount = validTeacherIds != null ? validTeacherIds.size() : comps.size();
+        return new RealTeacherPayrollMass(monthly, totalLate, totalEarly, totalRealized, teacherCount);
     }
 
     /** Salaire (mensuel courant + estimation cumulée sur monthsCount mois) de chaque enseignant du
@@ -878,6 +906,16 @@ public class PayrollService {
 
     @Transactional(readOnly = true)
     public byte[] pdfBytes(Long id, String beneficiaryRole, String beneficiaryPhotoUrl) {
+        return pdfBytes(id, beneficiaryRole, beneficiaryPhotoUrl, null);
+    }
+
+    /** @param generatedByUserId comptable en train de télécharger la fiche MAINTENANT (JWT de
+     * l'appelant, {@code PayslipController#pdfDownload}) — nom de secours pour la signature quand la
+     * fiche n'est pas encore payée ({@code paidByUserId} reste prioritaire : il désigne précisément qui
+     * a traité le paiement, plus fiable qu'un simple téléchargement). {@code null} pour le self-service
+     * enseignant ({@code minePdfDownload}), qui ne doit jamais apparaître comme comptable. */
+    @Transactional(readOnly = true)
+    public byte[] pdfBytes(Long id, String beneficiaryRole, String beneficiaryPhotoUrl, Long generatedByUserId) {
         Payslip p = loadPayslip(id);
         gn.lacaeducation.payroll.application.port.out.PayslipPdfGenerator.TeacherHours hours = null;
         boolean isTeacher = p.getEmployeeType() == null || p.getEmployeeType() == gn.lacaeducation.payroll.domain.EmployeeType.TEACHER;
@@ -891,8 +929,9 @@ public class PayrollService {
                     due, mp.realizedMinutes(), Math.max(0, due - mp.realizedMinutes()), mp.lateMinutes(), mp.earlyMinutes(),
                     mp.effectiveMinutes());
         }
+        Long accountantUserId = p.getPaidByUserId() != null ? p.getPaidByUserId() : generatedByUserId;
         var presentation = new gn.lacaeducation.payroll.application.port.out.PayslipPdfGenerator.Presentation(
-                beneficiaryRole, beneficiaryPhotoUrl, resolveAccountantName(p.getPaidByUserId()));
+                beneficiaryRole, beneficiaryPhotoUrl, resolveAccountantName(accountantUserId));
         return pdfGenerator.generate(p, lineRepo.findByPayslipId(id), hours, presentation);
     }
 

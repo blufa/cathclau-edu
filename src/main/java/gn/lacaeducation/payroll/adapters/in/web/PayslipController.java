@@ -134,9 +134,9 @@ public class PayslipController {
 
     @Operation(summary = "Télécharger la fiche de paie en PDF (A4 stylé, couleur d'école personnalisable, inline)")
     @GetMapping("/{id}/pdf/download")
-    public ResponseEntity<byte[]> pdfDownload(@PathVariable Long id) {
+    public ResponseEntity<byte[]> pdfDownload(@PathVariable Long id, @AuthenticationPrincipal Jwt jwt) {
         Payslip p = service.findById(id);
-        return pdfResponse(id, p);
+        return pdfResponse(id, p, currentUserId(jwt));
     }
 
     // ── Self-service enseignant (§Vision enseignant) ────────────────────────
@@ -164,14 +164,16 @@ public class PayslipController {
     @GetMapping("/mine/{id}/pdf/download")
     public ResponseEntity<byte[]> minePdfDownload(@AuthenticationPrincipal Jwt jwt, @PathVariable Long id) {
         Payslip p = requireOwn(jwt, id);
-        return pdfResponse(id, p);
+        return pdfResponse(id, p, null);
     }
 
-    private ResponseEntity<byte[]> pdfResponse(Long id, Payslip p) {
+    /** @param generatedByUserId comptable téléchargeant maintenant (voir {@code
+     * PayrollService#pdfBytes}) — {@code null} pour le self-service enseignant. */
+    private ResponseEntity<byte[]> pdfResponse(Long id, Payslip p, Long generatedByUserId) {
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_PDF)
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"fiche-paie-" + id + ".pdf\"")
-                .body(service.pdfBytes(id, beneficiaryRole(p), beneficiaryPhotoUrl(p)));
+                .body(service.pdfBytes(id, beneficiaryRole(p), beneficiaryPhotoUrl(p), generatedByUserId));
     }
 
     /** Sous-titre affiché sous le nom du salarié sur le PDF (ex. "Mathématiques", "Principal") — résolu

@@ -97,6 +97,41 @@ class PayrollServiceTest {
     }
 
     @Test
+    void teacherPayrollMass_withValidTeacherIdsFilter_ignoresOrphanedCompensation() {
+        // §retour utilisateur (Vision Fondateur en production) : un enseignant du primaire à salaire
+        // fixe, supprimé, continuait de gonfler la masse salariale théorique — sa fiche
+        // TeacherCompensation reste orpheline en base, jamais nettoyée à la suppression.
+        TeacherCompensation deletedTeacher = TeacherCompensation.builder().teacherId(1L)
+                .payMode(PayMode.FIXED).hourlyRateNormal(BigDecimal.ZERO).hourlyRateExam(BigDecimal.ZERO)
+                .fixedSalary(new BigDecimal("1500000")).build();
+        TeacherCompensation activeTeacher = TeacherCompensation.builder().teacherId(2L)
+                .payMode(PayMode.FIXED).hourlyRateNormal(BigDecimal.ZERO).hourlyRateExam(BigDecimal.ZERO)
+                .fixedSalary(new BigDecimal("900000")).build();
+        when(compRepo.findByTenantId(9L)).thenReturn(List.of(deletedTeacher, activeTeacher));
+
+        PayrollService.TeacherPayrollMass mass = payrollService.teacherPayrollMass(9L, 2026, 3, java.util.Set.of(2L));
+
+        assertThat(mass.teacherCount()).isEqualTo(1);
+        assertThat(mass.monthlyPayroll()).isEqualByComparingTo("900000");
+    }
+
+    @Test
+    void teacherPayrollMass_withValidTeacherIdsFilter_countsNewTeacherWithoutCompensationToo() {
+        // §retour utilisateur : "peu importe primaire/secondaire, salaire configuré ou non, il doit
+        // être affiché sur la vision fondateur" — le nombre d'enseignants reflète le référentiel réel
+        // (3 enseignants), même si un seul a une fiche TeacherCompensation.
+        TeacherCompensation configured = TeacherCompensation.builder().teacherId(1L)
+                .payMode(PayMode.FIXED).hourlyRateNormal(BigDecimal.ZERO).hourlyRateExam(BigDecimal.ZERO)
+                .fixedSalary(new BigDecimal("900000")).build();
+        when(compRepo.findByTenantId(9L)).thenReturn(List.of(configured));
+
+        PayrollService.TeacherPayrollMass mass = payrollService.teacherPayrollMass(9L, 2026, 3, java.util.Set.of(1L, 2L, 3L));
+
+        assertThat(mass.teacherCount()).isEqualTo(3);
+        assertThat(mass.monthlyPayroll()).isEqualByComparingTo("900000");
+    }
+
+    @Test
     void teacherPayrollMass_noTeachers_isZero() {
         when(compRepo.findByTenantId(9L)).thenReturn(List.of());
 
@@ -580,6 +615,44 @@ class PayrollServiceTest {
         assertThat(advanceLine.getAmount()).isEqualByComparingTo("200000");
         // 1 000 000 (base) - 315 000 (avantage personnel, UN mois) - 200 000 (avance) = 485 000.
         assertThat(result.getNetSalary()).isEqualByComparingTo("485000");
+    }
+
+    @Test
+    void pdfBytes_notYetPaid_fallsBackToGeneratingUserForAccountantName() {
+        Payslip p = Payslip.builder().id(500L).tenantId(10L).employeeType(EmployeeType.ADMINISTRATIVE)
+                .teacherId(7L).teacherName("Mariama Diallo").status(gn.lacaeducation.payroll.domain.PayslipStatus.VALIDATED)
+                .paidByUserId(null).build();
+        when(payslipRepo.findById(500L)).thenReturn(Optional.of(p));
+        when(lineRepo.findByPayslipId(500L)).thenReturn(List.of());
+        when(userPublicInfoProvider.findUser(42L)).thenReturn(Optional.of(
+                new gn.lacaeducation.iam.UserPublicInfoProvider.UserPublicInfo(42L, "Alpha", "Camara", null)));
+
+        payrollService.pdfBytes(500L, null, null, 42L);
+
+        org.mockito.ArgumentCaptor<PayslipPdfGenerator.Presentation> captor =
+                org.mockito.ArgumentCaptor.forClass(PayslipPdfGenerator.Presentation.class);
+        org.mockito.Mockito.verify(pdfGenerator).generate(eq(p), any(), any(), captor.capture());
+        assertThat(captor.getValue().accountantName()).isEqualTo("Alpha Camara");
+    }
+
+    @Test
+    void pdfBytes_alreadyPaid_prefersPayerOverGeneratingUser() {
+        Payslip p = Payslip.builder().id(501L).tenantId(10L).employeeType(EmployeeType.ADMINISTRATIVE)
+                .teacherId(7L).teacherName("Mariama Diallo").status(gn.lacaeducation.payroll.domain.PayslipStatus.PAID)
+                .paidByUserId(99L).build();
+        when(payslipRepo.findById(501L)).thenReturn(Optional.of(p));
+        when(lineRepo.findByPayslipId(501L)).thenReturn(List.of());
+        when(userPublicInfoProvider.findUser(99L)).thenReturn(Optional.of(
+                new gn.lacaeducation.iam.UserPublicInfoProvider.UserPublicInfo(99L, "Comptable", "Titulaire", null)));
+
+        // generatedByUserId (42L) ne doit JAMAIS être résolu : la fiche est déjà payée par 99L.
+        payrollService.pdfBytes(501L, null, null, 42L);
+
+        org.mockito.ArgumentCaptor<PayslipPdfGenerator.Presentation> captor =
+                org.mockito.ArgumentCaptor.forClass(PayslipPdfGenerator.Presentation.class);
+        org.mockito.Mockito.verify(pdfGenerator).generate(eq(p), any(), any(), captor.capture());
+        assertThat(captor.getValue().accountantName()).isEqualTo("Comptable Titulaire");
+        org.mockito.Mockito.verify(userPublicInfoProvider, org.mockito.Mockito.never()).findUser(42L);
     }
 
 }
