@@ -36,4 +36,5 @@ class SalaryAdvanceJpaEntity {
     @Enumerated(EnumType.STRING) @Column(nullable = false, length = 16) private SalaryAdvanceStatus status;
     @Column(name = "granted_at") private LocalDateTime grantedAt;
     @Column(name = "last_deducted_at") private LocalDateTime lastDeductedAt;
+    @Column(name = "granted_by_user_id") private Long grantedByUserId;
 }

@@ -8,5 +8,6 @@ public interface AssessmentRepository {
     List<Assessment> findByClassId(Long classId);
     List<Assessment> findByPeriodId(Long periodId);
     List<Assessment> findByClassIdAndPeriodId(Long classId, Long periodId);
+    List<Assessment> findByExamId(Long examId);
     void deleteById(Long id);
 }

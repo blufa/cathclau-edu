@@ -205,31 +205,46 @@ public class GradeService implements GradeUseCase {
                         .comparing((Assessment a) -> a.getDate() == null ? java.time.LocalDate.MIN : a.getDate())
                         .thenComparing(Assessment::getId))
                 .toList();
+        // Jamais mélangées (§retour utilisateur) : "cours" (interrogations/devoirs) d'un côté,
+        // compositions de l'autre — même distinction que SubjectSemesterAverage. FINAL (examen de fin
+        // de période) hors des deux, déjà hors barème semestriel standard (voir sa Javadoc).
+        List<Assessment> coursAssessments = assessments.stream()
+                .filter(a -> a.getType() == gn.lacaeducation.grading.domain.AssessmentType.QUIZ
+                        || a.getType() == gn.lacaeducation.grading.domain.AssessmentType.HOMEWORK)
+                .toList();
+        List<Assessment> compoAssessments = assessments.stream()
+                .filter(a -> a.getType() == gn.lacaeducation.grading.domain.AssessmentType.EXAM)
+                .toList();
+
         // Notes par évaluation : assessmentId → (studentId → note).
         java.util.Map<Long, java.util.Map<Long, Grade>> gradesByAssessment = new java.util.HashMap<>();
         for (Assessment a : assessments) {
             gradesByAssessment.put(a.getId(), repo.findByAssessmentId(a.getId()).stream()
                     .collect(java.util.stream.Collectors.toMap(Grade::getStudentId, g -> g, (x, y) -> x)));
         }
-        List<ReleveAssessment> cols = assessments.stream()
-                .map(a -> new ReleveAssessment(a.getId(), a.getLabel(),
-                        a.getType() == null ? null : a.getType().name(), a.getDate(), a.getMaxScore(), a.getCoefficient()))
-                .toList();
 
-        List<ReleveRow> rows = studentDataProvider.findStudentsByClass(classId).stream()
-                .map(s -> {
-                    java.util.Map<Long, BigDecimal> notes = new java.util.LinkedHashMap<>();
-                    List<Grade> studentGrades = new java.util.ArrayList<>();
-                    for (Assessment a : assessments) {
-                        Grade g = gradesByAssessment.get(a.getId()).get(s.id());
-                        notes.put(a.getId(), g == null ? null : g.getValue());
-                        if (g != null && g.getValue() != null) studentGrades.add(g);
-                    }
-                    return new ReleveRow(s.id(), s.studentNumber(), fullName(s), notes,
-                            calculationService.subjectAverage(assessments, studentGrades));
-                })
-                .sorted(java.util.Comparator.comparing(ReleveRow::fullName, String.CASE_INSENSITIVE_ORDER))
-                .toList();
+        List<ReleveRow> coursRows = new java.util.ArrayList<>();
+        List<ReleveRow> compoRows = new java.util.ArrayList<>();
+        for (StudentPublicInfo s : studentDataProvider.findStudentsByClass(classId)) {
+            java.util.Map<Long, BigDecimal> allNotes = new java.util.LinkedHashMap<>();
+            List<Grade> studentGrades = new java.util.ArrayList<>();
+            for (Assessment a : assessments) {
+                Grade g = gradesByAssessment.get(a.getId()).get(s.id());
+                allNotes.put(a.getId(), g == null ? null : g.getValue());
+                if (g != null && g.getValue() != null) studentGrades.add(g);
+            }
+            // Calculé UNE fois sur la liste combinée (comme avant) : SubjectSemesterAverage trie
+            // lui-même cours/composition en interne — coursValue/compoValue exposent ce détail déjà
+            // "coefcié" (voir sa Javadoc), aucun recalcul ici.
+            gn.lacaeducation.grading.domain.SubjectSemesterAverage.Result detail =
+                    calculationService.subjectAverageDetail(assessments, studentGrades);
+            coursRows.add(new ReleveRow(s.id(), s.studentNumber(), fullName(s),
+                    notesFor(coursAssessments, allNotes), detail == null ? null : detail.coursValue()));
+            compoRows.add(new ReleveRow(s.id(), s.studentNumber(), fullName(s),
+                    notesFor(compoAssessments, allNotes), detail == null ? null : detail.compoValue()));
+        }
+        coursRows.sort(java.util.Comparator.comparing(ReleveRow::fullName, String.CASE_INSENSITIVE_ORDER));
+        compoRows.sort(java.util.Comparator.comparing(ReleveRow::fullName, String.CASE_INSENSITIVE_ORDER));
 
         Long tenantId = assessments.stream().map(Assessment::getTenantId)
                 .filter(java.util.Objects::nonNull).findFirst().orElse(null);
@@ -239,9 +254,25 @@ public class GradeService implements GradeUseCase {
         String subjectName = academicsDataProvider.subjectLabels(java.util.Set.of(subjectId)).get(subjectId);
         String periodLabel = academicsDataProvider.findPeriod(periodId).map(p -> p.label()).orElse(null);
         String schoolYear = tenantId == null ? null : academicsDataProvider.currentAcademicYearLabel(tenantId).orElse(null);
+        BigDecimal subjectCoefficient = calculationService.subjectCoefficient(classId, subjectId);
 
         return new SubjectGradeReport(tenantId, classId, subjectId, periodId,
-                className, subjectName, periodLabel, schoolYear, cols, rows);
+                className, subjectName, periodLabel, schoolYear, subjectCoefficient,
+                new ReleveSection(toReleveAssessments(coursAssessments), coursRows),
+                new ReleveSection(toReleveAssessments(compoAssessments), compoRows));
+    }
+
+    private static List<ReleveAssessment> toReleveAssessments(List<Assessment> assessments) {
+        return assessments.stream()
+                .map(a -> new ReleveAssessment(a.getId(), a.getLabel(),
+                        a.getType() == null ? null : a.getType().name(), a.getDate(), a.getMaxScore(), a.getCoefficient()))
+                .toList();
+    }
+
+    private static java.util.Map<Long, BigDecimal> notesFor(List<Assessment> section, java.util.Map<Long, BigDecimal> allNotes) {
+        java.util.Map<Long, BigDecimal> notes = new java.util.LinkedHashMap<>();
+        for (Assessment a : section) notes.put(a.getId(), allNotes.get(a.getId()));
+        return notes;
     }
 
     @Override

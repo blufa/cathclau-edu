@@ -20,6 +20,16 @@ interface TeacherCheckinJpaRepository extends JpaRepository<TeacherCheckinJpaEnt
     Optional<TeacherCheckinJpaEntity> lockByTeacherIdAndCheckinDateAndScheduleSlotId(
             @Param("teacherId") Long teacherId, @Param("date") LocalDate date, @Param("slot") Long scheduleSlotId);
 
+    /** Verrou pessimiste sur le pointage le plus récent du jour, toutes séances confondues, SANS
+     * filtrer sur l'état de sortie (le filtrage se fait après, côté service) — voir
+     * {@code StudentCheckinJpaRepository#lockOpenByStudentIdAndCheckinDate} pour le détail du pourquoi,
+     * et {@code TeacherCheckinRepository#lockOpenByTeacherIdAndDate}. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT c FROM TeacherCheckinJpaEntity c WHERE c.teacherId = :teacherId AND c.checkinDate = :date "
+            + "ORDER BY c.id DESC")
+    List<TeacherCheckinJpaEntity> lockOpenByTeacherIdAndCheckinDate(
+            @Param("teacherId") Long teacherId, @Param("date") LocalDate date);
+
     List<TeacherCheckinJpaEntity> findByTeacherIdAndCheckinDate(Long teacherId, LocalDate date);
     List<TeacherCheckinJpaEntity> findByTeacherIdAndCheckinDateBetween(Long teacherId, LocalDate from, LocalDate to);
 }

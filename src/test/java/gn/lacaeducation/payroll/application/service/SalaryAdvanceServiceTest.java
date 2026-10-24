@@ -13,6 +13,7 @@ import gn.lacaeducation.payroll.domain.Payslip;
 import gn.lacaeducation.payroll.domain.SalaryAdvance;
 import gn.lacaeducation.payroll.domain.SalaryAdvanceStatus;
 import gn.lacaeducation.payroll.domain.TeacherCompensation;
+import gn.lacaeducation.iam.UserPublicInfoProvider;
 import gn.lacaeducation.staff.EmployeePublicInfoProvider;
 import gn.lacaeducation.staff.EmployeePublicInfoProvider.EmployeeInfo;
 import org.junit.jupiter.api.Test;
@@ -43,6 +44,7 @@ class SalaryAdvanceServiceTest {
     @Mock TeacherCompensationRepository compRepo;
     @Mock EmployeePublicInfoProvider employeeProvider;
     @Mock SalaryAdvanceVoucherPdfGenerator pdfGenerator;
+    @Mock UserPublicInfoProvider userPublicInfoProvider;
     @InjectMocks SalaryAdvanceService service;
 
     private SalaryAdvance advance(BigDecimal amount, BigDecimal remaining, SalaryAdvanceStatus status) {
@@ -62,7 +64,7 @@ class SalaryAdvanceServiceTest {
         when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
 
         SalaryAdvance a = service.grant(new GrantCommand(1L, EmployeeType.TEACHER, 9L, "Mamadou Diallo",
-                new BigDecimal("200000"), "Urgence médicale"));
+                new BigDecimal("200000"), "Urgence médicale", null));
 
         assertThat(a.getStatus()).isEqualTo(SalaryAdvanceStatus.ACTIVE);
         assertThat(a.getRemainingBalance()).isEqualByComparingTo("200000");
@@ -76,7 +78,7 @@ class SalaryAdvanceServiceTest {
                         .createdAt(LocalDateTime.now()).build()));
 
         assertThatThrownBy(() -> service.grant(new GrantCommand(1L, EmployeeType.TEACHER, 9L, "Mamadou Diallo",
-                new BigDecimal("500000"), null)))
+                new BigDecimal("500000"), null, null)))
                 .isInstanceOf(BusinessRuleException.class);
         verify(repo, never()).save(any());
     }
@@ -90,7 +92,7 @@ class SalaryAdvanceServiceTest {
         when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
 
         SalaryAdvance a = service.grant(new GrantCommand(1L, EmployeeType.TEACHER, 9L, "Mamadou Diallo",
-                new BigDecimal("250000"), null));
+                new BigDecimal("250000"), null, null));
 
         assertThat(a.getRemainingBalance()).isEqualByComparingTo("250000");
     }
@@ -100,11 +102,11 @@ class SalaryAdvanceServiceTest {
         when(repo.findByTenantIdAndTeacherIdAndEmployeeType(1L, 12L, EmployeeType.ADMINISTRATIVE)).thenReturn(List.of());
         when(payslipRepo.findByTenantIdAndTeacherId(1L, 12L)).thenReturn(List.of());
         when(employeeProvider.findEmployee(12L)).thenReturn(Optional.of(
-                new EmployeeInfo(12L, "Aissatou Bah", "ADMINISTRATIVE", new BigDecimal("400000"), true, null, null)));
+                new EmployeeInfo(12L, "Aissatou Bah", "ADMINISTRATIVE", new BigDecimal("400000"), true, null, null, null, null)));
         when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
 
         SalaryAdvance a = service.grant(new GrantCommand(1L, EmployeeType.ADMINISTRATIVE, 12L, "Aissatou Bah",
-                new BigDecimal("100000"), null));
+                new BigDecimal("100000"), null, null));
 
         assertThat(a.getRemainingBalance()).isEqualByComparingTo("100000");
     }
@@ -116,7 +118,7 @@ class SalaryAdvanceServiceTest {
         when(compRepo.findByTeacherId(9L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.grant(new GrantCommand(1L, EmployeeType.TEACHER, 9L, "Mamadou Diallo",
-                new BigDecimal("100000"), null)))
+                new BigDecimal("100000"), null, null)))
                 .isInstanceOf(BusinessRuleException.class);
         verify(repo, never()).save(any());
     }
@@ -127,7 +129,7 @@ class SalaryAdvanceServiceTest {
                 .thenReturn(List.of(advance(new BigDecimal("100000"), new BigDecimal("50000"), SalaryAdvanceStatus.ACTIVE)));
 
         assertThatThrownBy(() -> service.grant(new GrantCommand(1L, EmployeeType.TEACHER, 9L, "Mamadou Diallo",
-                new BigDecimal("50000"), null)))
+                new BigDecimal("50000"), null, null)))
                 .isInstanceOf(BusinessRuleException.class);
         verify(payslipRepo, never()).findByTenantIdAndTeacherId(any(), any());
     }

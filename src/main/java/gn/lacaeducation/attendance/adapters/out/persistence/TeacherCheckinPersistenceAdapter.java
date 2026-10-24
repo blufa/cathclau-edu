@@ -24,6 +24,10 @@ class TeacherCheckinPersistenceAdapter implements TeacherCheckinRepository {
         return jpa.lockByTeacherIdAndCheckinDateAndScheduleSlotId(t, d, slot).map(this::toDomain);
     }
 
+    @Override public Optional<TeacherCheckin> lockOpenByTeacherIdAndDate(Long t, LocalDate d) {
+        return jpa.lockOpenByTeacherIdAndCheckinDate(t, d).stream().findFirst().map(this::toDomain);
+    }
+
     @Override public List<TeacherCheckin> findByTeacherIdAndDate(Long t, LocalDate d) {
         return jpa.findByTeacherIdAndCheckinDate(t, d).stream().map(this::toDomain).toList();
     }

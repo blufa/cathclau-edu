@@ -12,8 +12,11 @@ import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
 import gn.lacaeducation.common.TenantInfoProvider;
 import gn.lacaeducation.common.TenantPublicInfo;
+import gn.lacaeducation.common.pdf.PremiumPageBackground;
+import gn.lacaeducation.common.pdf.RoundedCellBorder;
 import gn.lacaeducation.grading.application.port.in.GradeUseCase.ReleveAssessment;
 import gn.lacaeducation.grading.application.port.in.GradeUseCase.ReleveRow;
+import gn.lacaeducation.grading.application.port.in.GradeUseCase.ReleveSection;
 import gn.lacaeducation.grading.application.port.in.GradeUseCase.SubjectGradeReport;
 import gn.lacaeducation.grading.application.port.out.SubjectGradeReportPdfGenerator;
 import lombok.RequiredArgsConstructor;
@@ -64,13 +67,13 @@ class OpenPdfSubjectGradeReportGenerator implements SubjectGradeReportPdfGenerat
                     : tenantInfoProvider.findTenantInfo(rep.tenantId()).orElse(null);
 
             PdfWriter writer = PdfWriter.getInstance(doc, out);
-            writer.setPageEvent(new BulletinPageBackground());
+            writer.setPageEvent(new PremiumPageBackground());
             writer.setPageEvent(new gn.lacaeducation.common.pdf.SchoolPdfPageFooter(info, BORDER_LIGHT));
             doc.open();
 
             header(doc, info, rep.className());
             metaCard(doc, rep);
-            table(doc, rep);
+            sections(doc, rep);
             signature(doc, info);
 
             doc.close();
@@ -121,12 +124,16 @@ class OpenPdfSubjectGradeReportGenerator implements SubjectGradeReportPdfGenerat
     }
 
     private static void metaCard(Document doc, SubjectGradeReport rep) {
-        PdfPTable grid = new PdfPTable(new float[]{1f, 1f, 1f, 1f});
+        PdfPTable grid = new PdfPTable(new float[]{1f, 1f, 1f, 1f, 1f});
         grid.setWidthPercentage(100);
         metaCell(grid, "Matière", safe(rep.subjectName()), true);
         metaCell(grid, "Classe", safe(rep.className()), true);
         metaCell(grid, "Période", safe(rep.periodLabel()), true);
-        metaCell(grid, "Année scolaire", safe(rep.schoolYear()), false);
+        metaCell(grid, "Année scolaire", safe(rep.schoolYear()), true);
+        // Coefficient de la matière (Classes → Matières) — une seule valeur pour tout le relevé, jamais
+        // par évaluation (§retour utilisateur : les professeurs saisissent la note brute, le système
+        // applique ce coefficient — voir aussi la note coefciée sous chaque note, méthode noteCell).
+        metaCell(grid, "Coefficient", trimZeros(rep.subjectCoefficient()), false);
 
         PdfPCell outer = new PdfPCell();
         outer.setBorder(0);
@@ -153,51 +160,21 @@ class OpenPdfSubjectGradeReportGenerator implements SubjectGradeReportPdfGenerat
         grid.addCell(c);
     }
 
-    private static void table(Document doc, SubjectGradeReport rep) {
-        List<ReleveAssessment> cols = rep.assessments();
-        float[] widths = new float[cols.size() + 2];
-        widths[0] = 2.6f;
-        for (int i = 1; i <= cols.size(); i++) widths[i] = 1.1f;
-        widths[widths.length - 1] = 1.1f;
-
-        PdfPTable t = new PdfPTable(widths);
-        t.setWidthPercentage(100);
-
-        headerCell(t, "Prénoms et nom");
-        // En-tête compressé sur 2 lignes (pas 4) : la matière est déjà dans la carte Matière/Classe/
-        // Période juste au-dessus — la répéter par colonne gaspillait une hauteur précieuse en paysage
-        // (moins de hauteur disponible qu'en portrait) et faisait déborder la signature sur une 2ème page.
-        for (ReleveAssessment a : cols) {
-            String head = safe(a.type() != null ? a.type() : a.label());
-            if (a.date() != null) head += " · " + a.date().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM"));
-            head += "\n/" + (a.maxScore() != null ? a.maxScore().stripTrailingZeros().toPlainString() : "20")
-                    + (a.coefficient() != null ? " · coef " + a.coefficient().stripTrailingZeros().toPlainString() : "");
-            headerCell(t, head);
+    /** Les deux sections — Évaluations puis Compositions — jamais mélangées (§retour utilisateur,
+     * "il doit avoir les évaluations à part, et une liste des compositions"). Une section sans
+     * évaluation n'affiche aucun tableau vide ; le message "Aucune évaluation…" ne sort que si les
+     * deux sections sont vides. */
+    private static void sections(Document doc, SubjectGradeReport rep) {
+        boolean any = false;
+        if (!rep.evaluations().assessments().isEmpty()) {
+            sectionTable(doc, "Évaluations", rep.evaluations(), rep.subjectCoefficient());
+            any = true;
         }
-        headerCellTint(t, "Moyenne", GOLD);
-
-        boolean zebra = false;
-        for (ReleveRow r : rep.rows()) {
-            Color bg = zebra ? ROW_STRIPE : WHITE;
-            zebra = !zebra;
-            bodyCell(t, safe(r.fullName()), Element.ALIGN_LEFT, bg, DARK_TEXT, true);
-            for (ReleveAssessment a : cols) {
-                BigDecimal v = r.notes() == null ? null : r.notes().get(a.id());
-                bodyCellMono(t, v == null ? "—" : trimZeros(v), bg);
-            }
-            Color avgColor = r.average() != null && r.average().compareTo(BigDecimal.TEN) < 0 ? FAIL_RED : DARK_GREEN;
-            bodyCellMonoTint(t, r.average() == null ? "—" : trimZeros(r.average()), COMPO_TINT, avgColor);
+        if (!rep.compositions().assessments().isEmpty()) {
+            sectionTable(doc, "Compositions", rep.compositions(), rep.subjectCoefficient());
+            any = true;
         }
-        if (rep.rows().isEmpty()) {
-            PdfPCell empty = new PdfPCell(new Phrase("Aucun élève dans cette classe.", font(SANS, FontFactory.HELVETICA_OBLIQUE, 9.5f, TEXT_GREY)));
-            empty.setColspan(widths.length);
-            empty.setHorizontalAlignment(Element.ALIGN_CENTER);
-            empty.setPadding(10f);
-            t.addCell(empty);
-        }
-        roundedTable(doc, t, mm(2.6f));
-
-        if (cols.isEmpty()) {
+        if (!any) {
             Paragraph note = new Paragraph("Aucune évaluation programmée pour cette matière sur la période.",
                     font(SANS, FontFactory.HELVETICA_OBLIQUE, 8.5f, TEXT_GREY));
             note.setSpacingAfter(mm(2.6f));
@@ -210,6 +187,72 @@ class OpenPdfSubjectGradeReportGenerator implements SubjectGradeReportPdfGenerat
             legend.setSpacingAfter(mm(2.6f));
             doc.add(legend);
         }
+    }
+
+    private static void sectionTable(Document doc, String title, ReleveSection section, BigDecimal coefficient) {
+        Paragraph titleP = new Paragraph(title.toUpperCase(Locale.FRENCH), font(SANS_BOLD, FontFactory.HELVETICA_BOLD, 7.5f, DARK_GREEN));
+        titleP.setSpacingAfter(mm(1.4f));
+        doc.add(titleP);
+
+        // Colonne Coef. juste après "Prénoms et nom" (§retour utilisateur) — une seule valeur, celle
+        // de la matière, répétée sur chaque ligne (jamais une note coefciée par évaluation : une seule
+        // ligne par cellule, comme la maquette de référence — pas de 2e ligne grise sous la note qui
+        // faisait déborder le tableau sur une 2e page).
+        List<ReleveAssessment> cols = section.assessments();
+        float[] widths = new float[cols.size() + 3];
+        widths[0] = 2.6f;
+        widths[1] = 0.7f;
+        for (int i = 2; i < widths.length - 1; i++) widths[i] = 1.1f;
+        widths[widths.length - 1] = 1.1f;
+
+        PdfPTable t = new PdfPTable(widths);
+        t.setWidthPercentage(100);
+
+        headerCell(t, "Prénoms et nom");
+        headerCell(t, "Coef.");
+        // En-tête compressé sur 2 lignes (pas 4) : la matière est déjà dans la carte Matière/Classe/
+        // Période juste au-dessus — la répéter par colonne gaspillait une hauteur précieuse en paysage
+        // (moins de hauteur disponible qu'en portrait) et faisait déborder la signature sur une 2ème
+        // page. Toujours le libellé RÉELLEMENT saisi par l'enseignant (ex. "Évaluation Écrite") — jamais
+        // le type interne brut (§retour utilisateur, "ce n'est pas le type").
+        for (ReleveAssessment a : cols) {
+            String head = safe(a.label());
+            if (a.date() != null) head += " · " + a.date().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM"));
+            head += "\n/" + (a.maxScore() != null ? a.maxScore().stripTrailingZeros().toPlainString() : "20");
+            headerCell(t, head);
+        }
+        headerCellTint(t, "Moyenne", GOLD);
+
+        boolean zebra = false;
+        for (ReleveRow r : section.rows()) {
+            Color bg = zebra ? ROW_STRIPE : WHITE;
+            zebra = !zebra;
+            bodyCell(t, safe(r.fullName()), Element.ALIGN_LEFT, bg, DARK_TEXT, true);
+            bodyCellMono(t, trimZeros(coefficient), bg);
+            for (ReleveAssessment a : cols) {
+                BigDecimal v = r.notes() == null ? null : r.notes().get(a.id());
+                bodyCellMono(t, v == null ? "—" : trimZeros(v), bg);
+            }
+            Color avgColor = r.average() != null && r.average().compareTo(BigDecimal.TEN) < 0 ? FAIL_RED : DARK_GREEN;
+            bodyCellMonoTint(t, r.average() == null ? "—" : trimZeros(r.average()), COMPO_TINT, avgColor);
+        }
+        if (section.rows().isEmpty()) {
+            PdfPCell empty = new PdfPCell(new Phrase("Aucun élève dans cette classe.", font(SANS, FontFactory.HELVETICA_OBLIQUE, 9.5f, TEXT_GREY)));
+            empty.setColspan(widths.length);
+            empty.setHorizontalAlignment(Element.ALIGN_CENTER);
+            empty.setPadding(10f);
+            t.addCell(empty);
+        }
+        roundedTable(doc, t, mm(2.6f));
+    }
+
+    private static void bodyCellMono(PdfPTable table, String text, Color bg) {
+        PdfPCell cell = new PdfPCell(new Phrase(text, font(MONO, FontFactory.COURIER, 8f, TEXT_GREY)));
+        cell.setHorizontalAlignment(Element.ALIGN_CENTER);
+        cell.setBackgroundColor(bg);
+        cell.setPadding(2.6f);
+        cell.setBorderColor(new Color(232, 234, 237));
+        table.addCell(cell);
     }
 
     private static void signature(Document doc, TenantPublicInfo info) {
@@ -285,15 +328,6 @@ class OpenPdfSubjectGradeReportGenerator implements SubjectGradeReportPdfGenerat
                 ? font(SANS_BOLD, FontFactory.HELVETICA_BOLD, 8.5f, color)
                 : font(SANS, FontFactory.HELVETICA, 8.5f, color)));
         cell.setHorizontalAlignment(alignment);
-        cell.setBackgroundColor(bg);
-        cell.setPadding(2.6f);
-        cell.setBorderColor(new Color(232, 234, 237));
-        table.addCell(cell);
-    }
-
-    private static void bodyCellMono(PdfPTable table, String text, Color bg) {
-        PdfPCell cell = new PdfPCell(new Phrase(text, font(MONO, FontFactory.COURIER, 8f, TEXT_GREY)));
-        cell.setHorizontalAlignment(Element.ALIGN_CENTER);
         cell.setBackgroundColor(bg);
         cell.setPadding(2.6f);
         cell.setBorderColor(new Color(232, 234, 237));

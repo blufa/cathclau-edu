@@ -48,4 +48,8 @@ public class Payslip {
     private String notes;
     private LocalDateTime createdAt;
     private LocalDateTime paidAt;
+    /** Compte utilisateur du comptable ayant marqué la fiche payée (§payroll) — résolu en nom affiché
+     * pour la signature du PDF (voir {@code PayrollService#pdfBytes}), jamais stocké en dur : un nom
+     * corrigé après coup (faute de frappe sur le compte) doit se refléter sur une réimpression. */
+    private Long paidByUserId;
 }

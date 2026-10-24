@@ -13,6 +13,10 @@ public interface StudentCheckinRepository {
      * elle existe) — sérialise deux scans de sortie quasi simultanés du même badge (§15/§16 : aucune
      * contrainte d'unicité ne protège une mise à jour, contrairement à l'insertion de l'entrée). */
     Optional<StudentCheckin> lockByStudentIdAndDateAndSlot(Long studentId, LocalDate date, Long scheduleSlotId);
+    /** Verrou pessimiste sur le pointage OUVERT (sans sortie) du jour, toutes séances confondues — sert
+     * à {@code recordExit} du flux de SCAN (un seul cycle entrée/sortie par jour, §retour fondateur :
+     * la barrière porte sur la journée entière, pas sur un créneau précis). */
+    Optional<StudentCheckin> lockOpenByStudentIdAndDate(Long studentId, LocalDate date);
     List<StudentCheckin> findByStudentIdAndDate(Long studentId, LocalDate date);
     List<StudentCheckin> findByClassIdAndDate(Long classId, LocalDate date);
 }

@@ -86,24 +86,31 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
         if (block == null) {
             throw new gn.lacaeducation.common.BusinessRuleException("Aucune séance programmée aujourd'hui pour cet enseignant.");
         }
-        // Scan d'entrée répété avant toute sortie (§16, même règle que pour l'élève — voir
-        // StudentAttendanceService#recordEntry pour le détail de la fenêtre de course réseau) : refus
-        // explicite plutôt que de recalculer/écraser silencieusement le premier pointage.
-        java.util.Optional<TeacherCheckin> existing = checkinRepository.findByTeacherIdAndDateAndSlot(teacherId, today, block.firstSlotId());
-        if (existing.isPresent() && existing.get().getCheckOutTime() == null && !createdWithinRaceWindow(existing.get())) {
+        // Un seul scan d'ENTRÉE et un seul scan de SORTIE par jour, sans aucune fenêtre de temps côté
+        // utilisateur (§retour fondateur — voir StudentAttendanceService#recordEntry pour le détail) :
+        // la barrière porte sur la JOURNÉE ENTIÈRE (toutes séances confondues), jamais un délai.
+        java.util.Optional<TeacherCheckin> existing = checkinRepository.findByTeacherIdAndDate(teacherId, today).stream()
+                .max(Comparator.comparing(TeacherCheckin::getCreatedAt, Comparator.nullsFirst(Comparator.naturalOrder())));
+        if (existing.isPresent()) {
+            TeacherCheckin last = existing.get();
+            if (createdWithinRaceWindow(last)) {
+                return last;
+            }
+            if (last.getCheckOutTime() == null) {
+                throw new gn.lacaeducation.common.BusinessRuleException(
+                        "Ce badge a déjà été scanné à l'entrée aujourd'hui. Scannez-le à la sortie avant un nouvel accès.");
+            }
             throw new gn.lacaeducation.common.BusinessRuleException(
-                    "Ce badge a déjà été scanné à l'entrée. Scannez-le à la sortie avant un nouvel accès.");
+                    "Ce badge a déjà fait son entrée et sa sortie aujourd'hui. Un seul passage par jour est autorisé.");
         }
-        TeacherCheckin checkin = existing.orElseGet(() -> {
-                    LocalTime start = block.start();
-                    LocalTime end = block.end();
-                    LocalTime deadline = graceDeadline(start);
-                    int late = (int) Math.max(0, Duration.between(deadline, now).toMinutes());
-                    return checkinRepository.save(TeacherCheckin.builder()
-                            .tenantId(TenantContext.get()).teacherId(teacherId).checkinDate(today)
-                            .scheduleSlotId(block.firstSlotId()).sessionStart(start).sessionEnd(end)
-                            .checkInTime(now).lateMinutes(late).earlyMinutes(0).createdAt(LocalDateTime.now()).build());
-                });
+        LocalTime start = block.start();
+        LocalTime end = block.end();
+        LocalTime deadline = graceDeadline(start);
+        int late = (int) Math.max(0, Duration.between(deadline, now).toMinutes());
+        TeacherCheckin checkin = checkinRepository.save(TeacherCheckin.builder()
+                .tenantId(TenantContext.get()).teacherId(teacherId).checkinDate(today)
+                .scheduleSlotId(block.firstSlotId()).sessionStart(start).sessionEnd(end)
+                .checkInTime(now).lateMinutes(late).earlyMinutes(0).createdAt(LocalDateTime.now()).build());
         upsertDailyAttendance(teacherId, today);
         return checkin;
     }
@@ -117,12 +124,13 @@ public class TeacherAttendanceService implements TeacherAttendanceUseCase {
             throw new gn.lacaeducation.common.BusinessRuleException("Aucune séance programmée aujourd'hui pour cet enseignant.");
         }
         // Verrou pessimiste (§15/§16) : voir StudentAttendanceService#recordExit — sérialise deux
-        // scans de sortie quasi simultanés du même badge.
-        TeacherCheckin checkin = checkinRepository.lockByTeacherIdAndDateAndSlot(teacherId, today, block.firstSlotId())
+        // scans de sortie quasi simultanés du même badge. Porte sur le pointage le plus récent du jour
+        // entier (pas un créneau précis) — un seul cycle entrée/sortie par jour (§retour fondateur).
+        TeacherCheckin checkin = checkinRepository.lockOpenByTeacherIdAndDate(teacherId, today)
                 .orElseThrow(() -> new gn.lacaeducation.common.BusinessRuleException(
-                        "Aucun pointage d'entrée trouvé pour cette séance : scannez d'abord l'entrée."));
+                        "Aucun pointage d'entrée trouvé aujourd'hui : scannez d'abord l'entrée."));
         if (checkin.getCheckOutTime() != null) {
-            // Déjà sorti pour cette séance (second scan de sortie, retentative réseau…) : renvoie le
+            // Déjà sorti aujourd'hui (second scan de sortie, retentative réseau…) : renvoie le
             // pointage existant sans écraser l'heure de sortie ni republier l'événement.
             return checkin;
         }

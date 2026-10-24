@@ -17,4 +17,7 @@ public class Assessment {
     private LocalDate date;
     private BigDecimal coefficient;
     private BigDecimal maxScore;
+    /** Composition (§Exam) qui a fait naître cette évaluation, {@code null} pour une évaluation
+     * créée normalement (Nouvelle évaluation) — voir {@code ExamService#gradeEntryAssessment}. */
+    private Long examId;
 }

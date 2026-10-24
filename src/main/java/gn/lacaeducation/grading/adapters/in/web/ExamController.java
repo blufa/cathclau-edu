@@ -1,5 +1,6 @@
 package gn.lacaeducation.grading.adapters.in.web;
 import gn.lacaeducation.grading.application.port.in.ExamUseCase;
+import gn.lacaeducation.grading.domain.Assessment;
 import gn.lacaeducation.grading.domain.Exam;
 import gn.lacaeducation.grading.domain.ExamSupervision;
 import gn.lacaeducation.grading.domain.ExamType;
@@ -73,5 +74,19 @@ public class ExamController {
     public ResponseEntity<Void> removeSupervision(@PathVariable Long id, @PathVariable Long supervisionId) {
         useCase.removeSupervision(supervisionId);
         return ResponseEntity.noContent().build();
+    }
+
+    // ── Saisie des notes par matière (la composition se note depuis cet onglet, jamais via "Nouvelle
+    // évaluation" — §retour utilisateur) ──────────────────────────────────────────
+    @Operation(summary = "Lister les évaluations (une par matière déjà notée) de cette composition")
+    @PreAuthorize("hasAuthority('evaluation:create')")
+    @GetMapping("/{id}/assessments")
+    public List<Assessment> assessmentsByExam(@PathVariable Long id) { return useCase.assessmentsByExam(id); }
+
+    @Operation(summary = "Retrouve (ou crée) l'évaluation de cette matière pour cette composition, prête pour la saisie des notes")
+    @PreAuthorize("hasAuthority('evaluation:create')")
+    @PostMapping("/{id}/subjects/{subjectId}/grade-entry")
+    public ResponseEntity<Assessment> gradeEntryAssessment(@PathVariable Long id, @PathVariable Long subjectId) {
+        return ResponseEntity.ok(useCase.gradeEntryAssessment(id, subjectId));
     }
 }

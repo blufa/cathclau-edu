@@ -12,6 +12,8 @@ import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
 import gn.lacaeducation.common.TenantInfoProvider;
 import gn.lacaeducation.common.TenantPublicInfo;
+import gn.lacaeducation.common.pdf.PremiumPageBackground;
+import gn.lacaeducation.common.pdf.RoundedCellBorder;
 import gn.lacaeducation.grading.application.port.out.AssessmentGradeSheetPdfGenerator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -65,7 +67,7 @@ class OpenPdfAssessmentGradeSheetGenerator implements AssessmentGradeSheetPdfGen
                     : tenantInfoProvider.findTenantInfo(sheet.tenantId()).orElse(null);
 
             PdfWriter writer = PdfWriter.getInstance(doc, out);
-            writer.setPageEvent(new BulletinPageBackground());
+            writer.setPageEvent(new PremiumPageBackground());
             writer.setPageEvent(new gn.lacaeducation.common.pdf.SchoolPdfPageFooter(info, BORDER_LIGHT));
             doc.open();
 

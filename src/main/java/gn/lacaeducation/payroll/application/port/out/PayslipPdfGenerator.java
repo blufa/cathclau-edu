@@ -18,5 +18,23 @@ public interface PayslipPdfGenerator {
     record TeacherHours(int dueMinutes, int realizedMinutes, int missingMinutes, int lateMinutes,
                         int earlyMinutes, int effectiveMinutes) {}
 
-    byte[] generate(Payslip payslip, List<PayslipLine> lines, TeacherHours hours);
+    /**
+     * Informations d'affichage résolues par l'appelant (contrôleur web), qui a accès aux modules
+     * staff/iam — jamais {@link gn.lacaeducation.payroll.application.service.PayrollService}
+     * elle-même, volontairement découplée du module staff (voir sa Javadoc de classe).
+     * @param beneficiaryRole sous-titre sous le nom du salarié (ex. "Mathématiques · payé à l'heure",
+     *                        "Principal · salaire fixe") — {@code null} si inconnu.
+     * @param beneficiaryPhotoUrl photo du salarié (badge/fiche), {@code null} si jamais capturée.
+     * @param accountantName nom imprimé sous la signature "Signature et Cachet du Comptable" :
+     *                       celui ayant marqué la fiche payée ({@code Payslip#paidByUserId} résolu) si
+     *                       elle l'est déjà, sinon celui qui télécharge la fiche maintenant (comptable
+     *                       imprimant un brouillon/une fiche validée, voir {@code
+     *                       PayrollService#pdfBytes}) — {@code null} seulement pour le self-service
+     *                       enseignant ou si aucun des deux n'est résolu.
+     */
+    record Presentation(String beneficiaryRole, String beneficiaryPhotoUrl, String accountantName) {
+        public static final Presentation EMPTY = new Presentation(null, null, null);
+    }
+
+    byte[] generate(Payslip payslip, List<PayslipLine> lines, TeacherHours hours, Presentation presentation);
 }

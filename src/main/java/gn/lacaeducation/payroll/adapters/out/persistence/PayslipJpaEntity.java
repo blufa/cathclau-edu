@@ -34,4 +34,5 @@ public class PayslipJpaEntity {
     @Column(columnDefinition = "text") private String notes;
     @Column(name = "created_at") private LocalDateTime createdAt;
     @Column(name = "paid_at") private LocalDateTime paidAt;
+    @Column(name = "paid_by_user_id") private Long paidByUserId;
 }

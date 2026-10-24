@@ -93,30 +93,36 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
         if (block == null) {
             throw new BusinessRuleException("Aucun cours programmé aujourd'hui pour cette classe.");
         }
-        // Scan d'entrée répété avant toute sortie (§16 cahier des charges) : refus explicite plutôt que
-        // de recalculer/écraser silencieusement le premier pointage. Exclut volontairement la ligne
-        // tout juste créée par la PROPRE retentative de ce même appel (voir AttendanceScanController
-        // #idempotent : deux requêtes quasi simultanées peuvent violer la contrainte d'unicité, la
-        // retentative retrouve alors la ligne créée par l'autre — ce n'est PAS un second scan humain,
-        // juste une course gagnée par l'autre requête du même tap physique) : seule une ligne déjà
-        // vieille de plus de quelques secondes est traitée comme un vrai double-scan. Un re-scan APRÈS
-        // une sortie valide sur ce même créneau reste accepté (silencieux, voir orElseGet) : cas
-        // volontairement hors scope ici (pas de double-scan, c'est une vraie ré-entrée).
-        Optional<StudentCheckin> existing = checkinRepository.findByStudentIdAndDateAndSlot(studentId, today, block.firstSlotId());
-        if (existing.isPresent() && existing.get().getCheckOutTime() == null && !createdWithinRaceWindow(existing.get())) {
+        // Un seul scan d'ENTRÉE et un seul scan de SORTIE par jour, sans aucune fenêtre de temps côté
+        // utilisateur (§retour fondateur — correction d'un comportement par créneau perçu comme "je
+        // peux scanner plusieurs fois") : la barrière porte sur la JOURNÉE ENTIÈRE (toutes séances
+        // confondues), pas sur le créneau de cours courant — seul l'état (déjà entré aujourd'hui ? déjà
+        // sorti aujourd'hui ?) décide, jamais un délai. Exception technique : une requête qui retrouve
+        // la ligne qu'ELLE-MÊME vient de créer une fraction de seconde plus tôt (retentative réseau du
+        // même appel HTTP, voir AttendanceScanController#idempotent) n'est pas un second scan humain —
+        // cette ligne est renvoyée telle quelle, sans erreur, invisible pour l'utilisateur.
+        Optional<StudentCheckin> existing = checkinRepository.findByStudentIdAndDate(studentId, today).stream()
+                .max(Comparator.comparing(StudentCheckin::getCreatedAt, Comparator.nullsFirst(Comparator.naturalOrder())));
+        if (existing.isPresent()) {
+            StudentCheckin last = existing.get();
+            if (createdWithinRaceWindow(last)) {
+                return last;
+            }
+            if (last.getCheckOutTime() == null) {
+                throw new BusinessRuleException(
+                        "Ce badge a déjà été scanné à l'entrée aujourd'hui. Scannez-le à la sortie avant un nouvel accès.");
+            }
             throw new BusinessRuleException(
-                    "Ce badge a déjà été scanné à l'entrée. Scannez-le à la sortie avant un nouvel accès.");
+                    "Ce badge a déjà fait son entrée et sa sortie aujourd'hui. Un seul passage par jour est autorisé.");
         }
-        StudentCheckin checkin = existing.orElseGet(() -> {
-                    LocalTime start = block.start();
-                    LocalTime end = block.end();
-                    LocalTime deadline = graceDeadline(start);
-                    int late = (int) Math.max(0, Duration.between(deadline, now).toMinutes());
-                    return checkinRepository.save(StudentCheckin.builder()
-                            .tenantId(TenantContext.get()).studentId(studentId).classId(classId).checkinDate(today)
-                            .scheduleSlotId(block.firstSlotId()).sessionStart(start).sessionEnd(end)
-                            .checkInTime(now).lateMinutes(late).createdAt(LocalDateTime.now()).build());
-                });
+        LocalTime start = block.start();
+        LocalTime end = block.end();
+        LocalTime deadline = graceDeadline(start);
+        int late = (int) Math.max(0, Duration.between(deadline, now).toMinutes());
+        StudentCheckin checkin = checkinRepository.save(StudentCheckin.builder()
+                .tenantId(TenantContext.get()).studentId(studentId).classId(classId).checkinDate(today)
+                .scheduleSlotId(block.firstSlotId()).sessionStart(start).sessionEnd(end)
+                .checkInTime(now).lateMinutes(late).createdAt(LocalDateTime.now()).build());
         upsertDailyAttendance(studentId, classId, today);
         return checkin;
     }
@@ -137,11 +143,13 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
         // contrairement à l'entrée (protégée par la contrainte d'unicité à l'insertion), rien n'empêche
         // nativement deux scans de sortie quasi simultanés de mettre à jour la MÊME ligne en parallèle
         // et de publier chacun leur StudentExitEvent (deux SMS avec des heures légèrement différentes).
-        StudentCheckin checkin = checkinRepository.lockByStudentIdAndDateAndSlot(studentId, today, block.firstSlotId())
+        // Porte sur le pointage OUVERT du jour entier (pas un créneau précis) — un seul cycle
+        // entrée/sortie par jour (§retour fondateur, voir recordEntry).
+        StudentCheckin checkin = checkinRepository.lockOpenByStudentIdAndDate(studentId, today)
                 .orElseThrow(() -> new BusinessRuleException(
-                        "Aucun pointage d'entrée trouvé pour cette séance : scannez d'abord l'entrée."));
+                        "Aucun pointage d'entrée trouvé aujourd'hui : scannez d'abord l'entrée."));
         if (checkin.getCheckOutTime() != null) {
-            // Déjà sorti pour cette séance (second scan de sortie, retentative réseau…) : on renvoie le
+            // Déjà sorti aujourd'hui (second scan de sortie, retentative réseau…) : on renvoie le
             // pointage existant SANS écraser l'heure de sortie ni republier l'événement — sinon chaque
             // nouveau scan de sortie décalerait silencieusement l'heure enregistrée et renverrait un
             // second SMS avec une durée différente.

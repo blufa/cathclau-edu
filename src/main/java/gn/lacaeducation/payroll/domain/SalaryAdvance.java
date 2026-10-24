@@ -35,4 +35,7 @@ public class SalaryAdvance {
     private SalaryAdvanceStatus status;
     private LocalDateTime grantedAt;
     private LocalDateTime lastDeductedAt;
+    /** Compte utilisateur du comptable ayant accordé l'avance (§payroll) — résolu en nom affiché pour
+     * la signature du bon PDF, même principe que {@code Payslip#paidByUserId}. */
+    private Long grantedByUserId;
 }
