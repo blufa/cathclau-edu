@@ -24,4 +24,7 @@ public class EmployeeAttendance {
     /** Horodatage de création — utilisé pour la fenêtre de course réseau anti-double-scan (§16, voir
      * EmployeeAttendanceService#createdWithinRaceWindow), pas affiché à l'utilisateur. */
     private LocalDateTime createdAt;
+    /** Transitoire, jamais persisté — voir {@code StudentCheckin#duplicate}. */
+    @Builder.Default
+    private boolean duplicate = false;
 }

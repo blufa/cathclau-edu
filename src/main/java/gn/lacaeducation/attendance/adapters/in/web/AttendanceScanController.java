@@ -60,12 +60,17 @@ public class AttendanceScanController {
             Integer earlyMinutes,           // sortie uniquement : départ anticipé (sessionEnd - checkOutTime)
             Boolean requiresPickupInfo,     // sortie élève uniquement : classe de cycle maternelle/primaire
             Long studentAttendanceId,       // entrée élève uniquement : permet de notifier/justifier directement depuis le scan
-            LocalDate date) {}
+            LocalDate date,
+            /** {@code true} quand ce succès est un simple retour silencieux d'un scan déjà traité
+             * (badge qui reste visible plusieurs frames à la caméra, retentative réseau) — jamais un
+             * nouveau pointage. Le frontend ne doit RIEN afficher/vibrer dans ce cas (§retour terrain :
+             * "comme si il scan 8 fois" pour un seul passage physique). */
+            boolean duplicate) {}
 
     /** Vue commune pour construire une {@link ScanResponse}, quel que soit le type de pointage (élève,
      * enseignant ou personnel — classes structurellement proches mais sans interface commune). */
     private record CheckinView(LocalTime sessionStart, LocalTime sessionEnd, LocalTime checkInTime, LocalTime checkOutTime,
-                               Integer lateMinutes, Integer earlyMinutes) {}
+                               Integer lateMinutes, Integer earlyMinutes, boolean duplicate) {}
 
     // L'enseignant ne doit JAMAIS pouvoir scanner (ni sa propre présence, ni celle des élèves ou du
     // personnel) — retiré volontairement de la liste des rôles autorisés. Le personnel administratif
@@ -131,18 +136,18 @@ public class AttendanceScanController {
     }
 
     private static CheckinView toView(TeacherCheckin c) {
-        return new CheckinView(c.getSessionStart(), c.getSessionEnd(), c.getCheckInTime(), c.getCheckOutTime(), c.getLateMinutes(), c.getEarlyMinutes());
+        return new CheckinView(c.getSessionStart(), c.getSessionEnd(), c.getCheckInTime(), c.getCheckOutTime(), c.getLateMinutes(), c.getEarlyMinutes(), c.isDuplicate());
     }
 
     private static CheckinView toView(StudentCheckin c) {
-        return new CheckinView(c.getSessionStart(), c.getSessionEnd(), c.getCheckInTime(), c.getCheckOutTime(), c.getLateMinutes(), c.getEarlyMinutes());
+        return new CheckinView(c.getSessionStart(), c.getSessionEnd(), c.getCheckInTime(), c.getCheckOutTime(), c.getLateMinutes(), c.getEarlyMinutes(), c.isDuplicate());
     }
 
     // Pas de créneau de cours pour le personnel non-enseignant (un seul pointage par jour, vs
     // l'horaire de référence de l'école) : sessionStart/sessionEnd toujours null, donc scheduledMinutes
     // aussi (realizedMinutes reste calculable dès que l'entrée et la sortie sont pointées).
     private static CheckinView toView(EmployeeAttendance a) {
-        return new CheckinView(null, null, a.getCheckInTime(), a.getCheckOutTime(), a.getLateMinutes(), a.getEarlyMinutes());
+        return new CheckinView(null, null, a.getCheckInTime(), a.getCheckOutTime(), a.getLateMinutes(), a.getEarlyMinutes(), a.isDuplicate());
     }
 
     private static ScanResponse response(String subjectType, Long subjectId, String name, ScanDirection direction, CheckinView v, Boolean requiresPickupInfo, Long studentAttendanceId) {
@@ -150,14 +155,14 @@ public class AttendanceScanController {
             int late = v.lateMinutes() != null ? v.lateMinutes() : 0;
             AttendanceOutcome outcome = late > 0 ? AttendanceOutcome.LATE : AttendanceOutcome.PRESENT;
             return new ScanResponse(subjectType, subjectId, name, direction, outcome, late, v.checkInTime(),
-                    null, null, null, null, null, studentAttendanceId, LocalDate.now());
+                    null, null, null, null, null, studentAttendanceId, LocalDate.now(), v.duplicate());
         }
         Integer realized = (v.checkInTime() != null && v.checkOutTime() != null)
                 ? (int) Duration.between(v.checkInTime(), v.checkOutTime()).toMinutes() : null;
         Integer scheduled = (v.sessionStart() != null && v.sessionEnd() != null)
                 ? (int) Duration.between(v.sessionStart(), v.sessionEnd()).toMinutes() : null;
         return new ScanResponse(subjectType, subjectId, name, direction, null, null, v.checkInTime(),
-                v.checkOutTime(), realized, scheduled, v.earlyMinutes(), requiresPickupInfo, studentAttendanceId, LocalDate.now());
+                v.checkOutTime(), realized, scheduled, v.earlyMinutes(), requiresPickupInfo, studentAttendanceId, LocalDate.now(), v.duplicate());
     }
 
     /**

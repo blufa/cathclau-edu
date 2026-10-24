@@ -25,4 +25,11 @@ public class StudentCheckin {
      * été pointée (bénéfice du doute, pas de pénalité). */
     private Integer earlyMinutes;
     private LocalDateTime createdAt;
+    /** Transitoire, jamais persisté (absent du mapping JPA) : {@code true} quand ce pointage renvoyé
+     * par {@code recordEntry}/{@code recordExit} est un simple retour silencieux d'un scan déjà
+     * traité (fenêtre de course réseau, sortie déjà pointée) — jamais un nouveau pointage. Permet au
+     * frontend de n'afficher/vibrer qu'une seule fois par scan physique (§retour terrain : "comme si
+     * il scan 8 fois"). */
+    @Builder.Default
+    private boolean duplicate = false;
 }

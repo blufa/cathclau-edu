@@ -23,4 +23,7 @@ public class TeacherCheckin {
      * pointée : bénéfice du doute, pas de pénalité de départ anticipé). */
     private Integer earlyMinutes;
     private LocalDateTime createdAt;
+    /** Transitoire, jamais persisté — voir {@code StudentCheckin#duplicate}. */
+    @Builder.Default
+    private boolean duplicate = false;
 }
