@@ -1,19 +1,22 @@
 package gn.lacaeducation.attendance.application.port.out;
 import gn.lacaeducation.attendance.domain.EmployeeAttendance;
-import gn.lacaeducation.attendance.domain.EmployeeAttendanceStatus;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 public interface EmployeeAttendanceRepository {
     EmployeeAttendance save(EmployeeAttendance attendance);
     Optional<EmployeeAttendance> findById(Long id);
-    Optional<EmployeeAttendance> findByEmployeeIdAndDate(Long employeeId, LocalDate date);
-    /** Comme {@link #findByEmployeeIdAndDate}, mais pose un verrou pessimiste sur la ligne (si elle
-     * existe) — même usage que {@code StudentCheckinRepository#lockByStudentIdAndDateAndSlot} (§15/§16) :
-     * sérialise deux scans de sortie quasi simultanés du même badge. */
-    Optional<EmployeeAttendance> lockByEmployeeIdAndDate(Long employeeId, LocalDate date);
+    /** Toutes les lignes du jour pour cet employé — PLUSIEURS possibles depuis le passage aux cycles
+     * entrée/sortie illimités par jour (§retour terrain, voir {@code StudentCheckinRepository}, même
+     * modèle). Jamais {@code Optional} : une requête Spring Data dérivée qui attend un résultat
+     * unique lèverait une exception dès le 2e cycle de la journée. */
+    List<EmployeeAttendance> findByEmployeeIdAndDate(Long employeeId, LocalDate date);
+    /** Verrou pessimiste sur la ligne la plus RÉCENTE du jour (toute, ouverte ou close — le filtrage
+     * sur l'état se fait côté service), même principe que
+     * {@code StudentCheckinRepository#lockOpenByStudentIdAndDate} : sérialise deux scans de sortie
+     * quasi simultanés du même badge, et sert aussi de point d'ancrage pour une ré-entrée (nouveau
+     * cycle) après un cycle déjà clos. */
+    Optional<EmployeeAttendance> lockLatestByEmployeeIdAndDate(Long employeeId, LocalDate date);
     List<EmployeeAttendance> findByEmployeeIdAndDateBetween(Long employeeId, LocalDate from, LocalDate to);
-    long countByEmployeeIdAndDateBetween(Long employeeId, LocalDate from, LocalDate to);
-    long countByEmployeeIdAndDateBetweenAndStatus(Long employeeId, LocalDate from, LocalDate to, EmployeeAttendanceStatus status);
     void deleteById(Long id);
 }

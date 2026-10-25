@@ -98,4 +98,56 @@ class StudentCardServiceTest {
 
         assertThat(result).isEmpty();
     }
+
+    // ── getOrRefresh (§retour utilisateur, production : "j'ai modifié le matricule, mais le badge
+    // garde l'ancien") — QuickBadgeButton n'appelle plus jamais une carte existante sans vérifier
+    // qu'elle reflète encore les données courantes. ────────────────────────────────────────────────
+
+    @Test
+    void getOrRefresh_noActiveCard_createsNew() {
+        StudentCardService s = service();
+        when(repo.findByStudentIdAndStatus(7L, CardStatus.ACTIVE)).thenReturn(Optional.empty());
+        when(repo.countByTenantId(1L)).thenReturn(0L);
+        when(repo.save(org.mockito.ArgumentMatchers.any())).thenAnswer(i -> i.getArgument(0));
+
+        StudentCard result = s.getOrRefresh(new StudentCardService.IssueCardCommand(
+                1L, 7L, null, null, 20L, "MAT-NEW", null, null));
+
+        assertThat(result.getStudentNumber()).isEqualTo("MAT-NEW");
+        assertThat(result.getStatus()).isEqualTo(CardStatus.ACTIVE);
+    }
+
+    @Test
+    void getOrRefresh_activeCardAlreadyUpToDate_returnsUnchangedWithoutNewCard() {
+        StudentCardService s = service();
+        StudentCard active = StudentCard.builder().id(5L).studentId(7L).tenantId(1L)
+                .studentNumber("MAT-1").photoUrl("photo.jpg").classId(20L).status(CardStatus.ACTIVE).build();
+        when(repo.findByStudentIdAndStatus(7L, CardStatus.ACTIVE)).thenReturn(Optional.of(active));
+
+        StudentCard result = s.getOrRefresh(new StudentCardService.IssueCardCommand(
+                1L, 7L, null, null, 20L, "MAT-1", "photo.jpg", null));
+
+        assertThat(result).isSameAs(active);
+        org.mockito.Mockito.verify(repo, org.mockito.Mockito.never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void getOrRefresh_studentNumberChangedSinceIssue_replacesCardWithFreshNumber() {
+        // Reproduit exactement l'incident : le matricule a été modifié après l'émission de la carte —
+        // cliquer "Badge" doit régénérer, jamais garder l'ancien matricule.
+        StudentCardService s = service();
+        StudentCard stale = StudentCard.builder().id(5L).studentId(7L).tenantId(1L)
+                .studentNumber("MAT-OLD").photoUrl("photo.jpg").classId(20L).status(CardStatus.ACTIVE).build();
+        when(repo.findByStudentIdAndStatus(7L, CardStatus.ACTIVE)).thenReturn(Optional.of(stale));
+        when(repo.countByTenantId(1L)).thenReturn(1L);
+        when(repo.save(org.mockito.ArgumentMatchers.any())).thenAnswer(i -> i.getArgument(0));
+
+        StudentCard result = s.getOrRefresh(new StudentCardService.IssueCardCommand(
+                1L, 7L, null, null, 20L, "MAT-NEW", "photo.jpg", null));
+
+        assertThat(result).isNotSameAs(stale);
+        assertThat(result.getStudentNumber()).isEqualTo("MAT-NEW");
+        assertThat(result.getReplacesCardId()).isEqualTo(5L);
+        assertThat(stale.getStatus()).isEqualTo(CardStatus.REPLACED);
+    }
 }

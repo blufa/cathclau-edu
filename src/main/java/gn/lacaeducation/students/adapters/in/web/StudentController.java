@@ -150,6 +150,31 @@ public class StudentController {
         return studentUseCase.updateOwnPhoto(currentUserId(jwt), photoUrl);
     }
 
+    /** Requête de création d'un parent prospect par l'élève lui-même — jamais de {@code studentId},
+     * jamais de {@code userId}/{@code staffType}/{@code staffId} : toujours un prospect pur (sans
+     * compte, sans lien personnel), lié UNIQUEMENT à l'élève connecté. */
+    public record AddMyParentRequest(String firstName, String lastName, String phone, String email,
+                                     String occupation, String address, Relationship relationship) {}
+
+    @Operation(summary = "Ajouter un parent (prospect) et le lier à l'élève connecté (self-service élève, "
+            + "privilège à activer par l'établissement via Rôles & permissions)")
+    @PreAuthorize("hasAuthority('parent:create_own')")
+    @PostMapping("/me/parents")
+    @ResponseStatus(HttpStatus.CREATED)
+    public Parent addMyParent(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody AddMyParentRequest r) {
+        Long userId = currentUserId(jwt);
+        Student me = studentUseCase.findByUserId(userId)
+                .orElseThrow(() -> new gn.lacaeducation.common.BusinessRuleException("Aucune fiche élève liée à votre compte"));
+        Parent parent = parentUseCase.create(new ParentUseCase.CreateParentCommand(
+                TenantContext.get(), null, r.firstName(), r.lastName(), r.phone(), r.email(),
+                r.occupation(), r.address(), null, null, null));
+        // Jamais un autre id que celui résolu depuis le JWT : un élève ne doit pouvoir lier ce
+        // nouveau parent qu'à SA PROPRE fiche, quoi qu'il envoie par ailleurs dans la requête.
+        parentUseCase.linkStudent(me.getId(), parent.getId(),
+                r.relationship() != null ? r.relationship() : Relationship.GUARDIAN);
+        return parent;
+    }
+
     private Long currentUserId(Jwt jwt) {
         try { return Long.parseLong(jwt.getSubject()); } catch (RuntimeException e) { return null; }
     }

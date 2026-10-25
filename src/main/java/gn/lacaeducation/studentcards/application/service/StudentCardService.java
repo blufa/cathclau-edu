@@ -65,6 +65,30 @@ public class StudentCardService {
                 c.expirationDate() != null ? c.expirationDate() : year.endDate());
     }
 
+    /**
+     * Renvoie la carte active telle quelle si elle reflète déjà les données courantes (matricule,
+     * photo, classe) — sinon la remplace automatiquement par une carte fraîche. Pensé pour l'émission
+     * "en un clic" depuis une liste ({@code QuickBadgeButton} côté front) : contrairement à
+     * {@link #issue} (refuse si une carte existe déjà) et {@link #replace} (reconduit volontairement
+     * les ANCIENNES valeurs — pensé pour une carte physiquement perdue, pas pour un matricule modifié
+     * depuis), celle-ci compare elle-même l'existant aux données soumises et régénère si besoin
+     * (§retour utilisateur, production : "j'ai modifié le matricule, mais le badge garde l'ancien").
+     */
+    public StudentCard getOrRefresh(IssueCardCommand c) {
+        Optional<StudentCard> activeOpt = repo.findByStudentIdAndStatus(c.studentId(), CardStatus.ACTIVE);
+        if (activeOpt.isEmpty()) {
+            return create(withCurrentYear(c), null);
+        }
+        StudentCard active = activeOpt.get();
+        boolean stale = !java.util.Objects.equals(active.getStudentNumber(), c.studentNumber())
+                || !java.util.Objects.equals(active.getPhotoUrl(), c.photoUrl())
+                || !java.util.Objects.equals(active.getClassId(), c.classId());
+        if (!stale) return active;
+        active.setStatus(CardStatus.REPLACED);
+        repo.save(active);
+        return create(withCurrentYear(c), active.getId());
+    }
+
     public StudentCard replace(Long id) {
         StudentCard old = load(id);
         old.setStatus(CardStatus.REPLACED);
