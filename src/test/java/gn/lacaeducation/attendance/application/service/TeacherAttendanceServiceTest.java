@@ -175,20 +175,25 @@ class TeacherAttendanceServiceTest {
     }
 
     @Test
-    void recordEntry_secondScanAfterExitSameDay_rejectedWithClearMessage() {
-        // §retour fondateur : un seul cycle entrée/sortie par jour — une ré-entrée après une sortie
-        // déjà enregistrée le même jour est refusée, pas acceptée comme un nouveau cycle.
+    void recordEntry_reEntryAfterExitSameDay_createsNewCycle() {
+        // §retour terrain : cycles entrée/sortie illimités par jour — une ré-entrée après une sortie
+        // déjà enregistrée le même jour crée un nouveau cycle, jamais un rejet.
         TeacherCheckin existing = TeacherCheckin.builder().id(9L).teacherId(5L).scheduleSlotId(1L)
                 .lateMinutes(3).checkOutTime(java.time.LocalTime.of(9, 0))
                 .createdAt(LocalDateTime.now().minusHours(1)).build();
         when(academics.findScheduleByTeacher(5L)).thenReturn(List.of());
         when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("00:00", "23:59"));
         when(checkinRepository.findByTeacherIdAndDate(eq(5L), any())).thenReturn(List.of(existing));
+        when(sessionResolver.graceDeadline(any(), anyInt(), any())).thenReturn(java.time.LocalTime.of(23, 59));
+        when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(repo.findByTeacherIdAndDateBetween(eq(5L), any(), any())).thenReturn(List.of());
+        when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
 
-        assertThatThrownBy(() -> service.recordEntry(5L))
-                .isInstanceOf(BusinessRuleException.class)
-                .hasMessageContaining("déjà fait son entrée et sa sortie");
-        verify(checkinRepository, never()).save(any());
+        TeacherCheckin result = service.recordEntry(5L);
+
+        assertThat(result).isNotSameAs(existing);
+        assertThat(result.isDuplicate()).isFalse();
+        verify(checkinRepository).save(any());
     }
 
     // §retour fondateurs : alerte retard/absence (direction + enseignant), jamais redéclenchée par

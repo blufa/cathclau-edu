@@ -40,6 +40,16 @@ public class StudentCardController {
         return service.currentCard(studentId).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
+    @Operation(summary = "Carte à jour d'un élève : émet si aucune n'existe, régénère automatiquement "
+            + "si le matricule/la photo/la classe soumis diffère de la carte active, sinon renvoie "
+            + "celle-ci inchangée — pour une émission en un clic depuis une liste (toujours à jour)")
+    @PreAuthorize("hasAuthority('carte:manage')")
+    @PostMapping("/eleves/{studentId}/carte/actuelle")
+    public StudentCard getOrRefresh(@PathVariable Long studentId, @RequestBody IssueRequest r) {
+        return service.getOrRefresh(new IssueCardCommand(TenantContext.get(), studentId, r.cardTemplateId(),
+                r.academicYearId(), r.classId(), r.studentNumber(), r.photoUrl(), r.expirationDate()));
+    }
+
     @Operation(summary = "Lister les cartes de l'établissement")
     @GetMapping("/cartes")
     public List<StudentCard> list() { return service.findByTenant(TenantContext.get()); }

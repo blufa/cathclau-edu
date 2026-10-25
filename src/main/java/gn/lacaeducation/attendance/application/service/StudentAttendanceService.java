@@ -93,27 +93,34 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
         if (block == null) {
             throw new BusinessRuleException("Aucun cours programmé aujourd'hui pour cette classe.");
         }
-        // Un seul scan d'ENTRÉE et un seul scan de SORTIE par jour, sans aucune fenêtre de temps côté
-        // utilisateur (§retour fondateur — correction d'un comportement par créneau perçu comme "je
-        // peux scanner plusieurs fois") : la barrière porte sur la JOURNÉE ENTIÈRE (toutes séances
-        // confondues), pas sur le créneau de cours courant — seul l'état (déjà entré aujourd'hui ? déjà
-        // sorti aujourd'hui ?) décide, jamais un délai. Exception technique : une requête qui retrouve
-        // la ligne qu'ELLE-MÊME vient de créer une fraction de seconde plus tôt (retentative réseau du
-        // même appel HTTP, voir AttendanceScanController#idempotent) n'est pas un second scan humain —
-        // cette ligne est renvoyée telle quelle, sans erreur, invisible pour l'utilisateur.
+        // Garde-fou par ÉTAT, jamais par compteur journalier (§retour terrain — un enfant malade qui
+        // sort puis revient de l'hôpital doit pouvoir repointer : cycles entrée/sortie illimités par
+        // jour) : seul le pointage le plus récent du jour décide. S'il est encore OUVERT (pas de
+        // sortie), toute nouvelle entrée est refusée — scannez la sortie avant de réentrer. S'il est
+        // CLOS (entrée + sortie déjà faites), on tombe plus bas pour créer un nouveau pointage, jamais
+        // un rejet. Exception technique : une requête qui retrouve la ligne qu'ELLE-MÊME vient de
+        // créer une fraction de seconde plus tôt (retentative réseau du même appel HTTP, voir
+        // AttendanceScanController#idempotent, ou badge qui reste visible plusieurs frames à la
+        // caméra) n'est pas un second scan humain — cette ligne est renvoyée telle quelle, marquée
+        // duplicate (invisible pour l'utilisateur, voir AttendanceScanController#response).
         Optional<StudentCheckin> existing = checkinRepository.findByStudentIdAndDate(studentId, today).stream()
                 .max(Comparator.comparing(StudentCheckin::getCreatedAt, Comparator.nullsFirst(Comparator.naturalOrder())));
         if (existing.isPresent()) {
             StudentCheckin last = existing.get();
             if (createdWithinRaceWindow(last)) {
+                // Retentative réseau du même tap physique (ou badge qui reste visible à la caméra
+                // plusieurs frames de suite) — jamais un nouveau scan humain : marqué duplicate pour
+                // que le frontend n'affiche/vibre qu'une seule fois par scan physique (§retour terrain).
+                last.setDuplicate(true);
                 return last;
             }
             if (last.getCheckOutTime() == null) {
                 throw new BusinessRuleException(
                         "Ce badge a déjà été scanné à l'entrée aujourd'hui. Scannez-le à la sortie avant un nouvel accès.");
             }
-            throw new BusinessRuleException(
-                    "Ce badge a déjà fait son entrée et sa sortie aujourd'hui. Un seul passage par jour est autorisé.");
+            // Dernier pointage du jour déjà clos (entrée + sortie) : cycles illimités par jour
+            // (§retour terrain — un enfant malade qui sort puis revient doit pouvoir repointer), on
+            // tombe en dessous pour créer un NOUVEAU pointage, jamais un rejet.
         }
         LocalTime start = block.start();
         LocalTime end = block.end();
@@ -143,8 +150,9 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
         // contrairement à l'entrée (protégée par la contrainte d'unicité à l'insertion), rien n'empêche
         // nativement deux scans de sortie quasi simultanés de mettre à jour la MÊME ligne en parallèle
         // et de publier chacun leur StudentExitEvent (deux SMS avec des heures légèrement différentes).
-        // Porte sur le pointage OUVERT du jour entier (pas un créneau précis) — un seul cycle
-        // entrée/sortie par jour (§retour fondateur, voir recordEntry).
+        // Porte sur le pointage le plus RÉCENT du jour entier (pas un créneau précis) — cycles
+        // entrée/sortie illimités par jour (§retour terrain, voir recordEntry) : c'est toujours le
+        // dernier pointage créé qui est le cycle en cours à fermer.
         StudentCheckin checkin = checkinRepository.lockOpenByStudentIdAndDate(studentId, today)
                 .orElseThrow(() -> new BusinessRuleException(
                         "Aucun pointage d'entrée trouvé aujourd'hui : scannez d'abord l'entrée."));
@@ -152,7 +160,9 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
             // Déjà sorti aujourd'hui (second scan de sortie, retentative réseau…) : on renvoie le
             // pointage existant SANS écraser l'heure de sortie ni republier l'événement — sinon chaque
             // nouveau scan de sortie décalerait silencieusement l'heure enregistrée et renverrait un
-            // second SMS avec une durée différente.
+            // second SMS avec une durée différente. Marqué duplicate (§recordEntry) pour que le
+            // frontend n'affiche/vibre qu'une seule fois par scan physique.
+            checkin.setDuplicate(true);
             return checkin;
         }
         checkin.setCheckOutTime(now);

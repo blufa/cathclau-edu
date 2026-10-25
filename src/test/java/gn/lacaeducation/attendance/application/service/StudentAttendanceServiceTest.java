@@ -178,12 +178,38 @@ class StudentAttendanceServiceTest {
     }
 
     @Test
-    void recordEntry_secondScanAfterExitSameDay_rejectedWithClearMessage() {
-        // §retour fondateur : contrairement à l'ancien comportement (une ré-entrée après sortie était
-        // acceptée silencieusement, perçue comme "je peux scanner plusieurs fois par jour"), UN SEUL
-        // cycle entrée/sortie est désormais autorisé par jour — une 3e tentative est refusée.
+    void recordEntry_reEntryAfterExitSameDay_createsNewCycle() {
+        // §retour terrain : un enfant malade qui sort puis revient de l'hôpital doit pouvoir
+        // repointer — cycles entrée/sortie illimités par jour, jamais un rejet une fois le cycle
+        // précédent clos (checkOutTime non nul).
         StudentCheckin existing = StudentCheckin.builder().id(9L).studentId(10L).classId(20L).scheduleSlotId(1L)
                 .lateMinutes(3).checkOutTime(java.time.LocalTime.of(9, 0))
+                .createdAt(java.time.LocalDateTime.now().minusHours(1)).build();
+        when(studentDataProvider.findCurrentClassId(10L)).thenReturn(Optional.of(20L));
+        when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
+        when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("00:00", "23:59"));
+        when(checkinRepository.findByStudentIdAndDate(eq(10L), any())).thenReturn(List.of(existing));
+        when(sessionResolver.graceDeadline(any(), anyInt(), any())).thenReturn(java.time.LocalTime.of(0, 0));
+        when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(repo.findByStudentIdAndClassIdAndDate(eq(10L), eq(20L), any())).thenReturn(Optional.empty());
+        when(repo.save(any())).thenAnswer(i -> {
+            StudentAttendance a = i.getArgument(0);
+            a.setId(99L);
+            return a;
+        });
+
+        StudentCheckin result = service.recordEntry(10L, null);
+
+        assertThat(result).isNotSameAs(existing);
+        assertThat(result.isDuplicate()).isFalse();
+        verify(checkinRepository).save(any());
+    }
+
+    @Test
+    void recordEntry_stillCheckedIn_rejectedWithClearMessage() {
+        // Le SEUL garde-fou restant : refus explicite tant que la sortie n'a pas été scannée.
+        StudentCheckin existing = StudentCheckin.builder().id(9L).studentId(10L).classId(20L).scheduleSlotId(1L)
+                .lateMinutes(3).checkOutTime(null)
                 .createdAt(java.time.LocalDateTime.now().minusHours(1)).build();
         when(studentDataProvider.findCurrentClassId(10L)).thenReturn(Optional.of(20L));
         when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
@@ -192,7 +218,7 @@ class StudentAttendanceServiceTest {
 
         assertThatThrownBy(() -> service.recordEntry(10L, null))
                 .isInstanceOf(BusinessRuleException.class)
-                .hasMessageContaining("déjà fait son entrée et sa sortie");
+                .hasMessageContaining("déjà été scanné à l'entrée");
         verify(checkinRepository, never()).save(any());
     }
 

@@ -16,6 +16,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -45,7 +46,7 @@ class EmployeeAttendanceServiceTest {
 
     @Test
     void recordEntry_noneToday_createsAndComputesLate() {
-        when(repo.findByEmployeeIdAndDate(eq(5L), any())).thenReturn(Optional.empty());
+        when(repo.findByEmployeeIdAndDate(eq(5L), any())).thenReturn(List.of());
         when(settingsRepository.findByTenantId(any())).thenReturn(Optional.of(
                 AttendanceSettings.builder().employeeCheckInTime(LocalTime.of(8, 0))
                         .employeeCheckOutTime(LocalTime.of(17, 0)).transitionMarginMinutes(0).build()));
@@ -64,7 +65,7 @@ class EmployeeAttendanceServiceTest {
     void recordEntry_secondScanBeforeExit_rejectedWithClearMessage() {
         EmployeeAttendance existing = EmployeeAttendance.builder().id(9L).employeeId(5L)
                 .checkInTime(LocalTime.of(8, 0)).createdAt(LocalDateTime.now().minusMinutes(10)).build();
-        when(repo.findByEmployeeIdAndDate(eq(5L), any())).thenReturn(Optional.of(existing));
+        when(repo.findByEmployeeIdAndDate(eq(5L), any())).thenReturn(List.of(existing));
 
         assertThatThrownBy(() -> service.recordEntry(5L))
                 .isInstanceOf(BusinessRuleException.class)
@@ -76,34 +77,39 @@ class EmployeeAttendanceServiceTest {
     void recordEntry_raceRetryJustCreated_returnsExistingWithoutRejecting() {
         EmployeeAttendance existing = EmployeeAttendance.builder().id(9L).employeeId(5L)
                 .checkInTime(LocalTime.of(8, 0)).createdAt(LocalDateTime.now()).build();
-        when(repo.findByEmployeeIdAndDate(eq(5L), any())).thenReturn(Optional.of(existing));
+        when(repo.findByEmployeeIdAndDate(eq(5L), any())).thenReturn(List.of(existing));
 
         EmployeeAttendance result = service.recordEntry(5L);
 
         assertThat(result).isSameAs(existing);
+        assertThat(result.isDuplicate()).isTrue();
         verify(repo, never()).save(any());
     }
 
     @Test
-    void recordEntry_sameDayAfterExit_rejectedWithClearMessage() {
-        // §retour fondateur : un seul cycle entrée/sortie par jour — avant ce correctif, une ré-entrée
-        // après une sortie valide le même jour était acceptée silencieusement (orElseGet n'exécute
-        // jamais son fournisseur quand l'Optional est déjà présent) : l'utilisateur croyait avoir
-        // "re-scanné avec succès" sans que rien ne soit réellement enregistré. Désormais refusée.
+    void recordEntry_reEntryAfterExitSameDay_createsNewCycle() {
+        // §retour terrain : cycles entrée/sortie illimités par jour, même règle que l'élève/
+        // l'enseignant — une ré-entrée après une sortie déjà enregistrée le même jour crée un
+        // nouveau cycle (nouvelle ligne), jamais un rejet.
         EmployeeAttendance existing = EmployeeAttendance.builder().id(9L).employeeId(5L)
                 .checkInTime(LocalTime.of(8, 0)).checkOutTime(LocalTime.of(12, 0))
                 .createdAt(LocalDateTime.now().minusHours(2)).build();
-        when(repo.findByEmployeeIdAndDate(eq(5L), any())).thenReturn(Optional.of(existing));
+        when(repo.findByEmployeeIdAndDate(eq(5L), any())).thenReturn(List.of(existing));
+        when(settingsRepository.findByTenantId(any())).thenReturn(Optional.of(
+                AttendanceSettings.builder().employeeCheckInTime(LocalTime.of(8, 0))
+                        .employeeCheckOutTime(LocalTime.of(17, 0)).transitionMarginMinutes(0).build()));
+        when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
 
-        assertThatThrownBy(() -> service.recordEntry(5L))
-                .isInstanceOf(BusinessRuleException.class)
-                .hasMessageContaining("déjà fait son entrée et sa sortie");
-        verify(repo, never()).save(any());
+        EmployeeAttendance result = service.recordEntry(5L);
+
+        assertThat(result).isNotSameAs(existing);
+        assertThat(result.isDuplicate()).isFalse();
+        verify(repo).save(any());
     }
 
     @Test
     void recordExit_withoutPriorEntry_throws() {
-        when(repo.lockByEmployeeIdAndDate(eq(5L), any())).thenReturn(Optional.empty());
+        when(repo.lockLatestByEmployeeIdAndDate(eq(5L), any())).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.recordExit(5L)).isInstanceOf(BusinessRuleException.class);
     }
@@ -112,7 +118,7 @@ class EmployeeAttendanceServiceTest {
     void recordExit_setsCheckOutTimeAndEarlyMinutes() {
         EmployeeAttendance existing = EmployeeAttendance.builder().id(9L).employeeId(5L)
                 .checkInTime(LocalTime.of(8, 0)).createdAt(LocalDateTime.now()).build();
-        when(repo.lockByEmployeeIdAndDate(eq(5L), any())).thenReturn(Optional.of(existing));
+        when(repo.lockLatestByEmployeeIdAndDate(eq(5L), any())).thenReturn(Optional.of(existing));
         when(settingsRepository.findByTenantId(any())).thenReturn(Optional.of(
                 AttendanceSettings.builder().employeeCheckInTime(LocalTime.of(8, 0))
                         .employeeCheckOutTime(LocalTime.of(17, 0)).build()));
@@ -130,22 +136,43 @@ class EmployeeAttendanceServiceTest {
         EmployeeAttendance existing = EmployeeAttendance.builder().id(9L).employeeId(5L)
                 .checkInTime(LocalTime.of(8, 0)).checkOutTime(LocalTime.of(16, 50)).earlyMinutes(10)
                 .createdAt(LocalDateTime.now()).build();
-        when(repo.lockByEmployeeIdAndDate(eq(5L), any())).thenReturn(Optional.of(existing));
+        when(repo.lockLatestByEmployeeIdAndDate(eq(5L), any())).thenReturn(Optional.of(existing));
 
         EmployeeAttendance result = service.recordExit(5L);
 
         assertThat(result).isSameAs(existing);
+        assertThat(result.isDuplicate()).isTrue();
         verify(repo, never()).save(any());
     }
 
     @Test
     void markAbsent_createsRecordWhenNoneExists() {
-        when(repo.findByEmployeeIdAndDate(eq(5L), any())).thenReturn(Optional.empty());
+        when(repo.findByEmployeeIdAndDate(eq(5L), any())).thenReturn(List.of());
         when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
 
         EmployeeAttendance result = service.markAbsent(5L, "Grippe");
 
         assertThat(result.getStatus()).isEqualTo(EmployeeAttendanceStatus.ABSENT);
         assertThat(result.getReason()).isEqualTo("Grippe");
+    }
+
+    @Test
+    void monthlySummary_twoCyclesSameDay_countsOnlyOnePresentDay() {
+        // §retour terrain : un jour avec 2 cycles entrée/sortie (sorti puis revenu) ne doit compter
+        // que pour UN jour présent, pas deux — avant ce correctif, le comptage supposait une seule
+        // ligne par jour.
+        LocalDate day = LocalDate.of(2026, 3, 10);
+        EmployeeAttendance cycle1 = EmployeeAttendance.builder().id(1L).employeeId(5L).date(day)
+                .status(EmployeeAttendanceStatus.PRESENT).lateMinutes(5).earlyMinutes(0).build();
+        EmployeeAttendance cycle2 = EmployeeAttendance.builder().id(2L).employeeId(5L).date(day)
+                .status(EmployeeAttendanceStatus.PRESENT).lateMinutes(0).earlyMinutes(3).build();
+        when(repo.findByEmployeeIdAndDateBetween(eq(5L), any(), any())).thenReturn(List.of(cycle1, cycle2));
+
+        var summary = service.monthlySummary(5L, 2026, 3);
+
+        assertThat(summary.presentDays()).isEqualTo(1);
+        assertThat(summary.absentDays()).isZero();
+        assertThat(summary.totalLateMinutes()).isEqualTo(5);
+        assertThat(summary.totalEarlyMinutes()).isEqualTo(3);
     }
 }
