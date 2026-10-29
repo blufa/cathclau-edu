@@ -42,13 +42,13 @@ class ParentAccessProviderAdapter implements ParentAccessProvider {
 
     @Override
     @Transactional(readOnly = true)
-    public java.util.List<Long> findChildStudentIdsWithValidatedEnrollment(Long userId) {
-        return filterValidatedEnrollment(findChildStudentIds(userId));
+    public java.util.List<Long> findChildStudentIdsEnrolled(Long userId) {
+        return filterActiveEnrollment(findChildStudentIds(userId));
     }
 
     @Override
     @Transactional(readOnly = true)
-    public java.util.List<Long> findChildStudentIdsWithValidatedEnrollmentByStaffLink(String staffType, Long staffId) {
+    public java.util.List<Long> findChildStudentIdsEnrolledByStaffLink(String staffType, Long staffId) {
         if (staffType == null || staffId == null) return java.util.List.of();
         gn.lacaeducation.students.domain.StaffLinkType type;
         try {
@@ -60,14 +60,22 @@ class ParentAccessProviderAdapter implements ParentAccessProvider {
                 .flatMap(parent -> studentParentRepository.findStudentIdsByParentId(parent.getId()).stream())
                 .distinct()
                 .toList();
-        return filterValidatedEnrollment(studentIds);
+        return filterActiveEnrollment(studentIds);
     }
 
-    private java.util.List<Long> filterValidatedEnrollment(java.util.List<Long> studentIds) {
+    private java.util.List<Long> filterActiveEnrollment(java.util.List<Long> studentIds) {
         return studentIds.stream()
                 .filter(studentId -> enrollmentRepository.findByStudentId(studentId).stream()
-                        .anyMatch(e -> e.getStatus() == EnrollmentStatus.VALIDATED))
+                        .anyMatch(e -> e.getStatus() != EnrollmentStatus.CANCELLED && e.getStatus() != EnrollmentStatus.ABANDONED))
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean hasOptedOutOfStaffAutoDeduction(Long studentId) {
+        if (studentId == null) return false;
+        return studentParentRepository.findParentsByStudentId(studentId).stream()
+                .anyMatch(gn.lacaeducation.students.domain.Parent::isExcludeFromAutoDeduction);
     }
 
     @Override

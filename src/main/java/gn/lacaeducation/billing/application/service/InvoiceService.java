@@ -119,12 +119,16 @@ public class InvoiceService implements InvoiceUseCase {
         }
         // Enfant du personnel SANS aucune remise (ni exonération manuelle ci-dessus, quel que soit son
         // rang dans la politique de prise en charge — retour comptable : "quelle qu'en soit le nombre")
-        // sur la scolarité précisément : tagué avantage personnel à 0% quand même, pour que le
-        // prélèvement salarial automatique (SalaryFeeDeductionService#computeStaffBenefitRemainder)
-        // prenne en charge le montant COMPLET, sans action manuelle du comptable facture par facture.
-        // Ne touche jamais un enfant qui a déjà une remise par ailleurs (bestSource non nul).
-        if (bestSource == null && feeType == FeeType.MONTHLY && staffChildBenefitUseCase.isStaffChild(studentId)) {
-            bestReason = "Avantage personnel : enfant du personnel — scolarité prélevée sur le salaire";
+        // sur CE frais précisément, quel que soit son type (scolarité, inscription, transport...) :
+        // tagué avantage personnel à 0% quand même, pour que le prélèvement salarial automatique
+        // (SalaryFeeDeductionService#computeStaffBenefitRemainder) prenne en charge le montant COMPLET,
+        // sans action manuelle du comptable facture par facture — retour comptable : "qu'il récupère
+        // tout" (y compris les frais d'inscription, que des enseignants évitaient en s'inscrivant eux-
+        // mêmes comme parent sans jamais payer). Ne touche jamais un enfant qui a déjà une remise par
+        // ailleurs (bestSource non nul), ni un enfant dont le parent personnel a explicitement choisi de
+        // payer lui-même (voir StaffChildBenefitService#isStaffChild).
+        if (bestSource == null && staffChildBenefitUseCase.isStaffChild(studentId)) {
+            bestReason = "Avantage personnel : enfant du personnel — frais prélevés sur le salaire";
             bestSource = gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT;
         }
         BigDecimal exceptionalAmount = exemption.exceptionalAmount() != null ? exemption.exceptionalAmount() : BigDecimal.ZERO;

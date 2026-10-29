@@ -33,6 +33,14 @@ public class TeacherCompensationController {
     @GetMapping("/compensation")
     public List<TeacherCompensation> list() { return service.compensations(TenantContext.get()); }
 
+    @Operation(summary = "Cycle (Maternelle/Primaire/Secondaire) de chaque enseignant demandé, déduit de "
+            + "ses classes assignées — pour filtrer/générer la paie par niveau")
+    @PreAuthorize("hasAuthority('paie:manage')")
+    @GetMapping("/teachers-cycle")
+    public java.util.Map<Long, String> teachersCycle(@RequestParam List<Long> teacherIds) {
+        return service.resolveTeacherCycles(teacherIds);
+    }
+
     @Operation(summary = "Rémunération d'un enseignant")
     @PreAuthorize("hasAuthority('paie:manage')")
     @GetMapping("/compensation/{teacherId}")

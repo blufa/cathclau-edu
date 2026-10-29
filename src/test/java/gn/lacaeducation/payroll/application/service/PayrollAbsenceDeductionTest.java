@@ -4,7 +4,6 @@ import gn.lacaeducation.attendance.TeacherWorkProvider;
 import gn.lacaeducation.attendance.TeacherWorkProvider.MonthlyWork;
 import gn.lacaeducation.payroll.application.port.in.SalaryAdvanceUseCase;
 import gn.lacaeducation.payroll.application.port.in.SalaryFeeDeductionUseCase;
-import gn.lacaeducation.payroll.application.port.in.SalaryFeeDeductionUseCase.FeeDeduction;
 import gn.lacaeducation.payroll.application.port.out.PayslipLineRepository;
 import gn.lacaeducation.payroll.application.port.out.PayslipRepository;
 import gn.lacaeducation.payroll.domain.Payslip;
@@ -75,9 +74,6 @@ class PayrollAbsenceDeductionTest {
         // lineRepo capture les lignes créées.
         when(lineRepo.save(any())).thenAnswer(i -> { savedLines.add(i.getArgument(0)); return i.getArgument(0); });
         when(lineRepo.findByPayslipId(anyLong())).thenAnswer(i -> savedLines);
-        // Aucune retenue de frais scolaires dans ce scénario.
-        lenient().when(salaryFeeDeductionUseCase.computeFeeDeduction(anyLong(), any(), anyLong()))
-                .thenReturn(new FeeDeduction(BigDecimal.ZERO, null, 0));
     }
 
     @Test

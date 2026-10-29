@@ -13,11 +13,14 @@ public interface ParentAccessProvider {
     /** Identifiants des élèves rattachés au compte parent {@code userId} (vide si non parent). */
     java.util.List<Long> findChildStudentIds(Long userId);
 
-    /** Comme {@link #findChildStudentIds}, mais restreint aux élèves ayant une inscription VALIDÉE —
-     * pour les usages qui ne doivent compter que les enfants effectivement scolarisés (ex. retenue sur
-     * salaire des frais de scolarité, §7 payroll), contrairement à l'accès au portail parent qui reste
-     * volontairement permissif (historique) sur {@link #findChildStudentIds}. */
-    java.util.List<Long> findChildStudentIdsWithValidatedEnrollment(Long userId);
+    /** Comme {@link #findChildStudentIds}, mais restreint aux élèves ayant une inscription ACTIVE (toute
+     * inscription hors CANCELLED/ABANDONED, y compris PENDING jamais validée) — pour les usages qui ne
+     * doivent compter que les enfants effectivement scolarisés (ex. retenue sur salaire des frais de
+     * scolarité, §7 payroll), contrairement à l'accès au portail parent qui reste volontairement
+     * permissif (historique) sur {@link #findChildStudentIds}. PENDING compte volontairement (retour
+     * comptable : un membre du personnel ne doit pas pouvoir échapper à la retenue en laissant
+     * l'inscription de son enfant sans validation). */
+    java.util.List<Long> findChildStudentIdsEnrolled(Long userId);
 
     /** Identifiants des comptes utilisateurs des parents d'un élève (pour notifier ; vide si aucun). */
     java.util.List<Long> findParentUserIdsByStudent(Long studentId);
@@ -39,10 +42,19 @@ public interface ParentAccessProvider {
     /** Lien direct personnel (sans compte) de CETTE fiche Parent précise — vide si aucun. */
     java.util.Optional<DirectStaffLink> findDirectStaffLinkByParentId(Long parentId);
 
-    /** Comme {@link #findChildStudentIdsWithValidatedEnrollment}, mais pour un membre du personnel SANS
-     * compte de connexion (lien direct {@code staffType}/{@code staffId}, voir {@link DirectStaffLink}).
-     * Sans ce chemin, la retenue sur salaire (§7 payroll) ne trouvait jamais les enfants d'un personnel
-     * qui n'a pas de compte — seul {@link #findChildStudentIdsWithValidatedEnrollment} (compte partagé)
-     * était consulté côté paie, alors que l'inscription "Personnel de l'école" accepte les deux. */
-    java.util.List<Long> findChildStudentIdsWithValidatedEnrollmentByStaffLink(String staffType, Long staffId);
+    /** Comme {@link #findChildStudentIdsEnrolled}, mais pour un membre du personnel SANS compte de
+     * connexion (lien direct {@code staffType}/{@code staffId}, voir {@link DirectStaffLink}). Sans ce
+     * chemin, la retenue sur salaire (§7 payroll) ne trouvait jamais les enfants d'un personnel qui n'a
+     * pas de compte — seul {@link #findChildStudentIdsEnrolled} (compte partagé) était consulté côté
+     * paie, alors que l'inscription "Personnel de l'école" accepte les deux. */
+    java.util.List<Long> findChildStudentIdsEnrolledByStaffLink(String staffType, Long staffId);
+
+    /** Vrai si AU MOINS UN parent lié à cet élève a explicitement choisi de prendre en charge lui-même
+     * les frais de ses enfants (champ {@code excludeFromAutoDeduction} sur la fiche Parent, réglable par
+     * le comptable) — retour comptable : certains membres du personnel paient réellement comme n'importe
+     * quelle famille et ne doivent subir AUCUNE retenue automatique, ni règle à montant fixe
+     * ({@code SalaryFeeDeductionService#computeFeeDeduction}) ni solde réel
+     * ({@code computeStaffBenefitRemainder}), ni tag "avantage personnel" sur leurs factures
+     * ({@code StaffChildBenefitService#isStaffChild}). */
+    boolean hasOptedOutOfStaffAutoDeduction(Long studentId);
 }

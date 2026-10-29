@@ -9,12 +9,15 @@ import java.util.List;
  */
 public interface EnrollmentQueryPort {
     /**
-     * Returns a list of student IDs with a VALIDATED enrollment in the given class.
-     */
-    List<Long> findValidatedStudentIdsByClassId(Long classId);
-
-    /**
      * Returns the count of VALIDATED enrollments for the given class.
      */
     long countValidatedByClassId(Long classId);
+
+    /**
+     * Returns the count of ACTIVE enrollments (any status except CANCELLED/ABANDONED) for the given
+     * class — used to block deleting a class that still has real students in it, PENDING enrollments
+     * included (a class isn't "empty" just because the secretariat hasn't validated every enrollment
+     * yet).
+     */
+    long countActiveByClassId(Long classId);
 }

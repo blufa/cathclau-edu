@@ -366,9 +366,15 @@ public class PayrollService {
                                         BigDecimal fixedSalary, BigDecimal teachingPay, BigDecimal grossPay) {}
 
     /** Masse salariale des enseignants d'un tenant (Vision Fondateur §10.2) : cumul des taux horaires
-     * configurés + paie mensuelle théorique (heures réelles × tarif normal/examen, ou salaire fixe). */
+     * configurés + paie mensuelle théorique (heures réelles × tarif normal/examen, ou salaire fixe).
+     * {@code maternelleMonthlyPayroll}/{@code primaryMonthlyPayroll}/{@code secondaryMonthlyPayroll} :
+     * même total que {@code monthlyPayroll}, réparti par cycle (§retour fondateur, état financier du
+     * mois — Maternelle distinguée du Primaire sur demande explicite) — leur somme égale
+     * {@code monthlyPayroll}. */
     public record TeacherPayrollMass(BigDecimal totalHourlyRateNormal, BigDecimal totalHourlyRateExam,
-                                     BigDecimal monthlyPayroll, int teacherCount) {}
+                                     BigDecimal monthlyPayroll, int teacherCount,
+                                     BigDecimal maternelleMonthlyPayroll, BigDecimal primaryMonthlyPayroll,
+                                     BigDecimal secondaryMonthlyPayroll) {}
 
     @Transactional(readOnly = true)
     public TeacherPayrollMass teacherPayrollMass(Long tenantId, int year, int month) {
@@ -389,13 +395,23 @@ public class PayrollService {
         BigDecimal totalNormal = BigDecimal.ZERO;
         BigDecimal totalExam = BigDecimal.ZERO;
         BigDecimal monthly = BigDecimal.ZERO;
+        BigDecimal maternelleMonthly = BigDecimal.ZERO;
+        BigDecimal primaryMonthly = BigDecimal.ZERO;
+        BigDecimal secondaryMonthly = BigDecimal.ZERO;
         for (TeacherCompensation c : comps) {
             totalNormal = totalNormal.add(c.getHourlyRateNormal() != null ? c.getHourlyRateNormal() : BigDecimal.ZERO);
             totalExam = totalExam.add(c.getHourlyRateExam() != null ? c.getHourlyRateExam() : BigDecimal.ZERO);
+            BigDecimal teacherMonthly;
             if (c.getPayMode() == PayMode.FIXED) {
-                monthly = monthly.add(c.getFixedSalary() != null ? c.getFixedSalary() : BigDecimal.ZERO);
+                teacherMonthly = c.getFixedSalary() != null ? c.getFixedSalary() : BigDecimal.ZERO;
             } else {
-                monthly = monthly.add(computeTheoreticalMonthlyPay(c.getTeacherId(), year, month).grossPay());
+                teacherMonthly = computeTheoreticalMonthlyPay(c.getTeacherId(), year, month).grossPay();
+            }
+            monthly = monthly.add(teacherMonthly);
+            switch (resolveCycleBucket(c.getTeacherId())) {
+                case MATERNELLE -> maternelleMonthly = maternelleMonthly.add(teacherMonthly);
+                case PRIMAIRE -> primaryMonthly = primaryMonthly.add(teacherMonthly);
+                case SECONDAIRE -> secondaryMonthly = secondaryMonthly.add(teacherMonthly);
             }
         }
         // Avec un filtre fourni, le compte reflète le référentiel enseignant réel (pas seulement ceux
@@ -403,7 +419,70 @@ public class PayrollService {
         // doit compter — §retour utilisateur, "peu importe primaire/secondaire, salaire configuré ou
         // non, il doit être affiché sur la vision fondateur".
         int teacherCount = validTeacherIds != null ? validTeacherIds.size() : comps.size();
-        return new TeacherPayrollMass(totalNormal, totalExam, monthly, teacherCount);
+        return new TeacherPayrollMass(totalNormal, totalExam, monthly, teacherCount,
+                maternelleMonthly, primaryMonthly, secondaryMonthly);
+    }
+
+    /** Cycle (Maternelle/Primaire/Secondaire) de chaque enseignant demandé — retour utilisateur :
+     * "pouvoir payer les gens par niveau... générer les fiches des enseignants du primaire à part, et
+     * ceux du secondaire" + colonne "Cycle" sur le tableau Rémunération & heures. Même résolution que
+     * {@link #teacherPayrollMass} (majorité des classes assignées), exposée ici pour les enseignants
+     * sans encore de {@code TeacherCompensation} configurée (qui n'apparaîtraient pas dans la masse
+     * salariale, mais doivent déjà être filtrables par cycle avant de configurer leur rémunération). */
+    public java.util.Map<Long, String> resolveTeacherCycles(java.util.List<Long> teacherIds) {
+        java.util.Map<Long, String> result = new java.util.LinkedHashMap<>();
+        for (Long id : teacherIds) {
+            result.put(id, resolveCycleBucket(id).name());
+        }
+        return result;
+    }
+
+    /** Regroupement par cycle (Maternelle/Primaire/Secondaire — retour fondateur : Maternelle doit
+     * apparaître à part sur l'état financier du mois, pas fondue dans "Primaire"). Logique dupliquée
+     * ici (pas d'import de {@code grading.domain.CycleGroup}) : la modularité du projet
+     * ({@code ModularityTests}) interdit à {@code payroll} de dépendre du domaine interne d'un autre
+     * module, seules ses API publiques ({@code AcademicsDataProvider}) sont accessibles. */
+    private enum TeacherCycleBucket { MATERNELLE, PRIMAIRE, SECONDAIRE }
+
+    private TeacherCycleBucket cycleBucketOf(String schoolCycle) {
+        if (schoolCycle == null) return TeacherCycleBucket.SECONDAIRE;
+        return switch (schoolCycle) {
+            case "GARDERIE", "MATERNELLE" -> TeacherCycleBucket.MATERNELLE;
+            case "PRIMAIRE" -> TeacherCycleBucket.PRIMAIRE;
+            default -> TeacherCycleBucket.SECONDAIRE;
+        };
+    }
+
+    /** Cycle majoritaire parmi les classes où cet enseignant intervient (professeur principal OU
+     * matière assignée) — Secondaire par défaut en cas d'égalité ou d'absence de classe résolue (même
+     * convention de repli que {@code grading.domain.CycleGroup#fromSchoolCycle} pour un cycle non
+     * renseigné). */
+    private TeacherCycleBucket resolveCycleBucket(Long teacherId) {
+        java.util.Set<Long> classIds = new java.util.LinkedHashSet<>();
+        academics.findClassSubjectsByTeacher(teacherId).forEach(cs -> classIds.add(cs.classId()));
+        java.util.List<gn.lacaeducation.academics.ClassPublicInfo> headClasses = academics.findClassesByHeadTeacher(teacherId);
+        java.util.Map<TeacherCycleBucket, Long> counts = new java.util.EnumMap<>(TeacherCycleBucket.class);
+        headClasses.forEach(c -> counts.merge(cycleBucketOf(c.schoolCycle()), 1L, Long::sum));
+        for (Long classId : classIds) {
+            if (headClasses.stream().anyMatch(c -> c.id().equals(classId))) continue;
+            TeacherCycleBucket bucket = academics.findClass(classId)
+                    .map(c -> cycleBucketOf(c.schoolCycle())).orElse(TeacherCycleBucket.SECONDAIRE);
+            counts.merge(bucket, 1L, Long::sum);
+        }
+        long mat = counts.getOrDefault(TeacherCycleBucket.MATERNELLE, 0L);
+        long pri = counts.getOrDefault(TeacherCycleBucket.PRIMAIRE, 0L);
+        long sec = counts.getOrDefault(TeacherCycleBucket.SECONDAIRE, 0L);
+        if (mat > pri && mat > sec) return TeacherCycleBucket.MATERNELLE;
+        if (pri > mat && pri > sec) return TeacherCycleBucket.PRIMAIRE;
+        return TeacherCycleBucket.SECONDAIRE;
+    }
+
+    private boolean isPrimaryCycle(String schoolCycle) {
+        if (schoolCycle == null) return false;
+        return switch (schoolCycle) {
+            case "GARDERIE", "MATERNELLE", "PRIMAIRE" -> true;
+            default -> false;
+        };
     }
 
     /** Masse salariale RÉELLE des enseignants d'un tenant (Vision Fondateur) : contrairement à
@@ -660,31 +739,22 @@ public class PayrollService {
                 .status(PayslipStatus.DRAFT).notes(c.notes()).createdAt(LocalDateTime.now()).build());
         if (c.structureId() != null) applyStructure(p, c.structureId());
         applyAttendanceAndOvertime(p, c);
-        applySchoolFeeDeduction(p, c);
         applyStaffBenefitRemainderDeduction(p, c);
         applySalaryAdvanceDeduction(p, c);
         return recompute(p.getId());
     }
 
     /**
-     * Retenue sur salaire des frais scolaires des enfants du personnel (§7) : montant paramétrable
-     * transféré du module scolarité vers la paie, ajouté comme ligne de retenue et historisé sur la fiche.
-     */
-    private void applySchoolFeeDeduction(Payslip p, GenerateCommand c) {
-        var deduction = salaryFeeDeductionUseCase.computeFeeDeduction(c.tenantId(), p.getEmployeeType(), c.teacherId());
-        if (deduction.amount() != null && deduction.amount().signum() > 0) {
-            String label = deduction.label() != null ? deduction.label() : "Frais scolaires enfants";
-            saveLine(p, label + " (" + deduction.childrenCount() + " enfant(s))",
-                    PayslipLineType.DEDUCTION, deduction.amount());
-        }
-    }
-
-    /**
      * Reste à charge non couvert par un avantage personnel PARTIEL (§billing) sur les factures des
-     * enfants du salarié : ajouté comme ligne de retenue distincte de {@link #applySchoolFeeDeduction}
-     * (règle à montant fixe, indépendante du montant réellement dû) — ici le montant est exactement le
-     * solde réel restant sur les factures concernées, répercuté comme paiement à la mise en paiement de
-     * la fiche (voir {@code markPaid}).
+     * enfants du salarié : ajouté comme ligne de retenue, exactement le solde réel restant sur les
+     * factures concernées (jamais plus — une facture déjà réglée directement par le parent n'est plus
+     * comptée, voir {@code InvoiceService#staffBenefitInvoicesForPeriod} qui ne retient que les
+     * factures encore UNPAID/PARTIAL), répercuté comme paiement à la mise en paiement de la fiche (voir
+     * {@code markPaid}). Remplace l'ancienne règle à montant fixe par enfant ({@code
+     * SalaryFeeDeductionUseCase#computeFeeDeduction}, désormais retirée d'ici — retour comptable :
+     * les deux s'additionnaient pour le même enfant depuis que ce solde réel couvre déjà tous les
+     * frais, double retenue. La règle à montant fixe reste configurable/consultable (écran Rôles &
+     * permissions → Paie), juste plus appliquée automatiquement à la génération.
      */
     private void applyStaffBenefitRemainderDeduction(Payslip p, GenerateCommand c) {
         var deduction = salaryFeeDeductionUseCase.computeStaffBenefitRemainder(c.tenantId(), p.getEmployeeType(), c.teacherId(),
@@ -859,14 +929,10 @@ public class PayrollService {
         // jamais stocké en dur ici.
         p.setPaidByUserId(paidByUserId);
         Payslip saved = payslipRepo.save(p);
-        // Répercute la retenue de scolarité (si applicable) sur les factures de mensualité des enfants
-        // du salarié, maintenant que la fiche est réellement payée (§payroll ↔ billing) — sans ça,
-        // l'école a bien été payée (via la paie) mais la facturation continue d'afficher ces enfants
-        // comme débiteurs.
-        salaryFeeDeductionUseCase.applyDeductionAsInvoicePayment(saved.getTenantId(), saved.getEmployeeType(), saved.getTeacherId());
-        // Idem pour le reste non couvert par un avantage personnel partiel (voir
-        // applyStaffBenefitRemainderDeduction) — même principe, montant différent (solde réel des
-        // factures plutôt qu'une règle à montant fixe).
+        // Répercute la retenue (solde réel des factures "avantage personnel", voir
+        // applyStaffBenefitRemainderDeduction) sur les factures des enfants du salarié, maintenant que
+        // la fiche est réellement payée (§payroll ↔ billing) — sans ça, l'école a bien été payée (via
+        // la paie) mais la facturation continue d'afficher ces enfants comme débiteurs.
         salaryFeeDeductionUseCase.applyStaffBenefitRemainderAsInvoicePayment(saved.getTenantId(), saved.getEmployeeType(), saved.getTeacherId(),
                 saved.getPeriodStart(), saved.getPeriodLabel());
         // Fait remonter la paie dans la trésorerie (sortie de caisse "Salaires") — jamais dans le

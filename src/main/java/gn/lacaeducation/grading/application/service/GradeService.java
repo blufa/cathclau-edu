@@ -225,6 +225,13 @@ public class GradeService implements GradeUseCase {
 
         List<ReleveRow> coursRows = new java.util.ArrayList<>();
         List<ReleveRow> compoRows = new java.util.ArrayList<>();
+        // Mois calendaires → moyenne déjà "coefciée" (voir SubjectSemesterAverage.Result.monthlyCours),
+        // par élève — seulement pour le relevé complet (month == null) : §retour utilisateur, le relevé
+        // de la période entière doit afficher "le coefficient, la moyenne de chaque mois et enfin la
+        // moyenne", jamais une colonne par évaluation individuelle (confus dès que la période couvre
+        // plusieurs mois). Le relevé D'UN SEUL mois (bouton « Relevé du mois (PDF) ») garde lui le détail
+        // par évaluation (Oral/Écrit du mois), inchangé.
+        java.util.Map<Long, java.util.SortedMap<java.time.YearMonth, BigDecimal>> monthlyByStudent = new java.util.LinkedHashMap<>();
         for (StudentPublicInfo s : studentDataProvider.findStudentsByClass(classId)) {
             java.util.Map<Long, BigDecimal> allNotes = new java.util.LinkedHashMap<>();
             List<Grade> studentGrades = new java.util.ArrayList<>();
@@ -238,8 +245,17 @@ public class GradeService implements GradeUseCase {
             // "coefcié" (voir sa Javadoc), aucun recalcul ici.
             gn.lacaeducation.grading.domain.SubjectSemesterAverage.Result detail =
                     calculationService.subjectAverageDetail(assessments, studentGrades);
+            java.util.Map<Long, BigDecimal> coursNotes;
+            if (month == null) {
+                java.util.SortedMap<java.time.YearMonth, BigDecimal> monthly =
+                        detail == null ? new java.util.TreeMap<>() : detail.monthlyCours();
+                monthlyByStudent.put(s.id(), monthly);
+                coursNotes = monthlyNotes(monthly);
+            } else {
+                coursNotes = notesFor(coursAssessments, allNotes);
+            }
             coursRows.add(new ReleveRow(s.id(), s.studentNumber(), fullName(s),
-                    notesFor(coursAssessments, allNotes), detail == null ? null : detail.coursValue()));
+                    coursNotes, detail == null ? null : detail.coursValue()));
             compoRows.add(new ReleveRow(s.id(), s.studentNumber(), fullName(s),
                     notesFor(compoAssessments, allNotes), detail == null ? null : detail.compoValue()));
         }
@@ -256,10 +272,44 @@ public class GradeService implements GradeUseCase {
         String schoolYear = tenantId == null ? null : academicsDataProvider.currentAcademicYearLabel(tenantId).orElse(null);
         BigDecimal subjectCoefficient = calculationService.subjectCoefficient(classId, subjectId);
 
+        List<ReleveAssessment> coursColumns = month == null
+                ? monthColumns(monthlyByStudent)
+                : toReleveAssessments(coursAssessments);
+
         return new SubjectGradeReport(tenantId, classId, subjectId, periodId,
                 className, subjectName, periodLabel, schoolYear, subjectCoefficient,
-                new ReleveSection(toReleveAssessments(coursAssessments), coursRows),
+                new ReleveSection(coursColumns, coursRows),
                 new ReleveSection(toReleveAssessments(compoAssessments), compoRows));
+    }
+
+    private static final String[] MONTHS_FR = {"janvier", "février", "mars", "avril", "mai", "juin",
+            "juillet", "août", "septembre", "octobre", "novembre", "décembre"};
+
+    /** Identifiant synthétique stable pour une colonne "mois" du relevé complet (pas un vrai id
+     * d'évaluation) — sert uniquement de clé commune entre {@link #monthColumns} et
+     * {@link #monthlyNotes} pour une même carte élève. */
+    private static Long monthColumnId(java.time.YearMonth ym) {
+        return ym.getYear() * 100L + ym.getMonthValue();
+    }
+
+    /** Une colonne par mois calendaire ayant au moins une moyenne chez au moins un élève de la classe
+     * (union, triée chronologiquement) — jamais une colonne par évaluation individuelle sur le relevé
+     * complet (§retour utilisateur). */
+    private static List<ReleveAssessment> monthColumns(java.util.Map<Long, java.util.SortedMap<java.time.YearMonth, BigDecimal>> monthlyByStudent) {
+        java.util.SortedSet<java.time.YearMonth> months = new java.util.TreeSet<>();
+        for (java.util.SortedMap<java.time.YearMonth, BigDecimal> m : monthlyByStudent.values()) months.addAll(m.keySet());
+        List<ReleveAssessment> cols = new java.util.ArrayList<>();
+        for (java.time.YearMonth ym : months) {
+            String label = MONTHS_FR[ym.getMonthValue() - 1] + " " + ym.getYear();
+            cols.add(new ReleveAssessment(monthColumnId(ym), label, null, null, new BigDecimal("20"), null));
+        }
+        return cols;
+    }
+
+    private static java.util.Map<Long, BigDecimal> monthlyNotes(java.util.SortedMap<java.time.YearMonth, BigDecimal> monthly) {
+        java.util.Map<Long, BigDecimal> notes = new java.util.LinkedHashMap<>();
+        for (var e : monthly.entrySet()) notes.put(monthColumnId(e.getKey()), e.getValue());
+        return notes;
     }
 
     private static List<ReleveAssessment> toReleveAssessments(List<Assessment> assessments) {

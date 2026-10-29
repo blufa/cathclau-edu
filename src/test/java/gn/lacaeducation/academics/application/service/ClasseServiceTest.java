@@ -3,9 +3,12 @@ package gn.lacaeducation.academics.application.service;
 import gn.lacaeducation.academics.application.port.in.GererClasseUseCase.CreateClassCommand;
 import gn.lacaeducation.academics.application.port.out.AnneeScolaireRepository;
 import gn.lacaeducation.academics.application.port.out.ClasseRepository;
+import gn.lacaeducation.academics.application.port.out.EmploiDuTempsRepository;
 import gn.lacaeducation.academics.application.port.out.EnrollmentQueryPort;
 import gn.lacaeducation.academics.domain.AnneeScolaire;
 import gn.lacaeducation.academics.domain.Classe;
+import gn.lacaeducation.academics.domain.ClasseMatiere;
+import gn.lacaeducation.academics.domain.EmploiDuTemps;
 import gn.lacaeducation.academics.application.port.out.ReferentielRepository;
 import gn.lacaeducation.academics.domain.Niveau;
 import gn.lacaeducation.academics.domain.valueobject.SchoolCycle;
@@ -37,6 +40,7 @@ class ClasseServiceTest {
     @Mock AnneeScolaireRepository anneeRepository;
     @Mock ReferentielRepository referentielRepository;
     @Mock TenantEstablishmentTypeService establishmentTypeService;
+    @Mock EmploiDuTempsRepository emploiDuTempsRepository;
     @InjectMocks ClasseService service;
 
     private CreateClassCommand cmd(Long yearId) {
@@ -91,5 +95,37 @@ class ClasseServiceTest {
         Classe result = service.create(cmd(5L));
 
         assertThat(result).isNotNull();
+    }
+
+    // ── delete (§retour utilisateur : "j'affecte un enseignant à une classe, puis je reviens la
+    // supprimer, conflit de données") ──────────────────────────────────────────────────────────────
+
+    @Test
+    void delete_classWithActiveEnrollment_throwsAndNeverDeletes() {
+        // PENDING compte aussi (pas seulement VALIDATED) : un élève pas encore validé par le
+        // secrétariat est un vrai élève, pas une fiche fantôme qu'on peut perdre en silence.
+        when(enrollmentQueryPort.countActiveByClassId(6L)).thenReturn(2L);
+
+        assertThatThrownBy(() -> service.delete(6L))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("2 élève");
+        verify(classeRepository, never()).deleteById(any());
+    }
+
+    @Test
+    void delete_noEnrollments_purgesSubjectAssignmentsAndScheduleBeforeDeleting() {
+        when(enrollmentQueryPort.countActiveByClassId(6L)).thenReturn(0L);
+        when(classeRepository.findSubjectsByClassId(6L)).thenReturn(java.util.List.of(
+                ClasseMatiere.builder().id(101L).schoolClassId(6L).build(),
+                ClasseMatiere.builder().id(102L).schoolClassId(6L).build()));
+        when(emploiDuTempsRepository.findByClassId(6L)).thenReturn(java.util.List.of(
+                EmploiDuTemps.builder().id(201L).schoolClassId(6L).build()));
+
+        service.delete(6L);
+
+        verify(classeRepository).deleteClassSubjectById(101L);
+        verify(classeRepository).deleteClassSubjectById(102L);
+        verify(emploiDuTempsRepository).deleteById(201L);
+        verify(classeRepository).deleteById(6L);
     }
 }

@@ -26,7 +26,7 @@ class ClassePersistenceAdapter implements ClasseRepository {
     @Override public List<ClasseMatiere> findSubjectsByClassId(Long classId) { return cmRepo.findBySchoolClassId(classId).stream().map(mapper::toDomain).toList(); }
     @Override public List<ClasseMatiere> findSubjectsBySubjectId(Long subjectId) { return cmRepo.findBySubjectId(subjectId).stream().map(mapper::toDomain).toList(); }
     @Override public List<ClassStudent> findStudentsByClassId(Long classId) {
-        List<Long> studentIds = enrollmentRepo.findValidatedStudentIdsByClassId(classId);
+        List<Long> studentIds = enrollmentRepo.findActiveStudentIdsByClassId(classId);
         if (studentIds.isEmpty()) return List.of();
         return studentRepo.findByIdIn(studentIds).stream()
                 .map(s -> new ClassStudent(s.getId(), s.getFirstName(), s.getLastName(), s.getStudentNumber(), s.getEmail()))

@@ -41,4 +41,23 @@ class StudentAttendanceStatsProviderAdapter implements StudentAttendanceStatsPro
 
         return new TodayAttendanceStats(expectedCount, presentCount, absentCount, lateCount, presentPercentage);
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DailyAttendanceStats> attendanceHistory(Long tenantId, int days) {
+        LocalDate to = LocalDate.now();
+        LocalDate from = to.minusDays(Math.max(days, 1) - 1L);
+        List<StudentAttendance> records = studentAttendanceRepository.findByTenantIdAndDateBetween(tenantId, from, to);
+        java.util.Map<LocalDate, java.util.List<StudentAttendance>> byDate = records.stream()
+                .collect(java.util.stream.Collectors.groupingBy(StudentAttendance::getDate));
+        List<DailyAttendanceStats> result = new java.util.ArrayList<>();
+        for (LocalDate date = from; !date.isAfter(to); date = date.plusDays(1)) {
+            java.util.List<StudentAttendance> dayRecords = byDate.getOrDefault(date, java.util.List.of());
+            int present = (int) dayRecords.stream().filter(a -> a.getStatus() == AttendanceStatus.PRESENT).count();
+            int absent = (int) dayRecords.stream().filter(a -> a.getStatus() == AttendanceStatus.ABSENT).count();
+            int late = (int) dayRecords.stream().filter(a -> a.getStatus() == AttendanceStatus.LATE).count();
+            result.add(new DailyAttendanceStats(date, present, absent, late));
+        }
+        return result;
+    }
 }

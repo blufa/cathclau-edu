@@ -42,6 +42,7 @@ class ReportCardServiceTest {
     @Mock gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort classSubjectQueryPort;
     @Mock HonorRollPdfGenerator honorRollGenerator;
     @Mock gn.lacaeducation.grading.application.port.out.ClassCentralizerPdfGenerator centralizerGenerator;
+    @Mock gn.lacaeducation.grading.application.port.in.AnnualReportCardUseCase annualReportCardUseCase;
     @InjectMocks ReportCardService service;
 
     @AfterEach
