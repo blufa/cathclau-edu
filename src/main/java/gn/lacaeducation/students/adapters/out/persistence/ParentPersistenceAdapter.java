@@ -24,8 +24,8 @@ class ParentPersistenceAdapter implements ParentRepository, StudentParentReposit
         return parentRepo.findAllByLinkedStaffTypeAndLinkedStaffId(staffType, staffId).stream().map(mapper::toDomain).toList();
     }
     @Override public Optional<Parent> findByIdempotencyKey(String key) { return parentRepo.findByIdempotencyKey(key).map(mapper::toDomain); }
-    @Override public Optional<Parent> findByTenantIdAndPhone(Long tenantId, String phone) {
-        return parentRepo.findByTenantIdAndPhone(tenantId, phone).map(mapper::toDomain);
+    @Override public List<Parent> findByTenantIdAndPhone(Long tenantId, String phone) {
+        return parentRepo.findByTenantIdAndPhone(tenantId, phone).stream().map(mapper::toDomain).toList();
     }
     @Override public List<Parent> findByTenantId(Long t) { return parentRepo.findByTenantId(t).stream().map(mapper::toDomain).toList(); }
     @Override public void deleteById(Long id) { parentRepo.deleteById(id); }

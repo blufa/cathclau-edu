@@ -60,4 +60,16 @@ public class Invoice {
     /** Date/heure à laquelle le crédit a été reporté — affichée à la place du paiement (aucun
      * encaissement direct n'existe pour un crédit) dans la colonne "Date & heure" du reçu. */
     private java.time.LocalDateTime creditedAt;
+    /** Cette facture précise (ex. un frais annexe facultatif comme Maillots/T-shirts/Tenue scolaire)
+     * est exclue de la retenue automatique sur salaire — réglable par le comptable depuis le modal
+     * "Détail de la retenue" (§payroll), facture par facture, sans toucher aux autres factures de
+     * l'enfant ni au réglage global du parent ({@code Parent#excludeFromAutoDeduction}). Le parent
+     * règle alors celle-ci lui-même, normalement, au guichet. Jamais null en base (défaut false) —
+     * {@code @Builder.Default} obligatoire : Hibernate insère TOUJOURS explicitement la valeur Java de
+     * ce champ (même {@code null}), le {@code DEFAULT false} SQL de la colonne ne joue que si la
+     * colonne est absente de l'INSERT, jamais quand elle vaut explicitement NULL — sans ce défaut,
+     * CHAQUE nouvelle facture (donc toute inscription d'élève) violait la contrainte NOT NULL en base
+     * et échouait en 500 (incident réel constaté juste après la migration V233). */
+    @Builder.Default
+    private Boolean excludedFromStaffDeduction = false;
 }

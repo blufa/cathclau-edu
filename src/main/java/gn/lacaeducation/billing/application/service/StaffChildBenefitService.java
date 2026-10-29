@@ -91,19 +91,23 @@ public class StaffChildBenefitService implements StaffChildBenefitUseCase {
     @Override
     @Transactional(readOnly = true)
     public boolean isStaffChild(Long studentId) {
-        // L'un des parents est-il un membre du personnel — enseignant OU personnel non-enseignant —
-        // soit par compte utilisateur partagé, soit par lien direct (sans compte, voir
-        // ParentAccessProvider#findDirectStaffLinksByStudent — ex. personnel sans smartphone Android) ?
-        boolean viaAccount = parentAccessProvider.findParentUserIdsByStudent(studentId).stream()
-                .anyMatch(uid -> teacherProvider.findTeacherIdByUserId(uid).isPresent()
-                        || employeeProvider.findEmployeeIdByUserId(uid).isPresent());
-        boolean staffLinked = viaAccount || !parentAccessProvider.findDirectStaffLinksByStudent(studentId).isEmpty();
-        if (!staffLinked) return false;
+        if (!isStaffLinked(studentId)) return false;
         // Retour comptable : un parent personnel qui prend réellement en charge lui-même les frais de
         // ses enfants (réglage explicite, voir ParentAccessProvider#hasOptedOutOfStaffAutoDeduction) ne
         // doit plus être traité comme "enfant du personnel" du tout — ni pour le tag avantage personnel
         // sur facture, ni pour l'ancien reporting (computeCoverage/findUncoveredStaffChildIds).
         return !parentAccessProvider.hasOptedOutOfStaffAutoDeduction(studentId);
+    }
+
+    /** L'un des parents de {@code studentId} est-il un membre du personnel — enseignant OU personnel
+     * non-enseignant — soit par compte utilisateur partagé, soit par lien direct (sans compte, voir
+     * ParentAccessProvider#findDirectStaffLinksByStudent — ex. personnel sans smartphone Android) ?
+     * Indépendant de tout opt-out (contrairement à {@link #isStaffChild}). */
+    private boolean isStaffLinked(Long studentId) {
+        boolean viaAccount = parentAccessProvider.findParentUserIdsByStudent(studentId).stream()
+                .anyMatch(uid -> teacherProvider.findTeacherIdByUserId(uid).isPresent()
+                        || employeeProvider.findEmployeeIdByUserId(uid).isPresent());
+        return viaAccount || !parentAccessProvider.findDirectStaffLinksByStudent(studentId).isEmpty();
     }
 
     @Override

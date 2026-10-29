@@ -769,6 +769,7 @@ class OpenPdfReceiptGenerator implements ReceiptPdfGenerator {
             case MTN_MONEY -> "MTN Money";
             case WAVE -> "Wave";
             case DJOMY -> "En ligne (Djomy)";
+            case PAYROLL_DEDUCTION -> "Retenue sur salaire";
         };
     }
 

@@ -66,4 +66,31 @@ public class SalaryFeeDeductionController {
                                  @RequestParam(required = false, defaultValue = "TEACHER") EmployeeType employeeType) {
         return useCase.computeFeeDeduction(TenantContext.get(), employeeType, teacherId);
     }
+
+    @Operation(summary = "Détail de la retenue \"avantage personnel\", enfant par enfant : factures "
+            + "retenues et frais facultatifs pas encore facturés (modal de détail de la fiche de paie)")
+    @PreAuthorize("hasAuthority('paie:manage')")
+    @GetMapping("/detail")
+    public List<SalaryFeeDeductionUseCase.ChildDeductionDetail> detail(
+            @RequestParam Long staffId,
+            @RequestParam(required = false, defaultValue = "TEACHER") EmployeeType employeeType,
+            @RequestParam int year, @RequestParam int month) {
+        // periodLabel laissé null : dérivé depuis periodStart côté billing (même règle que la retenue
+        // réelle à la mise en paiement, voir InvoiceService#resolveTargetPeriodLabel) — jamais recalculé
+        // ici (hors frontière de module, gn.lacaeducation.billing.domain n'est pas une API publique).
+        java.time.LocalDate periodStart = java.time.LocalDate.of(year, month, 1);
+        return useCase.staffBenefitDetail(TenantContext.get(), employeeType, staffId, periodStart, null);
+    }
+
+    @Operation(summary = "Exclure (ou réintégrer) spécifiquement UN enfant de la retenue sur salaire de "
+            + "ce salarié — par enfant, pour le cas où certains enfants du même salarié bénéficient de "
+            + "l'avantage personnel et d'autres sont payés directement par un parent")
+    @PreAuthorize("hasAuthority('paie:manage')")
+    @PatchMapping("/child-exclusion")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void setChildExcluded(@RequestParam Long staffId,
+                                  @RequestParam(required = false, defaultValue = "TEACHER") EmployeeType employeeType,
+                                  @RequestParam Long studentId, @RequestParam boolean excluded) {
+        useCase.setChildStaffDeductionExcluded(TenantContext.get(), employeeType, staffId, studentId, excluded);
+    }
 }

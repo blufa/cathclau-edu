@@ -3,6 +3,7 @@ import gn.lacaeducation.billing.application.event.InvoiceGeneratedEvent;
 import gn.lacaeducation.billing.application.event.InvoiceIssuedEvent;
 import gn.lacaeducation.billing.application.event.InvoicePaidEvent;
 import gn.lacaeducation.billing.application.event.InvoicePaymentAppliedEvent;
+import gn.lacaeducation.billing.application.event.StaffChildDeductionExcludedEvent;
 import gn.lacaeducation.billing.application.port.in.InvoiceUseCase;
 import gn.lacaeducation.billing.application.port.out.*;
 import gn.lacaeducation.billing.domain.FeeType;
@@ -13,7 +14,11 @@ import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.MediaUploadService;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.common.TenantInfoProvider;
+import gn.lacaeducation.payments.PayrollDeductionReceiptApi;
 import gn.lacaeducation.platform.PlatformFeeLedgerApi;
+import gn.lacaeducation.staff.EmployeePublicInfoProvider;
+import gn.lacaeducation.staff.TeacherPublicInfoProvider;
+import gn.lacaeducation.students.ParentAccessProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -40,6 +45,10 @@ public class InvoiceService implements InvoiceUseCase {
     private final gn.lacaeducation.billing.application.port.in.EarlyPaymentDiscountUseCase earlyPaymentDiscountUseCase;
     private final gn.lacaeducation.billing.application.port.in.StaffChildBenefitUseCase staffChildBenefitUseCase;
     private final PlatformFeeLedgerApi platformFeeLedgerApi;
+    private final PayrollDeductionReceiptApi payrollDeductionReceiptApi;
+    private final ParentAccessProvider parentAccessProvider;
+    private final TeacherPublicInfoProvider teacherProvider;
+    private final EmployeePublicInfoProvider employeeProvider;
 
     @Override @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public byte[] pdfBytes(Long invoiceId) {
@@ -111,8 +120,16 @@ public class InvoiceService implements InvoiceUseCase {
             // Pourcentage intégré au libellé (même principe que la remise paiement anticipé juste au-dessus
             // dans ce fichier) — sans lui, le reçu/la facture n'affichaient que le nom de l'exonération et
             // le montant déduit, jamais le taux lui-même (§retour comptable).
-            bestReason = (exemption.staffBenefit() ? "Avantage personnel : " : "Exonération : ") + exemption.percentageReason()
-                    + " (" + bestPercent.stripTrailingZeros().toPlainString() + "%)";
+            String reason = exemption.percentageReason();
+            // Le comptable nomme parfois déjà sa règle "Avantage personnel" dans le catalogue
+            // d'exonérations — éviter la répétition "Avantage personnel : Avantage personnel" (§retour
+            // comptable : "je les vois encombrant"), en préfixant seulement si ce n'est pas déjà dit.
+            boolean alreadySaysStaffBenefit = reason != null
+                    && reason.trim().toLowerCase(java.util.Locale.ROOT).startsWith("avantage personnel");
+            String prefix = exemption.staffBenefit()
+                    ? (alreadySaysStaffBenefit ? "" : "Avantage personnel : ")
+                    : "Exonération : ";
+            bestReason = prefix + reason + " (" + bestPercent.stripTrailingZeros().toPlainString() + "%)";
             bestSource = exemption.staffBenefit()
                     ? gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT
                     : gn.lacaeducation.billing.domain.DiscountSource.EXEMPTION;
@@ -458,6 +475,73 @@ public class InvoiceService implements InvoiceUseCase {
         return repo.save(inv);
     }
 
+    @Override public Invoice setExcludedFromStaffDeduction(Long invoiceId, boolean excluded) {
+        Invoice inv = load(invoiceId);
+        inv.setExcludedFromStaffDeduction(excluded);
+        return repo.save(inv);
+    }
+
+    @Override public void setAllStaffBenefitInvoicesExcluded(Long studentId, boolean excluded) {
+        if (studentId == null) return;
+        // Retirer un enfant de la retenue (§retour comptable) doit rendre ses factures encore dues
+        // immédiatement encaissables au guichet — pas seulement empêcher une FUTURE retenue sur salaire
+        // (voir ParentAccessProvider#hasOptedOutOfStaffAutoDeduction, qui ne touche jamais aux factures
+        // elles-mêmes). Réintégrer l'enfant reverrouille symétriquement les mêmes factures. Seules les
+        // factures encore dues sont concernées (une facture déjà payée n'a plus rien à encaisser) ; tous
+        // les mois confondus, pas seulement le mois courant (contrairement à
+        // staffBenefitCandidateInvoices, ici on veut TOUT débloquer/reverrouiller d'un coup).
+        repo.findByStudentId(studentId).stream()
+                .filter(i -> i.getDiscountSource() == gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT)
+                .filter(i -> i.getStatus() == InvoiceStatus.UNPAID || i.getStatus() == InvoiceStatus.PARTIAL)
+                .forEach(i -> {
+                    i.setExcludedFromStaffDeduction(excluded);
+                    repo.save(i);
+                });
+    }
+
+    /** Un des parents de {@code studentId} est-il un membre du personnel — par compte partagé ou par
+     * lien direct (sans compte) — indépendamment de tout opt-out (même logique que
+     * {@code StaffChildBenefitService#isStaffLinked}, dupliquée ici pour éviter une dépendance
+     * circulaire InvoiceService ↔ StaffChildBenefitService via leurs use cases respectifs). */
+    private boolean isStaffLinked(Long studentId) {
+        boolean viaAccount = parentAccessProvider.findParentUserIdsByStudent(studentId).stream()
+                .anyMatch(uid -> teacherProvider.findTeacherIdByUserId(uid).isPresent()
+                        || employeeProvider.findEmployeeIdByUserId(uid).isPresent());
+        return viaAccount || !parentAccessProvider.findDirectStaffLinksByStudent(studentId).isEmpty();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public StaffChildDeductionStatus staffChildDeductionStatus(Long studentId) {
+        if (studentId == null || !isStaffLinked(studentId)) return new StaffChildDeductionStatus(false, false);
+        return new StaffChildDeductionStatus(true, parentAccessProvider.hasOptedOutOfStaffAutoDeduction(studentId));
+    }
+
+    @Override
+    public void setStaffChildDeductionExcluded(Long studentId, boolean excluded) {
+        if (studentId == null) return;
+        // Chemin par compte partagé (enseignant/employé avec connexion) — un même élève peut avoir
+        // plusieurs parents personnel (rare mais possible), on traite chacun.
+        parentAccessProvider.findParentUserIdsByStudent(studentId).forEach(uid -> {
+            if (teacherProvider.findTeacherIdByUserId(uid).isPresent() || employeeProvider.findEmployeeIdByUserId(uid).isPresent()) {
+                parentAccessProvider.setChildStaffDeductionExcluded(uid, null, null, studentId, excluded);
+            }
+        });
+        // Chemin par lien direct (personnel sans compte).
+        parentAccessProvider.findDirectStaffLinksByStudent(studentId).forEach(link ->
+                parentAccessProvider.setChildStaffDeductionExcluded(null, link.staffType(), link.staffId(), studentId, excluded));
+        // Factures déjà émises : les rendre immédiatement (dé)verrouillables au guichet (§retour
+        // comptable : "ces factures doivent être actives, on doit pouvoir les encaisser").
+        setAllStaffBenefitInvoicesExcluded(studentId, excluded);
+        // Montant affiché sur une fiche de paie DRAFT/VALIDÉE déjà générée pour le parent salarié de cet
+        // élève (ligne "Reste avantage personnel") : ne se met jamais à jour tout seul — contrairement
+        // au même geste fait DEPUIS le détail de la fiche de paie, qui rafraîchit déjà explicitement
+        // (voir payroll.StaffChildDeductionRefreshListener, retour comptable : "je ne vois pas de
+        // changement sur le montant" en basculant depuis la fiche élève/l'encaissement).
+        eventPublisher.publishEvent(new StaffChildDeductionExcludedEvent(
+                gn.lacaeducation.common.TenantContext.get(), studentId, excluded));
+    }
+
     @Override public void applyExternalPayment(Long tenantId, Long studentId, BigDecimal amount) {
         if (amount == null || amount.signum() <= 0 || studentId == null) return;
         BigDecimal remaining = amount;
@@ -489,6 +573,63 @@ public class InvoiceService implements InvoiceUseCase {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<gn.lacaeducation.billing.StudentFeePaymentApi.DeductedInvoiceLine> outstandingStaffBenefitInvoiceLines(
+            Long studentId, java.time.LocalDate periodStart, String periodLabel) {
+        if (studentId == null) return List.of();
+        String targetLabel = resolveTargetPeriodLabel(periodStart, periodLabel);
+        // Exclues COMPRISES ici (contrairement à staffBenefitInvoicesForPeriod) : le comptable doit
+        // pouvoir les voir (barrées) pour les réinclure, pas seulement les retirer.
+        return staffBenefitCandidateInvoices(studentId, targetLabel).stream()
+                .map(i -> new gn.lacaeducation.billing.StudentFeePaymentApi.DeductedInvoiceLine(
+                        i.getId(), i.getReference(), feeLabel(i.getFeeId()),
+                        i.getRemainingBalance() != null ? i.getRemainingBalance() : BigDecimal.ZERO,
+                        i.getPeriodLabel(), Boolean.TRUE.equals(i.getExcludedFromStaffDeduction())))
+                .toList();
+    }
+
+    private static final java.util.Map<FeeType, String> FEE_TYPE_LABEL = java.util.Map.of(
+            FeeType.ENROLLMENT, "Inscription",
+            FeeType.RE_ENROLLMENT, "Réinscription",
+            FeeType.MONTHLY, "Mensualité",
+            FeeType.TRANSPORT, "Transport",
+            FeeType.CANTEEN, "Cantine",
+            FeeType.EXAM, "Examen",
+            FeeType.OTHER, "Autre",
+            FeeType.PLATFORM, "Frais plateforme");
+
+    /** Nom réel du frais (§retour comptable : "ne met pas juste Frais") — le nom propre configuré par
+     * l'école pour un frais annexe (OTHER/PLATFORM, ex. "Tenue scolaire"), sinon le libellé français du
+     * type (Mensualité, Inscription, Transport…) — jamais le mot générique "Frais" tant que le frais
+     * existe encore, même pour les types sans nom propre (voir SchoolFee#label, non renseigné hors
+     * OTHER/PLATFORM). Même règle que BillingPayerDirectoryAdapter#feeLabel/OpenPdfInvoiceGenerator. */
+    private String feeLabel(Long feeId) {
+        if (feeId == null) return "Frais";
+        var fee = schoolFeeRepository.findById(feeId).orElse(null);
+        if (fee == null || fee.getType() == null) return "Frais";
+        if ((fee.getType() == FeeType.OTHER || fee.getType() == FeeType.PLATFORM)
+                && fee.getLabel() != null && !fee.getLabel().isBlank()) {
+            return fee.getLabel();
+        }
+        return FEE_TYPE_LABEL.getOrDefault(fee.getType(), fee.getType().name());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<gn.lacaeducation.billing.StudentFeePaymentApi.OptionalFeeNotice> optionalFeesNotYetInvoiced(Long studentId) {
+        if (studentId == null) return List.of();
+        Long classId = enrollmentQueryPort.findActiveClassId(studentId);
+        if (classId == null) return List.of();
+        java.util.Set<Long> alreadyInvoicedFeeIds = repo.findByStudentId(studentId).stream()
+                .map(Invoice::getFeeId).filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+        return schoolFeeRepository.findByClassId(classId).stream()
+                .filter(f -> Boolean.FALSE.equals(f.getMandatory()))
+                .filter(f -> !alreadyInvoicedFeeIds.contains(f.getId()))
+                .map(f -> new gn.lacaeducation.billing.StudentFeePaymentApi.OptionalFeeNotice(f.getLabel(), f.getAmount()))
+                .toList();
+    }
+
+    @Override
     public void applyStaffBenefitRemainderPayment(Long studentId, java.time.LocalDate periodStart, String periodLabel, BigDecimal amount) {
         if (studentId == null || amount == null || amount.signum() <= 0) return;
         String targetLabel = resolveTargetPeriodLabel(periodStart, periodLabel);
@@ -499,6 +640,10 @@ public class InvoiceService implements InvoiceUseCase {
             if (due.signum() <= 0) continue;
             BigDecimal toApply = due.min(remaining);
             applyPayment(inv.getId(), toApply, false);
+            // Trace de paiement + reçu (§retour comptable : "si la retenue se fait et que les factures
+            // sont payées il faut aussi générer les reçus") — jamais une ré-application du paiement sur
+            // la facture (déjà fait juste au-dessus), voir PayrollDeductionReceiptApi.
+            payrollDeductionReceiptApi.recordForReceipt(inv.getTenantId(), inv.getId(), studentId, inv.getAcademicYearId(), toApply);
             remaining = remaining.subtract(toApply);
         }
     }
@@ -520,6 +665,20 @@ public class InvoiceService implements InvoiceUseCase {
      * l'éclatement mensuel) n'est rattachée à aucun mois en particulier : elle reste comptée quel que
      * soit le mois demandé (tranche non éclatée, transport, cantine, examen…). */
     private List<Invoice> staffBenefitInvoicesForPeriod(Long studentId, String targetLabel) {
+        // Facture retirée au cas par cas de la retenue (§retour utilisateur : "pas obligatoire de
+        // prendre tous les frais", ex. Maillots/T-shirts/Tenue scolaire) — le parent la règle alors
+        // lui-même, normalement au guichet. Jamais comptée ici (calcul/application réels de la
+        // retenue) — voir staffBenefitCandidateInvoices pour la vue d'ensemble (exclues comprises).
+        return staffBenefitCandidateInvoices(studentId, targetLabel).stream()
+                .filter(i -> !Boolean.TRUE.equals(i.getExcludedFromStaffDeduction()))
+                .toList();
+    }
+
+    /** Factures STAFF_BENEFIT dues de l'élève pour ce mois, EXCLUES de la retenue comprises (contraire
+     * de {@link #staffBenefitInvoicesForPeriod}) — pour l'affichage du détail (§payroll, modal "Détail
+     * de la retenue"), où le comptable doit voir aussi celles qu'il a retirées, pour pouvoir les
+     * réinclure. */
+    private List<Invoice> staffBenefitCandidateInvoices(Long studentId, String targetLabel) {
         return repo.findByStudentId(studentId).stream()
                 .filter(i -> i.getDiscountSource() == gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT)
                 .filter(i -> i.getStatus() == InvoiceStatus.UNPAID || i.getStatus() == InvoiceStatus.PARTIAL)

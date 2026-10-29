@@ -28,4 +28,24 @@ class StudentFeePaymentApiAdapter implements StudentFeePaymentApi {
     public void applyStaffBenefitRemainderPayment(Long studentId, LocalDate periodStart, String periodLabel, BigDecimal amount) {
         invoiceUseCase.applyStaffBenefitRemainderPayment(studentId, periodStart, periodLabel, amount);
     }
+
+    @Override
+    public java.util.List<DeductedInvoiceLine> outstandingStaffBenefitInvoiceLines(Long studentId, LocalDate periodStart, String periodLabel) {
+        return invoiceUseCase.outstandingStaffBenefitInvoiceLines(studentId, periodStart, periodLabel);
+    }
+
+    @Override
+    public java.util.List<OptionalFeeNotice> optionalFeesNotYetInvoiced(Long studentId) {
+        return invoiceUseCase.optionalFeesNotYetInvoiced(studentId);
+    }
+
+    @Override
+    public void setInvoiceExcludedFromStaffDeduction(Long invoiceId, boolean excluded) {
+        invoiceUseCase.setExcludedFromStaffDeduction(invoiceId, excluded);
+    }
+
+    @Override
+    public void setAllStaffBenefitInvoicesExcluded(Long studentId, boolean excluded) {
+        invoiceUseCase.setAllStaffBenefitInvoicesExcluded(studentId, excluded);
+    }
 }

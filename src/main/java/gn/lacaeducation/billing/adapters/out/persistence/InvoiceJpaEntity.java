@@ -40,4 +40,5 @@ public class InvoiceJpaEntity {
     @Column(name = "credited_amount", precision = 15, scale = 2) private BigDecimal creditedAmount;
     @Column(name = "credit_reason", length = 255) private String creditReason;
     @Column(name = "credited_at") private java.time.LocalDateTime creditedAt;
+    @Column(name = "excluded_from_staff_deduction", nullable = false) private Boolean excludedFromStaffDeduction = false;
 }

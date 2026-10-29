@@ -49,12 +49,25 @@ public interface ParentAccessProvider {
      * paie, alors que l'inscription "Personnel de l'école" accepte les deux. */
     java.util.List<Long> findChildStudentIdsEnrolledByStaffLink(String staffType, Long staffId);
 
-    /** Vrai si AU MOINS UN parent lié à cet élève a explicitement choisi de prendre en charge lui-même
-     * les frais de ses enfants (champ {@code excludeFromAutoDeduction} sur la fiche Parent, réglable par
-     * le comptable) — retour comptable : certains membres du personnel paient réellement comme n'importe
-     * quelle famille et ne doivent subir AUCUNE retenue automatique, ni règle à montant fixe
+    /** Vrai si cet élève est exclu de la retenue salariale automatique — soit parce qu'AU MOINS UN
+     * parent lié a explicitement choisi de prendre en charge lui-même les frais de TOUS ses enfants
+     * (champ {@code excludeFromAutoDeduction} sur la fiche Parent, réglage global), SOIT parce que ce
+     * lien élève-parent précis a été exclu individuellement (champ {@code excludedFromStaffDeduction}
+     * sur le lien {@code StudentParent} — voir {@link #setChildStaffDeductionExcluded}, réglage par
+     * enfant, pour le cas où certains enfants du même salarié bénéficient de l'avantage et d'autres non,
+     * §retour comptable). Dans les deux cas, AUCUNE retenue automatique, ni règle à montant fixe
      * ({@code SalaryFeeDeductionService#computeFeeDeduction}) ni solde réel
      * ({@code computeStaffBenefitRemainder}), ni tag "avantage personnel" sur leurs factures
      * ({@code StaffChildBenefitService#isStaffChild}). */
     boolean hasOptedOutOfStaffAutoDeduction(Long studentId);
+
+    /** Exclut (ou réintègre) spécifiquement CET enfant de la retenue salariale automatique de ce
+     * salarié — par ENFANT, contrairement au réglage global {@code Parent#excludeFromAutoDeduction} qui
+     * s'applique à tous les enfants de ce parent (§retour comptable : "il y a des enfants qui sont [à
+     * charge de l'avantage] et d'autres [payés directement par le parent]"). Résout le lien staff↔enfant
+     * par compte ({@code userId}, peut être {@code null}) ET par lien direct personnel
+     * ({@code staffType}/{@code staffId}, voir {@link DirectStaffLink}), comme
+     * {@link #findChildStudentIdsEnrolled}/{@link #findChildStudentIdsEnrolledByStaffLink} — sans effet
+     * si aucun lien ne rattache ce studentId à ce salarié. */
+    void setChildStaffDeductionExcluded(Long userId, String staffType, Long staffId, Long studentId, boolean excluded);
 }

@@ -14,7 +14,7 @@ interface ParentJpaRepository extends JpaRepository<ParentJpaEntity, Long> {
     List<ParentJpaEntity> findAllByLinkedStaffTypeAndLinkedStaffId(
             gn.lacaeducation.students.domain.StaffLinkType linkedStaffType, Long linkedStaffId);
     Optional<ParentJpaEntity> findByIdempotencyKey(String idempotencyKey);
-    Optional<ParentJpaEntity> findByTenantIdAndPhone(Long tenantId, String phone);
+    List<ParentJpaEntity> findByTenantIdAndPhone(Long tenantId, String phone);
 
     /** Suggestions de prénom/nom/adresse déjà saisis pour d'autres parents du même tenant (§retour
      * comptable) — {@code q} déjà en minuscules. */
