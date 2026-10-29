@@ -472,8 +472,15 @@ public class PayrollService {
         long mat = counts.getOrDefault(TeacherCycleBucket.MATERNELLE, 0L);
         long pri = counts.getOrDefault(TeacherCycleBucket.PRIMAIRE, 0L);
         long sec = counts.getOrDefault(TeacherCycleBucket.SECONDAIRE, 0L);
-        if (mat > pri && mat > sec) return TeacherCycleBucket.MATERNELLE;
-        if (pri > mat && pri > sec) return TeacherCycleBucket.PRIMAIRE;
+        // Priorité Maternelle > Primaire > Secondaire en cas d'ÉGALITÉ (jamais un décompte strictement
+        // majoritaire requis pour départager) — un enseignant intervenant à la fois en primaire ET en
+        // secondaire (ex. une classe de chaque, cas réel vécu) disparaissait silencieusement du filtre
+        // "Primaire" du modal "Générer les fiches de paie en lot" : l'égalité (1 contre 1) retombait
+        // systématiquement sur Secondaire, qui n'est qu'un simple repli par défaut (aucune classe
+        // résolue du tout) et ne devrait jamais l'emporter sur une cycle plus spécifique à effectif
+        // égal (§retour comptable : "quand je filtre par cycle rien ne vient").
+        if (mat > 0 && mat >= pri && mat >= sec) return TeacherCycleBucket.MATERNELLE;
+        if (pri > 0 && pri >= sec) return TeacherCycleBucket.PRIMAIRE;
         return TeacherCycleBucket.SECONDAIRE;
     }
 
@@ -756,13 +763,37 @@ public class PayrollService {
      * frais, double retenue. La règle à montant fixe reste configurable/consultable (écran Rôles &
      * permissions → Paie), juste plus appliquée automatiquement à la génération.
      */
+    private static final String STAFF_BENEFIT_LINE_PREFIX = "Reste avantage personnel";
+
     private void applyStaffBenefitRemainderDeduction(Payslip p, GenerateCommand c) {
         var deduction = salaryFeeDeductionUseCase.computeStaffBenefitRemainder(c.tenantId(), p.getEmployeeType(), c.teacherId(),
                 c.periodStart(), c.periodLabel());
         if (deduction.amount() != null && deduction.amount().signum() > 0) {
-            saveLine(p, "Reste avantage personnel (" + deduction.childrenCount() + " enfant(s))",
+            saveLine(p, STAFF_BENEFIT_LINE_PREFIX + " (" + deduction.childrenCount() + " enfant(s))",
                     PayslipLineType.DEDUCTION, deduction.amount());
         }
+    }
+
+    /**
+     * Recalcule la ligne "Reste avantage personnel" d'une fiche encore modifiable (§retour comptable :
+     * "j'ai retiré deux factures, j'ai rechargé mais le montant global de la retenue n'a pas changé") —
+     * la ligne est posée une seule fois à la génération ({@link #applyStaffBenefitRemainderDeduction}),
+     * elle ne se met jamais à jour toute seule quand une facture est retirée/réincluse après coup
+     * (§billing, modal "Détail de la retenue") : il faut explicitement la régénérer. Sans effet (lève)
+     * sur une fiche déjà PAYÉE — déjà figée, répercutée sur les factures, ne doit plus bouger.
+     */
+    public Payslip refreshStaffBenefitDeductionLine(Long payslipId) {
+        Payslip p = mutable(payslipId);
+        lineRepo.findByPayslipId(payslipId).stream()
+                .filter(l -> l.getLabel() != null && l.getLabel().startsWith(STAFF_BENEFIT_LINE_PREFIX))
+                .forEach(l -> lineRepo.deleteById(l.getId()));
+        var deduction = salaryFeeDeductionUseCase.computeStaffBenefitRemainder(p.getTenantId(), p.getEmployeeType(),
+                p.getTeacherId(), p.getPeriodStart(), p.getPeriodLabel());
+        if (deduction.amount() != null && deduction.amount().signum() > 0) {
+            saveLine(p, STAFF_BENEFIT_LINE_PREFIX + " (" + deduction.childrenCount() + " enfant(s))",
+                    PayslipLineType.DEDUCTION, deduction.amount());
+        }
+        return recompute(payslipId);
     }
 
     /**

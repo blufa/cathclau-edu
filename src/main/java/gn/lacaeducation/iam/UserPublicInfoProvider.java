@@ -15,6 +15,12 @@ public interface UserPublicInfoProvider {
 
     Optional<UserPublicInfo> findUser(Long userId);
 
+    /** Tous les utilisateurs d'un tenant (identité minimale) — pour un sélecteur "par utilisateur" qui
+     * ne doit pas exiger le droit complet de gestion des comptes ({@code user:read}), ex. le filtre du
+     * journal d'audit (§retour comptable : certains rôles ont {@code audit:read} sans {@code
+     * user:read}). */
+    List<UserPublicInfo> findUsersByTenant(Long tenantId);
+
     /** Identifiants des comptes actifs d'un tenant portant au moins un des rôles donnés (dédupliqués) —
      * pour notifier in-app (cloche) tout le personnel concerné par une alerte, ex. échéance de
      * paiement proche (§retour comptable). Codes de rôle en chaîne (ex. "ACCOUNTANT"), jamais

@@ -7,13 +7,16 @@ import gn.lacaeducation.students.application.port.out.StudentParentRepository;
 import gn.lacaeducation.students.application.port.out.StudentRepository;
 import gn.lacaeducation.students.domain.Parent;
 import gn.lacaeducation.students.domain.Relationship;
+import gn.lacaeducation.students.domain.StaffLinkType;
 import gn.lacaeducation.students.domain.Student;
 import gn.lacaeducation.students.domain.StudentParent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Service @Transactional @RequiredArgsConstructor
 public class ParentService implements ParentUseCase {
@@ -65,7 +68,13 @@ public class ParentService implements ParentUseCase {
         // (voir PhoneNumbers), un numéro ressaisi dans un format différent doit rester détecté.
         if (cmd.phone() != null && !cmd.phone().isBlank()) {
             for (String candidate : gn.lacaeducation.common.PhoneNumbers.candidates(cmd.phone())) {
-                Optional<Parent> existing = parentRepository.findByTenantIdAndPhone(cmd.tenantId(), candidate);
+                // Plusieurs fiches partagent parfois le même numéro en pratique (ex. numéro de l'école
+                // saisi par défaut pour plusieurs familles sans téléphone propre) — jamais un simple
+                // Optional (voir findByTenantIdAndPhone), sous peine de 500 (incident réel à
+                // l'inscription, IncorrectResultSizeDataAccessException). Même résolution que userId/
+                // staffId ci-dessus : la plus ancienne fiche (id le plus petit).
+                Optional<Parent> existing = parentRepository.findByTenantIdAndPhone(cmd.tenantId(), candidate).stream()
+                        .min(java.util.Comparator.comparing(Parent::getId));
                 if (existing.isPresent()) {
                     return existing.get();
                 }
@@ -204,5 +213,22 @@ public class ParentService implements ParentUseCase {
         return studentParentRepository.findDistinctLinkedParentIds().stream()
                 .filter(tenantParentIds::contains)
                 .toList();
+    }
+
+    @Override @Transactional(readOnly = true)
+    public List<Student> findStudentsByStaff(StaffLinkType staffType, Long staffId, Long userId) {
+        if (staffType == null || staffId == null) return List.of();
+        Set<Long> studentIds = new LinkedHashSet<>();
+        // Chemin par compte partagé (enseignant/employé avec connexion) — même fiche Parent que son
+        // propre compte de connexion. userId fourni par l'appelant (voir javadoc de l'interface : ne
+        // jamais résoudre ici via le module staff, sous peine de cycle de modules).
+        if (userId != null) {
+            parentRepository.findAllByUserId(userId).forEach(p ->
+                    studentIds.addAll(studentParentRepository.findStudentIdsByParentId(p.getId())));
+        }
+        // Chemin par lien direct (personnel sans compte, ex. pas de smartphone Android).
+        parentRepository.findAllByLinkedStaff(staffType, staffId).forEach(p ->
+                studentIds.addAll(studentParentRepository.findStudentIdsByParentId(p.getId())));
+        return studentIds.stream().flatMap(id -> studentRepository.findById(id).stream()).toList();
     }
 }

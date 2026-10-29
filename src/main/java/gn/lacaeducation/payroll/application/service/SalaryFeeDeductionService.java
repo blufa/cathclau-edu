@@ -10,6 +10,7 @@ import gn.lacaeducation.payroll.domain.SalaryFeeDeductionRule;
 import gn.lacaeducation.staff.EmployeePublicInfoProvider;
 import gn.lacaeducation.staff.TeacherPublicInfoProvider;
 import gn.lacaeducation.students.ParentAccessProvider;
+import gn.lacaeducation.students.StudentDataProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +30,7 @@ public class SalaryFeeDeductionService implements SalaryFeeDeductionUseCase {
     private final EmployeePublicInfoProvider employeeProvider;
     private final ParentAccessProvider parentAccessProvider;
     private final StudentFeePaymentApi studentFeePaymentApi;
+    private final StudentDataProvider studentDataProvider;
 
     /** Résout le compte utilisateur du salarié dans le bon référentiel — enseignant ou personnel
      * administratif/direction/support (§retour comptable : la retenue scolarité ne doit pas se limiter
@@ -49,6 +51,14 @@ public class SalaryFeeDeductionService implements SalaryFeeDeductionUseCase {
      * enfant dont un parent a explicitement choisi de payer lui-même (voir
      * ParentAccessProvider#hasOptedOutOfStaffAutoDeduction). */
     private List<Long> resolveChildStudentIds(EmployeeType employeeType, Long staffId) {
+        return resolveAllChildStudentIds(employeeType, staffId).stream()
+                .filter(id -> !parentAccessProvider.hasOptedOutOfStaffAutoDeduction(id)).toList();
+    }
+
+    /** Comme {@link #resolveChildStudentIds}, mais SANS exclure les enfants dont le parent a choisi de
+     * payer lui-même — pour le détail (§retour comptable), qui doit aussi montrer CES enfants-là (avec
+     * la mention "paie lui-même"), pas seulement ceux effectivement retenus. */
+    private List<Long> resolveAllChildStudentIds(EmployeeType employeeType, Long staffId) {
         Long userId = resolveUserId(employeeType, staffId);
         java.util.LinkedHashSet<Long> ids = new java.util.LinkedHashSet<>();
         if (userId != null) {
@@ -56,7 +66,7 @@ public class SalaryFeeDeductionService implements SalaryFeeDeductionUseCase {
         }
         String staffType = employeeType == EmployeeType.TEACHER ? "TEACHER" : "EMPLOYEE";
         ids.addAll(parentAccessProvider.findChildStudentIdsEnrolledByStaffLink(staffType, staffId));
-        return ids.stream().filter(id -> !parentAccessProvider.hasOptedOutOfStaffAutoDeduction(id)).toList();
+        return List.copyOf(ids);
     }
 
     @Override
@@ -164,6 +174,38 @@ public class SalaryFeeDeductionService implements SalaryFeeDeductionUseCase {
                 studentFeePaymentApi.applyStaffBenefitRemainderPayment(studentId, periodStart, periodLabel, remainder);
             }
         }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ChildDeductionDetail> staffBenefitDetail(Long tenantId, EmployeeType employeeType, Long staffId,
+                                                           LocalDate periodStart, String periodLabel) {
+        List<ChildDeductionDetail> details = new java.util.ArrayList<>();
+        for (Long studentId : resolveAllChildStudentIds(employeeType, staffId)) {
+            var student = studentDataProvider.findStudent(studentId).orElse(null);
+            String name = student == null ? "Élève #" + studentId
+                    : ((student.firstName() != null ? student.firstName() : "") + " "
+                       + (student.lastName() != null ? student.lastName() : "")).trim();
+            boolean optedOut = parentAccessProvider.hasOptedOutOfStaffAutoDeduction(studentId);
+            List<gn.lacaeducation.billing.StudentFeePaymentApi.DeductedInvoiceLine> invoices = optedOut
+                    ? List.of()
+                    : studentFeePaymentApi.outstandingStaffBenefitInvoiceLines(studentId, periodStart, periodLabel);
+            List<gn.lacaeducation.billing.StudentFeePaymentApi.OptionalFeeNotice> optionalFees =
+                    studentFeePaymentApi.optionalFeesNotYetInvoiced(studentId);
+            details.add(new ChildDeductionDetail(studentId, name, optedOut, invoices, optionalFees));
+        }
+        return details;
+    }
+
+    @Override
+    public void setChildStaffDeductionExcluded(Long tenantId, EmployeeType employeeType, Long staffId, Long studentId, boolean excluded) {
+        Long userId = resolveUserId(employeeType, staffId);
+        String staffType = employeeType == EmployeeType.TEACHER ? "TEACHER" : "EMPLOYEE";
+        parentAccessProvider.setChildStaffDeductionExcluded(userId, staffType, staffId, studentId, excluded);
+        // Factures déjà émises : les rendre immédiatement encaissables au guichet (ou reverrouillées si
+        // on réintègre l'enfant) — sans ça, retirer l'enfant de la retenue n'empêchait qu'une FUTURE
+        // retenue, en laissant ses factures déjà émises grisées/non payables (§retour comptable).
+        studentFeePaymentApi.setAllStaffBenefitInvoicesExcluded(studentId, excluded);
     }
 
     private void validate(RuleCommand c) {

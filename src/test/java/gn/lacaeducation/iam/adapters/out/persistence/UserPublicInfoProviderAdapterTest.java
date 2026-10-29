@@ -55,4 +55,24 @@ class UserPublicInfoProviderAdapterTest {
 
         org.mockito.Mockito.verify(jpa).findActiveByTenantIdAndRoleCodesAnyContact(eq(10L), eq(List.of(RoleCode.ACCOUNTANT)));
     }
+
+    // ── findUsersByTenant (§retour comptable : filtre "par utilisateur" du journal d'audit, ne doit
+    // pas exiger user:read) ──────────────────────────────────────────────────────────────────────────
+
+    @Test
+    void findUsersByTenant_mapsAllUsersOfTenant() {
+        UserJpaEntity u1 = user(5L); u1.setFirstName("Awa"); u1.setLastName("Bah");
+        UserJpaEntity u2 = user(6L); u2.setFirstName("Moussa"); u2.setLastName("Camara");
+        when(jpa.findByTenantId(10L)).thenReturn(List.of(u1, u2));
+
+        List<gn.lacaeducation.iam.UserPublicInfoProvider.UserPublicInfo> result = adapter().findUsersByTenant(10L);
+
+        assertThat(result).extracting(gn.lacaeducation.iam.UserPublicInfoProvider.UserPublicInfo::id)
+                .containsExactlyInAnyOrder(5L, 6L);
+    }
+
+    @Test
+    void findUsersByTenant_nullTenant_returnsEmpty() {
+        assertThat(adapter().findUsersByTenant(null)).isEmpty();
+    }
 }

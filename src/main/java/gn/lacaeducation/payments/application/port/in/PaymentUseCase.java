@@ -82,4 +82,16 @@ public interface PaymentUseCase {
     record DailyCollectionsReport(BigDecimal grandTotal, List<DailyCollectionsLine> days) {}
     DailyCollectionsReport dailyCollectionsReport(LocalDateTime from, LocalDateTime to);
     void delete(Long id);
+
+    /**
+     * Enregistre un paiement déjà {@code SUCCEEDED} pour une facture réglée par un canal "système" (ex.
+     * retenue sur salaire, {@link PaymentChannel#PAYROLL_DEDUCTION}) — l'argent n'est jamais
+     * physiquement encaissé au guichet ET le solde de la facture a déjà été mis à jour ailleurs (voir
+     * {@code billing.InvoiceService#applyStaffBenefitRemainderPayment}) : CE paiement sert uniquement de
+     * trace d'audit et de support à un reçu, jamais de barrière caisse, jamais de notification SMS
+     * (comportement volontairement silencieux de la retenue salariale, inchangé).
+     */
+    record SystemPaymentCommand(Long tenantId, Long invoiceId, Long studentId, Long academicYearId,
+                                PaymentChannel channel, BigDecimal amount) {}
+    Payment recordSystemPayment(SystemPaymentCommand command);
 }

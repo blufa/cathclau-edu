@@ -307,6 +307,23 @@ public class PaymentService implements PaymentUseCase {
     }
     @Override public void delete(Long id) { repo.deleteById(id); }
 
+    /** Voir {@link PaymentUseCase#recordSystemPayment} : crée directement un paiement {@code SUCCEEDED}
+     * (jamais de passage par INITIATED/PENDING visible, pas de passerelle), génère son reçu, mais
+     * NE publie AUCUN événement {@code PaymentSucceeded} — le solde de la facture a déjà été mis à jour
+     * directement par l'appelant (billing), republier l'événement la mettrait à jour une seconde fois. */
+    @Override public Payment recordSystemPayment(SystemPaymentCommand c) {
+        String reference = "PAY-SYS-" + c.studentId() + "-" + Long.toString(System.currentTimeMillis(), 36).toUpperCase();
+        Payment payment = repo.save(Payment.builder().tenantId(c.tenantId()).invoiceId(c.invoiceId()).studentId(c.studentId())
+                .academicYearId(c.academicYearId())
+                .reference(reference).amount(c.amount()).channel(c.channel()).type(PaymentType.PARTIAL)
+                .status(PaymentStatus.INITIATED).paidAt(LocalDateTime.now()).build());
+        payment.transitionTo(PaymentStatus.PENDING);
+        payment.transitionTo(PaymentStatus.SUCCEEDED);
+        Payment saved = repo.save(payment);
+        receiptUseCase.generate(saved.getId());
+        return saved;
+    }
+
     /** Encaissement/décaissement guichet (espèces, Orange Money, virement reçu à la main) : impossible
      * sans session de caisse ouverte pour le collecteur. Les canaux en ligne (Djomy...) ne sont jamais
      * concernés — l'argent transite par la passerelle, jamais par la caisse physique. */

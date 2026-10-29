@@ -7,8 +7,10 @@ import gn.lacaeducation.students.domain.Enrollment;
 import gn.lacaeducation.students.domain.EnrollmentStatus;
 import gn.lacaeducation.students.domain.Parent;
 import gn.lacaeducation.students.domain.StaffLinkType;
+import gn.lacaeducation.students.domain.StudentParent;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -16,6 +18,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -148,5 +152,81 @@ class ParentAccessProviderAdapterTest {
     @Test
     void hasOptedOutOfStaffAutoDeduction_nullStudentId_returnsFalse() {
         assertThat(adapter.hasOptedOutOfStaffAutoDeduction(null)).isFalse();
+    }
+
+    @Test
+    void hasOptedOutOfStaffAutoDeduction_linkSpecificallyExcluded_returnsTrueEvenWithoutGlobalOptOut() {
+        // Aucun parent en opt-out global (champ Parent#excludeFromAutoDeduction) — seul le lien
+        // élève-parent de CET enfant est exclu individuellement (§retour comptable : enfant payé
+        // directement par le parent, contrairement à ses frères/sœurs toujours à charge de l'avantage).
+        when(studentParentRepository.findParentsByStudentId(11L)).thenReturn(List.of(
+                Parent.builder().id(3L).excludeFromAutoDeduction(false).build()));
+        when(studentParentRepository.findLinksByStudentId(11L)).thenReturn(List.of(
+                StudentParent.builder().id(100L).studentId(11L).parentId(3L).excludedFromStaffDeduction(true).build()));
+
+        assertThat(adapter.hasOptedOutOfStaffAutoDeduction(11L)).isTrue();
+    }
+
+    @Test
+    void hasOptedOutOfStaffAutoDeduction_siblingsOfSameStaffParent_canDifferIndependently() {
+        // Même parent (id=3L) lié aux deux enfants (cas réel : un seul compte Parent pour le salarié,
+        // partagé par sa fratrie) — mais seul l'enfant 11L est exclu individuellement, l'enfant 12L
+        // reste normalement à charge de l'avantage personnel.
+        when(studentParentRepository.findParentsByStudentId(11L)).thenReturn(List.of(
+                Parent.builder().id(3L).excludeFromAutoDeduction(false).build()));
+        when(studentParentRepository.findLinksByStudentId(11L)).thenReturn(List.of(
+                StudentParent.builder().id(100L).studentId(11L).parentId(3L).excludedFromStaffDeduction(true).build()));
+        when(studentParentRepository.findParentsByStudentId(12L)).thenReturn(List.of(
+                Parent.builder().id(3L).excludeFromAutoDeduction(false).build()));
+        when(studentParentRepository.findLinksByStudentId(12L)).thenReturn(List.of(
+                StudentParent.builder().id(101L).studentId(12L).parentId(3L).excludedFromStaffDeduction(false).build()));
+
+        assertThat(adapter.hasOptedOutOfStaffAutoDeduction(11L)).isTrue();
+        assertThat(adapter.hasOptedOutOfStaffAutoDeduction(12L)).isFalse();
+    }
+
+    @Test
+    void setChildStaffDeductionExcluded_byUserId_updatesOnlyMatchingLink() {
+        when(parentRepository.findAllByUserId(7L)).thenReturn(List.of(Parent.builder().id(3L).build()));
+        StudentParent linkToStaffParent = StudentParent.builder().id(100L).studentId(11L).parentId(3L).excludedFromStaffDeduction(false).build();
+        StudentParent linkToOtherParent = StudentParent.builder().id(101L).studentId(11L).parentId(99L).excludedFromStaffDeduction(false).build();
+        when(studentParentRepository.findLinksByStudentId(11L)).thenReturn(List.of(linkToStaffParent, linkToOtherParent));
+
+        adapter.setChildStaffDeductionExcluded(7L, null, null, 11L, true);
+
+        ArgumentCaptor<StudentParent> saved = ArgumentCaptor.forClass(StudentParent.class);
+        verify(studentParentRepository).save(saved.capture());
+        assertThat(saved.getValue().getId()).isEqualTo(100L);
+        assertThat(saved.getValue().isExcludedFromStaffDeduction()).isTrue();
+    }
+
+    @Test
+    void setChildStaffDeductionExcluded_byDirectStaffLink_updatesMatchingLink() {
+        when(parentRepository.findAllByLinkedStaff(StaffLinkType.TEACHER, 36L)).thenReturn(List.of(Parent.builder().id(3L).build()));
+        StudentParent link = StudentParent.builder().id(100L).studentId(11L).parentId(3L).excludedFromStaffDeduction(true).build();
+        when(studentParentRepository.findLinksByStudentId(11L)).thenReturn(List.of(link));
+
+        adapter.setChildStaffDeductionExcluded(null, "TEACHER", 36L, 11L, false);
+
+        ArgumentCaptor<StudentParent> saved = ArgumentCaptor.forClass(StudentParent.class);
+        verify(studentParentRepository).save(saved.capture());
+        assertThat(saved.getValue().isExcludedFromStaffDeduction()).isFalse();
+    }
+
+    @Test
+    void setChildStaffDeductionExcluded_unknownStaffType_neverThrows_noLinkMatched() {
+        when(studentParentRepository.findLinksByStudentId(11L)).thenReturn(List.of(
+                StudentParent.builder().id(100L).studentId(11L).parentId(3L).build()));
+
+        adapter.setChildStaffDeductionExcluded(null, "BOGUS", 36L, 11L, true);
+
+        verify(studentParentRepository, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void setChildStaffDeductionExcluded_nullStudentId_doesNothing() {
+        adapter.setChildStaffDeductionExcluded(7L, null, null, null, true);
+
+        verify(studentParentRepository, never()).save(org.mockito.ArgumentMatchers.any());
     }
 }

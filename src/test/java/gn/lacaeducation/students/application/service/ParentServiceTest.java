@@ -7,6 +7,8 @@ import gn.lacaeducation.students.application.port.out.ParentRepository;
 import gn.lacaeducation.students.application.port.out.StudentParentRepository;
 import gn.lacaeducation.students.application.port.out.StudentRepository;
 import gn.lacaeducation.students.domain.Parent;
+import gn.lacaeducation.students.domain.StaffLinkType;
+import gn.lacaeducation.students.domain.Student;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -166,8 +168,8 @@ class ParentServiceTest {
         // réussi côté serveur — il ressaisit le même parent (même numéro), ce qui créait une 2e fiche.
         Parent existing = Parent.builder().id(5L).tenantId(10L).firstName("Mamadou").lastName("Bah")
                 .phone("+224620000002").build();
-        when(parentRepository.findByTenantIdAndPhone(10L, "620000002")).thenReturn(Optional.empty());
-        when(parentRepository.findByTenantIdAndPhone(10L, "+224620000002")).thenReturn(Optional.of(existing));
+        when(parentRepository.findByTenantIdAndPhone(10L, "620000002")).thenReturn(List.of());
+        when(parentRepository.findByTenantIdAndPhone(10L, "+224620000002")).thenReturn(List.of(existing));
 
         CreateParentCommand cmd = new CreateParentCommand(10L, null, "Mamadou", "Bah", "620000002",
                 null, null, null, null, null, null);
@@ -178,9 +180,32 @@ class ParentServiceTest {
         verify(parentRepository, never()).save(any(Parent.class));
     }
 
+    /** Incident réel (§retour comptable, inscription élève) : plusieurs fiches Parent partagent parfois
+     * le même numéro (ex. numéro de l'école saisi par défaut pour des familles sans téléphone propre) —
+     * 25 résultats constatés en base réelle. Une version antérieure utilisait Optional (1 résultat
+     * attendu) et levait IncorrectResultSizeDataAccessException (500 à l'inscription) dès que plus d'une
+     * fiche partageait le numéro. */
+    @Test
+    void create_multipleParentsShareSamePhone_neverThrows_reusesOldestOne() {
+        Parent older = Parent.builder().id(3L).tenantId(10L).firstName("École").lastName("Contact")
+                .phone("+224620000002").build();
+        Parent newer = Parent.builder().id(9L).tenantId(10L).firstName("École").lastName("Contact 2")
+                .phone("+224620000002").build();
+        when(parentRepository.findByTenantIdAndPhone(10L, "620000002")).thenReturn(List.of());
+        when(parentRepository.findByTenantIdAndPhone(10L, "+224620000002")).thenReturn(List.of(newer, older));
+
+        CreateParentCommand cmd = new CreateParentCommand(10L, null, "Fatou", "Diallo", "620000002",
+                null, null, null, null, null, null);
+
+        Parent result = service.create(cmd);
+
+        assertThat(result.getId()).isEqualTo(3L);
+        verify(parentRepository, never()).save(any(Parent.class));
+    }
+
     @Test
     void create_newPhoneNotTaken_createsNewParent() {
-        when(parentRepository.findByTenantIdAndPhone(any(), any())).thenReturn(Optional.empty());
+        when(parentRepository.findByTenantIdAndPhone(any(), any())).thenReturn(List.of());
         when(parentRepository.save(any())).thenAnswer(i -> {
             Parent p = i.getArgument(0);
             p.setId(20L);
@@ -277,5 +302,56 @@ class ParentServiceTest {
         List<Long> result = service.findLinkedParentIds(50L);
 
         assertThat(result).containsExactly(1L);
+    }
+
+    @Test
+    void findStudentsByStaff_teacherWithAccount_resolvesViaSharedUserId() {
+        // §retour comptable : onglet "Personnel" du répertoire /parents — même recherche que pour un
+        // parent classique, mais depuis la fiche enseignant/employé. userId fourni par l'appelant (déjà
+        // connu côté fiche enseignant, jamais résolu ici — voir javadoc de l'interface).
+        Parent parent = Parent.builder().id(3L).build();
+        when(parentRepository.findAllByUserId(77L)).thenReturn(List.of(parent));
+        when(studentParentRepository.findStudentIdsByParentId(3L)).thenReturn(List.of(10L, 11L));
+        when(parentRepository.findAllByLinkedStaff(StaffLinkType.TEACHER, 9L)).thenReturn(List.of());
+        when(studentRepository.findById(10L)).thenReturn(Optional.of(Student.builder().id(10L).build()));
+        when(studentRepository.findById(11L)).thenReturn(Optional.of(Student.builder().id(11L).build()));
+
+        List<Student> result = service.findStudentsByStaff(StaffLinkType.TEACHER, 9L, 77L);
+
+        assertThat(result).extracting(Student::getId).containsExactlyInAnyOrder(10L, 11L);
+    }
+
+    @Test
+    void findStudentsByStaff_employeeWithoutAccount_resolvesViaDirectLink() {
+        Parent directLinkParent = Parent.builder().id(4L).build();
+        when(parentRepository.findAllByLinkedStaff(StaffLinkType.EMPLOYEE, 5L)).thenReturn(List.of(directLinkParent));
+        when(studentParentRepository.findStudentIdsByParentId(4L)).thenReturn(List.of(12L));
+        when(studentRepository.findById(12L)).thenReturn(Optional.of(Student.builder().id(12L).build()));
+
+        List<Student> result = service.findStudentsByStaff(StaffLinkType.EMPLOYEE, 5L, null);
+
+        assertThat(result).extracting(Student::getId).containsExactly(12L);
+    }
+
+    @Test
+    void findStudentsByStaff_nullArgs_returnsEmpty() {
+        assertThat(service.findStudentsByStaff(null, 9L, 77L)).isEmpty();
+        assertThat(service.findStudentsByStaff(StaffLinkType.TEACHER, null, 77L)).isEmpty();
+    }
+
+    @Test
+    void findStudentsByStaff_bothAccountAndDirectLink_mergesWithoutDuplicates() {
+        Parent accountParent = Parent.builder().id(3L).build();
+        Parent directLinkParent = Parent.builder().id(6L).build();
+        when(parentRepository.findAllByUserId(77L)).thenReturn(List.of(accountParent));
+        when(parentRepository.findAllByLinkedStaff(StaffLinkType.TEACHER, 9L)).thenReturn(List.of(directLinkParent));
+        when(studentParentRepository.findStudentIdsByParentId(3L)).thenReturn(List.of(10L));
+        when(studentParentRepository.findStudentIdsByParentId(6L)).thenReturn(List.of(10L, 13L));
+        when(studentRepository.findById(10L)).thenReturn(Optional.of(Student.builder().id(10L).build()));
+        when(studentRepository.findById(13L)).thenReturn(Optional.of(Student.builder().id(13L).build()));
+
+        List<Student> result = service.findStudentsByStaff(StaffLinkType.TEACHER, 9L, 77L);
+
+        assertThat(result).extracting(Student::getId).containsExactlyInAnyOrder(10L, 13L);
     }
 }

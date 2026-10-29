@@ -138,6 +138,17 @@ public class ParentController {
         return parentUseCase.findStudentsByParent(id);
     }
 
+    @Operation(summary = "Enfants rattachés à un membre du personnel (enseignant/employé) — onglet "
+            + "\"Personnel\" du répertoire /parents, même recherche que pour un parent classique. "
+            + "userId optionnel (déjà connu côté fiche enseignant/employé) : lien direct sans compte sinon")
+    @GetMapping("/staff-children")
+    @PreAuthorize("hasAuthority('parent:manage')")
+    public List<gn.lacaeducation.students.domain.Student> findChildrenByStaff(
+            @RequestParam gn.lacaeducation.students.domain.StaffLinkType staffType, @RequestParam Long staffId,
+            @RequestParam(required = false) Long userId) {
+        return parentUseCase.findStudentsByStaff(staffType, staffId, userId);
+    }
+
     @Operation(summary = "Parents dont au moins un enfant a accepté l'accès à la plateforme — présélection "
             + "automatique des destinataires lors de la composition d'un message (§communication)")
     @GetMapping("/with-platform-access")

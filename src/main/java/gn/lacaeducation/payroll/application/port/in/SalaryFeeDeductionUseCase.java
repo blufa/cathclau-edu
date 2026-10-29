@@ -52,4 +52,23 @@ public interface SalaryFeeDeductionUseCase {
      * {@link #applyDeductionAsInvoicePayment}). */
     void applyStaffBenefitRemainderAsInvoicePayment(Long tenantId, EmployeeType employeeType, Long staffId,
                                                      LocalDate periodStart, String periodLabel);
+
+    /** Détail de la retenue "avantage personnel" d'un salarié, enfant par enfant (§retour comptable :
+     * "détailler bien les retenues sur le modal du détail de la fiche, afficher pour chaque enfant les
+     * factures sur lesquelles tu as retenu") — inclut aussi les enfants dont le parent a choisi de payer
+     * lui-même ({@code optedOut}, retenue déjà désactivée) et les frais facultatifs du catalogue de leur
+     * classe pas encore facturés (informatif, ils entreront automatiquement en retenue s'ils sont
+     * facturés plus tard). */
+    record ChildDeductionDetail(Long studentId, String studentName, boolean optedOut,
+                                 List<gn.lacaeducation.billing.StudentFeePaymentApi.DeductedInvoiceLine> deductedInvoices,
+                                 List<gn.lacaeducation.billing.StudentFeePaymentApi.OptionalFeeNotice> optionalFeesNotYetInvoiced) {}
+
+    List<ChildDeductionDetail> staffBenefitDetail(Long tenantId, EmployeeType employeeType, Long staffId,
+                                                   LocalDate periodStart, String periodLabel);
+
+    /** Exclut (ou réintègre) spécifiquement UN enfant de la retenue — par enfant, contrairement au
+     * réglage global (parent "paie lui-même pour tous ses enfants") : un même salarié peut avoir un
+     * enfant à charge de l'avantage personnel et un autre payé directement par un parent (§retour
+     * comptable : "il y a des enfants qui sont [à charge] et d'autres [payés directement]"). */
+    void setChildStaffDeductionExcluded(Long tenantId, EmployeeType employeeType, Long staffId, Long studentId, boolean excluded);
 }
