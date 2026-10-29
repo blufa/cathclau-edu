@@ -17,6 +17,7 @@ import gn.lacaeducation.payroll.application.port.out.SalaryStructureRepository;
 import gn.lacaeducation.payroll.application.port.out.TeacherCompensationRepository;
 import gn.lacaeducation.payroll.application.event.PayslipPaidEvent;
 import gn.lacaeducation.payroll.domain.*;
+import gn.lacaeducation.staff.TeacherPublicInfoProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -67,6 +68,7 @@ public class PayrollService {
     private final CalendarDataProvider calendar;
     private final ApplicationEventPublisher eventPublisher;
     private final gn.lacaeducation.iam.UserPublicInfoProvider userPublicInfoProvider;
+    private final TeacherPublicInfoProvider teacherPublicInfoProvider;
 
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
 
@@ -412,6 +414,30 @@ public class PayrollService {
                 case MATERNELLE -> maternelleMonthly = maternelleMonthly.add(teacherMonthly);
                 case PRIMAIRE -> primaryMonthly = primaryMonthly.add(teacherMonthly);
                 case SECONDAIRE -> secondaryMonthly = secondaryMonthly.add(teacherMonthly);
+            }
+        }
+        // Enseignants existants SANS encore de TeacherCompensation configurée (jamais eu de fiche de
+        // paie générée pour eux — voir ensureTeacherCompensation côté frontend, appelé seulement à la
+        // génération) : leur rémunération mensuelle/forfaitaire saisie à la CRÉATION de la fiche
+        // enseignant (Teacher#remunerationType/Rate, exposée via TeacherPublicInfoProvider) compte déjà
+        // dans la masse salariale affichée — jamais absente juste parce qu'aucune fiche de paie n'a
+        // encore été générée, ni parce qu'aucune classe/matière ne lui est assignée (§retour
+        // utilisateur : "même si il n'est pas affecté à une matière et une classe, le cumul de tout le
+        // salaire doit venir"). HORAIRE non repris ici (aucun taux normal/examen séparé connu à ce
+        // stade, voir TeacherCompensation) — seul un enseignant déjà sur un mode fixe est concerné.
+        if (validTeacherIds != null) {
+            java.util.Set<Long> teacherIdsWithComp = comps.stream().map(TeacherCompensation::getTeacherId)
+                    .collect(java.util.stream.Collectors.toSet());
+            for (TeacherPublicInfoProvider.TeacherInfo info : teacherPublicInfoProvider.listTeachers(tenantId)) {
+                if (!validTeacherIds.contains(info.id()) || teacherIdsWithComp.contains(info.id())) continue;
+                if (info.remunerationRate() == null || "HORAIRE".equals(info.remunerationType())) continue;
+                BigDecimal teacherMonthly = info.remunerationRate();
+                monthly = monthly.add(teacherMonthly);
+                switch (resolveCycleBucket(info.id())) {
+                    case MATERNELLE -> maternelleMonthly = maternelleMonthly.add(teacherMonthly);
+                    case PRIMAIRE -> primaryMonthly = primaryMonthly.add(teacherMonthly);
+                    case SECONDAIRE -> secondaryMonthly = secondaryMonthly.add(teacherMonthly);
+                }
             }
         }
         // Avec un filtre fourni, le compte reflète le référentiel enseignant réel (pas seulement ceux
