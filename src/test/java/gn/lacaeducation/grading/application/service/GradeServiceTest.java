@@ -211,9 +211,14 @@ class GradeServiceTest {
         when(studentDataProvider.findStudentsByClass(55L)).thenReturn(java.util.List.of(
                 new gn.lacaeducation.students.StudentPublicInfo(10L, 10L, "Awa", "Bah", null, null, "MAT-1", null, null, null, null)));
         when(calculationService.subjectCoefficient(55L, 3L)).thenReturn(BigDecimal.valueOf(2));
+        // Le relevé complet (sans filtre de mois) affiche désormais une colonne par MOIS calendaire
+        // (moyenne déjà "coefciée", voir SubjectSemesterAverage.Result.monthlyCours) — Écrite (5/10) et
+        // Orale (12/10) tombent toutes les deux en octobre 2026, donc une seule colonne "octobre 2026".
         when(calculationService.subjectAverageDetail(any(), any())).thenReturn(
                 new gn.lacaeducation.grading.domain.SubjectSemesterAverage.Result(
-                        new BigDecimal("30.50"), new BigDecimal("29.00"), new BigDecimal("32.00"), new java.util.TreeMap<>()));
+                        new BigDecimal("30.50"), new BigDecimal("29.00"), new BigDecimal("32.00"),
+                        new java.util.TreeMap<>(java.util.Map.of(
+                                java.time.YearMonth.of(2026, 10), new BigDecimal("29.00")))));
 
         gn.lacaeducation.grading.application.port.in.GradeUseCase.SubjectGradeReport report =
                 service.subjectGradeReport(55L, 3L, 2L);
@@ -221,14 +226,15 @@ class GradeServiceTest {
         org.assertj.core.api.Assertions.assertThat(report.subjectCoefficient()).isEqualByComparingTo("2");
         org.assertj.core.api.Assertions.assertThat(report.evaluations().assessments())
                 .extracting(gn.lacaeducation.grading.application.port.in.GradeUseCase.ReleveAssessment::label)
-                .containsExactly("Évaluation Écrite", "Évaluation Orale");
+                .containsExactly("octobre 2026");
         org.assertj.core.api.Assertions.assertThat(report.compositions().assessments())
                 .extracting(gn.lacaeducation.grading.application.port.in.GradeUseCase.ReleveAssessment::label)
                 .containsExactly("Composition Octobre");
         // Chaque section a sa propre moyenne (M. Cours / M. Composition), jamais la moyenne combinée
         // des deux — et la composition n'apparaît jamais dans les notes de la section Évaluations.
         org.assertj.core.api.Assertions.assertThat(report.evaluations().rows()).hasSize(1);
-        org.assertj.core.api.Assertions.assertThat(report.evaluations().rows().get(0).notes()).containsOnlyKeys(1L, 2L);
+        org.assertj.core.api.Assertions.assertThat(report.evaluations().rows().get(0).notes()).containsOnlyKeys(202610L);
+        org.assertj.core.api.Assertions.assertThat(report.evaluations().rows().get(0).notes().get(202610L)).isEqualByComparingTo("29.00");
         org.assertj.core.api.Assertions.assertThat(report.evaluations().rows().get(0).average()).isEqualByComparingTo("29.00");
         org.assertj.core.api.Assertions.assertThat(report.compositions().rows().get(0).notes()).containsOnlyKeys(3L);
         org.assertj.core.api.Assertions.assertThat(report.compositions().rows().get(0).average()).isEqualByComparingTo("32.00");

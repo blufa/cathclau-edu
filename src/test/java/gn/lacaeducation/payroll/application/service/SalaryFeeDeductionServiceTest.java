@@ -43,14 +43,14 @@ class SalaryFeeDeductionServiceTest {
 
     private void staffWithTwoChildren() {
         when(teacherProvider.findUserIdByTeacherId(9L)).thenReturn(Optional.of(50L));
-        when(parentAccessProvider.findChildStudentIdsWithValidatedEnrollment(50L)).thenReturn(List.of(1L, 2L));
+        when(parentAccessProvider.findChildStudentIdsEnrolled(50L)).thenReturn(List.of(1L, 2L));
     }
 
     /** Personnel SANS compte de connexion (ex. pas de smartphone Android) : lié à ses enfants par
      * staffType/staffId direct (voir ParentInput côté inscription), pas par userId partagé. */
     private void staffWithTwoChildrenViaDirectLink() {
         when(teacherProvider.findUserIdByTeacherId(9L)).thenReturn(Optional.empty());
-        when(parentAccessProvider.findChildStudentIdsWithValidatedEnrollmentByStaffLink("TEACHER", 9L)).thenReturn(List.of(1L, 2L));
+        when(parentAccessProvider.findChildStudentIdsEnrolledByStaffLink("TEACHER", 9L)).thenReturn(List.of(1L, 2L));
     }
 
     @Test
@@ -88,7 +88,7 @@ class SalaryFeeDeductionServiceTest {
     @Test
     void computeFeeDeduction_noChildren_returnsZero() {
         when(teacherProvider.findUserIdByTeacherId(9L)).thenReturn(Optional.of(50L));
-        when(parentAccessProvider.findChildStudentIdsWithValidatedEnrollment(50L)).thenReturn(List.of());
+        when(parentAccessProvider.findChildStudentIdsEnrolled(50L)).thenReturn(List.of());
 
         FeeDeduction d = service.computeFeeDeduction(1L, EmployeeType.TEACHER, 9L);
 
@@ -96,17 +96,42 @@ class SalaryFeeDeductionServiceTest {
     }
 
     @Test
-    void computeFeeDeduction_onlyCountsChildrenWithValidatedEnrollment() {
-        // L'adaptateur exclut déjà les enfants sans inscription VALIDÉE (abandon, annulée, jamais
-        // inscrite) : le service ne voit que ceux qui restent, ici un seul au lieu de deux.
+    void computeFeeDeduction_onlyCountsChildrenWithActiveEnrollment() {
+        // L'adaptateur exclut déjà les enfants sans inscription active (abandon, annulée) : le service
+        // ne voit que ceux qui restent, ici un seul au lieu de deux.
         when(teacherProvider.findUserIdByTeacherId(9L)).thenReturn(Optional.of(50L));
-        when(parentAccessProvider.findChildStudentIdsWithValidatedEnrollment(50L)).thenReturn(List.of(1L));
+        when(parentAccessProvider.findChildStudentIdsEnrolled(50L)).thenReturn(List.of(1L));
         when(repo.findByTenantId(1L)).thenReturn(List.of(rule("50000", null, null)));
 
         FeeDeduction d = service.computeFeeDeduction(1L, EmployeeType.TEACHER, 9L);
 
         assertThat(d.amount()).isEqualByComparingTo("50000");
         assertThat(d.childrenCount()).isEqualTo(1);
+    }
+
+    @Test
+    void computeFeeDeduction_childOptedOutOfAutoDeduction_excludedFromCount() {
+        // Retour comptable : un enseignant qui paie réellement lui-même les frais de son enfant (réglage
+        // excludeFromAutoDeduction sur sa fiche Parent) ne doit subir aucune retenue pour cet enfant.
+        staffWithTwoChildren();
+        when(parentAccessProvider.hasOptedOutOfStaffAutoDeduction(1L)).thenReturn(true);
+        when(repo.findByTenantId(1L)).thenReturn(List.of(rule("50000", null, null)));
+
+        FeeDeduction d = service.computeFeeDeduction(1L, EmployeeType.TEACHER, 9L);
+
+        assertThat(d.amount()).isEqualByComparingTo("50000");
+        assertThat(d.childrenCount()).isEqualTo(1);
+    }
+
+    @Test
+    void computeFeeDeduction_allChildrenOptedOut_returnsZero() {
+        staffWithTwoChildren();
+        when(parentAccessProvider.hasOptedOutOfStaffAutoDeduction(1L)).thenReturn(true);
+        when(parentAccessProvider.hasOptedOutOfStaffAutoDeduction(2L)).thenReturn(true);
+
+        FeeDeduction d = service.computeFeeDeduction(1L, EmployeeType.TEACHER, 9L);
+
+        assertThat(d.amount()).isEqualByComparingTo("0");
     }
 
     @Test
@@ -138,7 +163,7 @@ class SalaryFeeDeductionServiceTest {
         // personnel administratif/direction/support doit être résolu via EmployeePublicInfoProvider,
         // jamais TeacherPublicInfoProvider (qui ne connaît pas son id).
         when(employeeProvider.findUserIdByEmployeeId(9L)).thenReturn(Optional.of(50L));
-        when(parentAccessProvider.findChildStudentIdsWithValidatedEnrollment(50L)).thenReturn(List.of(1L, 2L));
+        when(parentAccessProvider.findChildStudentIdsEnrolled(50L)).thenReturn(List.of(1L, 2L));
         when(repo.findByTenantId(1L)).thenReturn(List.of(rule("50000", null, null)));
 
         FeeDeduction d = service.computeFeeDeduction(1L, EmployeeType.ADMINISTRATIVE, 9L);

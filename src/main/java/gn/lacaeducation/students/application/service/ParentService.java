@@ -95,6 +95,7 @@ public class ParentService implements ParentUseCase {
             p.setLinkedStaffType(cmd.staffType());
             p.setLinkedStaffId(cmd.staffId());
         }
+        p.setExcludeFromAutoDeduction(cmd.excludeFromAutoDeduction());
         return parentRepository.save(p);
     }
 

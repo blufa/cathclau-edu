@@ -38,6 +38,7 @@ public class ReportCardService implements ReportCardUseCase {
     private final gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort classSubjectQueryPort;
     private final gn.lacaeducation.grading.application.port.out.HonorRollPdfGenerator honorRollGenerator;
     private final gn.lacaeducation.grading.application.port.out.ClassCentralizerPdfGenerator centralizerGenerator;
+    private final gn.lacaeducation.grading.application.port.in.AnnualReportCardUseCase annualReportCardUseCase;
 
     @Override
     public ReportCard generate(GenerateReportCardCommand c) {
@@ -171,51 +172,123 @@ public class ReportCardService implements ReportCardUseCase {
                 tenantId, periodLabel, schoolYear, rows));
     }
 
+    /**
+     * Centralisateur de classe (§retour fondateur, maquette {@code features/Centralisateur-bon-design.pdf}) :
+     * une ligne par élève, moyennes générales mensuelles (toutes matières confondues) par semestre, puis
+     * bilan annuel — s'appuie sur {@link AnnualReportCardUseCase#findByClass} pour le rang/mention/
+     * décision/moyennes semestrielles (jamais recalculés différemment, pour rester identiques au
+     * bulletin annuel) ; seuls les détails mensuels/composition "toutes matières" sont calculés ici, en
+     * combinant {@code GradeCalculationService#monthlyBreakdown} (par matière) pondéré par coefficient —
+     * même principe que la moyenne générale du bulletin, appliqué mois par mois.
+     */
     @Override
     @Transactional(readOnly = true)
-    public byte[] classCentralizerPdf(Long classId, Long periodId) {
-        List<ReportCard> cards = repo.findByClassIdAndPeriodId(classId, periodId);
-        var subjectInfos = classSubjectQueryPort.findByClassId(classId);
-        List<Long> subjectIds = subjectInfos.stream()
-                .map(gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort.ClassSubjectInfo::subjectId)
-                .toList();
-        java.util.Map<Long, java.math.BigDecimal> coeffs = subjectInfos.stream()
-                .collect(java.util.stream.Collectors.toMap(
-                        gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort.ClassSubjectInfo::subjectId,
-                        gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort.ClassSubjectInfo::coefficient,
-                        (a, b) -> a));
-
-        var rows = cards.stream()
-                .sorted(java.util.Comparator
-                        .comparing((ReportCard rc) -> rc.getRank() == null ? Integer.MAX_VALUE : rc.getRank()))
-                .map(rc -> {
-                    StudentPublicInfo student = studentProvider.findStudent(rc.getStudentId()).orElse(null);
-                    java.util.Map<Long, gn.lacaeducation.grading.application.port.out.ClassCentralizerPdfGenerator.SubjectCell> bySubject =
-                            repo.findLines(rc.getId()).stream()
-                                    .filter(l -> l.getSubjectId() != null)
-                                    .collect(java.util.stream.Collectors.toMap(ReportCardLine::getSubjectId,
-                                            l -> new gn.lacaeducation.grading.application.port.out.ClassCentralizerPdfGenerator.SubjectCell(
-                                                    l.getCoursAverage(), l.getCompoAverage()),
-                                            (a, b) -> a));
-                    return new gn.lacaeducation.grading.application.port.out.ClassCentralizerPdfGenerator.StudentRow(
-                            studentName(rc.getStudentId()), student != null ? student.studentNumber() : null,
-                            bySubject, rc.getOverallAverage(), rc.getRank());
-                })
-                .toList();
-
-        Long tenantId = cards.stream()
-                .map(rc -> studentProvider.findStudent(rc.getStudentId()).map(StudentPublicInfo::tenantId).orElse(null))
+    public byte[] classCentralizerPdf(Long classId, Long academicYearId) {
+        List<gn.lacaeducation.grading.domain.AnnualReportCard> annualCards =
+                annualReportCardUseCase.findByClass(null, classId, academicYearId);
+        Long tenantId = annualCards.stream()
+                .map(c -> studentProvider.findStudent(c.getStudentId()).map(StudentPublicInfo::tenantId).orElse(null))
                 .filter(java.util.Objects::nonNull).findFirst().orElse(null);
+
+        java.util.List<gn.lacaeducation.grading.application.port.out.ClassCentralizerPdfGenerator.StudentRow> rows = new java.util.ArrayList<>();
+        java.util.SortedSet<java.time.YearMonth> s1MonthSet = new java.util.TreeSet<>();
+        java.util.SortedSet<java.time.YearMonth> s2MonthSet = new java.util.TreeSet<>();
+        BigDecimal s1Sum = BigDecimal.ZERO; int s1Count = 0;
+        BigDecimal s2Sum = BigDecimal.ZERO; int s2Count = 0;
+        int admitted = 0;
+
+        for (gn.lacaeducation.grading.domain.AnnualReportCard card : annualCards.stream()
+                .sorted(java.util.Comparator.comparing((gn.lacaeducation.grading.domain.AnnualReportCard c) ->
+                        c.getRank() == null ? Integer.MAX_VALUE : c.getRank())).toList()) {
+            StudentPublicInfo student = studentProvider.findStudent(card.getStudentId()).orElse(null);
+            String fullName = student == null ? "Élève #" + card.getStudentId()
+                    : (safeUpper(student.lastName()) + " " + safe(student.firstName())).trim();
+
+            GeneralBreakdown s1 = card.getS1PeriodId() == null ? GeneralBreakdown.EMPTY
+                    : generalBreakdown(card.getStudentId(), classId, card.getS1PeriodId());
+            GeneralBreakdown s2 = card.getS2PeriodId() == null ? GeneralBreakdown.EMPTY
+                    : generalBreakdown(card.getStudentId(), classId, card.getS2PeriodId());
+            s1MonthSet.addAll(s1.monthly().keySet());
+            s2MonthSet.addAll(s2.monthly().keySet());
+
+            if (card.getS1Average() != null) { s1Sum = s1Sum.add(card.getS1Average()); s1Count++; }
+            if (card.getS2Average() != null) { s2Sum = s2Sum.add(card.getS2Average()); s2Count++; }
+            if ("ADMIS".equals(card.getDecision())) admitted++;
+
+            rows.add(new gn.lacaeducation.grading.application.port.out.ClassCentralizerPdfGenerator.StudentRow(
+                    fullName, student != null ? student.studentNumber() : null,
+                    s1.monthly(), s1.compoAverage(), card.getS1Average(),
+                    s2.monthly(), s2.compoAverage(), card.getS2Average(),
+                    card.getOverallAverage(), card.getRank(), card.getHonor(), card.getDecision()));
+        }
+
         String className = academicsProvider.findClass(classId)
                 .map(c -> c.levelLabel() != null && !c.levelLabel().isBlank() ? c.label() + " (" + c.levelLabel() + ")" : c.label())
                 .orElse(null);
-        String periodLabel = academicsProvider.findPeriod(periodId).map(p -> p.label()).orElse(null);
         String schoolYear = tenantId == null ? null : academicsProvider.currentAcademicYearLabel(tenantId).orElse(null);
+        String topStudent = rows.stream().filter(r -> Integer.valueOf(1).equals(r.rank()))
+                .map(gn.lacaeducation.grading.application.port.out.ClassCentralizerPdfGenerator.StudentRow::studentName)
+                .findFirst().orElse(null);
+        BigDecimal s1ClassAvg = s1Count == 0 ? null : s1Sum.divide(BigDecimal.valueOf(s1Count), 2, java.math.RoundingMode.HALF_UP);
+        BigDecimal s2ClassAvg = s2Count == 0 ? null : s2Sum.divide(BigDecimal.valueOf(s2Count), 2, java.math.RoundingMode.HALF_UP);
+        BigDecimal annualClassAvg = (s1ClassAvg != null && s2ClassAvg != null)
+                ? s1ClassAvg.add(s2ClassAvg).divide(BigDecimal.valueOf(2), 2, java.math.RoundingMode.HALF_UP)
+                : (s1ClassAvg != null ? s1ClassAvg : s2ClassAvg);
 
         return centralizerGenerator.generate(new gn.lacaeducation.grading.application.port.out.ClassCentralizerPdfGenerator.Centralizer(
-                tenantId, className, periodLabel, schoolYear, subjectIds, academicsProvider.subjectLabels(subjectIds),
-                coeffs, rows));
+                tenantId, className, schoolYear, s1MonthSet.stream().toList(), s2MonthSet.stream().toList(),
+                rows, s1ClassAvg, s2ClassAvg, annualClassAvg, admitted, topStudent));
     }
+
+    private record GeneralBreakdown(java.util.SortedMap<java.time.YearMonth, BigDecimal> monthly, BigDecimal compoAverage) {
+        static final GeneralBreakdown EMPTY = new GeneralBreakdown(new java.util.TreeMap<>(), null);
+    }
+
+    /** Combine le détail par matière ({@code monthlyBreakdown}, déjà "coefcié" par matière) en une
+     * moyenne GÉNÉRALE (toutes matières) par mois et en composition générale — même formule que la
+     * moyenne générale du bulletin ({@code Σ coef × valeur / Σ coef}), appliquée mois par mois plutôt
+     * qu'une seule fois sur la période entière. */
+    private GeneralBreakdown generalBreakdown(Long studentId, Long classId, Long periodId) {
+        List<gn.lacaeducation.grading.domain.SubjectMonthlyBreakdown> perSubject =
+                calculationService.monthlyBreakdown(studentId, classId, periodId);
+        if (perSubject.isEmpty()) return GeneralBreakdown.EMPTY;
+
+        java.util.SortedSet<java.time.YearMonth> months = new java.util.TreeSet<>();
+        for (var s : perSubject) months.addAll(s.monthlyCours().keySet());
+
+        java.util.SortedMap<java.time.YearMonth, BigDecimal> monthly = new java.util.TreeMap<>();
+        for (java.time.YearMonth ym : months) {
+            BigDecimal weighted = BigDecimal.ZERO;
+            BigDecimal coefSum = BigDecimal.ZERO;
+            for (var s : perSubject) {
+                BigDecimal v = s.monthlyCours().get(ym);
+                if (v == null) continue;
+                BigDecimal coef = s.coefficient() != null ? s.coefficient() : BigDecimal.ONE;
+                weighted = weighted.add(v.multiply(coef));
+                coefSum = coefSum.add(coef);
+            }
+            if (coefSum.compareTo(BigDecimal.ZERO) > 0) {
+                monthly.put(ym, weighted.divide(coefSum, 2, java.math.RoundingMode.HALF_UP));
+            }
+        }
+
+        BigDecimal compoWeighted = BigDecimal.ZERO;
+        BigDecimal compoCoefSum = BigDecimal.ZERO;
+        for (var s : perSubject) {
+            if (s.compoAverage() == null) continue;
+            BigDecimal coef = s.coefficient() != null ? s.coefficient() : BigDecimal.ONE;
+            compoWeighted = compoWeighted.add(s.compoAverage().multiply(coef));
+            compoCoefSum = compoCoefSum.add(coef);
+        }
+        BigDecimal compoAverage = compoCoefSum.compareTo(BigDecimal.ZERO) > 0
+                ? compoWeighted.divide(compoCoefSum, 2, java.math.RoundingMode.HALF_UP) : null;
+
+        return new GeneralBreakdown(monthly, compoAverage);
+    }
+
+    private static String safe(String s) { return s == null ? "" : s; }
+
+    private static String safeUpper(String s) { return s == null ? "" : s.toUpperCase(java.util.Locale.FRENCH); }
 
     private String studentName(Long studentId) {
         if (studentId == null) return "—";

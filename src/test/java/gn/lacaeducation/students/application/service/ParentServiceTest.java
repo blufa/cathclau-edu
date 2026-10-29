@@ -214,7 +214,7 @@ class ParentServiceTest {
         when(parentRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         Parent result = service.update(1L, new gn.lacaeducation.students.application.port.in.ParentUseCase.UpdateParentCommand(
-                "Awa", "Diallo", "620000000", null, null, null, 99L, null, null));
+                "Awa", "Diallo", "620000000", null, null, null, 99L, null, null, false));
 
         assertThat(result.getUserId()).isEqualTo(99L);
     }
@@ -227,10 +227,24 @@ class ParentServiceTest {
 
         Parent result = service.update(1L, new gn.lacaeducation.students.application.port.in.ParentUseCase.UpdateParentCommand(
                 "Fama", "Millimouno", "620000001", null, null, null, null,
-                gn.lacaeducation.students.domain.StaffLinkType.EMPLOYEE, 42L));
+                gn.lacaeducation.students.domain.StaffLinkType.EMPLOYEE, 42L, false));
 
         assertThat(result.getLinkedStaffType()).isEqualTo(gn.lacaeducation.students.domain.StaffLinkType.EMPLOYEE);
         assertThat(result.getLinkedStaffId()).isEqualTo(42L);
+    }
+
+    @Test
+    void update_excludeFromAutoDeduction_persistsFlag() {
+        // Retour comptable : un enseignant/employé qui paie réellement lui-même les frais de son enfant
+        // doit pouvoir être exclu de toute retenue automatique sur salaire via ce réglage.
+        Parent existing = Parent.builder().id(1L).firstName("Awa").lastName("Diallo").excludeFromAutoDeduction(false).build();
+        when(parentRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(parentRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        Parent result = service.update(1L, new gn.lacaeducation.students.application.port.in.ParentUseCase.UpdateParentCommand(
+                "Awa", "Diallo", "620000000", null, null, null, null, null, null, true));
+
+        assertThat(result.isExcludeFromAutoDeduction()).isTrue();
     }
 
     @Test

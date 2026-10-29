@@ -131,15 +131,15 @@ public class ReportCardController {
                 .body(useCase.honorRollPdf(periodId));
     }
 
-    @Operation(summary = "Centralisateur de classe (PDF) : une ligne par élève, colonnes Cours/Composition par matière")
+    @Operation(summary = "Centralisateur de classe (PDF) : une ligne par élève, moyennes générales mensuelles par semestre puis bilan annuel")
     @PreAuthorize("hasAuthority('bulletin:read')")
-    @GetMapping("/class/{classId}/period/{periodId}/centralisateur/download")
-    public ResponseEntity<byte[]> centralizerDownload(@PathVariable Long classId, @PathVariable Long periodId) {
+    @GetMapping("/class/{classId}/year/{academicYearId}/centralisateur/download")
+    public ResponseEntity<byte[]> centralizerDownload(@PathVariable Long classId, @PathVariable Long academicYearId) {
         return ResponseEntity.ok()
                 .contentType(org.springframework.http.MediaType.APPLICATION_PDF)
                 .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
-                        "inline; filename=\"centralisateur-classe-" + classId + "-periode-" + periodId + ".pdf\"")
-                .body(useCase.classCentralizerPdf(classId, periodId));
+                        "inline; filename=\"centralisateur-classe-" + classId + "-annee-" + academicYearId + ".pdf\"")
+                .body(useCase.classCentralizerPdf(classId, academicYearId));
     }
 
     @Operation(summary = "Consulter le bulletin d'un élève pour une période donnée")

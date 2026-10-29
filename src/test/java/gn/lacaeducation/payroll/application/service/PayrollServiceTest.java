@@ -97,6 +97,85 @@ class PayrollServiceTest {
     }
 
     @Test
+    void teacherPayrollMass_maternelleDistinguishedFromPrimaire() {
+        // Retour fondateur : "il faut afficher aussi le salaire des enseignants de niveau maternelle"
+        // sur l'état financier du mois — Maternelle ne doit plus être fondue dans "Primaire".
+        TeacherCompensation maternelleTeacher = TeacherCompensation.builder().teacherId(1L)
+                .payMode(PayMode.FIXED).hourlyRateNormal(BigDecimal.ZERO).hourlyRateExam(BigDecimal.ZERO)
+                .fixedSalary(new BigDecimal("700000")).build();
+        when(compRepo.findByTenantId(9L)).thenReturn(List.of(maternelleTeacher));
+        when(academics.findClassesByHeadTeacher(1L)).thenReturn(List.of(
+                new gn.lacaeducation.academics.ClassPublicInfo(300L, "Petite Section", "Maternelle", "NORMALE", null, 1L, "MATERNELLE")));
+        when(academics.findClassSubjectsByTeacher(1L)).thenReturn(List.of());
+
+        PayrollService.TeacherPayrollMass mass = payrollService.teacherPayrollMass(9L, 2026, 3);
+
+        assertThat(mass.maternelleMonthlyPayroll()).isEqualByComparingTo("700000");
+        assertThat(mass.primaryMonthlyPayroll()).isEqualByComparingTo("0");
+        assertThat(mass.secondaryMonthlyPayroll()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void resolveTeacherCycles_returnsOneBucketPerRequestedTeacher() {
+        // Retour utilisateur : générer la paie "par niveau" (colonne Cycle sur Rémunération & heures,
+        // sélection rapide Maternelle/Primaire/Secondaire à la génération en lot).
+        when(academics.findClassesByHeadTeacher(1L)).thenReturn(List.of(
+                new gn.lacaeducation.academics.ClassPublicInfo(300L, "Petite Section", "Maternelle", "NORMALE", null, 1L, "MATERNELLE")));
+        when(academics.findClassSubjectsByTeacher(1L)).thenReturn(List.of());
+        when(academics.findClassesByHeadTeacher(2L)).thenReturn(List.of(
+                new gn.lacaeducation.academics.ClassPublicInfo(100L, "CP1", "CP1", "NORMALE", null, 2L, "PRIMAIRE")));
+        when(academics.findClassSubjectsByTeacher(2L)).thenReturn(List.of());
+        when(academics.findClassesByHeadTeacher(3L)).thenReturn(List.of());
+        when(academics.findClassSubjectsByTeacher(3L)).thenReturn(List.of());
+
+        java.util.Map<Long, String> cycles = payrollService.resolveTeacherCycles(List.of(1L, 2L, 3L));
+
+        assertThat(cycles).containsEntry(1L, "MATERNELLE").containsEntry(2L, "PRIMAIRE").containsEntry(3L, "SECONDAIRE");
+    }
+
+    @Test
+    void teacherPayrollMass_splitsByPrimaryVsSecondaryCycle() {
+        // Retour fondateur (état financier du mois) : un enseignant Primaire (classe principale CP1,
+        // cycle PRIMAIRE) et un enseignant Secondaire (matière assignée en 6ème, cycle COLLEGE).
+        TeacherCompensation primaryTeacher = TeacherCompensation.builder().teacherId(1L)
+                .payMode(PayMode.FIXED).hourlyRateNormal(BigDecimal.ZERO).hourlyRateExam(BigDecimal.ZERO)
+                .fixedSalary(new BigDecimal("1000000")).build();
+        TeacherCompensation secondaryTeacher = TeacherCompensation.builder().teacherId(2L)
+                .payMode(PayMode.FIXED).hourlyRateNormal(BigDecimal.ZERO).hourlyRateExam(BigDecimal.ZERO)
+                .fixedSalary(new BigDecimal("1200000")).build();
+        when(compRepo.findByTenantId(9L)).thenReturn(List.of(primaryTeacher, secondaryTeacher));
+        when(academics.findClassesByHeadTeacher(1L)).thenReturn(List.of(
+                new gn.lacaeducation.academics.ClassPublicInfo(100L, "CP1", "CP1", "NORMALE", null, 1L, "PRIMAIRE")));
+        when(academics.findClassSubjectsByTeacher(1L)).thenReturn(List.of());
+        when(academics.findClassesByHeadTeacher(2L)).thenReturn(List.of());
+        when(academics.findClassSubjectsByTeacher(2L)).thenReturn(List.of(
+                new gn.lacaeducation.academics.ClassSubjectPublicInfo(200L, 5L, BigDecimal.ONE, 2L, "M1")));
+        when(academics.findClass(200L)).thenReturn(java.util.Optional.of(
+                new gn.lacaeducation.academics.ClassPublicInfo(200L, "6ème A", "6ème", "NORMALE", null, null, "COLLEGE")));
+
+        PayrollService.TeacherPayrollMass mass = payrollService.teacherPayrollMass(9L, 2026, 3);
+
+        assertThat(mass.primaryMonthlyPayroll()).isEqualByComparingTo("1000000");
+        assertThat(mass.secondaryMonthlyPayroll()).isEqualByComparingTo("1200000");
+        assertThat(mass.monthlyPayroll()).isEqualByComparingTo("2200000");
+    }
+
+    @Test
+    void teacherPayrollMass_teacherWithNoResolvedClass_defaultsToSecondary() {
+        // Même convention de repli que grading.domain.CycleGroup#fromSchoolCycle pour un cycle non
+        // renseigné : par défaut Secondaire, jamais Primaire par supposition.
+        TeacherCompensation unassigned = TeacherCompensation.builder().teacherId(3L)
+                .payMode(PayMode.FIXED).hourlyRateNormal(BigDecimal.ZERO).hourlyRateExam(BigDecimal.ZERO)
+                .fixedSalary(new BigDecimal("500000")).build();
+        when(compRepo.findByTenantId(9L)).thenReturn(List.of(unassigned));
+
+        PayrollService.TeacherPayrollMass mass = payrollService.teacherPayrollMass(9L, 2026, 3);
+
+        assertThat(mass.primaryMonthlyPayroll()).isEqualByComparingTo("0");
+        assertThat(mass.secondaryMonthlyPayroll()).isEqualByComparingTo("500000");
+    }
+
+    @Test
     void teacherPayrollMass_withValidTeacherIdsFilter_ignoresOrphanedCompensation() {
         // §retour utilisateur (Vision Fondateur en production) : un enseignant du primaire à salaire
         // fixe, supprimé, continuait de gonfler la masse salariale théorique — sa fiche
@@ -362,8 +441,6 @@ class PayrollServiceTest {
         Long linkedTeacherId = 42L;
         BigDecimal baseSalary = new BigDecimal("2000000");
 
-        when(salaryFeeDeductionUseCase.computeFeeDeduction(anyLong(), eq(EmployeeType.DIRECTION), eq(employeeId)))
-                .thenReturn(new SalaryFeeDeductionUseCase.FeeDeduction(BigDecimal.ZERO, null, 0));
         when(salaryAdvanceUseCase.applyDeduction(anyLong(), eq(employeeId), any(), any()))
                 .thenReturn(new SalaryAdvanceUseCase.AdvanceDeductionResult(BigDecimal.ZERO, null));
 
@@ -428,10 +505,8 @@ class PayrollServiceTest {
         org.mockito.Mockito.verify(eventPublisher).publishEvent(
                 new gn.lacaeducation.payroll.application.event.PayslipPaidEvent(9L, 1L, new BigDecimal("850000"),
                         "Mamadou Diallo", "622000000", "Mars 2026"));
-        // Répercute la retenue scolarité (si applicable) sur les factures des enfants du salarié,
-        // maintenant que la fiche est réellement payée (§payroll ↔ billing).
-        org.mockito.Mockito.verify(salaryFeeDeductionUseCase).applyDeductionAsInvoicePayment(9L, EmployeeType.TEACHER, 7L);
-        // Idem pour le reste non couvert par un avantage personnel partiel.
+        // Répercute la retenue (solde réel avantage personnel) sur les factures des enfants du
+        // salarié, maintenant que la fiche est réellement payée (§payroll ↔ billing).
         org.mockito.Mockito.verify(salaryFeeDeductionUseCase).applyStaffBenefitRemainderAsInvoicePayment(9L, EmployeeType.TEACHER, 7L, null, "Mars 2026");
     }
 
@@ -475,8 +550,6 @@ class PayrollServiceTest {
         Long teacherId = 7L;
         when(payslipRepo.existsByTenantIdAndTeacherIdAndPeriodLabelAndEmployeeType(9L, teacherId, "Mars 2026", EmployeeType.TEACHER))
                 .thenReturn(false);
-        when(salaryFeeDeductionUseCase.computeFeeDeduction(9L, EmployeeType.TEACHER, teacherId))
-                .thenReturn(new SalaryFeeDeductionUseCase.FeeDeduction(BigDecimal.ZERO, null, 0));
         when(salaryAdvanceUseCase.applyDeduction(eq(9L), eq(teacherId), eq(EmployeeType.TEACHER), any()))
                 .thenReturn(new SalaryAdvanceUseCase.AdvanceDeductionResult(new BigDecimal("50000"), "Avance sur salaire"));
 
@@ -516,8 +589,6 @@ class PayrollServiceTest {
         Long teacherId = 7L;
         when(payslipRepo.existsByTenantIdAndTeacherIdAndPeriodLabelAndEmployeeType(9L, teacherId, "Mars 2026", EmployeeType.TEACHER))
                 .thenReturn(false);
-        when(salaryFeeDeductionUseCase.computeFeeDeduction(9L, EmployeeType.TEACHER, teacherId))
-                .thenReturn(new SalaryFeeDeductionUseCase.FeeDeduction(BigDecimal.ZERO, null, 0));
         when(salaryFeeDeductionUseCase.computeStaffBenefitRemainder(9L, EmployeeType.TEACHER, teacherId, null, "Mars 2026"))
                 .thenReturn(new SalaryFeeDeductionUseCase.StaffBenefitRemainderDeduction(new BigDecimal("20000"), 1));
         when(salaryAdvanceUseCase.applyDeduction(eq(9L), eq(teacherId), eq(EmployeeType.TEACHER), any()))
@@ -569,8 +640,6 @@ class PayrollServiceTest {
         java.time.LocalDate periodStart = null; // comme en base réelle : period_start/period_end vides
         when(payslipRepo.existsByTenantIdAndTeacherIdAndPeriodLabelAndEmployeeType(
                 4L, employeeId, "Novembre 2026", EmployeeType.ADMINISTRATIVE)).thenReturn(false);
-        when(salaryFeeDeductionUseCase.computeFeeDeduction(4L, EmployeeType.ADMINISTRATIVE, employeeId))
-                .thenReturn(new SalaryFeeDeductionUseCase.FeeDeduction(BigDecimal.ZERO, null, 0));
         // Reflète les données réelles : 2 enfants, 157 500 GNF encore dus chacun pour NOVEMBRE
         // uniquement (le mois d'octobre, déjà réglé au guichet, ne doit rien ajouter).
         when(salaryFeeDeductionUseCase.computeStaffBenefitRemainder(

@@ -97,8 +97,13 @@ public class StaffChildBenefitService implements StaffChildBenefitUseCase {
         boolean viaAccount = parentAccessProvider.findParentUserIdsByStudent(studentId).stream()
                 .anyMatch(uid -> teacherProvider.findTeacherIdByUserId(uid).isPresent()
                         || employeeProvider.findEmployeeIdByUserId(uid).isPresent());
-        if (viaAccount) return true;
-        return !parentAccessProvider.findDirectStaffLinksByStudent(studentId).isEmpty();
+        boolean staffLinked = viaAccount || !parentAccessProvider.findDirectStaffLinksByStudent(studentId).isEmpty();
+        if (!staffLinked) return false;
+        // Retour comptable : un parent personnel qui prend réellement en charge lui-même les frais de
+        // ses enfants (réglage explicite, voir ParentAccessProvider#hasOptedOutOfStaffAutoDeduction) ne
+        // doit plus être traité comme "enfant du personnel" du tout — ni pour le tag avantage personnel
+        // sur facture, ni pour l'ancien reporting (computeCoverage/findUncoveredStaffChildIds).
+        return !parentAccessProvider.hasOptedOutOfStaffAutoDeduction(studentId);
     }
 
     @Override
