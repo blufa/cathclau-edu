@@ -1,6 +1,8 @@
 package gn.lacaeducation.attendance;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
 
 /**
  * API publique du module attendance pour le dashboard école (§reporting) : taux de présence élèves
@@ -17,4 +19,12 @@ public interface StudentAttendanceStatsProvider {
                                 BigDecimal presentPercentage) {}
 
     TodayAttendanceStats todayAttendanceStats(Long tenantId);
+
+    /** Un jour de l'historique — toujours une entrée par jour de la plage demandée, même sans aucun
+     * enregistrement ce jour-là (0/0/0), pour que le graphique n'ait jamais de trou. */
+    record DailyAttendanceStats(LocalDate date, int presentCount, int absentCount, int lateCount) {}
+
+    /** Historique école entière (tous élèves, toutes classes) des {@code days} derniers jours
+     * (aujourd'hui inclus) — tableau de bord principal, §retour fondateur. */
+    List<DailyAttendanceStats> attendanceHistory(Long tenantId, int days);
 }

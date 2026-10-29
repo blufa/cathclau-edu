@@ -2,6 +2,7 @@ package gn.lacaeducation.attendance.adapters.out;
 
 import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.academics.ClassPublicInfo;
+import gn.lacaeducation.attendance.StudentAttendanceStatsProvider.DailyAttendanceStats;
 import gn.lacaeducation.attendance.StudentAttendanceStatsProvider.TodayAttendanceStats;
 import gn.lacaeducation.attendance.application.port.out.StudentAttendanceRepository;
 import gn.lacaeducation.attendance.domain.AttendanceStatus;
@@ -40,6 +41,11 @@ class StudentAttendanceStatsProviderAdapterTest {
     private StudentAttendance attendance(Long studentId, AttendanceStatus status) {
         return StudentAttendance.builder().tenantId(9L).studentId(studentId).classId(1L)
                 .date(LocalDate.now()).status(status).build();
+    }
+
+    private StudentAttendance attendance(Long studentId, AttendanceStatus status, LocalDate date) {
+        return StudentAttendance.builder().tenantId(9L).studentId(studentId).classId(1L)
+                .date(date).status(status).build();
     }
 
     @Test
@@ -97,5 +103,46 @@ class StudentAttendanceStatsProviderAdapterTest {
 
         assertThat(stats.expectedCount()).isZero();
         assertThat(stats.presentPercentage()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void attendanceHistory_fillsEveryDayEvenWithoutAnyRecord() {
+        LocalDate today = LocalDate.now();
+        LocalDate yesterday = today.minusDays(1);
+        LocalDate twoDaysAgo = today.minusDays(2);
+        // Aucun enregistrement pour "yesterday" — doit quand même apparaître avec 0/0/0, pas de trou.
+        when(studentAttendanceRepository.findByTenantIdAndDateBetween(9L, twoDaysAgo, today)).thenReturn(List.of(
+                attendance(1L, AttendanceStatus.PRESENT, twoDaysAgo),
+                attendance(2L, AttendanceStatus.ABSENT, twoDaysAgo),
+                attendance(3L, AttendanceStatus.PRESENT, today),
+                attendance(4L, AttendanceStatus.LATE, today)));
+
+        List<DailyAttendanceStats> history = adapter.attendanceHistory(9L, 3);
+
+        assertThat(history).hasSize(3);
+        assertThat(history.get(0).date()).isEqualTo(twoDaysAgo);
+        assertThat(history.get(0).presentCount()).isEqualTo(1);
+        assertThat(history.get(0).absentCount()).isEqualTo(1);
+        assertThat(history.get(1).date()).isEqualTo(yesterday);
+        assertThat(history.get(1).presentCount()).isZero();
+        assertThat(history.get(1).absentCount()).isZero();
+        assertThat(history.get(1).lateCount()).isZero();
+        assertThat(history.get(2).date()).isEqualTo(today);
+        assertThat(history.get(2).presentCount()).isEqualTo(1);
+        assertThat(history.get(2).lateCount()).isEqualTo(1);
+    }
+
+    @Test
+    void attendanceHistory_noRecordsAtAll_returnsZeroedDaysForFullRange() {
+        when(studentAttendanceRepository.findByTenantIdAndDateBetween(any(), any(), any())).thenReturn(List.of());
+
+        List<DailyAttendanceStats> history = adapter.attendanceHistory(9L, 5);
+
+        assertThat(history).hasSize(5);
+        assertThat(history).allSatisfy(d -> {
+            assertThat(d.presentCount()).isZero();
+            assertThat(d.absentCount()).isZero();
+            assertThat(d.lateCount()).isZero();
+        });
     }
 }

@@ -3,6 +3,7 @@ package gn.lacaeducation.academics.application.service;
 import gn.lacaeducation.academics.application.port.in.GererClasseUseCase;
 import gn.lacaeducation.academics.application.port.out.AnneeScolaireRepository;
 import gn.lacaeducation.academics.application.port.out.ClasseRepository;
+import gn.lacaeducation.academics.application.port.out.EmploiDuTempsRepository;
 import gn.lacaeducation.academics.application.port.out.EnrollmentQueryPort;
 import gn.lacaeducation.academics.application.port.out.ReferentielRepository;
 import gn.lacaeducation.academics.domain.AnneeScolaire;
@@ -36,6 +37,7 @@ public class ClasseService implements GererClasseUseCase {
     private final AnneeScolaireRepository anneeRepository;
     private final ReferentielRepository referentielRepository;
     private final TenantEstablishmentTypeService establishmentTypeService;
+    private final EmploiDuTempsRepository emploiDuTempsRepository;
 
     @Override
     public Classe create(CreateClassCommand command) {
@@ -171,7 +173,30 @@ public class ClasseService implements GererClasseUseCase {
 
     @Override public void removeSubject(Long classSubjectId) { classeRepository.deleteClassSubjectById(classSubjectId); }
 
-    @Override public void delete(Long id) { classeRepository.deleteById(id); }
+    /**
+     * Retour utilisateur : supprimer une classe après y avoir affecté un enseignant renvoyait un
+     * "conflit de données" générique (contrainte de clé étrangère sur les affectations matière/
+     * enseignant ou les créneaux d'emploi du temps). Purge d'abord ces configurations propres à la
+     * classe (sans impact : elles n'ont de sens que pour cette classe précise), mais bloque avec un
+     * message clair si des élèves y sont encore réellement inscrits (PENDING compris, pas seulement
+     * VALIDATED) — ceux-là doivent être explicitement réinscrits ailleurs avant, jamais perdus en
+     * silence derrière une suppression en cascade.
+     */
+    @Override
+    public void delete(Long id) {
+        long enrolledCount = enrollmentQueryPort.countActiveByClassId(id);
+        if (enrolledCount > 0) {
+            throw new BusinessRuleException("Impossible de supprimer cette classe : " + enrolledCount
+                    + " élève(s) y sont encore inscrit(s). Réinscrivez-les dans une autre classe avant de la supprimer.");
+        }
+        for (ClasseMatiere cm : classeRepository.findSubjectsByClassId(id)) {
+            classeRepository.deleteClassSubjectById(cm.getId());
+        }
+        for (gn.lacaeducation.academics.domain.EmploiDuTemps slot : emploiDuTempsRepository.findByClassId(id)) {
+            emploiDuTempsRepository.deleteById(slot.getId());
+        }
+        classeRepository.deleteById(id);
+    }
 
     @Override @Transactional(readOnly = true)
     public List<ClasseMatiere> findSubjects(Long classId) { return classeRepository.findSubjectsByClassId(classId); }

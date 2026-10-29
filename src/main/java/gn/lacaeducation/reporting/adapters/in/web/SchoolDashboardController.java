@@ -104,12 +104,31 @@ public class SchoolDashboardController {
         return billingStatsProvider.upcomingInstallments(TenantContext.get(), daysAhead, limit);
     }
 
+    @Operation(summary = "État financier du mois : masse salariale enseignants Primaire/Secondaire, personnel, "
+            + "et avances sur salaire accordées ce mois (tableau de bord principal)")
+    @PreAuthorize("hasAuthority('dashboard:admin')")
+    @GetMapping("/finance/payroll-summary")
+    public SchoolPayrollStatsProvider.MonthlyFinancialSummary payrollSummary(
+            @RequestParam(required = false) Integer year, @RequestParam(required = false) Integer month) {
+        java.time.LocalDate now = java.time.LocalDate.now();
+        return payrollStatsProvider.monthlyFinancialSummary(TenantContext.get(),
+                year != null ? year : now.getYear(), month != null ? month : now.getMonthValue());
+    }
+
     // ── Présences élèves du jour ─────────────────────────────────────────────
     @Operation(summary = "Taux de présence élèves du jour, toutes classes confondues")
     @PreAuthorize("hasAuthority('dashboard:admin')")
     @GetMapping("/attendance/today")
     public StudentAttendanceStatsProvider.TodayAttendanceStats todayAttendance() {
         return studentAttendanceStatsProvider.todayAttendanceStats(TenantContext.get());
+    }
+
+    @Operation(summary = "Historique présences/absences/retards élèves, école entière, sur N derniers jours (tableau de bord principal)")
+    @PreAuthorize("hasAuthority('dashboard:admin')")
+    @GetMapping("/attendance/history")
+    public List<StudentAttendanceStatsProvider.DailyAttendanceStats> attendanceHistory(
+            @RequestParam(defaultValue = "14") int days) {
+        return studentAttendanceStatsProvider.attendanceHistory(TenantContext.get(), days);
     }
 
     // ── 10.2 Financier : prévisionnel de trésorerie ─────────────────────────

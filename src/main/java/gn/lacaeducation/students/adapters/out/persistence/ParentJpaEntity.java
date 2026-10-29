@@ -23,4 +23,5 @@ class ParentJpaEntity {
     @Enumerated(EnumType.STRING) @Column(name = "linked_staff_type")
     private gn.lacaeducation.students.domain.StaffLinkType linkedStaffType;
     @Column(name = "linked_staff_id") private Long linkedStaffId;
+    @Column(name = "exclude_from_auto_deduction", nullable = false) private boolean excludeFromAutoDeduction;
 }

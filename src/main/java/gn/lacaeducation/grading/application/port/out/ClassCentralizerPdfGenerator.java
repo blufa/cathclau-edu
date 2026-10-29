@@ -1,36 +1,44 @@
 package gn.lacaeducation.grading.application.port.out;
 
 import java.math.BigDecimal;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Génère le PDF du centralisateur de classe (§documents ministère) : une ligne par élève, une colonne
- * Cours/Composition par matière, moyenne générale et rang — reprend les {@code ReportCard}/
- * {@code ReportCardLine} déjà calculés, aucun nouveau calcul.
+ * Centralisateur de classe (§documents ministère, maquette de référence {@code features/
+ * Centralisateur-bon-design.pdf}) : une ligne par élève, moyennes générales mensuelles (toutes
+ * matières confondues, pondérées par coefficient — jamais une moyenne par matière) par semestre,
+ * puis le bilan annuel (moyenne, rang, mention, décision) — même agrégation que le bulletin annuel
+ * ({@code AnnualReportCardUseCase}), jamais recalculée différemment pour éviter tout écart entre les
+ * deux documents.
  */
 public interface ClassCentralizerPdfGenerator {
 
     byte[] generate(Centralizer data);
 
-    record SubjectCell(BigDecimal cours, BigDecimal compo) {}
-
-    record StudentRow(String studentName, String studentNumber, Map<Long, SubjectCell> bySubject,
-                      BigDecimal overallAverage, Integer rank) {}
+    record StudentRow(
+            String studentName, String studentNumber,
+            Map<YearMonth, BigDecimal> s1Monthly, BigDecimal s1Compo, BigDecimal s1Average,
+            Map<YearMonth, BigDecimal> s2Monthly, BigDecimal s2Compo, BigDecimal s2Average,
+            BigDecimal annualAverage, Integer rank, String honor, String decision) {
+    }
 
     record Centralizer(
             Long tenantId,
             String className,
-            String periodLabel,
             String schoolYear,
-            List<Long> subjectIds,
-            Map<Long, String> subjectNames,
-            Map<Long, BigDecimal> subjectCoefficients,
-            List<StudentRow> rows) {
+            List<YearMonth> s1Months,
+            List<YearMonth> s2Months,
+            List<StudentRow> rows,
+            BigDecimal s1ClassAverage,
+            BigDecimal s2ClassAverage,
+            BigDecimal annualClassAverage,
+            int admittedCount,
+            String topStudentName) {
 
-        public String subjectName(Long subjectId) {
-            String name = subjectNames == null ? null : subjectNames.get(subjectId);
-            return name != null && !name.isBlank() ? name : "Matière " + subjectId;
+        public int studentCount() {
+            return rows == null ? 0 : rows.size();
         }
     }
 }

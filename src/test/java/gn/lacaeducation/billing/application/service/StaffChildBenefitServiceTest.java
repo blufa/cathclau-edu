@@ -128,6 +128,20 @@ class StaffChildBenefitServiceTest {
     }
 
     @Test
+    void computeCoverage_staffChildOptedOutOfAutoDeduction_isNotTreatedAsStaffChild() {
+        // Retour comptable : un enseignant qui paie réellement lui-même les frais de son enfant (réglage
+        // excludeFromAutoDeduction sur sa fiche Parent) ne doit plus compter comme "enfant du personnel",
+        // ni pour ce reporting ni pour le tag avantage personnel sur facture (InvoiceService).
+        when(parentAccessProvider.findParentUserIdsByStudent(1L)).thenReturn(List.of(50L));
+        when(teacherProvider.findTeacherIdByUserId(50L)).thenReturn(Optional.of(9L));
+        when(parentAccessProvider.hasOptedOutOfStaffAutoDeduction(1L)).thenReturn(true);
+
+        StaffCoverage c = service.computeCoverage(1L, 1L, FeeType.MONTHLY);
+
+        assertThat(c.coveragePercent()).isEqualByComparingTo("0");
+    }
+
+    @Test
     void findUncoveredStaffChildIds_staffChildWithNoExemption_isReturned() {
         when(parentAccessProvider.findParentUserIdsByStudent(1L)).thenReturn(List.of(50L));
         when(teacherProvider.findTeacherIdByUserId(50L)).thenReturn(Optional.of(9L));

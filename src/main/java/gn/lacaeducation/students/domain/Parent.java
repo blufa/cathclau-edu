@@ -24,4 +24,9 @@ public class Parent {
      *  la détection par {@code userId} partagé (voir {@code StaffChildBenefitService#isStaffChild}). */
     private StaffLinkType linkedStaffType;
     private Long linkedStaffId;
+    /** Réglable par le comptable (jamais par le parent lui-même, voir ParentUseCase.UpdateProfileCommand)
+     *  : ce parent, s'il est membre du personnel, prend en charge lui-même les frais de ses enfants —
+     *  exclut l'élève de toute retenue automatique sur salaire, à montant fixe ou sur solde réel (voir
+     *  ParentAccessProvider#hasOptedOutOfStaffAutoDeduction). Sans effet sur un parent non-personnel. */
+    private boolean excludeFromAutoDeduction;
 }

@@ -8,17 +8,17 @@ import java.util.List;
 
 @Component("academicsEnrollmentQueryAdapter")
 @RequiredArgsConstructor
-class EnrollmentQueryAdapter implements EnrollmentQueryPort {
+    class EnrollmentQueryAdapter implements EnrollmentQueryPort {
 
     private final AcademicsEnrollmentJpaRepository enrollmentRepo;
 
     @Override
-    public List<Long> findValidatedStudentIdsByClassId(Long classId) {
-        return enrollmentRepo.findValidatedStudentIdsByClassId(classId);
+    public long countValidatedByClassId(Long classId) {
+        return enrollmentRepo.countValidatedByClassId(classId);
     }
 
     @Override
-    public long countValidatedByClassId(Long classId) {
-        return enrollmentRepo.countValidatedByClassId(classId);
+    public long countActiveByClassId(Long classId) {
+        return enrollmentRepo.countActiveByClassId(classId);
     }
 }

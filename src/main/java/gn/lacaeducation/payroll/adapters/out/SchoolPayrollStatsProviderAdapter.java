@@ -1,9 +1,15 @@
 package gn.lacaeducation.payroll.adapters.out;
 
+import gn.lacaeducation.academics.AcademicsDataProvider;
+import gn.lacaeducation.academics.ClassPublicInfo;
 import gn.lacaeducation.payroll.SchoolPayrollStatsProvider;
 import gn.lacaeducation.payroll.application.port.out.PayslipRepository;
 import gn.lacaeducation.payroll.application.service.PayrollService;
+import gn.lacaeducation.payroll.application.service.SalaryAdvanceService;
+import gn.lacaeducation.payroll.domain.EmployeeType;
 import gn.lacaeducation.payroll.domain.Payslip;
+import gn.lacaeducation.payroll.domain.SalaryAdvance;
+import gn.lacaeducation.payroll.domain.SalaryAdvanceStatus;
 import gn.lacaeducation.staff.EmployeePublicInfoProvider;
 import gn.lacaeducation.staff.TeacherPublicInfoProvider;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +33,8 @@ class SchoolPayrollStatsProviderAdapter implements SchoolPayrollStatsProvider {
     private final PayrollService payrollService;
     private final EmployeePublicInfoProvider employeePublicInfoProvider;
     private final TeacherPublicInfoProvider teacherPublicInfoProvider;
+    private final SalaryAdvanceService salaryAdvanceService;
+    private final AcademicsDataProvider academics;
 
     @Override
     @Transactional(readOnly = true)
@@ -52,6 +60,41 @@ class SchoolPayrollStatsProviderAdapter implements SchoolPayrollStatsProvider {
         return new PayrollMassSummary(teachers.totalHourlyRateNormal(), teachers.totalHourlyRateExam(),
                 teachers.monthlyPayroll(), staffPayroll, teachers.monthlyPayroll().add(staffPayroll),
                 teachers.teacherCount(), staffCount);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public MonthlyFinancialSummary monthlyFinancialSummary(Long tenantId, int year, int month) {
+        PayrollService.TeacherPayrollMass teachers = payrollService.teacherPayrollMass(tenantId, year, month, validTeacherIds(tenantId));
+        BigDecimal staffPayroll = activeStaffPayroll(tenantId);
+        List<SalaryAdvance> advancesThisMonth = salaryAdvanceService.findByTenant(tenantId).stream()
+                .filter(a -> a.getStatus() != SalaryAdvanceStatus.CANCELLED)
+                .filter(a -> a.getGrantedAt() != null
+                        && a.getGrantedAt().getYear() == year && a.getGrantedAt().getMonthValue() == month)
+                .toList();
+        BigDecimal advancesTotal = advancesThisMonth.stream()
+                .map(SalaryAdvance::getAmount).filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        List<SalaryAdvanceDetail> advanceDetails = advancesThisMonth.stream()
+                .map(a -> new SalaryAdvanceDetail(a.getTeacherName(),
+                        a.getEmployeeType() == EmployeeType.TEACHER ? resolveClassName(a.getTeacherId()) : null,
+                        a.getGrantedAt().toLocalDate(), a.getAmount()))
+                .toList();
+        BigDecimal total = teachers.monthlyPayroll().add(staffPayroll).add(advancesTotal);
+        return new MonthlyFinancialSummary(teachers.maternelleMonthlyPayroll(), teachers.primaryMonthlyPayroll(),
+                teachers.secondaryMonthlyPayroll(), staffPayroll, advancesTotal, total, advanceDetails);
+    }
+
+    /** Première classe trouvée pour cet enseignant (professeur principal, sinon matière assignée) —
+     * juste pour affichage sur une avance sur salaire, pas une vérité exhaustive s'il en a plusieurs. */
+    private String resolveClassName(Long teacherId) {
+        List<ClassPublicInfo> headClasses = academics.findClassesByHeadTeacher(teacherId);
+        if (!headClasses.isEmpty()) return headClasses.get(0).label();
+        return academics.findClassSubjectsByTeacher(teacherId).stream()
+                .findFirst()
+                .flatMap(cs -> academics.findClass(cs.classId()))
+                .map(ClassPublicInfo::label)
+                .orElse(null);
     }
 
     @Override

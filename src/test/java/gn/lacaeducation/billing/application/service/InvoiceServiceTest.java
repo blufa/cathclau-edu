@@ -900,9 +900,10 @@ class InvoiceServiceTest {
     }
 
     @Test
-    void generateMonthly_staffChild_onlyTaggedForMonthlyFee_notOtherFeeTypes() {
-        // Le tag "avantage personnel à 0%" ne concerne que la SCOLARITÉ (MONTHLY) — pas les autres
-        // types de frais (transport, cantine, inscription...), où le comptable garde la main.
+    void generateMonthly_staffChild_taggedForAnyFeeType_notJustMonthly() {
+        // Retour comptable : "qu'il récupère tout" — le tag "avantage personnel à 0%" (facture due à
+        // 100%, récupérée via la paie) s'applique désormais à N'IMPORTE QUEL type de frais, y compris
+        // transport/inscription, pas seulement la scolarité (MONTHLY).
         when(enrollmentQueryPort.hasActiveEnrollment(7L)).thenReturn(true);
         when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(
                 gn.lacaeducation.billing.domain.SchoolFee.builder()
@@ -911,13 +912,35 @@ class InvoiceServiceTest {
                 gn.lacaeducation.billing.domain.Installment.builder()
                         .id(1L).feeId(3L).label("Septembre").amount(new BigDecimal("100")).build()));
         when(repo.existsByStudentIdAndInstallmentId(7L, 1L)).thenReturn(false);
+        when(staffChildBenefitUseCase.isStaffChild(7L)).thenReturn(true);
+        when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
+
+        var result = service().generateMonthly(
+                new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 3L, 99L));
+
+        Invoice inv = result.created().get(0);
+        assertThat(inv.getDiscountAmount()).isEqualByComparingTo("0");
+        assertThat(inv.getDiscountSource()).isEqualTo(gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT);
+        assertThat(inv.getRemainingBalance()).isEqualByComparingTo("100.00");
+    }
+
+    @Test
+    void generateMonthly_nonStaffChild_otherFeeType_noTag() {
+        when(enrollmentQueryPort.hasActiveEnrollment(7L)).thenReturn(true);
+        when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(
+                gn.lacaeducation.billing.domain.SchoolFee.builder()
+                        .id(3L).type(gn.lacaeducation.billing.domain.FeeType.TRANSPORT).build()));
+        when(installmentRepository.findByFeeId(3L)).thenReturn(java.util.List.of(
+                gn.lacaeducation.billing.domain.Installment.builder()
+                        .id(1L).feeId(3L).label("Septembre").amount(new BigDecimal("100")).build()));
+        when(repo.existsByStudentIdAndInstallmentId(7L, 1L)).thenReturn(false);
+        when(staffChildBenefitUseCase.isStaffChild(7L)).thenReturn(false);
         when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
 
         var result = service().generateMonthly(
                 new gn.lacaeducation.billing.application.port.in.InvoiceUseCase.GenerateMonthlyCommand(1L, 7L, 3L, 99L));
 
         assertThat(result.created().get(0).getDiscountSource()).isNull();
-        verify(staffChildBenefitUseCase, never()).isStaffChild(any());
     }
 
     // ── Exonération (§8) : TOTAL/PARTIAL déterminent le pourcentage, EXCEPTIONAL (montant fixe)

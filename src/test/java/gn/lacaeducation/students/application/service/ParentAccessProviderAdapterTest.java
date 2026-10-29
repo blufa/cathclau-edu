@@ -55,7 +55,7 @@ class ParentAccessProviderAdapterTest {
     }
 
     @Test
-    void findChildStudentIdsWithValidatedEnrollment_excludesChildrenWithoutValidatedEnrollment() {
+    void findChildStudentIdsEnrolled_excludesOnlyCancelledOrAbandoned() {
         when(parentRepository.findAllByUserId(7L)).thenReturn(List.of(Parent.builder().id(3L).build()));
         when(studentParentRepository.findStudentIdsByParentId(3L)).thenReturn(List.of(10L, 11L));
         when(enrollmentRepository.findByStudentId(10L)).thenReturn(
@@ -63,14 +63,26 @@ class ParentAccessProviderAdapterTest {
         when(enrollmentRepository.findByStudentId(11L)).thenReturn(
                 List.of(Enrollment.builder().studentId(11L).status(EnrollmentStatus.ABANDONED).build()));
 
-        assertThat(adapter.findChildStudentIdsWithValidatedEnrollment(7L)).containsExactly(10L);
+        assertThat(adapter.findChildStudentIdsEnrolled(7L)).containsExactly(10L);
     }
 
     @Test
-    void findChildStudentIdsWithValidatedEnrollment_notAParent_returnsEmpty() {
+    void findChildStudentIdsEnrolled_pendingEnrollment_stillCounted() {
+        // Retour comptable : un personnel qui laisse l'inscription de son enfant en attente (jamais
+        // validée par le secrétariat) ne doit pas pouvoir échapper à la retenue salariale pour autant.
+        when(parentRepository.findAllByUserId(7L)).thenReturn(List.of(Parent.builder().id(3L).build()));
+        when(studentParentRepository.findStudentIdsByParentId(3L)).thenReturn(List.of(10L));
+        when(enrollmentRepository.findByStudentId(10L)).thenReturn(
+                List.of(Enrollment.builder().studentId(10L).status(EnrollmentStatus.PENDING).build()));
+
+        assertThat(adapter.findChildStudentIdsEnrolled(7L)).containsExactly(10L);
+    }
+
+    @Test
+    void findChildStudentIdsEnrolled_notAParent_returnsEmpty() {
         when(parentRepository.findAllByUserId(7L)).thenReturn(List.of());
 
-        assertThat(adapter.findChildStudentIdsWithValidatedEnrollment(7L)).isEmpty();
+        assertThat(adapter.findChildStudentIdsEnrolled(7L)).isEmpty();
     }
 
     @Test
@@ -89,28 +101,52 @@ class ParentAccessProviderAdapterTest {
     }
 
     @Test
-    void findChildStudentIdsWithValidatedEnrollmentByStaffLink_resolvesViaDirectLink_excludesUnvalidated() {
+    void findChildStudentIdsEnrolledByStaffLink_resolvesViaDirectLink_pendingIncludedAbandonedExcluded() {
         // Personnel SANS compte de connexion (lien direct staffType/staffId au lieu de userId) :
         // régression découverte en vrai — la retenue sur salaire ne trouvait jamais ces enfants.
         when(parentRepository.findAllByLinkedStaff(StaffLinkType.TEACHER, 36L))
                 .thenReturn(List.of(Parent.builder().id(59L).build()));
-        when(studentParentRepository.findStudentIdsByParentId(59L)).thenReturn(List.of(137L, 138L));
+        when(studentParentRepository.findStudentIdsByParentId(59L)).thenReturn(List.of(137L, 138L, 139L));
         when(enrollmentRepository.findByStudentId(137L)).thenReturn(
                 List.of(Enrollment.builder().studentId(137L).status(EnrollmentStatus.VALIDATED).build()));
         when(enrollmentRepository.findByStudentId(138L)).thenReturn(
                 List.of(Enrollment.builder().studentId(138L).status(EnrollmentStatus.PENDING).build()));
+        when(enrollmentRepository.findByStudentId(139L)).thenReturn(
+                List.of(Enrollment.builder().studentId(139L).status(EnrollmentStatus.ABANDONED).build()));
 
-        assertThat(adapter.findChildStudentIdsWithValidatedEnrollmentByStaffLink("TEACHER", 36L)).containsExactly(137L);
+        assertThat(adapter.findChildStudentIdsEnrolledByStaffLink("TEACHER", 36L)).containsExactlyInAnyOrder(137L, 138L);
     }
 
     @Test
-    void findChildStudentIdsWithValidatedEnrollmentByStaffLink_nullArgs_returnsEmpty() {
-        assertThat(adapter.findChildStudentIdsWithValidatedEnrollmentByStaffLink(null, 36L)).isEmpty();
-        assertThat(adapter.findChildStudentIdsWithValidatedEnrollmentByStaffLink("TEACHER", null)).isEmpty();
+    void findChildStudentIdsEnrolledByStaffLink_nullArgs_returnsEmpty() {
+        assertThat(adapter.findChildStudentIdsEnrolledByStaffLink(null, 36L)).isEmpty();
+        assertThat(adapter.findChildStudentIdsEnrolledByStaffLink("TEACHER", null)).isEmpty();
     }
 
     @Test
-    void findChildStudentIdsWithValidatedEnrollmentByStaffLink_unknownStaffType_returnsEmpty() {
-        assertThat(adapter.findChildStudentIdsWithValidatedEnrollmentByStaffLink("BOGUS", 36L)).isEmpty();
+    void findChildStudentIdsEnrolledByStaffLink_unknownStaffType_returnsEmpty() {
+        assertThat(adapter.findChildStudentIdsEnrolledByStaffLink("BOGUS", 36L)).isEmpty();
+    }
+
+    @Test
+    void hasOptedOutOfStaffAutoDeduction_anyLinkedParentOptedOut_returnsTrue() {
+        when(studentParentRepository.findParentsByStudentId(11L)).thenReturn(List.of(
+                Parent.builder().id(3L).excludeFromAutoDeduction(false).build(),
+                Parent.builder().id(4L).excludeFromAutoDeduction(true).build()));
+
+        assertThat(adapter.hasOptedOutOfStaffAutoDeduction(11L)).isTrue();
+    }
+
+    @Test
+    void hasOptedOutOfStaffAutoDeduction_noParentOptedOut_returnsFalse() {
+        when(studentParentRepository.findParentsByStudentId(11L)).thenReturn(List.of(
+                Parent.builder().id(3L).excludeFromAutoDeduction(false).build()));
+
+        assertThat(adapter.hasOptedOutOfStaffAutoDeduction(11L)).isFalse();
+    }
+
+    @Test
+    void hasOptedOutOfStaffAutoDeduction_nullStudentId_returnsFalse() {
+        assertThat(adapter.hasOptedOutOfStaffAutoDeduction(null)).isFalse();
     }
 }

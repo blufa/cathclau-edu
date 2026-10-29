@@ -64,4 +64,20 @@ public interface SchoolPayrollStatsProvider {
     record TeacherSalary(Long teacherId, String teacherName, BigDecimal monthlyPay, BigDecimal annualProjection) {}
 
     List<TeacherSalary> teacherSalaries(Long tenantId, int year, int month, int monthsCount);
+
+    /**
+     * État financier du mois (tableau de bord principal, §retour fondateur) : masse salariale des
+     * enseignants répartie Maternelle/Primaire/Secondaire + personnel non-enseignant + avances sur
+     * salaire ACCORDÉES ce mois (montant réellement sorti, même si déjà partiellement remboursé
+     * depuis) — avec le détail de chaque avance pour affichage (nom, classe si enseignant, date,
+     * montant).
+     */
+    record SalaryAdvanceDetail(String employeeName, String className, java.time.LocalDate grantedAt, BigDecimal amount) {}
+
+    record MonthlyFinancialSummary(BigDecimal maternelleTeacherPayroll, BigDecimal primaryTeacherPayroll,
+                                   BigDecimal secondaryTeacherPayroll, BigDecimal staffPayroll,
+                                   BigDecimal salaryAdvancesTotal, BigDecimal total,
+                                   List<SalaryAdvanceDetail> advances) {}
+
+    MonthlyFinancialSummary monthlyFinancialSummary(Long tenantId, int year, int month);
 }

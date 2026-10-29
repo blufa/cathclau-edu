@@ -1,9 +1,16 @@
 package gn.lacaeducation.payroll.adapters.out;
 
+import gn.lacaeducation.academics.AcademicsDataProvider;
+import gn.lacaeducation.academics.ClassPublicInfo;
+import gn.lacaeducation.payroll.SchoolPayrollStatsProvider.MonthlyFinancialSummary;
 import gn.lacaeducation.payroll.SchoolPayrollStatsProvider.PayrollMassSummary;
 import gn.lacaeducation.payroll.SchoolPayrollStatsProvider.TeacherSalary;
 import gn.lacaeducation.payroll.application.service.PayrollService;
 import gn.lacaeducation.payroll.application.service.PayrollService.TeacherSalaryBreakdown;
+import gn.lacaeducation.payroll.application.service.SalaryAdvanceService;
+import gn.lacaeducation.payroll.domain.EmployeeType;
+import gn.lacaeducation.payroll.domain.SalaryAdvance;
+import gn.lacaeducation.payroll.domain.SalaryAdvanceStatus;
 import gn.lacaeducation.staff.EmployeePublicInfoProvider;
 import gn.lacaeducation.staff.TeacherPublicInfoProvider;
 import gn.lacaeducation.staff.TeacherPublicInfoProvider.TeacherInfo;
@@ -15,6 +22,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 
@@ -35,6 +43,8 @@ class SchoolPayrollStatsProviderAdapterTest {
     @Mock PayrollService payrollService;
     @Mock EmployeePublicInfoProvider employeePublicInfoProvider;
     @Mock TeacherPublicInfoProvider teacherPublicInfoProvider;
+    @Mock SalaryAdvanceService salaryAdvanceService;
+    @Mock AcademicsDataProvider academics;
     @InjectMocks SchoolPayrollStatsProviderAdapter adapter;
 
     @Test
@@ -86,7 +96,8 @@ class SchoolPayrollStatsProviderAdapterTest {
         when(teacherPublicInfoProvider.listTeachers(10L)).thenReturn(List.of(
                 new TeacherInfo(2L, "Mamadou", "Diallo", null, null, null, null, null)));
         when(payrollService.teacherPayrollMass(eq(10L), eq(2026), eq(3), any()))
-                .thenReturn(new PayrollService.TeacherPayrollMass(BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("900000"), 1));
+                .thenReturn(new PayrollService.TeacherPayrollMass(BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("900000"), 1,
+                        BigDecimal.ZERO, new BigDecimal("900000"), BigDecimal.ZERO));
         when(employeePublicInfoProvider.listEmployees(10L)).thenReturn(List.of());
 
         PayrollMassSummary summary = adapter.payrollMassSummary(10L, 2026, 3);
@@ -97,5 +108,58 @@ class SchoolPayrollStatsProviderAdapterTest {
         assertThat(captor.getValue()).containsExactly(2L);
         assertThat(summary.teacherCount()).isEqualTo(1);
         assertThat(summary.teacherMonthlyPayroll()).isEqualByComparingTo("900000");
+    }
+
+    private PayrollService.TeacherPayrollMass teacherPayrollMass(String primary, String secondary) {
+        return new PayrollService.TeacherPayrollMass(BigDecimal.ZERO, BigDecimal.ZERO,
+                new BigDecimal(primary).add(new BigDecimal(secondary)), 2,
+                BigDecimal.ZERO, new BigDecimal(primary), new BigDecimal(secondary));
+    }
+
+    @Test
+    void monthlyFinancialSummary_sumsPayrollAndAdvancesGrantedThisMonth() {
+        when(teacherPublicInfoProvider.listTeachers(10L)).thenReturn(List.of());
+        when(payrollService.teacherPayrollMass(eq(10L), eq(2026), eq(10), any()))
+                .thenReturn(teacherPayrollMass("1000000", "1200000"));
+        when(employeePublicInfoProvider.listEmployees(10L)).thenReturn(List.of());
+        SalaryAdvance inMonth = SalaryAdvance.builder().teacherId(5L).teacherName("Mamadou Diallo")
+                .employeeType(EmployeeType.TEACHER).amount(new BigDecimal("300000"))
+                .status(SalaryAdvanceStatus.ACTIVE).grantedAt(LocalDateTime.of(2026, 10, 15, 9, 0)).build();
+        SalaryAdvance otherMonth = SalaryAdvance.builder().teacherId(6L).teacherName("Fama Camara")
+                .employeeType(EmployeeType.TEACHER).amount(new BigDecimal("200000"))
+                .status(SalaryAdvanceStatus.ACTIVE).grantedAt(LocalDateTime.of(2026, 9, 15, 9, 0)).build();
+        SalaryAdvance cancelledInMonth = SalaryAdvance.builder().teacherId(7L).teacherName("Oumar Bah")
+                .employeeType(EmployeeType.TEACHER).amount(new BigDecimal("100000"))
+                .status(SalaryAdvanceStatus.CANCELLED).grantedAt(LocalDateTime.of(2026, 10, 20, 9, 0)).build();
+        when(salaryAdvanceService.findByTenant(10L)).thenReturn(List.of(inMonth, otherMonth, cancelledInMonth));
+        when(academics.findClassesByHeadTeacher(5L)).thenReturn(List.of(
+                new ClassPublicInfo(1L, "CM2", "CM2", "NORMALE", null, 5L, "PRIMAIRE")));
+
+        MonthlyFinancialSummary summary = adapter.monthlyFinancialSummary(10L, 2026, 10);
+
+        assertThat(summary.primaryTeacherPayroll()).isEqualByComparingTo("1000000");
+        assertThat(summary.secondaryTeacherPayroll()).isEqualByComparingTo("1200000");
+        assertThat(summary.salaryAdvancesTotal()).isEqualByComparingTo("300000");
+        assertThat(summary.total()).isEqualByComparingTo("2500000");
+        assertThat(summary.advances()).hasSize(1);
+        assertThat(summary.advances().get(0).employeeName()).isEqualTo("Mamadou Diallo");
+        assertThat(summary.advances().get(0).className()).isEqualTo("CM2");
+    }
+
+    @Test
+    void monthlyFinancialSummary_nonTeacherAdvance_noClassName() {
+        when(teacherPublicInfoProvider.listTeachers(10L)).thenReturn(List.of());
+        when(payrollService.teacherPayrollMass(eq(10L), eq(2026), eq(10), any()))
+                .thenReturn(teacherPayrollMass("0", "0"));
+        when(employeePublicInfoProvider.listEmployees(10L)).thenReturn(List.of());
+        SalaryAdvance staffAdvance = SalaryAdvance.builder().teacherId(8L).teacherName("Aissatou Sow")
+                .employeeType(EmployeeType.ADMINISTRATIVE).amount(new BigDecimal("150000"))
+                .status(SalaryAdvanceStatus.ACTIVE).grantedAt(LocalDateTime.of(2026, 10, 5, 9, 0)).build();
+        when(salaryAdvanceService.findByTenant(10L)).thenReturn(List.of(staffAdvance));
+
+        MonthlyFinancialSummary summary = adapter.monthlyFinancialSummary(10L, 2026, 10);
+
+        assertThat(summary.advances()).hasSize(1);
+        assertThat(summary.advances().get(0).className()).isNull();
     }
 }

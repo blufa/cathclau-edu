@@ -15,5 +15,8 @@ public interface StudentAttendanceRepository {
     long countByStudentIdAndDateBetween(Long studentId, LocalDate from, LocalDate to);
     /** Toutes les présences élèves d'un tenant pour une date donnée, toutes classes confondues. */
     List<StudentAttendance> findByTenantIdAndDate(Long tenantId, LocalDate date);
+    /** Toutes les présences élèves d'un tenant sur une plage de dates, toutes classes confondues —
+     * pour un historique multi-jours (tableau de bord principal). */
+    List<StudentAttendance> findByTenantIdAndDateBetween(Long tenantId, LocalDate from, LocalDate to);
     void deleteById(Long id);
 }

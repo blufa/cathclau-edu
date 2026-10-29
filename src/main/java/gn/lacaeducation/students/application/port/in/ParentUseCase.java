@@ -25,7 +25,11 @@ public interface ParentUseCase {
                                 *  (même garde que TeacherUseCase/EmployeeUseCase#UpdateXCommand). */
                                Long userId,
                                /** Même principe pour le lien direct personnel sans compte. */
-                               StaffLinkType staffType, Long staffId) {}
+                               StaffLinkType staffType, Long staffId,
+                               /** Réglage comptable (§7 payroll) : vrai si ce parent, membre du personnel, prend en
+                                *  charge lui-même les frais de ses enfants — exclut l'élève de toute retenue
+                                *  automatique sur salaire. Sans effet sur un parent non-personnel. */
+                               boolean excludeFromAutoDeduction) {}
     /** Champs modifiables par le parent lui-même (portail parent §12) — jamais son nom. */
     record UpdateProfileCommand(@NotBlank(message = "Le numéro de téléphone est obligatoire") String phone,
                                 String email, String address, String occupation) {}

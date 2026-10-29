@@ -40,20 +40,23 @@ public class SalaryFeeDeductionService implements SalaryFeeDeductionUseCase {
         return employeeProvider.findUserIdByEmployeeId(staffId).orElse(null);
     }
 
-    /** Enfants scolarisés (inscription VALIDÉE) de ce salarié, qu'il ait un compte de connexion
-     * (lien par {@code userId} partagé avec sa fiche Parent) OU non (lien direct {@code staffType}/
-     * {@code staffId}, personnel sans smartphone Android — voir ParentInput côté inscription). Les
-     * deux chemins sont consultés et fusionnés : sans ça, un salarié inscrit "Personnel de l'école"
-     * sans compte ne déclenchait jamais aucune retenue, même avec un enfant correctement rattaché. */
+    /** Enfants scolarisés (inscription active, PENDING comprise — retour comptable : pas de refuge en
+     * laissant l'inscription non validée) de ce salarié, qu'il ait un compte de connexion (lien par
+     * {@code userId} partagé avec sa fiche Parent) OU non (lien direct {@code staffType}/{@code staffId},
+     * personnel sans smartphone Android — voir ParentInput côté inscription). Les deux chemins sont
+     * consultés et fusionnés : sans ça, un salarié inscrit "Personnel de l'école" sans compte ne
+     * déclenchait jamais aucune retenue, même avec un enfant correctement rattaché. Exclut ensuite tout
+     * enfant dont un parent a explicitement choisi de payer lui-même (voir
+     * ParentAccessProvider#hasOptedOutOfStaffAutoDeduction). */
     private List<Long> resolveChildStudentIds(EmployeeType employeeType, Long staffId) {
         Long userId = resolveUserId(employeeType, staffId);
         java.util.LinkedHashSet<Long> ids = new java.util.LinkedHashSet<>();
         if (userId != null) {
-            ids.addAll(parentAccessProvider.findChildStudentIdsWithValidatedEnrollment(userId));
+            ids.addAll(parentAccessProvider.findChildStudentIdsEnrolled(userId));
         }
         String staffType = employeeType == EmployeeType.TEACHER ? "TEACHER" : "EMPLOYEE";
-        ids.addAll(parentAccessProvider.findChildStudentIdsWithValidatedEnrollmentByStaffLink(staffType, staffId));
-        return List.copyOf(ids);
+        ids.addAll(parentAccessProvider.findChildStudentIdsEnrolledByStaffLink(staffType, staffId));
+        return ids.stream().filter(id -> !parentAccessProvider.hasOptedOutOfStaffAutoDeduction(id)).toList();
     }
 
     @Override

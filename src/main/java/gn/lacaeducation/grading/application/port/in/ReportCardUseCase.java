@@ -21,8 +21,10 @@ public interface ReportCardUseCase {
      * classe (§retour fondateur : "ce n'est pas pour une classe, c'est pour les meilleurs élèves de
      * l'école, parmi toutes les classes"). Portée = tenant courant (TenantContext). */
     byte[] honorRollPdf(Long periodId);
-    /** Centralisateur de classe (PDF) : une ligne par élève, colonnes Cours/Composition par matière. */
-    byte[] classCentralizerPdf(Long classId, Long periodId);
+    /** Centralisateur de classe (PDF) : une ligne par élève, moyennes générales mensuelles par
+     * semestre puis bilan annuel (moyenne, rang, mention, décision) — portée = année scolaire entière
+     * (les deux semestres), pas une seule période. */
+    byte[] classCentralizerPdf(Long classId, Long academicYearId);
     /** Génère et renvoie les octets du PDF du bulletin (pour affichage direct, sans Cloudinary). */
     byte[] pdfBytes(Long id);
     void generatePdfAsync(Long id);
