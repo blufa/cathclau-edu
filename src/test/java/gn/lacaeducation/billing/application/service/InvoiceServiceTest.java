@@ -44,6 +44,10 @@ class InvoiceServiceTest {
     @Mock gn.lacaeducation.billing.application.port.in.EarlyPaymentDiscountUseCase earlyPaymentDiscountUseCase;
     @Mock gn.lacaeducation.billing.application.port.in.StaffChildBenefitUseCase staffChildBenefitUseCase;
     @Mock gn.lacaeducation.platform.PlatformFeeLedgerApi platformFeeLedgerApi;
+    @Mock gn.lacaeducation.payments.PayrollDeductionReceiptApi payrollDeductionReceiptApi;
+    @Mock gn.lacaeducation.students.ParentAccessProvider parentAccessProvider;
+    @Mock gn.lacaeducation.staff.TeacherPublicInfoProvider teacherProvider;
+    @Mock gn.lacaeducation.staff.EmployeePublicInfoProvider employeeProvider;
 
     @BeforeEach
     void defaultNoExemption() {
@@ -55,7 +59,7 @@ class InvoiceServiceTest {
     }
 
     InvoiceService service() {
-        return new InvoiceService(repo, schoolFeeRepository, installmentRepository, enrollmentQueryPort, eventPublisher, invoicePdfGenerator, mediaUploadService, tenantInfoProvider, exemptionUseCase, earlyPaymentDiscountUseCase, staffChildBenefitUseCase, platformFeeLedgerApi);
+        return new InvoiceService(repo, schoolFeeRepository, installmentRepository, enrollmentQueryPort, eventPublisher, invoicePdfGenerator, mediaUploadService, tenantInfoProvider, exemptionUseCase, earlyPaymentDiscountUseCase, staffChildBenefitUseCase, platformFeeLedgerApi, payrollDeductionReceiptApi, parentAccessProvider, teacherProvider, employeeProvider);
 
     }
 
@@ -139,6 +143,11 @@ class InvoiceServiceTest {
         assertThat(inv.getStatus()).isEqualTo(InvoiceStatus.UNPAID);
         assertThat(inv.getPaidAmount()).isEqualByComparingTo("0");
         assertThat(inv.getRemainingBalance()).isEqualByComparingTo("100.00");
+        // Régression réelle (§retour comptable, 500 à l'inscription d'un élève) : excludedFromStaffDeduction
+        // doit TOUJOURS être false par défaut (@Builder.Default), jamais null — la colonne est NOT NULL
+        // sans défaut SQL applicable (Hibernate insère explicitement la valeur Java, même null), voir
+        // Invoice#excludedFromStaffDeduction.
+        assertThat(inv.getExcludedFromStaffDeduction()).isFalse();
         verify(eventPublisher).publishEvent(any(InvoiceGeneratedEvent.class));
         verify(eventPublisher).publishEvent(any(InvoiceIssuedEvent.class));
     }
@@ -1015,6 +1024,25 @@ class InvoiceServiceTest {
         Invoice inv = service().create(new CreateInvoiceCommand(10L, 7L, 3L, "FAC-1", new BigDecimal("100.00"), 99L));
 
         assertThat(inv.getDiscountSource()).isEqualTo(gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT);
+        // Pas de duplication "Avantage personnel : Avantage personnel" (§retour comptable, "encombrant")
+        // quand le nom de la règle n'inclut pas déjà ce libellé — ici préfixé normalement.
+        assertThat(inv.getDiscountReason()).isEqualTo("Avantage personnel : Enseignants — 50% (50%)");
+    }
+
+    @Test
+    void create_staffBenefitExemption_ruleAlreadyNamedAvantagePersonnel_doesNotDuplicatePrefix() {
+        when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(
+                gn.lacaeducation.billing.domain.SchoolFee.builder().id(3L)
+                        .type(gn.lacaeducation.billing.domain.FeeType.MONTHLY).build()));
+        when(exemptionUseCase.computeApplicable(7L, gn.lacaeducation.billing.domain.FeeType.MONTHLY))
+                .thenReturn(new ApplicableExemption(new BigDecimal("100"), "Avantage personnel", true, BigDecimal.ZERO, null));
+        when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Invoice inv = service().create(new CreateInvoiceCommand(10L, 7L, 3L, "FAC-1", new BigDecimal("100.00"), 99L));
+
+        // §retour comptable : "je les vois encombrant" — le comptable a nommé sa règle "Avantage
+        // personnel" dans le catalogue, le préfixe automatique ne doit pas le répéter.
+        assertThat(inv.getDiscountReason()).isEqualTo("Avantage personnel (100%)");
     }
 
     @Test
@@ -1071,6 +1099,158 @@ class InvoiceServiceTest {
         when(repo.findByStudentId(7L)).thenReturn(List.of());
 
         assertThat(service().outstandingStaffBenefitRemainder(7L, null, null)).isEqualByComparingTo("0");
+    }
+
+    // ── Facture retirée au cas par cas de la retenue (§retour utilisateur : "pas obligatoire de
+    // prendre tous les frais", ex. Maillots/T-shirts/Tenue scolaire) ───────────────────────────────
+
+    @Test
+    void outstandingStaffBenefitRemainder_excludedInvoice_neverCounted() {
+        Invoice included = Invoice.builder().id(1L).studentId(7L)
+                .discountSource(gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT)
+                .status(InvoiceStatus.UNPAID).remainingBalance(new BigDecimal("15000"))
+                .excludedFromStaffDeduction(false).build();
+        Invoice excluded = Invoice.builder().id(2L).studentId(7L)
+                .discountSource(gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT)
+                .status(InvoiceStatus.UNPAID).remainingBalance(new BigDecimal("30000"))
+                .excludedFromStaffDeduction(true).build();
+        when(repo.findByStudentId(7L)).thenReturn(List.of(included, excluded));
+
+        BigDecimal remainder = service().outstandingStaffBenefitRemainder(7L, null, null);
+
+        assertThat(remainder).isEqualByComparingTo("15000");
+    }
+
+    @Test
+    void outstandingStaffBenefitInvoiceLines_includesExcludedInvoicesButFlagsThem() {
+        Invoice included = Invoice.builder().id(1L).studentId(7L).reference("FAC-1")
+                .discountSource(gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT)
+                .status(InvoiceStatus.UNPAID).remainingBalance(new BigDecimal("15000"))
+                .excludedFromStaffDeduction(false).build();
+        Invoice excluded = Invoice.builder().id(2L).studentId(7L).reference("FAC-2")
+                .discountSource(gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT)
+                .status(InvoiceStatus.UNPAID).remainingBalance(new BigDecimal("30000"))
+                .excludedFromStaffDeduction(true).build();
+        when(repo.findByStudentId(7L)).thenReturn(List.of(included, excluded));
+
+        var lines = service().outstandingStaffBenefitInvoiceLines(7L, null, null);
+
+        assertThat(lines).hasSize(2);
+        assertThat(lines.stream().filter(l -> l.invoiceId().equals(1L)).findFirst().orElseThrow().excluded()).isFalse();
+        assertThat(lines.stream().filter(l -> l.invoiceId().equals(2L)).findFirst().orElseThrow().excluded()).isTrue();
+    }
+
+    @Test
+    void setExcludedFromStaffDeduction_togglesFlag() {
+        Invoice inv = Invoice.builder().id(1L).studentId(7L)
+                .discountSource(gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT)
+                .status(InvoiceStatus.UNPAID).remainingBalance(new BigDecimal("30000"))
+                .excludedFromStaffDeduction(false).build();
+        when(repo.findById(1L)).thenReturn(Optional.of(inv));
+        when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
+
+        Invoice result = service().setExcludedFromStaffDeduction(1L, true);
+
+        assertThat(result.getExcludedFromStaffDeduction()).isTrue();
+    }
+
+    @Test
+    void setAllStaffBenefitInvoicesExcluded_onlyTouchesStaffBenefitUnpaidInvoices() {
+        Invoice staffBenefitUnpaid = Invoice.builder().id(1L).studentId(7L)
+                .discountSource(gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT)
+                .status(InvoiceStatus.UNPAID).excludedFromStaffDeduction(false).build();
+        Invoice staffBenefitPaid = Invoice.builder().id(2L).studentId(7L)
+                .discountSource(gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT)
+                .status(InvoiceStatus.PAID).excludedFromStaffDeduction(false).build();
+        Invoice notStaffBenefit = Invoice.builder().id(3L).studentId(7L)
+                .discountSource(gn.lacaeducation.billing.domain.DiscountSource.EXEMPTION)
+                .status(InvoiceStatus.UNPAID).excludedFromStaffDeduction(false).build();
+        when(repo.findByStudentId(7L)).thenReturn(List.of(staffBenefitUnpaid, staffBenefitPaid, notStaffBenefit));
+        when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
+
+        service().setAllStaffBenefitInvoicesExcluded(7L, true);
+
+        // Retirer l'enfant de la retenue (§retour comptable : "ces factures doivent être actives, on
+        // doit pouvoir les encaisser") ne touche que les factures avantage personnel ENCORE DUES — une
+        // facture déjà payée ou d'une autre nature n'a rien à débloquer.
+        assertThat(staffBenefitUnpaid.getExcludedFromStaffDeduction()).isTrue();
+        assertThat(staffBenefitPaid.getExcludedFromStaffDeduction()).isFalse();
+        assertThat(notStaffBenefit.getExcludedFromStaffDeduction()).isFalse();
+    }
+
+    @Test
+    void staffChildDeductionStatus_notStaffLinked_returnsNotStaffChild() {
+        when(parentAccessProvider.findParentUserIdsByStudent(7L)).thenReturn(List.of());
+        when(parentAccessProvider.findDirectStaffLinksByStudent(7L)).thenReturn(List.of());
+
+        var status = service().staffChildDeductionStatus(7L);
+
+        assertThat(status.staffChild()).isFalse();
+        assertThat(status.excluded()).isFalse();
+    }
+
+    @Test
+    void staffChildDeductionStatus_staffLinkedAndCurrentlyExcluded_reflectsBoth() {
+        when(parentAccessProvider.findParentUserIdsByStudent(7L)).thenReturn(List.of());
+        when(parentAccessProvider.findDirectStaffLinksByStudent(7L)).thenReturn(
+                List.of(new gn.lacaeducation.students.ParentAccessProvider.DirectStaffLink("TEACHER", 9L)));
+        when(parentAccessProvider.hasOptedOutOfStaffAutoDeduction(7L)).thenReturn(true);
+
+        var status = service().staffChildDeductionStatus(7L);
+
+        assertThat(status.staffChild()).isTrue();
+        assertThat(status.excluded()).isTrue();
+    }
+
+    @Test
+    void setStaffChildDeductionExcluded_resolvesDirectStaffLink_andUnlocksInvoices() {
+        when(parentAccessProvider.findParentUserIdsByStudent(7L)).thenReturn(List.of());
+        when(parentAccessProvider.findDirectStaffLinksByStudent(7L)).thenReturn(
+                List.of(new gn.lacaeducation.students.ParentAccessProvider.DirectStaffLink("TEACHER", 9L)));
+        Invoice staffBenefitUnpaid = Invoice.builder().id(1L).studentId(7L)
+                .discountSource(gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT)
+                .status(InvoiceStatus.UNPAID).excludedFromStaffDeduction(false).build();
+        when(repo.findByStudentId(7L)).thenReturn(List.of(staffBenefitUnpaid));
+        when(repo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
+
+        service().setStaffChildDeductionExcluded(7L, true);
+
+        verify(parentAccessProvider).setChildStaffDeductionExcluded(null, "TEACHER", 9L, 7L, true);
+        assertThat(staffBenefitUnpaid.getExcludedFromStaffDeduction()).isTrue();
+    }
+
+    @Test
+    void setStaffChildDeductionExcluded_publishesEventSoPayrollCanRefreshStalePayslipAmount() {
+        gn.lacaeducation.common.TenantContext.set(4L);
+        try {
+            when(parentAccessProvider.findParentUserIdsByStudent(7L)).thenReturn(List.of());
+            when(parentAccessProvider.findDirectStaffLinksByStudent(7L)).thenReturn(
+                    List.of(new gn.lacaeducation.students.ParentAccessProvider.DirectStaffLink("TEACHER", 9L)));
+            when(repo.findByStudentId(7L)).thenReturn(List.of());
+
+            service().setStaffChildDeductionExcluded(7L, true);
+
+            // §retour comptable : "je retire et réintègre depuis la fiche de l'élève et même
+            // l'encaissement, mais je ne vois pas de changement sur le montant" — sans cet événement, la
+            // ligne "Reste avantage personnel" d'une fiche de paie déjà générée reste figée (voir
+            // payroll.StaffChildDeductionRefreshListener, qui l'écoute pour la rafraîchir).
+            verify(eventPublisher).publishEvent(new gn.lacaeducation.billing.application.event.StaffChildDeductionExcludedEvent(4L, 7L, true));
+        } finally { gn.lacaeducation.common.TenantContext.clear(); }
+    }
+
+    @Test
+    void applyStaffBenefitRemainderPayment_excludedInvoice_neverPaidNorReceipted() {
+        Invoice excluded = Invoice.builder().id(1L).studentId(7L).tenantId(1L)
+                .discountSource(gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT)
+                .status(InvoiceStatus.UNPAID).totalAmount(new BigDecimal("30000")).paidAmount(BigDecimal.ZERO)
+                .remainingBalance(new BigDecimal("30000")).excludedFromStaffDeduction(true).build();
+        when(repo.findByStudentId(7L)).thenReturn(List.of(excluded));
+
+        service().applyStaffBenefitRemainderPayment(7L, java.time.LocalDate.of(2026, 10, 1), "Octobre 2026", new BigDecimal("30000"));
+
+        assertThat(excluded.getStatus()).isEqualTo(InvoiceStatus.UNPAID);
+        verify(repo, never()).findById(1L);
+        verifyNoInteractions(payrollDeductionReceiptApi);
     }
 
     // ── outstandingStaffBenefitRemainder scoping to one payroll period (§retour comptable, bug corrigé :
@@ -1146,5 +1326,14 @@ class InvoiceServiceTest {
         assertThat(october.getStatus()).isEqualTo(InvoiceStatus.PAID);
         assertThat(november.getStatus()).isEqualTo(InvoiceStatus.UNPAID);
         verify(repo, never()).findById(2L);
+        // Trace de paiement + reçu pour le parent (§retour comptable).
+        verify(payrollDeductionReceiptApi).recordForReceipt(1L, 1L, 7L, october.getAcademicYearId(), new BigDecimal("67500"));
+    }
+
+    @Test
+    void applyStaffBenefitRemainderPayment_zeroAmount_neverRecordsReceipt() {
+        service().applyStaffBenefitRemainderPayment(7L, java.time.LocalDate.of(2026, 10, 1), "Octobre 2026", BigDecimal.ZERO);
+
+        verifyNoInteractions(payrollDeductionReceiptApi);
     }
 }

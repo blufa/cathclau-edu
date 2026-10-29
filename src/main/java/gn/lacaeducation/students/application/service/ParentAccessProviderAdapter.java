@@ -74,8 +74,39 @@ class ParentAccessProviderAdapter implements ParentAccessProvider {
     @Transactional(readOnly = true)
     public boolean hasOptedOutOfStaffAutoDeduction(Long studentId) {
         if (studentId == null) return false;
-        return studentParentRepository.findParentsByStudentId(studentId).stream()
+        // Réglage global (tous les enfants de ce parent) OU réglage par lien élève-parent précis (ce
+        // seul enfant) — l'un ou l'autre suffit à exclure (voir javadoc de l'interface pour le cas
+        // d'enfants "mixtes" d'un même salarié).
+        boolean anyParentOptedOutGlobally = studentParentRepository.findParentsByStudentId(studentId).stream()
                 .anyMatch(gn.lacaeducation.students.domain.Parent::isExcludeFromAutoDeduction);
+        if (anyParentOptedOutGlobally) return true;
+        return studentParentRepository.findLinksByStudentId(studentId).stream()
+                .anyMatch(gn.lacaeducation.students.domain.StudentParent::isExcludedFromStaffDeduction);
+    }
+
+    @Override
+    @Transactional
+    public void setChildStaffDeductionExcluded(Long userId, String staffType, Long staffId, Long studentId, boolean excluded) {
+        if (studentId == null) return;
+        java.util.Set<Long> staffParentIds = new java.util.HashSet<>();
+        if (userId != null) {
+            parentRepository.findAllByUserId(userId).forEach(p -> staffParentIds.add(p.getId()));
+        }
+        if (staffType != null && staffId != null) {
+            try {
+                var type = gn.lacaeducation.students.domain.StaffLinkType.valueOf(staffType);
+                parentRepository.findAllByLinkedStaff(type, staffId).forEach(p -> staffParentIds.add(p.getId()));
+            } catch (IllegalArgumentException ignored) {
+                // staffType inconnu : aucun lien direct à résoudre, le chemin par compte (userId)
+                // au-dessus reste tenté quand même.
+            }
+        }
+        studentParentRepository.findLinksByStudentId(studentId).stream()
+                .filter(link -> staffParentIds.contains(link.getParentId()))
+                .forEach(link -> {
+                    link.setExcludedFromStaffDeduction(excluded);
+                    studentParentRepository.save(link);
+                });
     }
 
     @Override

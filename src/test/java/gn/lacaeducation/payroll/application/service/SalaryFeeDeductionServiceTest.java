@@ -9,6 +9,8 @@ import gn.lacaeducation.payroll.domain.SalaryFeeDeductionRule;
 import gn.lacaeducation.staff.EmployeePublicInfoProvider;
 import gn.lacaeducation.staff.TeacherPublicInfoProvider;
 import gn.lacaeducation.students.ParentAccessProvider;
+import gn.lacaeducation.students.StudentDataProvider;
+import gn.lacaeducation.students.StudentPublicInfo;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -21,6 +23,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -33,6 +36,7 @@ class SalaryFeeDeductionServiceTest {
     @Mock EmployeePublicInfoProvider employeeProvider;
     @Mock ParentAccessProvider parentAccessProvider;
     @Mock StudentFeePaymentApi studentFeePaymentApi;
+    @Mock StudentDataProvider studentDataProvider;
     @InjectMocks SalaryFeeDeductionService service;
 
     private SalaryFeeDeductionRule rule(String perChild, Integer maxChildren, String cap) {
@@ -299,5 +303,76 @@ class SalaryFeeDeductionServiceTest {
         service.applyStaffBenefitRemainderAsInvoicePayment(1L, EmployeeType.TEACHER, 9L, OCTOBER, "Octobre 2026");
 
         verify(studentFeePaymentApi, never()).applyStaffBenefitRemainderPayment(any(), any(), any(), any());
+    }
+
+    // ── staffBenefitDetail (§retour comptable : détail enfant par enfant du modal de la fiche) ───────
+
+    @Test
+    void staffBenefitDetail_includesInvoiceLinesAndOptionalFees_forEachChild() {
+        staffWithTwoChildren();
+        when(studentDataProvider.findStudent(1L)).thenReturn(Optional.of(
+                new StudentPublicInfo(1L, 10L, "Awa", "Bah", null, null, "MAT-1", null, null, null, null)));
+        when(studentDataProvider.findStudent(2L)).thenReturn(Optional.of(
+                new StudentPublicInfo(2L, 10L, "Moussa", "Camara", null, null, "MAT-2", null, null, null, null)));
+        var line = new StudentFeePaymentApi.DeductedInvoiceLine(100L, "FAC-1", "Mensualité", new BigDecimal("50000"), "Octobre 2026", false);
+        when(studentFeePaymentApi.outstandingStaffBenefitInvoiceLines(1L, OCTOBER, "Octobre 2026")).thenReturn(List.of(line));
+        when(studentFeePaymentApi.outstandingStaffBenefitInvoiceLines(2L, OCTOBER, "Octobre 2026")).thenReturn(List.of());
+        var optionalFee = new StudentFeePaymentApi.OptionalFeeNotice("Cantine (2e tranche)", new BigDecimal("30000"));
+        when(studentFeePaymentApi.optionalFeesNotYetInvoiced(1L)).thenReturn(List.of(optionalFee));
+        when(studentFeePaymentApi.optionalFeesNotYetInvoiced(2L)).thenReturn(List.of());
+
+        var details = service.staffBenefitDetail(1L, EmployeeType.TEACHER, 9L, OCTOBER, "Octobre 2026");
+
+        assertThat(details).hasSize(2);
+        var first = details.stream().filter(d -> d.studentId().equals(1L)).findFirst().orElseThrow();
+        assertThat(first.studentName()).isEqualTo("Awa Bah");
+        assertThat(first.optedOut()).isFalse();
+        assertThat(first.deductedInvoices()).containsExactly(line);
+        assertThat(first.optionalFeesNotYetInvoiced()).containsExactly(optionalFee);
+    }
+
+    @Test
+    void staffBenefitDetail_optedOutChild_shownWithoutInvoiceLinesButStillListed() {
+        staffWithTwoChildren();
+        when(parentAccessProvider.hasOptedOutOfStaffAutoDeduction(1L)).thenReturn(true);
+        when(studentDataProvider.findStudent(1L)).thenReturn(Optional.of(
+                new StudentPublicInfo(1L, 10L, "Awa", "Bah", null, null, "MAT-1", null, null, null, null)));
+        when(studentDataProvider.findStudent(2L)).thenReturn(Optional.of(
+                new StudentPublicInfo(2L, 10L, "Moussa", "Camara", null, null, "MAT-2", null, null, null, null)));
+        when(studentFeePaymentApi.outstandingStaffBenefitInvoiceLines(2L, OCTOBER, "Octobre 2026")).thenReturn(List.of());
+
+        var details = service.staffBenefitDetail(1L, EmployeeType.TEACHER, 9L, OCTOBER, "Octobre 2026");
+
+        var optedOutChild = details.stream().filter(d -> d.studentId().equals(1L)).findFirst().orElseThrow();
+        assertThat(optedOutChild.optedOut()).isTrue();
+        assertThat(optedOutChild.deductedInvoices()).isEmpty();
+        verify(studentFeePaymentApi, never()).outstandingStaffBenefitInvoiceLines(eq(1L), any(), any());
+    }
+
+    @Test
+    void setChildStaffDeductionExcluded_teacher_resolvesUserIdAndDelegates() {
+        when(teacherProvider.findUserIdByTeacherId(9L)).thenReturn(Optional.of(77L));
+
+        service.setChildStaffDeductionExcluded(1L, EmployeeType.TEACHER, 9L, 11L, true);
+
+        verify(parentAccessProvider).setChildStaffDeductionExcluded(77L, "TEACHER", 9L, 11L, true);
+    }
+
+    @Test
+    void setChildStaffDeductionExcluded_administrative_resolvesViaEmployeeProvider() {
+        when(employeeProvider.findUserIdByEmployeeId(5L)).thenReturn(Optional.of(44L));
+
+        service.setChildStaffDeductionExcluded(1L, EmployeeType.ADMINISTRATIVE, 5L, 12L, false);
+
+        verify(parentAccessProvider).setChildStaffDeductionExcluded(44L, "EMPLOYEE", 5L, 12L, false);
+    }
+
+    @Test
+    void setChildStaffDeductionExcluded_noUserAccount_stillDelegatesWithNullUserId() {
+        when(teacherProvider.findUserIdByTeacherId(9L)).thenReturn(Optional.empty());
+
+        service.setChildStaffDeductionExcluded(1L, EmployeeType.TEACHER, 9L, 11L, true);
+
+        verify(parentAccessProvider).setChildStaffDeductionExcluded(null, "TEACHER", 9L, 11L, true);
     }
 }

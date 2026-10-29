@@ -22,6 +22,14 @@ class UserPublicInfoProviderAdapter implements UserPublicInfoProvider {
     }
 
     @Override
+    public List<UserPublicInfo> findUsersByTenant(Long tenantId) {
+        if (tenantId == null) return List.of();
+        return jpa.findByTenantId(tenantId).stream()
+                .map(u -> new UserPublicInfo(u.getId(), u.getFirstName(), u.getLastName(), u.getPhone()))
+                .toList();
+    }
+
+    @Override
     public List<Long> findUserIdsByRoles(Long tenantId, Set<String> roleCodes) {
         if (tenantId == null || roleCodes == null || roleCodes.isEmpty()) return List.of();
         List<RoleCode> codes = roleCodes.stream().map(RoleCode::valueOf).toList();

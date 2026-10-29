@@ -107,6 +107,14 @@ public class PayslipController {
         return service.removeLine(id, lineId);
     }
 
+    @Operation(summary = "Recalculer la ligne \"Reste avantage personnel\" d'une fiche encore modifiable "
+            + "— à appeler après avoir retiré/réinclus une facture au cas par cas (§billing, modal "
+            + "\"Détail de la retenue\"), qui ne met jamais à jour la fiche toute seule")
+    @PostMapping("/{id}/refresh-staff-deduction")
+    public Payslip refreshStaffBenefitDeductionLine(@PathVariable Long id) {
+        return service.refreshStaffBenefitDeductionLine(id);
+    }
+
     @Operation(summary = "Valider (approuver) la fiche")
     @PatchMapping("/{id}/approve")
     public Payslip approve(@PathVariable Long id) { return service.approve(id); }

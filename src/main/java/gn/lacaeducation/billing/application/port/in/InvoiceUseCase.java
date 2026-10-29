@@ -88,6 +88,39 @@ public interface InvoiceUseCase {
     Invoice applyCredit(Long invoiceId, BigDecimal amount, String reason);
     /** Applique une remise / bourse (montant + motif) et recalcule le reste à payer / le statut. */
     Invoice applyDiscount(Long invoiceId, BigDecimal amount, String reason);
+    /** Inclut/exclut CETTE facture précise de la retenue automatique sur salaire (§payroll, modal
+     * "Détail de la retenue" — retour utilisateur : "pas obligatoire de prendre tous les frais dans le
+     * mois de sa fiche de paie", ex. un frais annexe facultatif Maillots/T-shirts/Tenue scolaire) —
+     * n'affecte ni les autres factures de l'enfant, ni le réglage global du parent. Le parent règle
+     * alors celle-ci normalement au guichet. */
+    Invoice setExcludedFromStaffDeduction(Long invoiceId, boolean excluded);
+    /** Comme {@link #setExcludedFromStaffDeduction}, mais pour TOUTES les factures "avantage personnel"
+     * encore dues de CET élève, tous mois confondus — quand l'enfant lui-même est retiré/réintégré de
+     * la retenue (§retour comptable : "si on retire l'enfant de la retenue, ces factures doivent être
+     * actives, on doit pouvoir les encaisser"), contrairement à {@link #setExcludedFromStaffDeduction}
+     * qui ne vise qu'une facture précise. */
+    void setAllStaffBenefitInvoicesExcluded(Long studentId, boolean excluded);
+
+    /** {@code staffChild} : au moins un parent de cet élève est personnel de l'école (affiche ou non le
+     * bouton retirer/réintégrer sur les écrans de facturation — fiche élève, modal d'encaissement).
+     * {@code excluded} : cet élève est actuellement exclu de la retenue (réglage par enfant OU global
+     * du parent, voir ParentAccessProvider#hasOptedOutOfStaffAutoDeduction). */
+    record StaffChildDeductionStatus(boolean staffChild, boolean excluded) {}
+
+    /** Statut courant pour les écrans de facturation (fiche élève, modal d'encaissement) — §retour
+     * comptable : "on peut aussi faire l'action là-bas", pas seulement depuis le détail de la fiche de
+     * paie. */
+    StaffChildDeductionStatus staffChildDeductionStatus(Long studentId);
+
+    /** Exclut (ou réintègre) cet élève de la retenue sur salaire — depuis un écran de facturation qui ne
+     * connaît que l'élève (pas le salarié/employeeType/staffId, contrairement à
+     * SalaryFeeDeductionUseCase#setChildStaffDeductionExcluded côté payroll) : résout lui-même TOUS les
+     * parents personnel de cet élève. Rend aussi, dans le même mouvement, ses factures "avantage
+     * personnel" encore dues immédiatement (dé)verrouillables au guichet (voir
+     * {@link #setAllStaffBenefitInvoicesExcluded}) — §retour comptable : "ces factures doivent être
+     * actives, on doit pouvoir les encaisser". Sans effet si cet élève n'est pas enfant de personnel
+     * ({@code staffChild} faux). */
+    void setStaffChildDeductionExcluded(Long studentId, boolean excluded);
     /**
      * Applique un paiement déjà perçu par un autre canal (ex. retenue sur salaire du personnel pour
      * les frais de ses enfants, §payroll ↔ billing) sur les factures MENSUALITE impayées/partielles
@@ -121,6 +154,13 @@ public interface InvoiceUseCase {
      * est nul/négatif ou si aucune facture ne correspond.
      */
     void applyStaffBenefitRemainderPayment(Long studentId, java.time.LocalDate periodStart, String periodLabel, BigDecimal amount);
+    /** Même périmètre que {@link #outstandingStaffBenefitRemainder}, mais ligne par ligne (une par
+     * facture encore due) au lieu d'un seul total — pour le détail affiché au comptable. */
+    List<gn.lacaeducation.billing.StudentFeePaymentApi.DeductedInvoiceLine> outstandingStaffBenefitInvoiceLines(
+            Long studentId, java.time.LocalDate periodStart, String periodLabel);
+    /** Frais facultatifs de la classe de l'élève n'ayant encore aucune facture — informatif uniquement
+     * (voir {@link gn.lacaeducation.billing.StudentFeePaymentApi#optionalFeesNotYetInvoiced}). */
+    List<gn.lacaeducation.billing.StudentFeePaymentApi.OptionalFeeNotice> optionalFeesNotYetInvoiced(Long studentId);
     /**
      * Applique la remise pour paiement annuel complet (§billing) sur toutes les factures restantes
      * (non soldées) d'un élève pour un frais donné, si une règle est active pour le type de ce frais.

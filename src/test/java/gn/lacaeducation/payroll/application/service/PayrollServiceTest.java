@@ -3,6 +3,7 @@ package gn.lacaeducation.payroll.application.service;
 import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.attendance.TeacherWorkProvider;
 import gn.lacaeducation.calendar.CalendarDataProvider;
+import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.lessons.TeacherTeachingProvider;
 import gn.lacaeducation.payroll.application.port.in.SalaryAdvanceUseCase;
 import gn.lacaeducation.payroll.application.port.in.SalaryFeeDeductionUseCase;
@@ -38,6 +39,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -131,6 +134,26 @@ class PayrollServiceTest {
         java.util.Map<Long, String> cycles = payrollService.resolveTeacherCycles(List.of(1L, 2L, 3L));
 
         assertThat(cycles).containsEntry(1L, "MATERNELLE").containsEntry(2L, "PRIMAIRE").containsEntry(3L, "SECONDAIRE");
+    }
+
+    @Test
+    void resolveTeacherCycles_teachesBothPrimaryAndSecondaryInEqualCount_prefersPrimary() {
+        // Incident réel (§retour comptable : "quand je filtre par cycle rien ne vient") : un enseignant
+        // intervenant dans UNE classe de primaire ET UNE classe de secondaire (effectif à égalité,
+        // 1 contre 1) retombait systématiquement sur Secondaire — invisible du filtre "Primaire" du
+        // modal "Générer les fiches de paie en lot", alors qu'il a bien des heures de primaire à payer.
+        when(academics.findClassesByHeadTeacher(1L)).thenReturn(List.of());
+        when(academics.findClassSubjectsByTeacher(1L)).thenReturn(List.of(
+                new gn.lacaeducation.academics.ClassSubjectPublicInfo(100L, 10L, BigDecimal.ONE, 1L, "FR1"),
+                new gn.lacaeducation.academics.ClassSubjectPublicInfo(200L, 20L, BigDecimal.ONE, 1L, "HI2")));
+        when(academics.findClass(100L)).thenReturn(Optional.of(
+                new gn.lacaeducation.academics.ClassPublicInfo(100L, "CM1", "CM1", "NORMALE", null, null, "PRIMAIRE")));
+        when(academics.findClass(200L)).thenReturn(Optional.of(
+                new gn.lacaeducation.academics.ClassPublicInfo(200L, "8ème A", "8ème A", "NORMALE", null, null, "COLLEGE")));
+
+        java.util.Map<Long, String> cycles = payrollService.resolveTeacherCycles(List.of(1L));
+
+        assertThat(cycles).containsEntry(1L, "PRIMAIRE");
     }
 
     @Test
@@ -621,6 +644,60 @@ class PayrollServiceTest {
         assertThat(lines.get(0).getLabel()).isEqualTo("Reste avantage personnel (1 enfant(s))");
         assertThat(lines.get(0).getAmount()).isEqualByComparingTo("20000");
         assertThat(result.getNetSalary()).isEqualByComparingTo("280000");
+    }
+
+    /** §retour comptable : "j'ai retiré deux factures, j'ai rechargé mais le montant global de la
+     * retenue n'a pas changé" — la ligne "Reste avantage personnel" ne se met jamais à jour toute seule
+     * quand une facture est retirée/réincluse après la génération (§billing, modal "Détail de la
+     * retenue") ; refreshStaffBenefitDeductionLine la recalcule explicitement. */
+    @Test
+    void refreshStaffBenefitDeductionLine_replacesStaleLineWithFreshAmount() {
+        Payslip p = Payslip.builder().id(50L).tenantId(9L).employeeType(EmployeeType.TEACHER)
+                .teacherId(7L).periodLabel("Mars 2026").status(gn.lacaeducation.payroll.domain.PayslipStatus.DRAFT)
+                .baseSalary(new BigDecimal("300000")).build();
+        when(payslipRepo.findById(50L)).thenReturn(Optional.of(p));
+        when(payslipRepo.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        PayslipLine stale = PayslipLine.builder().id(900L).payslipId(50L)
+                .label("Reste avantage personnel (2 enfant(s))").lineType(PayslipLineType.DEDUCTION)
+                .amount(new BigDecimal("60000")).build();
+        List<PayslipLine> lines = new ArrayList<>(List.of(stale));
+        when(lineRepo.findByPayslipId(50L)).thenAnswer(i -> new ArrayList<>(lines));
+        when(lineRepo.save(any())).thenAnswer(i -> {
+            PayslipLine l = i.getArgument(0);
+            lines.add(l);
+            return l;
+        });
+        org.mockito.Mockito.doAnswer(i -> {
+            Long id = i.getArgument(0);
+            lines.removeIf(l -> id.equals(l.getId()));
+            return null;
+        }).when(lineRepo).deleteById(any());
+
+        // Une facture a été retirée depuis : il ne reste plus que 20 000 pour 1 seul enfant (au lieu de
+        // 60 000 pour 2) — simule le nouvel état réel après le retrait côté billing.
+        when(salaryFeeDeductionUseCase.computeStaffBenefitRemainder(9L, EmployeeType.TEACHER, 7L, null, "Mars 2026"))
+                .thenReturn(new SalaryFeeDeductionUseCase.StaffBenefitRemainderDeduction(new BigDecimal("20000"), 1));
+
+        Payslip result = payrollService.refreshStaffBenefitDeductionLine(50L);
+
+        verify(lineRepo).deleteById(900L);
+        assertThat(lines).hasSize(1);
+        assertThat(lines.get(0).getLabel()).isEqualTo("Reste avantage personnel (1 enfant(s))");
+        assertThat(lines.get(0).getAmount()).isEqualByComparingTo("20000");
+        assertThat(result.getNetSalary()).isEqualByComparingTo("280000");
+    }
+
+    @Test
+    void refreshStaffBenefitDeductionLine_paidPayslip_throwsAndNeverModifies() {
+        Payslip p = Payslip.builder().id(51L).tenantId(9L).employeeType(EmployeeType.TEACHER)
+                .teacherId(7L).periodLabel("Mars 2026").status(gn.lacaeducation.payroll.domain.PayslipStatus.PAID)
+                .baseSalary(new BigDecimal("300000")).build();
+        when(payslipRepo.findById(51L)).thenReturn(Optional.of(p));
+
+        assertThatThrownBy(() -> payrollService.refreshStaffBenefitDeductionLine(51L))
+                .isInstanceOf(BusinessRuleException.class);
+        verify(lineRepo, never()).deleteById(any());
     }
 
     /**

@@ -20,8 +20,12 @@ public interface ParentRepository {
     /** Un seul format exact à la fois — l'appelant doit tester les variantes de format
      * ({@link gn.lacaeducation.common.PhoneNumbers#candidates}) pour détecter un doublon quel que soit
      * le format sous lequel le numéro a été saisi (voir la garde anti-duplication de
-     * {@code ParentService#create}). */
-    Optional<Parent> findByTenantIdAndPhone(Long tenantId, String phone);
+     * {@code ParentService#create}). Renvoie TOUTES les fiches partageant ce numéro (comme {@link
+     * #findAllByUserId}) — pas {@code Optional<Parent>} : en pratique plusieurs fiches partagent
+     * parfois le même numéro (ex. numéro de l'école saisi par défaut), ce qui faisait planter une
+     * version antérieure en 500 (IncorrectResultSizeDataAccessException, incident réel à
+     * l'inscription). */
+    List<Parent> findByTenantIdAndPhone(Long tenantId, String phone);
     List<Parent> findByTenantId(Long tenantId);
     void deleteById(Long id);
     boolean existsById(Long id);

@@ -111,6 +111,32 @@ public class InvoiceController {
     @Operation(summary = "Appliquer une remise / bourse à une facture (recalcule le reste à payer)")
     @PreAuthorize("hasAuthority('facture:update')")
     @PatchMapping("/{id}/discount") public ResponseEntity<Invoice> applyDiscount(@PathVariable Long id, @RequestBody DiscountRequest r) { return ResponseEntity.ok(useCase.applyDiscount(id, r.amount(), r.reason())); }
+    @Operation(summary = "Inclure/exclure une facture précise (enfant de personnel) de la retenue automatique "
+            + "sur salaire — ex. un frais annexe facultatif (Maillots, T-shirts, Tenue scolaire) que le "
+            + "parent préfère régler lui-même (§payroll, modal \"Détail de la retenue\")")
+    @PreAuthorize("hasAuthority('paie:manage')")
+    @PatchMapping("/{id}/staff-deduction")
+    public ResponseEntity<Invoice> setExcludedFromStaffDeduction(@PathVariable Long id, @RequestParam boolean excluded) {
+        return ResponseEntity.ok(useCase.setExcludedFromStaffDeduction(id, excluded));
+    }
+    @Operation(summary = "Statut de retenue sur salaire de cet élève (enfant de personnel ou non, "
+            + "actuellement exclu ou non) — pour afficher le bouton retirer/réintégrer sur la fiche élève "
+            + "et le modal d'encaissement (§retour comptable)")
+    @PreAuthorize("hasAuthority('paie:manage')")
+    @GetMapping("/staff-deduction/status")
+    public InvoiceUseCase.StaffChildDeductionStatus staffChildDeductionStatus(@RequestParam Long studentId) {
+        return useCase.staffChildDeductionStatus(studentId);
+    }
+    @Operation(summary = "Exclure/réintégrer CET ÉLÈVE de la retenue sur salaire (tous ses parents "
+            + "personnel) — depuis la fiche élève ou le modal d'encaissement, pour le cas où certains "
+            + "enfants d'un même salarié sont à charge de l'avantage personnel et d'autres payés "
+            + "directement par le parent. Rend immédiatement ses factures encore dues (dé)verrouillables "
+            + "au guichet (§retour comptable)")
+    @PreAuthorize("hasAuthority('paie:manage')")
+    @PatchMapping("/staff-deduction/student")
+    public void setStaffChildDeductionExcluded(@RequestParam Long studentId, @RequestParam boolean excluded) {
+        useCase.setStaffChildDeductionExcluded(studentId, excluded);
+    }
     // facture:create (pas facture:update) : ce n'est pas une correction administrative d'une facture
     // existante, mais une étape normale du processus d'encaissement — le comptable l'applique
     // lui-même juste avant de faire payer toutes les tranches restantes en une fois (§billing).

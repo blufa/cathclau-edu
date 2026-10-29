@@ -59,4 +59,15 @@ public interface ParentUseCase {
      * autres ids de {@link #findByTenantId}) sont des prospects/contacts sans enfant (§7 cahier des
      * charges). Ne renvoie que des ids, pas de comptage détaillé : évite le N+1 sur un annuaire. */
     List<Long> findLinkedParentIds(Long tenantId);
+
+    /** Enfants rattachés à un membre du personnel (enseignant ou employé), par compte de connexion
+     * partagé ET/OU lien direct sans compte — même portée que {@link #findStudentsByUserId} (aucun
+     * filtre d'inscription, contrairement à la retenue sur salaire). Pour l'onglet "Personnel" du
+     * répertoire /parents (§retour comptable : "comme ce que j'ai fait pour les parents, lorsqu'il
+     * recherche parent et qu'il trouve, on voit tous les enfants reliés" — même recherche, mais pour le
+     * personnel). {@code userId} est fourni par l'appelant (déjà connu côté fiche enseignant/employé,
+     * voir TeacherInfo/EmployeeInfo) plutôt que résolu ici — {@code students} ne doit jamais dépendre
+     * du module {@code staff} (cycle de modules sinon : academics → students → staff → academics, voir
+     * ModularityTests), null si ce salarié n'a pas de compte de connexion. */
+    List<Student> findStudentsByStaff(StaffLinkType staffType, Long staffId, Long userId);
 }
