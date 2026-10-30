@@ -17,6 +17,12 @@ public interface AcademicsDataProvider {
      * doit jamais produire son propre bulletin indépendant. */
     boolean isCompositionTargetPeriod(Long periodId);
     List<ClassSubjectPublicInfo> findClassSubjects(Long classId);
+    /** Cycle scolaire ("MATERNELLE"/"PRIMAIRE"/"COLLEGE"/"LYCEE"/"SUPERIEUR") d'un niveau précis — pour
+     * résoudre le cycle d'un enseignant depuis ses "Niveaux enseignés" (checklist sur sa fiche, module
+     * staff) plutôt que depuis ses classes/matières assignées (§retour utilisateur : "base-toi sur le
+     * niveau enseigné, pas sur les matières"). Vide si le niveau n'existe pas ou n'a pas de cycle
+     * renseigné. */
+    Optional<String> findLevelCycle(Long levelId);
     List<ClassPublicInfo> findClassesByHeadTeacher(Long teacherId);
     List<ClassSubjectPublicInfo> findClassSubjectsByTeacher(Long teacherId);
     List<ScheduleSlotPublicInfo> findScheduleByTeacher(Long teacherId);
