@@ -22,6 +22,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -31,6 +32,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -45,6 +48,8 @@ class SalaryAdvanceServiceTest {
     @Mock EmployeePublicInfoProvider employeeProvider;
     @Mock SalaryAdvanceVoucherPdfGenerator pdfGenerator;
     @Mock UserPublicInfoProvider userPublicInfoProvider;
+    @Mock PayrollService payrollService;
+    @Mock ObjectProvider<PayrollService> payrollServiceProvider;
     @InjectMocks SalaryAdvanceService service;
 
     private SalaryAdvance advance(BigDecimal amount, BigDecimal remaining, SalaryAdvanceStatus status) {
@@ -116,11 +121,37 @@ class SalaryAdvanceServiceTest {
         when(repo.findByTenantIdAndTeacherIdAndEmployeeType(1L, 9L, EmployeeType.TEACHER)).thenReturn(List.of());
         when(payslipRepo.findByTenantIdAndTeacherId(1L, 9L)).thenReturn(List.of());
         when(compRepo.findByTeacherId(9L)).thenReturn(Optional.empty());
+        when(payrollServiceProvider.getObject()).thenReturn(payrollService);
+        when(payrollService.computeTheoreticalMonthlyPay(eq(9L), anyInt(), anyInt())).thenReturn(
+                new PayrollService.TheoreticalMonthlyPay(9L, 2026, 10, "HOURLY", 0, 0,
+                        BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO));
 
         assertThatThrownBy(() -> service.grant(new GrantCommand(1L, EmployeeType.TEACHER, 9L, "Mamadou Diallo",
                 new BigDecimal("100000"), null, null)))
                 .isInstanceOf(BusinessRuleException.class);
         verify(repo, never()).save(any());
+    }
+
+    @Test
+    void grant_hourlyTeacherNoPayslipNoRealizedHours_fallsBackToTheoreticalTimetablePay() {
+        // §retour comptable urgence : "il refuse l'avance" pour un enseignant à l'heure du secondaire
+        // dont aucune séance n'est encore créée/réalisée ce mois (heures réalisées = 0, donc aucune
+        // fiche de paie ni salaire fixe) — le plafond doit se baser sur l'emploi du temps théorique,
+        // jamais sur 0, pour que l'avance reste possible.
+        when(repo.findByTenantIdAndTeacherIdAndEmployeeType(1L, 9L, EmployeeType.TEACHER)).thenReturn(List.of());
+        when(payslipRepo.findByTenantIdAndTeacherId(1L, 9L)).thenReturn(List.of());
+        when(compRepo.findByTeacherId(9L)).thenReturn(Optional.empty());
+        when(payrollServiceProvider.getObject()).thenReturn(payrollService);
+        when(payrollService.computeTheoreticalMonthlyPay(eq(9L), anyInt(), anyInt())).thenReturn(
+                new PayrollService.TheoreticalMonthlyPay(9L, 2026, 10, "HOURLY", 3600, 0,
+                        new BigDecimal("20000"), BigDecimal.ZERO, BigDecimal.ZERO,
+                        new BigDecimal("1200000"), new BigDecimal("1200000")));
+        when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        SalaryAdvance a = service.grant(new GrantCommand(1L, EmployeeType.TEACHER, 9L, "Mamadou Diallo",
+                new BigDecimal("300000"), "Avance urgente", null));
+
+        assertThat(a.getRemainingBalance()).isEqualByComparingTo("300000");
     }
 
     @Test

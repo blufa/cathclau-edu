@@ -16,10 +16,12 @@ import gn.lacaeducation.iam.UserPublicInfoProvider;
 import gn.lacaeducation.staff.EmployeePublicInfoProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
@@ -41,6 +43,11 @@ public class SalaryAdvanceService implements SalaryAdvanceUseCase {
     private final EmployeePublicInfoProvider employeeProvider;
     private final SalaryAdvanceVoucherPdfGenerator pdfGenerator;
     private final UserPublicInfoProvider userPublicInfoProvider;
+    // ObjectProvider (pas une injection directe) : casse le cycle Spring — PayrollService dépend déjà
+    // de SalaryAdvanceUseCase pour la retenue sur paie (voir applyDeduction). Un simple @Lazy sur le
+    // champ ne suffit pas ici : @RequiredArgsConstructor (Lombok) ne recopie pas l'annotation sur le
+    // paramètre du constructeur généré, donc Spring ne la voit jamais au point d'injection.
+    private final ObjectProvider<PayrollService> payrollServiceProvider;
 
     @Override
     public SalaryAdvance grant(GrantCommand c) {
@@ -90,11 +97,21 @@ public class SalaryAdvanceService implements SalaryAdvanceUseCase {
             if (net != null && net.signum() > 0) return net;
         }
         if (type == EmployeeType.TEACHER) {
-            return compRepo.findByTeacherId(teacherId)
+            BigDecimal fixed = compRepo.findByTeacherId(teacherId)
                     .filter(c -> c.getPayMode() == PayMode.FIXED)
                     .map(gn.lacaeducation.payroll.domain.TeacherCompensation::getFixedSalary)
                     .filter(v -> v != null && v.signum() > 0)
                     .orElse(null);
+            if (fixed != null) return fixed;
+            // Enseignant à l'heure SANS aucune fiche de paie encore générée cette période (ex. séances
+            // du cahier de textes pas encore créées par le directeur des études) : le plafond se base
+            // alors sur l'estimation théorique de l'emploi du temps (heures dues × tarif), jamais sur 0
+            // — §retour comptable urgence : "il refuse l'avance" alors que l'enseignant a bien des
+            // heures dues ce mois, juste pas encore réalisées/saisies.
+            LocalDate now = LocalDate.now();
+            BigDecimal theoretical = payrollServiceProvider.getObject()
+                    .computeTheoreticalMonthlyPay(teacherId, now.getYear(), now.getMonthValue()).grossPay();
+            return theoretical != null && theoretical.signum() > 0 ? theoretical : null;
         }
         return employeeProvider.findEmployee(teacherId)
                 .map(EmployeePublicInfoProvider.EmployeeInfo::baseSalary)
