@@ -61,6 +61,7 @@ class PayrollServiceTest {
     @Mock CalendarDataProvider calendar;
     @Mock org.springframework.context.ApplicationEventPublisher eventPublisher;
     @Mock gn.lacaeducation.iam.UserPublicInfoProvider userPublicInfoProvider;
+    @Mock gn.lacaeducation.staff.TeacherPublicInfoProvider teacherPublicInfoProvider;
 
     @InjectMocks PayrollService payrollService;
 
@@ -231,6 +232,42 @@ class PayrollServiceTest {
 
         assertThat(mass.teacherCount()).isEqualTo(3);
         assertThat(mass.monthlyPayroll()).isEqualByComparingTo("900000");
+    }
+
+    @Test
+    void teacherPayrollMass_teacherWithoutCompensationButWithRemunerationOnHisOwnRecord_stillCounted() {
+        // §retour utilisateur : "même si il n'est pas affecté à une matière et une classe, le cumul de
+        // tout le salaire doit venir" — un enseignant jamais passé par la génération d'une fiche de
+        // paie (donc sans TeacherCompensation) mais dont le salaire mensuel a été saisi à la création
+        // (Teacher#remunerationType/Rate) doit déjà compter dans la masse salariale, même SANS aucune
+        // classe/matière assignée (ni classSubjects, ni headTeacher — resolveCycleBucket tombe donc sur
+        // Secondaire par défaut, mais le montant ne doit jamais disparaître pour autant).
+        when(compRepo.findByTenantId(9L)).thenReturn(List.of());
+        when(academics.findClassesByHeadTeacher(4L)).thenReturn(List.of());
+        when(academics.findClassSubjectsByTeacher(4L)).thenReturn(List.of());
+        when(teacherPublicInfoProvider.listTeachers(9L)).thenReturn(List.of(
+                new gn.lacaeducation.staff.TeacherPublicInfoProvider.TeacherInfo(
+                        4L, "Nouveau", "Moniteur", "T-4", null, null, null, null, "MENSUEL", new BigDecimal("450000"))));
+
+        PayrollService.TeacherPayrollMass mass = payrollService.teacherPayrollMass(9L, 2026, 3, java.util.Set.of(4L));
+
+        assertThat(mass.monthlyPayroll()).isEqualByComparingTo("450000");
+        assertThat(mass.secondaryMonthlyPayroll()).isEqualByComparingTo("450000");
+    }
+
+    @Test
+    void teacherPayrollMass_teacherWithoutCompensationAndHourlyType_contributesZero() {
+        // HORAIRE sans TeacherCompensation : aucun taux normal/examen séparé connu, donc pas de montant
+        // sûr à ajouter (contrairement à MENSUEL/FORFAIT, un seul taux global) — reste à 0 jusqu'à ce
+        // qu'une vraie TeacherCompensation soit configurée, pas de régression sur ce cas.
+        when(compRepo.findByTenantId(9L)).thenReturn(List.of());
+        when(teacherPublicInfoProvider.listTeachers(9L)).thenReturn(List.of(
+                new gn.lacaeducation.staff.TeacherPublicInfoProvider.TeacherInfo(
+                        5L, "Nouveau", "Horaire", "T-5", null, null, null, null, "HORAIRE", new BigDecimal("5000"))));
+
+        PayrollService.TeacherPayrollMass mass = payrollService.teacherPayrollMass(9L, 2026, 3, java.util.Set.of(5L));
+
+        assertThat(mass.monthlyPayroll()).isEqualByComparingTo("0");
     }
 
     @Test
