@@ -709,15 +709,18 @@ public class InvoiceService implements InvoiceUseCase {
         if (alreadyStartedPaying || outstanding.size() < 2) {
             return outstanding;
         }
-        // Une tranche déjà couverte par une exonération/avantage personnel (discountSource non nul,
-        // décidé une fois pour toutes par le comptable à l'inscription — voir computeApplicableDiscount)
-        // ne doit JAMAIS être touchée ici : `applyDiscount` REMPLACE la remise existante au lieu de s'y
-        // ajouter, donc lui appliquer la remise paiement anticipé effacerait purement et simplement
-        // l'exonération (bug vécu en vrai : une exonération 100% "prise en charge totale" remplacée par
-        // seulement -5%, l'élève se retrouvant à devoir payer 95% du tarif plein). Base de calcul et
-        // application restreintes aux tranches encore au tarif plein.
+        // Une tranche portant déjà une VRAIE remise (discountAmount > 0, peu importe sa source —
+        // exonération, avantage personnel à un % réel) ne doit JAMAIS être touchée ici : `applyDiscount`
+        // REMPLACE la remise existante au lieu de s'y ajouter, donc lui appliquer la remise paiement
+        // anticipé effacerait purement et simplement l'exonération (bug vécu en vrai : une exonération
+        // 100% "prise en charge totale" remplacée par seulement -5%, l'élève se retrouvant à devoir
+        // payer 95% du tarif plein). En revanche, un enfant de personnel SANS aucune remise réelle (0%,
+        // simple marqueur discountSource=STAFF_BENEFIT pour le suivi de la retenue sur salaire, voir
+        // computeApplicableDiscount) n'a RIEN à perdre : la remise paiement anticipé doit pouvoir
+        // s'appliquer par-dessus (§retour comptable : "si il choisit année complète les 5% ne
+        // s'applique pas" — reproduit et confirmé contre la base réelle pour un enfant de personnel).
         List<Invoice> eligible = outstanding.stream()
-                .filter(i -> i.getDiscountSource() == null)
+                .filter(i -> i.getDiscountAmount() == null || i.getDiscountAmount().signum() == 0)
                 .toList();
         if (eligible.size() < 2) {
             return outstanding;
@@ -737,7 +740,7 @@ public class InvoiceService implements InvoiceUseCase {
                 .min(outstandingTotal);
         // Le taux est intégré au libellé (pas seulement le nom de la règle) pour que le pourcentage de
         // remise reste visible partout où discountReason est affiché (reçu, facture, liste des élèves).
-        String reason = "Remise paiement anticipé : " + discount.ruleLabel()
+        String reason = EARLY_PAYMENT_DISCOUNT_REASON_PREFIX + discount.ruleLabel()
                 + " (" + discount.percentage().stripTrailingZeros().toPlainString() + "%)";
         java.util.Map<Long, Invoice> updatedById = new java.util.LinkedHashMap<>();
         BigDecimal allocated = BigDecimal.ZERO;
@@ -760,6 +763,19 @@ public class InvoiceService implements InvoiceUseCase {
         return outstanding.stream().map(i -> updatedById.getOrDefault(i.getId(), i)).toList();
     }
 
+    /** Préfixe exact du motif posé par {@link #applyEarlyPaymentDiscount} — seul moyen fiable de
+     * reconnaître CETTE remise précise au moment de l'annuler (contrairement à {@code discountSource},
+     * qui reste STAFF_BENEFIT même après qu'une remise paiement anticipé s'y soit ajoutée par-dessus,
+     * voir javadoc de {@link #applyEarlyPaymentDiscount}). */
+    private static final String EARLY_PAYMENT_DISCOUNT_REASON_PREFIX = "Remise paiement anticipé : ";
+
+    /** Motif restauré pour un enfant de personnel SANS remise réelle (0%, simple marqueur pour le
+     * prélèvement salarial) après annulation d'une remise paiement anticipé qui l'avait temporairement
+     * recouvert — même texte exact que {@code computeApplicableDiscount}, pour ne jamais laisser le
+     * motif vide alors que discountSource reste STAFF_BENEFIT. */
+    private static final String STAFF_BENEFIT_ZERO_PERCENT_REASON =
+            "Avantage personnel : enfant du personnel — frais prélevés sur le salaire";
+
     @Override
     public List<Invoice> removeEarlyPaymentDiscount(Long studentId, Long feeId) {
         List<Invoice> outstanding = repo.findByStudentId(studentId).stream()
@@ -767,13 +783,18 @@ public class InvoiceService implements InvoiceUseCase {
                 .toList();
         List<Invoice> reverted = new ArrayList<>();
         for (Invoice inv : outstanding) {
-            // Même garde que dans applyEarlyPaymentDiscount : ne jamais effacer la remise d'une tranche
-            // exonérée/avantage personnel — sa remise ne vient jamais de ce mécanisme, l'annuler ici
-            // supprimerait l'exonération elle-même au lieu de simplement retirer -5%.
-            boolean fromThisMechanism = inv.getDiscountSource() == null
-                    && inv.getDiscountAmount() != null && inv.getDiscountAmount().signum() > 0;
+            // Reconnu par le TEXTE du motif (pas par discountSource, qui reste STAFF_BENEFIT même pour
+            // une facture recouverte par la remise paiement anticipé — voir applyEarlyPaymentDiscount) :
+            // n'annule jamais une vraie exonération/avantage personnel qui ne vient pas de ce mécanisme.
+            boolean fromThisMechanism = inv.getDiscountReason() != null
+                    && inv.getDiscountReason().startsWith(EARLY_PAYMENT_DISCOUNT_REASON_PREFIX);
             if (fromThisMechanism) {
-                reverted.add(applyDiscount(inv.getId(), BigDecimal.ZERO, null));
+                // Un enfant de personnel garde son marqueur STAFF_BENEFIT (texte restauré) une fois la
+                // remise paiement anticipé retirée — jamais un motif vide alors que discountSource
+                // reste STAFF_BENEFIT (incohérent à l'affichage).
+                String restoredReason = inv.getDiscountSource() == gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT
+                        ? STAFF_BENEFIT_ZERO_PERCENT_REASON : null;
+                reverted.add(applyDiscount(inv.getId(), BigDecimal.ZERO, restoredReason));
             } else {
                 reverted.add(inv);
             }
