@@ -101,6 +101,19 @@ public interface InvoiceUseCase {
      * qui ne vise qu'une facture précise. */
     void setAllStaffBenefitInvoicesExcluded(Long studentId, boolean excluded);
 
+    /** Rattrapage ponctuel (§retour comptable, "ces factures ne se grisent pas pour retenue sur
+     * salaire") : retague {@code STAFF_BENEFIT} toute facture encore due (UNPAID/PARTIAL), de QUELQUE
+     * type que ce soit (inscription, réinscription, annexe, mensualité...), d'un enfant de personnel
+     * qui n'a actuellement AUCUNE remise ({@code discountSource == null}) — exactement la même règle
+     * que {@link gn.lacaeducation.billing.application.service.InvoiceService} applique déjà à la
+     * CRÉATION d'une facture, ici appliquée rétroactivement aux factures émises avant qu'elle existe
+     * (ou avant que le lien parent↔personnel ait été établi), qu'aucune action ne retouche jamais
+     * automatiquement après coup. Idempotent et sûr à relancer : ne touche jamais une facture qui a
+     * déjà une remise (même 0% déjà taguée), ni une facture payée/annulée. */
+    record StaffBenefitBackfillResult(int invoicesUpdated, java.util.List<Long> invoiceIds) {}
+
+    StaffBenefitBackfillResult backfillStaffBenefitTagging(Long tenantId);
+
     /** {@code staffChild} : au moins un parent de cet élève est personnel de l'école (affiche ou non le
      * bouton retirer/réintégrer sur les écrans de facturation — fiche élève, modal d'encaissement).
      * {@code excluded} : cet élève est actuellement exclu de la retenue (réglage par enfant OU global
