@@ -108,9 +108,10 @@ class PayrollServiceTest {
                 .payMode(PayMode.FIXED).hourlyRateNormal(BigDecimal.ZERO).hourlyRateExam(BigDecimal.ZERO)
                 .fixedSalary(new BigDecimal("700000")).build();
         when(compRepo.findByTenantId(9L)).thenReturn(List.of(maternelleTeacher));
-        when(academics.findClassesByHeadTeacher(1L)).thenReturn(List.of(
-                new gn.lacaeducation.academics.ClassPublicInfo(300L, "Petite Section", "Maternelle", "NORMALE", null, 1L, "MATERNELLE")));
-        when(academics.findClassSubjectsByTeacher(1L)).thenReturn(List.of());
+        // §retour utilisateur : le cycle se résout depuis les "Niveaux enseignés" (checklist
+        // déclarative sur la fiche enseignant), jamais depuis ses classes/matières assignées.
+        when(teacherPublicInfoProvider.findAssignedLevelIds(1L)).thenReturn(List.of(300L));
+        when(academics.findLevelCycle(300L)).thenReturn(Optional.of("MATERNELLE"));
 
         PayrollService.TeacherPayrollMass mass = payrollService.teacherPayrollMass(9L, 2026, 3);
 
@@ -123,14 +124,11 @@ class PayrollServiceTest {
     void resolveTeacherCycles_returnsOneBucketPerRequestedTeacher() {
         // Retour utilisateur : générer la paie "par niveau" (colonne Cycle sur Rémunération & heures,
         // sélection rapide Maternelle/Primaire/Secondaire à la génération en lot).
-        when(academics.findClassesByHeadTeacher(1L)).thenReturn(List.of(
-                new gn.lacaeducation.academics.ClassPublicInfo(300L, "Petite Section", "Maternelle", "NORMALE", null, 1L, "MATERNELLE")));
-        when(academics.findClassSubjectsByTeacher(1L)).thenReturn(List.of());
-        when(academics.findClassesByHeadTeacher(2L)).thenReturn(List.of(
-                new gn.lacaeducation.academics.ClassPublicInfo(100L, "CP1", "CP1", "NORMALE", null, 2L, "PRIMAIRE")));
-        when(academics.findClassSubjectsByTeacher(2L)).thenReturn(List.of());
-        when(academics.findClassesByHeadTeacher(3L)).thenReturn(List.of());
-        when(academics.findClassSubjectsByTeacher(3L)).thenReturn(List.of());
+        when(teacherPublicInfoProvider.findAssignedLevelIds(1L)).thenReturn(List.of(300L));
+        when(academics.findLevelCycle(300L)).thenReturn(Optional.of("MATERNELLE"));
+        when(teacherPublicInfoProvider.findAssignedLevelIds(2L)).thenReturn(List.of(100L));
+        when(academics.findLevelCycle(100L)).thenReturn(Optional.of("PRIMAIRE"));
+        when(teacherPublicInfoProvider.findAssignedLevelIds(3L)).thenReturn(List.of());
 
         java.util.Map<Long, String> cycles = payrollService.resolveTeacherCycles(List.of(1L, 2L, 3L));
 
@@ -138,19 +136,15 @@ class PayrollServiceTest {
     }
 
     @Test
-    void resolveTeacherCycles_teachesBothPrimaryAndSecondaryInEqualCount_prefersPrimary() {
-        // Incident réel (§retour comptable : "quand je filtre par cycle rien ne vient") : un enseignant
-        // intervenant dans UNE classe de primaire ET UNE classe de secondaire (effectif à égalité,
-        // 1 contre 1) retombait systématiquement sur Secondaire — invisible du filtre "Primaire" du
-        // modal "Générer les fiches de paie en lot", alors qu'il a bien des heures de primaire à payer.
-        when(academics.findClassesByHeadTeacher(1L)).thenReturn(List.of());
-        when(academics.findClassSubjectsByTeacher(1L)).thenReturn(List.of(
-                new gn.lacaeducation.academics.ClassSubjectPublicInfo(100L, 10L, BigDecimal.ONE, 1L, "FR1"),
-                new gn.lacaeducation.academics.ClassSubjectPublicInfo(200L, 20L, BigDecimal.ONE, 1L, "HI2")));
-        when(academics.findClass(100L)).thenReturn(Optional.of(
-                new gn.lacaeducation.academics.ClassPublicInfo(100L, "CM1", "CM1", "NORMALE", null, null, "PRIMAIRE")));
-        when(academics.findClass(200L)).thenReturn(Optional.of(
-                new gn.lacaeducation.academics.ClassPublicInfo(200L, "8ème A", "8ème A", "NORMALE", null, null, "COLLEGE")));
+    void resolveTeacherCycles_declaresBothPrimaryAndSecondaryLevels_prefersPrimary() {
+        // Incident réel (§retour comptable : "quand je filtre par cycle rien ne vient", puis "base-toi
+        // sur le niveau enseigné, pas sur les matières") : un enseignant déclarant à la fois un niveau
+        // de primaire ET un niveau de secondaire dans sa checklist "Niveaux enseignés" doit ressortir
+        // Primaire (présence simple, jamais un décompte majoritaire) — jamais invisible du filtre
+        // "Primaire" du modal "Générer les fiches de paie en lot".
+        when(teacherPublicInfoProvider.findAssignedLevelIds(1L)).thenReturn(List.of(100L, 200L));
+        when(academics.findLevelCycle(100L)).thenReturn(Optional.of("PRIMAIRE"));
+        when(academics.findLevelCycle(200L)).thenReturn(Optional.of("COLLEGE"));
 
         java.util.Map<Long, String> cycles = payrollService.resolveTeacherCycles(List.of(1L));
 
@@ -168,14 +162,10 @@ class PayrollServiceTest {
                 .payMode(PayMode.FIXED).hourlyRateNormal(BigDecimal.ZERO).hourlyRateExam(BigDecimal.ZERO)
                 .fixedSalary(new BigDecimal("1200000")).build();
         when(compRepo.findByTenantId(9L)).thenReturn(List.of(primaryTeacher, secondaryTeacher));
-        when(academics.findClassesByHeadTeacher(1L)).thenReturn(List.of(
-                new gn.lacaeducation.academics.ClassPublicInfo(100L, "CP1", "CP1", "NORMALE", null, 1L, "PRIMAIRE")));
-        when(academics.findClassSubjectsByTeacher(1L)).thenReturn(List.of());
-        when(academics.findClassesByHeadTeacher(2L)).thenReturn(List.of());
-        when(academics.findClassSubjectsByTeacher(2L)).thenReturn(List.of(
-                new gn.lacaeducation.academics.ClassSubjectPublicInfo(200L, 5L, BigDecimal.ONE, 2L, "M1")));
-        when(academics.findClass(200L)).thenReturn(java.util.Optional.of(
-                new gn.lacaeducation.academics.ClassPublicInfo(200L, "6ème A", "6ème", "NORMALE", null, null, "COLLEGE")));
+        when(teacherPublicInfoProvider.findAssignedLevelIds(1L)).thenReturn(List.of(100L));
+        when(academics.findLevelCycle(100L)).thenReturn(Optional.of("PRIMAIRE"));
+        when(teacherPublicInfoProvider.findAssignedLevelIds(2L)).thenReturn(List.of(200L));
+        when(academics.findLevelCycle(200L)).thenReturn(Optional.of("COLLEGE"));
 
         PayrollService.TeacherPayrollMass mass = payrollService.teacherPayrollMass(9L, 2026, 3);
 
@@ -240,11 +230,9 @@ class PayrollServiceTest {
         // tout le salaire doit venir" — un enseignant jamais passé par la génération d'une fiche de
         // paie (donc sans TeacherCompensation) mais dont le salaire mensuel a été saisi à la création
         // (Teacher#remunerationType/Rate) doit déjà compter dans la masse salariale, même SANS aucune
-        // classe/matière assignée (ni classSubjects, ni headTeacher — resolveCycleBucket tombe donc sur
-        // Secondaire par défaut, mais le montant ne doit jamais disparaître pour autant).
+        // niveau enseigné déclaré (resolveCycleBucket tombe donc sur Secondaire par défaut, mais le
+        // montant ne doit jamais disparaître pour autant).
         when(compRepo.findByTenantId(9L)).thenReturn(List.of());
-        when(academics.findClassesByHeadTeacher(4L)).thenReturn(List.of());
-        when(academics.findClassSubjectsByTeacher(4L)).thenReturn(List.of());
         when(teacherPublicInfoProvider.listTeachers(9L)).thenReturn(List.of(
                 new gn.lacaeducation.staff.TeacherPublicInfoProvider.TeacherInfo(
                         4L, "Nouveau", "Moniteur", "T-4", null, null, null, null, "MENSUEL", new BigDecimal("450000"))));

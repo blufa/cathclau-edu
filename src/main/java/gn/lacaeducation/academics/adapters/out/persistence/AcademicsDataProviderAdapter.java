@@ -104,6 +104,14 @@ public class AcademicsDataProviderAdapter implements AcademicsDataProvider {
     }
 
     @Override
+    public Optional<String> findLevelCycle(Long levelId) {
+        if (levelId == null) return Optional.empty();
+        return niveauRepo.findById(levelId)
+                .map(NiveauJpaEntity::getCycle)
+                .map(Enum::name);
+    }
+
+    @Override
     public List<ClassPublicInfo> findClassesByHeadTeacher(Long teacherId) {
         return classeRepo.findByHeadTeacherId(teacherId).stream()
                 .map(this::toClassPublicInfo)
