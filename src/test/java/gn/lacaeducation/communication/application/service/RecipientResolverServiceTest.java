@@ -103,7 +103,7 @@ class RecipientResolverServiceTest {
     @Test
     void allTeachers_usesTeacherProvider() {
         when(teacherPublicInfoProvider.listTeachers(1L)).thenReturn(List.of(
-                new TeacherInfo(20L, "Mariam", "Camara", "ENS-1", "Maths", "mariam@ecole.gn", "623000099", null)));
+                new TeacherInfo(20L, "Mariam", "Camara", "ENS-1", "Maths", "mariam@ecole.gn", "623000099", null, null, null)));
 
         List<RecipientTarget> targets = resolver.resolve(1L, BroadcastAudience.ALL_TEACHERS, null, null, CommunicationChannel.SMS);
 
@@ -113,7 +113,7 @@ class RecipientResolverServiceTest {
     @Test
     void allStaff_combinesTeachersAndActiveEmployees() {
         when(teacherPublicInfoProvider.listTeachers(1L)).thenReturn(List.of(
-                new TeacherInfo(20L, "Mariam", "Camara", "ENS-1", "Maths", "mariam@ecole.gn", "623000099", null)));
+                new TeacherInfo(20L, "Mariam", "Camara", "ENS-1", "Maths", "mariam@ecole.gn", "623000099", null, null, null)));
         when(employeePublicInfoProvider.listEmployees(1L)).thenReturn(List.of(
                 new EmployeeInfo(30L, "Aissatou Bah", "COMPTABLE", BigDecimal.TEN, true, "623000088", null, null, null),
                 new EmployeeInfo(31L, "Ancien Employé", "GARDIEN", BigDecimal.ONE, false, "623000077", null, null, null)));
@@ -130,10 +130,10 @@ class RecipientResolverServiceTest {
         when(studentDataProvider.findAllParentsWithPlatformAccess(1L)).thenReturn(List.of(
                 new ParentPublicInfo(10L, "Awa", "Diallo", null, "623000001")));
         when(teacherPublicInfoProvider.listTeachers(1L)).thenReturn(List.of(
-                new TeacherInfo(20L, "Mariam", "Camara", "ENS-1", "Maths", "mariam@ecole.gn", "623000099", null),
+                new TeacherInfo(20L, "Mariam", "Camara", "ENS-1", "Maths", "mariam@ecole.gn", "623000099", null, null, null),
                 // Un enseignant qui a aussi le même numéro qu'un parent (ex. l'un des deux) ne doit
                 // apparaître qu'une seule fois dans le résultat final.
-                new TeacherInfo(21L, "Doublon", "Numero", "ENS-2", "Français", null, "623000001", null)));
+                new TeacherInfo(21L, "Doublon", "Numero", "ENS-2", "Français", null, "623000001", null, null, null)));
         when(employeePublicInfoProvider.listEmployees(1L)).thenReturn(List.of(
                 new EmployeeInfo(30L, "Aissatou Bah", "COMPTABLE", BigDecimal.TEN, true, "623000088", null, null, null)));
 

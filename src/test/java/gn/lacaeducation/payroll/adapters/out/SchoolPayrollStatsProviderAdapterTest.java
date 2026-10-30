@@ -63,7 +63,7 @@ class SchoolPayrollStatsProviderAdapterTest {
     void teacherSalaries_newTeacherWithoutCompensation_appearsWithZero() {
         when(payrollService.teacherSalaryBreakdown(10L, 2026, 11, 9)).thenReturn(List.of());
         when(teacherPublicInfoProvider.listTeachers(10L)).thenReturn(List.of(
-                new TeacherInfo(42L, "Fatoumata", "Bah", null, null, null, null, null)));
+                new TeacherInfo(42L, "Fatoumata", "Bah", null, null, null, null, null, null, null)));
 
         List<TeacherSalary> result = adapter.teacherSalaries(10L, 2026, 11, 9);
 
@@ -80,7 +80,7 @@ class SchoolPayrollStatsProviderAdapterTest {
         when(payrollService.teacherSalaryBreakdown(10L, 2026, 11, 9)).thenReturn(List.of(
                 new TeacherSalaryBreakdown(7L, new BigDecimal("800000"), new BigDecimal("7200000"))));
         when(teacherPublicInfoProvider.listTeachers(10L)).thenReturn(List.of(
-                new TeacherInfo(7L, "Mamadou", "Diallo", null, null, null, null, null)));
+                new TeacherInfo(7L, "Mamadou", "Diallo", null, null, null, null, null, null, null)));
 
         List<TeacherSalary> result = adapter.teacherSalaries(10L, 2026, 11, 9);
 
@@ -94,7 +94,7 @@ class SchoolPayrollStatsProviderAdapterTest {
     @Test
     void payrollMassSummary_passesCurrentTeacherIdsToIgnoreOrphanedCompensation() {
         when(teacherPublicInfoProvider.listTeachers(10L)).thenReturn(List.of(
-                new TeacherInfo(2L, "Mamadou", "Diallo", null, null, null, null, null)));
+                new TeacherInfo(2L, "Mamadou", "Diallo", null, null, null, null, null, null, null)));
         when(payrollService.teacherPayrollMass(eq(10L), eq(2026), eq(3), any()))
                 .thenReturn(new PayrollService.TeacherPayrollMass(BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("900000"), 1,
                         BigDecimal.ZERO, new BigDecimal("900000"), BigDecimal.ZERO));
