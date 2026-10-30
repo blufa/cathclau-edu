@@ -11,4 +11,5 @@ public interface StudentCardRepository {
     Optional<StudentCard> findByStudentIdAndStatus(Long studentId, CardStatus status);
     Optional<StudentCard> findByQrPayload(String qrPayload);
     long countByTenantId(Long tenantId);
+    void deleteById(Long id);
 }

@@ -133,7 +133,7 @@ public class TransportService {
     /** Élèves ayant réglé le transport pour {@code month} (§retour comptable : "par défaut, afficher
      * ceux qui ont payé le mois en cours" + filtre par mois sur la liste des abonnés). */
     public java.util.Set<Long> studentIdsPaidForMonth(Long tenantId, java.time.YearMonth month) {
-        return invoiceQueryPort.findStudentIdsPaidForMonth(tenantId, month.atDay(1), month.atEndOfMonth());
+        return invoiceQueryPort.findStudentIdsPaidForMonth(tenantId, month.toString());
     }
 
     private TransportRoute loadRoute(Long id) {
