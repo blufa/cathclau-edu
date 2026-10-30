@@ -637,10 +637,10 @@ class InvoiceServiceTest {
         // Régression : un parent coche "toute la scolarité" (remise appliquée), puis décoche un mois —
         // la remise ne doit plus rester acquise, les factures doivent revenir à leur montant initial.
         Invoice discounted1 = Invoice.builder().id(1L).feeId(3L).totalAmount(new BigDecimal("300.00"))
-                .paidAmount(BigDecimal.ZERO).discountAmount(new BigDecimal("30.00")).discountReason("Paiement annuel (10%)")
+                .paidAmount(BigDecimal.ZERO).discountAmount(new BigDecimal("30.00")).discountReason("Remise paiement anticipé : Paiement annuel (10%)")
                 .status(InvoiceStatus.UNPAID).build();
         Invoice discounted2 = Invoice.builder().id(2L).feeId(3L).totalAmount(new BigDecimal("300.00"))
-                .paidAmount(BigDecimal.ZERO).discountAmount(new BigDecimal("30.00")).discountReason("Paiement annuel (10%)")
+                .paidAmount(BigDecimal.ZERO).discountAmount(new BigDecimal("30.00")).discountReason("Remise paiement anticipé : Paiement annuel (10%)")
                 .status(InvoiceStatus.UNPAID).build();
         when(repo.findByStudentId(7L)).thenReturn(java.util.List.of(discounted1, discounted2));
         when(repo.findById(1L)).thenReturn(Optional.of(discounted1));
@@ -735,6 +735,72 @@ class InvoiceServiceTest {
         BigDecimal discountOnPlain = updated.stream().filter(i -> i.getId() != 1L)
                 .map(Invoice::getDiscountAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
         assertThat(discountOnPlain).isEqualByComparingTo("60.00");
+    }
+
+    @Test
+    void applyEarlyPaymentDiscount_appliesOnStaffBenefitTaggedInvoices_whenActualDiscountIsZero() {
+        // Régression réelle (§retour comptable : "si il choisit année complète les 5% ne s'applique
+        // pas") : un enfant de personnel SANS remise réelle (0%, discountSource=STAFF_BENEFIT posé
+        // juste pour le suivi de la retenue sur salaire, voir computeApplicableDiscount) n'a RIEN à
+        // perdre — contrairement à une vraie exonération (discountAmount > 0), la remise paiement
+        // anticipé doit pouvoir s'appliquer par-dessus. Confirmé contre la base réelle (tenant 4,
+        // enfant d'enseignant) : la remise ne s'appliquait jamais pour ces enfants avant ce correctif.
+        gn.lacaeducation.billing.domain.SchoolFee fee = gn.lacaeducation.billing.domain.SchoolFee.builder()
+                .id(3L).tenantId(1L).type(gn.lacaeducation.billing.domain.FeeType.MONTHLY).build();
+        when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(fee));
+        Invoice staffBenefit1 = Invoice.builder().id(1L).feeId(3L).totalAmount(new BigDecimal("300.00"))
+                .paidAmount(BigDecimal.ZERO).discountAmount(BigDecimal.ZERO)
+                .discountReason("Avantage personnel : enfant du personnel — frais prélevés sur le salaire")
+                .discountSource(gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT)
+                .remainingBalance(new BigDecimal("300.00")).status(InvoiceStatus.UNPAID).build();
+        Invoice staffBenefit2 = Invoice.builder().id(2L).feeId(3L).totalAmount(new BigDecimal("300.00"))
+                .paidAmount(BigDecimal.ZERO).discountAmount(BigDecimal.ZERO)
+                .discountReason("Avantage personnel : enfant du personnel — frais prélevés sur le salaire")
+                .discountSource(gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT)
+                .remainingBalance(new BigDecimal("300.00")).status(InvoiceStatus.UNPAID).build();
+        when(repo.findByStudentId(7L)).thenReturn(java.util.List.of(staffBenefit1, staffBenefit2));
+        when(repo.findById(1L)).thenReturn(Optional.of(staffBenefit1));
+        when(repo.findById(2L)).thenReturn(Optional.of(staffBenefit2));
+        when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(earlyPaymentDiscountUseCase.computeApplicable(1L, gn.lacaeducation.billing.domain.FeeType.MONTHLY))
+                .thenReturn(new gn.lacaeducation.billing.application.port.in.EarlyPaymentDiscountUseCase.ApplicableDiscount(
+                        new BigDecimal("5"), "Scolarite annuelle"));
+
+        var updated = service().applyEarlyPaymentDiscount(7L, 3L);
+
+        assertThat(updated).hasSize(2);
+        // Base annuelle = 600 → remise 5% = 30, répartie sur les deux tranches.
+        BigDecimal totalDiscount = updated.stream().map(Invoice::getDiscountAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertThat(totalDiscount).isEqualByComparingTo("30.00");
+        // discountSource reste STAFF_BENEFIT (jamais écrasé) — le prélèvement salarial/le verrouillage
+        // du guichet continuent de fonctionner normalement sur ces factures.
+        assertThat(updated).extracting(Invoice::getDiscountSource)
+                .allMatch(s -> s == gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT);
+        assertThat(updated).extracting(Invoice::getDiscountReason)
+                .allMatch(r -> r.startsWith("Remise paiement anticipé : "));
+    }
+
+    @Test
+    void removeEarlyPaymentDiscount_restoresStaffBenefitReason_whenDiscountSourceIsStaffBenefit() {
+        // Symétrique du test ci-dessus : décocher "toute la scolarité" doit retirer les -5% SANS
+        // laisser un motif vide alors que discountSource reste STAFF_BENEFIT (incohérent à
+        // l'affichage) — le motif d'origine "Avantage personnel..." doit être restauré.
+        Invoice staffBenefit = Invoice.builder().id(1L).feeId(3L).totalAmount(new BigDecimal("300.00"))
+                .paidAmount(BigDecimal.ZERO).discountAmount(new BigDecimal("15.00"))
+                .discountReason("Remise paiement anticipé : Scolarite annuelle (5%)")
+                .discountSource(gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT)
+                .status(InvoiceStatus.UNPAID).build();
+        when(repo.findByStudentId(7L)).thenReturn(java.util.List.of(staffBenefit));
+        when(repo.findById(1L)).thenReturn(Optional.of(staffBenefit));
+        when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        var reverted = service().removeEarlyPaymentDiscount(7L, 3L);
+
+        assertThat(reverted).hasSize(1);
+        assertThat(reverted.get(0).getDiscountAmount()).isEqualByComparingTo("0");
+        assertThat(reverted.get(0).getDiscountReason())
+                .isEqualTo("Avantage personnel : enfant du personnel — frais prélevés sur le salaire");
+        assertThat(reverted.get(0).getDiscountSource()).isEqualTo(gn.lacaeducation.billing.domain.DiscountSource.STAFF_BENEFIT);
     }
 
     @Test
