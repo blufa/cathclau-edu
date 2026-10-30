@@ -30,4 +30,11 @@ public interface TeacherPublicInfoProvider {
 
     /** Compte utilisateur lié à une fiche enseignant (pour la paie : retrouver ses enfants scolarisés). */
     Optional<Long> findUserIdByTeacherId(Long teacherId);
+
+    /** Niveaux (ids) où cet enseignant est déclaré habilité à enseigner — checklist "Niveaux enseignés"
+     * de sa fiche (module staff), déclaration directe et volontaire, DISTINCTE des classes/matières
+     * réellement assignées (§retour utilisateur : "base-toi sur le niveau enseigné, pas sur les
+     * matières" — pour résoudre son cycle Maternelle/Primaire/Secondaire côté paie, voir
+     * PayrollService#resolveCycleBucket). Vide si aucun niveau déclaré. */
+    List<Long> findAssignedLevelIds(Long teacherId);
 }

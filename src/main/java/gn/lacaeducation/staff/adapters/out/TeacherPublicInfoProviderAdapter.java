@@ -1,6 +1,7 @@
 package gn.lacaeducation.staff.adapters.out;
 
 import gn.lacaeducation.staff.TeacherPublicInfoProvider;
+import gn.lacaeducation.staff.application.port.out.TeacherLevelRepository;
 import gn.lacaeducation.staff.application.port.out.TeacherRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -13,6 +14,7 @@ import java.util.Optional;
 class TeacherPublicInfoProviderAdapter implements TeacherPublicInfoProvider {
 
     private final TeacherRepository teacherRepository;
+    private final TeacherLevelRepository teacherLevelRepository;
 
     @Override
     public Optional<TeacherInfo> findTeacher(Long teacherId) {
@@ -41,5 +43,11 @@ class TeacherPublicInfoProviderAdapter implements TeacherPublicInfoProvider {
     public Optional<Long> findUserIdByTeacherId(Long teacherId) {
         if (teacherId == null) return Optional.empty();
         return teacherRepository.findById(teacherId).map(t -> t.getUserId());
+    }
+
+    @Override
+    public List<Long> findAssignedLevelIds(Long teacherId) {
+        if (teacherId == null) return List.of();
+        return teacherLevelRepository.findLevelIds(teacherId);
     }
 }

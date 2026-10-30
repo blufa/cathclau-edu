@@ -479,34 +479,25 @@ public class PayrollService {
         };
     }
 
-    /** Cycle majoritaire parmi les classes où cet enseignant intervient (professeur principal OU
-     * matière assignée) — Secondaire par défaut en cas d'égalité ou d'absence de classe résolue (même
-     * convention de repli que {@code grading.domain.CycleGroup#fromSchoolCycle} pour un cycle non
-     * renseigné). */
+    /** Cycle résolu depuis les "Niveaux enseignés" de l'enseignant (checklist déclarative sur sa
+     * fiche, module staff) — JAMAIS depuis ses classes/matières réellement assignées (§retour
+     * utilisateur : "base-toi sur le niveau enseigné, pas sur les matières"). Un moniteur maternelle/
+     * primaire sans aucune matière affectée (cas normal, voir LessonService#resolveHeadTeacherId)
+     * n'était auparavant jamais détecté comme tel (classé Secondaire par défaut, faussant "État
+     * financier du mois") : la checklist "Niveaux enseignés" est une déclaration DIRECTE et
+     * volontaire, qui ne dépend d'aucune assignation de classe. Présence simple (pas de majorité) :
+     * dès qu'un des niveaux déclarés est Maternelle (ou sinon Primaire), ce cycle l'emporte — Secondaire
+     * seulement si aucun niveau Maternelle/Primaire n'est déclaré (y compris aucun niveau du tout). */
     private TeacherCycleBucket resolveCycleBucket(Long teacherId) {
-        java.util.Set<Long> classIds = new java.util.LinkedHashSet<>();
-        academics.findClassSubjectsByTeacher(teacherId).forEach(cs -> classIds.add(cs.classId()));
-        java.util.List<gn.lacaeducation.academics.ClassPublicInfo> headClasses = academics.findClassesByHeadTeacher(teacherId);
-        java.util.Map<TeacherCycleBucket, Long> counts = new java.util.EnumMap<>(TeacherCycleBucket.class);
-        headClasses.forEach(c -> counts.merge(cycleBucketOf(c.schoolCycle()), 1L, Long::sum));
-        for (Long classId : classIds) {
-            if (headClasses.stream().anyMatch(c -> c.id().equals(classId))) continue;
-            TeacherCycleBucket bucket = academics.findClass(classId)
-                    .map(c -> cycleBucketOf(c.schoolCycle())).orElse(TeacherCycleBucket.SECONDAIRE);
-            counts.merge(bucket, 1L, Long::sum);
+        boolean maternelle = false;
+        boolean primaire = false;
+        for (Long levelId : teacherPublicInfoProvider.findAssignedLevelIds(teacherId)) {
+            TeacherCycleBucket bucket = cycleBucketOf(academics.findLevelCycle(levelId).orElse(null));
+            if (bucket == TeacherCycleBucket.MATERNELLE) maternelle = true;
+            else if (bucket == TeacherCycleBucket.PRIMAIRE) primaire = true;
         }
-        long mat = counts.getOrDefault(TeacherCycleBucket.MATERNELLE, 0L);
-        long pri = counts.getOrDefault(TeacherCycleBucket.PRIMAIRE, 0L);
-        long sec = counts.getOrDefault(TeacherCycleBucket.SECONDAIRE, 0L);
-        // Priorité Maternelle > Primaire > Secondaire en cas d'ÉGALITÉ (jamais un décompte strictement
-        // majoritaire requis pour départager) — un enseignant intervenant à la fois en primaire ET en
-        // secondaire (ex. une classe de chaque, cas réel vécu) disparaissait silencieusement du filtre
-        // "Primaire" du modal "Générer les fiches de paie en lot" : l'égalité (1 contre 1) retombait
-        // systématiquement sur Secondaire, qui n'est qu'un simple repli par défaut (aucune classe
-        // résolue du tout) et ne devrait jamais l'emporter sur une cycle plus spécifique à effectif
-        // égal (§retour comptable : "quand je filtre par cycle rien ne vient").
-        if (mat > 0 && mat >= pri && mat >= sec) return TeacherCycleBucket.MATERNELLE;
-        if (pri > 0 && pri >= sec) return TeacherCycleBucket.PRIMAIRE;
+        if (maternelle) return TeacherCycleBucket.MATERNELLE;
+        if (primaire) return TeacherCycleBucket.PRIMAIRE;
         return TeacherCycleBucket.SECONDAIRE;
     }
 
