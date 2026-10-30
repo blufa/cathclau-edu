@@ -5,10 +5,13 @@ import gn.lacaeducation.academics.ClassPublicInfo;
 import gn.lacaeducation.payroll.SchoolPayrollStatsProvider.MonthlyFinancialSummary;
 import gn.lacaeducation.payroll.SchoolPayrollStatsProvider.PayrollMassSummary;
 import gn.lacaeducation.payroll.SchoolPayrollStatsProvider.TeacherSalary;
+import gn.lacaeducation.payroll.application.port.out.PayslipRepository;
 import gn.lacaeducation.payroll.application.service.PayrollService;
 import gn.lacaeducation.payroll.application.service.PayrollService.TeacherSalaryBreakdown;
 import gn.lacaeducation.payroll.application.service.SalaryAdvanceService;
 import gn.lacaeducation.payroll.domain.EmployeeType;
+import gn.lacaeducation.payroll.domain.Payslip;
+import gn.lacaeducation.payroll.domain.PayslipStatus;
 import gn.lacaeducation.payroll.domain.SalaryAdvance;
 import gn.lacaeducation.payroll.domain.SalaryAdvanceStatus;
 import gn.lacaeducation.staff.EmployeePublicInfoProvider;
@@ -45,6 +48,7 @@ class SchoolPayrollStatsProviderAdapterTest {
     @Mock TeacherPublicInfoProvider teacherPublicInfoProvider;
     @Mock SalaryAdvanceService salaryAdvanceService;
     @Mock AcademicsDataProvider academics;
+    @Mock PayslipRepository payslipRepository;
     @InjectMocks SchoolPayrollStatsProviderAdapter adapter;
 
     @Test
@@ -134,6 +138,9 @@ class SchoolPayrollStatsProviderAdapterTest {
         when(salaryAdvanceService.findByTenant(10L)).thenReturn(List.of(inMonth, otherMonth, cancelledInMonth));
         when(academics.findClassesByHeadTeacher(5L)).thenReturn(List.of(
                 new ClassPublicInfo(1L, "CM2", "CM2", "NORMALE", null, 5L, "PRIMAIRE")));
+        when(payslipRepository.findByTenantIdAndStatus(10L, PayslipStatus.PAID)).thenReturn(List.of(
+                Payslip.builder().netSalary(new BigDecimal("500000")).paidAt(LocalDateTime.of(2026, 10, 20, 10, 0)).build(),
+                Payslip.builder().netSalary(new BigDecimal("400000")).paidAt(LocalDateTime.of(2026, 9, 20, 10, 0)).build()));
 
         MonthlyFinancialSummary summary = adapter.monthlyFinancialSummary(10L, 2026, 10);
 
@@ -141,6 +148,8 @@ class SchoolPayrollStatsProviderAdapterTest {
         assertThat(summary.secondaryTeacherPayroll()).isEqualByComparingTo("1200000");
         assertThat(summary.salaryAdvancesTotal()).isEqualByComparingTo("300000");
         assertThat(summary.total()).isEqualByComparingTo("2500000");
+        // Seule la fiche payée EN octobre 2026 compte dans le cumul — celle payée en septembre est ignorée.
+        assertThat(summary.actualPaidSalariesTotal()).isEqualByComparingTo("500000");
         assertThat(summary.advances()).hasSize(1);
         assertThat(summary.advances().get(0).employeeName()).isEqualTo("Mamadou Diallo");
         assertThat(summary.advances().get(0).className()).isEqualTo("CM2");

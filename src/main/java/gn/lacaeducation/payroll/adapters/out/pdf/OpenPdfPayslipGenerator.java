@@ -476,6 +476,11 @@ class OpenPdfPayslipGenerator implements PayslipPdfGenerator {
 
     // ── NET À PAYER : bloc plein, couleur de marque ────────────────────────────────
     private static void netBox(Document doc, Color accent, Payslip p) {
+        // Retenues (factures enfants de personnel, avances sur salaire…) supérieures au salaire : le
+        // "net" est négatif, c'est l'employé(e) qui doit la différence à l'établissement, pas l'inverse
+        // — §retour comptable : sans phrase explicite, "-114 000 GNF" nu prêtait à confusion (lu comme
+        // une dette de l'école envers l'employé(e), l'inverse de la réalité).
+        boolean owesMoney = p.getNetSalary() != null && p.getNetSalary().signum() < 0;
         Phrase amountPhrase = new Phrase();
         amountPhrase.add(new com.lowagie.text.Chunk(money(p.getNetSalary()), font(SANS_EXTRABOLD, FontFactory.HELVETICA_BOLD, 22, WHITE)));
         amountPhrase.add(new com.lowagie.text.Chunk(" GNF", font(SANS_BOLD, FontFactory.HELVETICA_BOLD, 10, new Color(233, 215, 158))));
@@ -488,8 +493,12 @@ class OpenPdfPayslipGenerator implements PayslipPdfGenerator {
         left.setBorder(0);
         left.setVerticalAlignment(Element.ALIGN_MIDDLE);
         left.setPadding(mm(4.5f));
-        left.addElement(new Paragraph("NET À PAYER", font(SANS_BOLD, FontFactory.HELVETICA_BOLD, 7, new Color(233, 215, 158))));
-        Paragraph words = new Paragraph(safe(amountInWords(p.getNetSalary()), ""), font(SANS, FontFactory.HELVETICA, 8, tintLight(accent)));
+        left.addElement(new Paragraph(owesMoney ? "SOLDE DÛ PAR L'EMPLOYÉ(E)" : "NET À PAYER",
+                font(SANS_BOLD, FontFactory.HELVETICA_BOLD, 7, new Color(233, 215, 158))));
+        String wordsText = owesMoney
+                ? "Doit " + money(p.getNetSalary().abs()) + " GNF à l'établissement."
+                : safe(amountInWords(p.getNetSalary()), "");
+        Paragraph words = new Paragraph(wordsText, font(SANS, FontFactory.HELVETICA, 8, tintLight(accent)));
         words.setSpacingBefore(0.8f);
         left.addElement(words);
         inner.addCell(left);

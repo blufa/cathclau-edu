@@ -114,4 +114,21 @@ public class TeacherCompensationController {
                 year, month, r != null ? r.structureId() : null,
                 r != null ? r.teacherPhone() : null, r != null ? r.bankAccount() : null);
     }
+
+    public record ManualHoursPayslipRequest(String teacherName, Long structureId, String teacherPhone,
+                                            String bankAccount, int normalMinutes, int examMinutes) {}
+
+    @Operation(summary = "Générer la fiche de paie du mois à partir d'heures réalisées SAISIES MANUELLEMENT "
+            + "par le comptable — pour le cas où le cahier de textes n'a aucune séance validée ce mois "
+            + "(ex. directeur des études n'a pas créé les séances), alors qu'une fiche doit quand même "
+            + "être générée pour appliquer les retenues du mois (avances sur salaire, enfants de "
+            + "personnel). Le tarif appliqué reste celui configuré pour l'enseignant, jamais saisi.")
+    @PreAuthorize("hasAuthority('paie:manage')")
+    @PostMapping("/teachers/{teacherId}/payslip-manual-hours")
+    public Payslip generatePayslipFromManualHours(@PathVariable Long teacherId, @RequestParam int year, @RequestParam int month,
+                                                   @RequestBody ManualHoursPayslipRequest r) {
+        return service.generateFromManualHours(TenantContext.get(), teacherId, r.teacherName(),
+                year, month, r.structureId(), r.teacherPhone(), r.bankAccount(),
+                r.normalMinutes(), r.examMinutes());
+    }
 }

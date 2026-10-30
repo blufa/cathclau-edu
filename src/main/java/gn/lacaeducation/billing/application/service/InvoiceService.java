@@ -499,6 +499,35 @@ public class InvoiceService implements InvoiceUseCase {
                 });
     }
 
+    @Override
+    public StaffBenefitBackfillResult backfillStaffBenefitTagging(Long tenantId) {
+        List<Long> updatedIds = new ArrayList<>();
+        for (Invoice inv : repo.findByTenantId(tenantId)) {
+            // Jamais une facture déjà remisée (même avantage personnel 0% déjà tagué) ni réglée/annulée —
+            // ce rattrapage ne fait qu'ajouter le tag manquant, jamais toucher une facture déjà traitée.
+            if (inv.getDiscountSource() != null) continue;
+            if (inv.getStatus() != InvoiceStatus.UNPAID && inv.getStatus() != InvoiceStatus.PARTIAL) continue;
+            FeeType feeType = inv.getFeeId() != null
+                    ? schoolFeeRepository.findById(inv.getFeeId()).map(gn.lacaeducation.billing.domain.SchoolFee::getType).orElse(null)
+                    : null;
+            var discountInfo = computeApplicableDiscount(tenantId, inv.getStudentId(), feeType);
+            if (discountInfo.source() == null) continue;
+            var discount = resolveDiscount(inv.getTotalAmount(), discountInfo);
+            BigDecimal paid = inv.getPaidAmount() != null ? inv.getPaidAmount() : BigDecimal.ZERO;
+            BigDecimal net = inv.getTotalAmount().subtract(discount.amount()).subtract(paid);
+            if (net.signum() < 0) net = BigDecimal.ZERO;
+            inv.setDiscountAmount(discount.amount());
+            inv.setDiscountReason(discount.reason());
+            inv.setDiscountSource(discount.source());
+            inv.setRemainingBalance(net);
+            repo.save(inv);
+            updatedIds.add(inv.getId());
+        }
+        log.info("Rattrapage avantage personnel : {} facture(s) retaguée(s) STAFF_BENEFIT pour tenant id={}",
+                updatedIds.size(), tenantId);
+        return new StaffBenefitBackfillResult(updatedIds.size(), updatedIds);
+    }
+
     /** Un des parents de {@code studentId} est-il un membre du personnel — par compte partagé ou par
      * lien direct (sans compte) — indépendamment de tout opt-out (même logique que
      * {@code StaffChildBenefitService#isStaffLinked}, dupliquée ici pour éviter une dépendance

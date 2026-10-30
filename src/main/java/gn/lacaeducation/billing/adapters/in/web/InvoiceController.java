@@ -137,6 +137,16 @@ public class InvoiceController {
     public void setStaffChildDeductionExcluded(@RequestParam Long studentId, @RequestParam boolean excluded) {
         useCase.setStaffChildDeductionExcluded(studentId, excluded);
     }
+    @Operation(summary = "Rattrapage ponctuel : retague \"avantage personnel\" toute facture encore due "
+            + "(inscription, réinscription, annexe, mensualité...) d'un enfant de personnel qui n'a "
+            + "actuellement aucune remise — pour les factures émises avant que le lien parent↔personnel "
+            + "soit établi ou avant un correctif, jamais retouchées depuis (§retour comptable : \"ces "
+            + "factures ne se grisent pas pour retenue sur salaire\"). Sûr à relancer plusieurs fois.")
+    @PreAuthorize("hasAuthority('paie:manage')")
+    @PostMapping("/staff-deduction/backfill")
+    public InvoiceUseCase.StaffBenefitBackfillResult backfillStaffBenefitTagging() {
+        return useCase.backfillStaffBenefitTagging(gn.lacaeducation.common.TenantContext.get());
+    }
     // facture:create (pas facture:update) : ce n'est pas une correction administrative d'une facture
     // existante, mais une étape normale du processus d'encaissement — le comptable l'applique
     // lui-même juste avant de faire payer toutes les tranches restantes en une fois (§billing).

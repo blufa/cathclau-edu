@@ -355,6 +355,43 @@ public class PayrollService {
                 mp.grossPay(), structureId, notes, null, null, null, null, null, teacherPhone, bankAccount));
     }
 
+    /**
+     * Génère la fiche à partir d'heures réalisées saisies MANUELLEMENT par le comptable (§retour
+     * comptable : "le directeur des études n'a pas créé de séances ce mois pour les enseignants du
+     * secondaire donc la paie des cours est à 0 GNF, pourtant le comptable veut payer — avances sur
+     * salaire et enfants de personnel à défalquer"). Le TARIF appliqué reste celui configuré pour
+     * l'enseignant ({@link TeacherCompensation}), jamais saisi manuellement : seules les heures sont
+     * une saisie de secours quand le cahier de textes est vide, le calcul du montant reste automatique
+     * et cohérent avec {@link #computeMonthlyPay}.
+     */
+    public Payslip generateFromManualHours(Long tenantId, Long teacherId, String teacherName, int year, int month,
+                                           Long structureId, String teacherPhone, String bankAccount,
+                                           int manualNormalMinutes, int manualExamMinutes) {
+        TeacherCompensation comp = compRepo.findByTeacherId(teacherId).orElse(null);
+        PayMode mode = comp != null && comp.getPayMode() != null ? comp.getPayMode() : PayMode.HOURLY;
+        BigDecimal rateNormal = comp != null && comp.getHourlyRateNormal() != null ? comp.getHourlyRateNormal() : BigDecimal.ZERO;
+        BigDecimal rateExam = comp != null && comp.getHourlyRateExam() != null ? comp.getHourlyRateExam() : BigDecimal.ZERO;
+        BigDecimal fixed = comp != null && comp.getFixedSalary() != null ? comp.getFixedSalary() : BigDecimal.ZERO;
+        BigDecimal normalHours = BigDecimal.valueOf(Math.max(0, manualNormalMinutes)).divide(BigDecimal.valueOf(60), 2, RoundingMode.HALF_UP);
+        BigDecimal examHours = BigDecimal.valueOf(Math.max(0, manualExamMinutes)).divide(BigDecimal.valueOf(60), 2, RoundingMode.HALF_UP);
+        BigDecimal teachingPay = normalHours.multiply(rateNormal).add(examHours.multiply(rateExam)).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal gross = mode == PayMode.FIXED ? fixed.add(teachingPay) : teachingPay;
+        LocalDate from = LocalDate.of(year, month, 1);
+        LocalDate to = from.withDayOfMonth(from.lengthOfMonth());
+        String periodLabel = FR_MONTHS[month - 1] + " " + year;
+        String notes = String.format(
+                "%dh%02d réalisées SAISIES MANUELLEMENT par le comptable (dont %dh%02d classes normales, "
+                        + "%dh%02d classes d'examen)%s — séances non créées/validées ce mois dans le cahier de textes.",
+                (Math.max(0, manualNormalMinutes) + Math.max(0, manualExamMinutes)) / 60,
+                (Math.max(0, manualNormalMinutes) + Math.max(0, manualExamMinutes)) % 60,
+                Math.max(0, manualNormalMinutes) / 60, Math.max(0, manualNormalMinutes) % 60,
+                Math.max(0, manualExamMinutes) / 60, Math.max(0, manualExamMinutes) % 60,
+                mode == PayMode.FIXED ? " + salaire fixe" : "");
+        return generate(new GenerateCommand(tenantId, gn.lacaeducation.payroll.domain.EmployeeType.TEACHER,
+                teacherId, teacherName, periodLabel, from, to,
+                gross, structureId, notes, null, null, null, null, null, teacherPhone, bankAccount));
+    }
+
     // ── Calcul automatique par typologie de classe, depuis l'emploi du temps validé (§6) ──────
 
     private static final Map<String, DayOfWeek> DAY_OF_WEEK = Map.of(
@@ -970,7 +1007,10 @@ public class PayrollService {
         // scolarité (voir ci-dessous) serait répercutée deux fois sur les factures des enfants.
         if (p.getStatus() == PayslipStatus.PAID) throw new BusinessRuleException("Fiche déjà payée");
         p.setStatus(PayslipStatus.PAID);
-        p.setPaymentMethod(paymentMethod != null ? paymentMethod : "BANK_TRANSFER");
+        // Jamais de présomption "virement bancaire" quand rien n'est fourni (§retour utilisateur : une
+        // fiche payée en espèces affichait "Virement bancaire" sur le PDF) — le mode de paiement réel
+        // est désormais toujours choisi explicitement côté appelant (modal "Marquer comme payée").
+        p.setPaymentMethod(paymentMethod);
         p.setPaidAt(LocalDateTime.now());
         // Comptable ayant traité le paiement — imprimé sous la signature "Signature et Cachet de
         // l'Établissement" du PDF (demande utilisateur), résolu en nom à l'impression (voir pdfBytes),

@@ -81,8 +81,23 @@ class SchoolPayrollStatsProviderAdapter implements SchoolPayrollStatsProvider {
                         a.getGrantedAt().toLocalDate(), a.getAmount()))
                 .toList();
         BigDecimal total = teachers.monthlyPayroll().add(staffPayroll).add(advancesTotal);
+        BigDecimal actualPaidSalariesTotal = actualPaidSalaries(tenantId, year, month);
         return new MonthlyFinancialSummary(teachers.maternelleMonthlyPayroll(), teachers.primaryMonthlyPayroll(),
-                teachers.secondaryMonthlyPayroll(), staffPayroll, advancesTotal, total, advanceDetails);
+                teachers.secondaryMonthlyPayroll(), staffPayroll, advancesTotal, total, actualPaidSalariesTotal,
+                advanceDetails);
+    }
+
+    /** Cumul réel des salaires payés du mois : somme des fiches de paie au statut PAID dont
+     * {@code paidAt} tombe dans le mois demandé — pas une masse théorique, le montant réellement
+     * décaissé à chaque "Marquer payée" (§retour comptable). */
+    private BigDecimal actualPaidSalaries(Long tenantId, int year, int month) {
+        YearMonth target = YearMonth.of(year, month);
+        return payslipRepository.findByTenantIdAndStatus(tenantId, gn.lacaeducation.payroll.domain.PayslipStatus.PAID)
+                .stream()
+                .filter(p -> p.getPaidAt() != null && YearMonth.from(p.getPaidAt()).equals(target))
+                .map(Payslip::getNetSalary)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     /** Première classe trouvée pour cet enseignant (professeur principal, sinon matière assignée) —
