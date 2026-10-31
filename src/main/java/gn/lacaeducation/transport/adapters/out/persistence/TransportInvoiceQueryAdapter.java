@@ -4,7 +4,6 @@ import gn.lacaeducation.transport.application.port.out.TransportInvoiceQueryPort
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,8 +25,8 @@ class TransportInvoiceQueryAdapter implements TransportInvoiceQueryPort {
     }
 
     @Override
-    public Set<Long> findStudentIdsPaidForMonth(Long tenantId, LocalDate from, LocalDate to) {
-        List<Long> ids = repo.findStudentIdsPaidForMonth(tenantId, from, to);
+    public Set<Long> findStudentIdsPaidForMonth(Long tenantId, String month) {
+        List<Long> ids = repo.findStudentIdsPaidForMonth(tenantId, month);
         return new java.util.LinkedHashSet<>(ids);
     }
 }
