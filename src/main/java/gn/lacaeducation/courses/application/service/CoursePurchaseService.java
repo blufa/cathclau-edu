@@ -53,9 +53,12 @@ public class CoursePurchaseService implements CoursePurchaseUseCase {
                 .orElseThrow(() -> new BusinessRuleException("Aucune année scolaire courante définie."));
         Long invoiceId = courseBillingApi.issueCourseInvoice(
                 c.tenantId(), c.studentId(), course.getSchoolFeeId(), year.id(), course.getPrice());
+        // Cours entièrement exonéré (§billing) : aucune facture créée (invoiceId null) donc rien à
+        // payer — l'accès est accordé immédiatement plutôt que de rester PENDING indéfiniment.
+        CoursePurchaseStatus status = invoiceId == null ? CoursePurchaseStatus.PAID : CoursePurchaseStatus.PENDING;
         CoursePurchase purchase = CoursePurchase.builder()
                 .tenantId(c.tenantId()).studentId(c.studentId()).courseId(c.courseId())
-                .invoiceId(invoiceId).status(CoursePurchaseStatus.PENDING)
+                .invoiceId(invoiceId).status(status)
                 .createdAt(LocalDateTime.now())
                 .build();
         return purchaseRepository.save(purchase);

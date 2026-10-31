@@ -4,6 +4,7 @@ import gn.lacaeducation.billing.application.port.in.InvoiceUseCase;
 import gn.lacaeducation.billing.application.port.in.InvoiceUseCase.CreateInvoiceCommand;
 import gn.lacaeducation.billing.application.port.out.SchoolFeeRepository;
 import gn.lacaeducation.billing.domain.FeeType;
+import gn.lacaeducation.billing.domain.Invoice;
 import gn.lacaeducation.billing.domain.SchoolFee;
 import gn.lacaeducation.common.SchoolCode;
 import gn.lacaeducation.common.TenantContext;
@@ -75,7 +76,7 @@ public class EnrollmentInvoiceListener {
             String reference = generateReference(fee.getTenantId(), event.studentId(), fee.getId());
 
             try {
-                invoiceUseCase.create(new CreateInvoiceCommand(
+                Invoice created = invoiceUseCase.create(new CreateInvoiceCommand(
                         fee.getTenantId(),
                         event.studentId(),
                         fee.getId(),
@@ -83,8 +84,15 @@ public class EnrollmentInvoiceListener {
                         fee.getAmount(),
                         event.academicYearId()
                 ));
-                log.info("Facture d'inscription créée automatiquement réf={} pour l'élève id={} classe id={} frais id={} montant={}",
-                        reference, event.studentId(), event.classId(), fee.getId(), fee.getAmount());
+                // §retour comptable, fondation : élève entièrement exonéré (ex. "tous les frais") →
+                // aucune facture créée par InvoiceService#create, c'est le comportement attendu.
+                if (created != null) {
+                    log.info("Facture d'inscription créée automatiquement réf={} pour l'élève id={} classe id={} frais id={} montant={}",
+                            reference, event.studentId(), event.classId(), fee.getId(), fee.getAmount());
+                } else {
+                    log.info("Frais d'inscription id={} entièrement exonéré pour l'élève id={} classe id={} ; aucune facture créée.",
+                            fee.getId(), event.studentId(), event.classId());
+                }
             } catch (RuntimeException ex) {
                 log.error("Échec de création automatique de la facture d'inscription pour l'élève id={} classe id={} frais id={} : {}",
                         event.studentId(), event.classId(), fee.getId(), ex.getMessage(), ex);

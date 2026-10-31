@@ -12,4 +12,5 @@ public interface StudentCardRepository {
     Optional<StudentCard> findByQrPayload(String qrPayload);
     long countByTenantId(Long tenantId);
     void deleteById(Long id);
+    boolean existsByTenantIdAndCardNumber(Long tenantId, String cardNumber);
 }

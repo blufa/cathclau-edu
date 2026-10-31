@@ -73,6 +73,15 @@ public class StudentCardController {
         return ResponseEntity.noContent().build();
     }
 
+    public record DeleteManyRequest(List<Long> ids) {}
+
+    @Operation(summary = "Supprimer définitivement plusieurs cartes en une fois (sélection depuis la liste)")
+    @PreAuthorize("hasAuthority('carte:manage')")
+    @PostMapping("/cartes/supprimer")
+    public StudentCardService.DeleteManyResult deleteMany(@RequestBody DeleteManyRequest r) {
+        return service.deleteMany(r.ids());
+    }
+
     public record MarkPrintedRequest(List<Long> ids) {}
 
     @Operation(summary = "Marquer ces cartes comme imprimées (après passage sur une planche de badges)")
