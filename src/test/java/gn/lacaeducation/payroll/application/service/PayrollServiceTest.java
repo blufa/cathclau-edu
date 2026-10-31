@@ -178,6 +178,49 @@ class PayrollServiceTest {
     }
 
     @Test
+    void resolveTeacherCycles_noDeclaredLevels_fallsBackToAssignedClassCycle() {
+        // Incident réel (§retour comptable, écart constaté en production sur l'état financier) : 4
+        // enseignants de Primaire sans aucun "niveau enseigné" déclaré (checklist vide) se retrouvaient
+        // classés Secondaire par défaut, gonflant Secondaire au détriment de Primaire — alors que leur
+        // classe principale réellement assignée (ex. "5ème Année") est bien de cycle Primaire.
+        when(teacherPublicInfoProvider.findAssignedLevelIds(1L)).thenReturn(List.of());
+        when(academics.findClassesByHeadTeacher(1L)).thenReturn(List.of(
+                new gn.lacaeducation.academics.ClassPublicInfo(8L, "5ème Année", "Primaire", "NORMALE", null, 1L, "PRIMAIRE")));
+        when(academics.findClassSubjectsByTeacher(1L)).thenReturn(List.of());
+
+        java.util.Map<Long, String> cycles = payrollService.resolveTeacherCycles(List.of(1L));
+
+        assertThat(cycles).containsEntry(1L, "PRIMAIRE");
+    }
+
+    @Test
+    void resolveTeacherCycles_declaredLevelsOnlySecondary_neverFallsBackToClasses() {
+        // Contre-exemple : une checklist renseignée (même uniquement Secondaire) est une déclaration
+        // explicite — jamais court-circuitée par le repli sur les classes assignées, même si celles-ci
+        // suggéreraient autre chose.
+        when(teacherPublicInfoProvider.findAssignedLevelIds(1L)).thenReturn(List.of(200L));
+        when(academics.findLevelCycle(200L)).thenReturn(Optional.of("COLLEGE"));
+
+        java.util.Map<Long, String> cycles = payrollService.resolveTeacherCycles(List.of(1L));
+
+        assertThat(cycles).containsEntry(1L, "SECONDAIRE");
+        org.mockito.Mockito.verify(academics, org.mockito.Mockito.never()).findClassesByHeadTeacher(any());
+    }
+
+    @Test
+    void resolveTeacherCycles_noDeclaredLevelsAndNoAssignedClass_defaultsToSecondary() {
+        // Vraiment rien à déduire (ni checklist, ni classe assignée) : repli final sur Secondaire,
+        // comportement inchangé par rapport à avant ce correctif.
+        when(teacherPublicInfoProvider.findAssignedLevelIds(1L)).thenReturn(List.of());
+        when(academics.findClassesByHeadTeacher(1L)).thenReturn(List.of());
+        when(academics.findClassSubjectsByTeacher(1L)).thenReturn(List.of());
+
+        java.util.Map<Long, String> cycles = payrollService.resolveTeacherCycles(List.of(1L));
+
+        assertThat(cycles).containsEntry(1L, "SECONDAIRE");
+    }
+
+    @Test
     void teacherPayrollMass_teacherWithNoResolvedClass_defaultsToSecondary() {
         // Même convention de repli que grading.domain.CycleGroup#fromSchoolCycle pour un cycle non
         // renseigné : par défaut Secondaire, jamais Primaire par supposition.
