@@ -70,6 +70,25 @@ class SchoolBillingStatsProviderAdapterTest {
     }
 
     @Test
+    void billingStats_creditedAmount_excludedFromCollected() {
+        // §retour comptable, écart constaté en production : un crédit reporté (transfert de classe,
+        // voir ClassTransferInvoiceListener#applyCredit) ajoute au paidAmount de la NOUVELLE facture
+        // sans nouvel argent réellement reçu — l'ancien encaissement a déjà compté une fois sur
+        // l'ancienne facture. Sans cette exclusion, "Encaissé" comptait ce même argent deux fois.
+        Invoice creditedInvoice = Invoice.builder().totalAmount(new BigDecimal("100000"))
+                .paidAmount(new BigDecimal("100000")).creditedAmount(new BigDecimal("100000"))
+                .remainingBalance(new BigDecimal("0")).status(InvoiceStatus.PAID).build();
+        Invoice realPayment = inv("50000", "50000", "0", InvoiceStatus.PAID);
+        when(invoiceRepository.findByTenantId(9L)).thenReturn(List.of(creditedInvoice, realPayment));
+
+        BillingStats s = adapter.billingStats(9L);
+
+        assertThat(s.invoiced()).isEqualByComparingTo("150000");
+        // 100 000 + 50 000 payés, moins 100 000 de crédit reporté (pas un nouvel encaissement) = 50 000.
+        assertThat(s.collected()).isEqualByComparingTo("50000");
+    }
+
+    @Test
     void billingStats_noInvoices_isZero() {
         when(invoiceRepository.findByTenantId(9L)).thenReturn(List.of());
         BillingStats s = adapter.billingStats(9L);
