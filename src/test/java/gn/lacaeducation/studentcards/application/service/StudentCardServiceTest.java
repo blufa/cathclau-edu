@@ -2,6 +2,7 @@ package gn.lacaeducation.studentcards.application.service;
 
 import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.common.TenantInfoProvider;
+import gn.lacaeducation.common.TenantPublicInfo;
 import gn.lacaeducation.studentcards.application.port.out.StudentCardRepository;
 import gn.lacaeducation.studentcards.domain.CardStatus;
 import gn.lacaeducation.studentcards.domain.StudentCard;
@@ -12,6 +13,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -173,5 +175,42 @@ class StudentCardServiceTest {
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> s.delete(99L))
                 .isInstanceOf(gn.lacaeducation.common.ResourceNotFoundException.class);
         org.mockito.Mockito.verify(repo, org.mockito.Mockito.never()).deleteById(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void deleteMany_mixOfValidAndUnknownIds_deletesValidOnesAndReportsFailures() {
+        StudentCardService s = service();
+        when(repo.findById(5L)).thenReturn(Optional.of(StudentCard.builder().id(5L).build()));
+        when(repo.findById(6L)).thenReturn(Optional.of(StudentCard.builder().id(6L).build()));
+        when(repo.findById(99L)).thenReturn(Optional.empty());
+
+        StudentCardService.DeleteManyResult result = s.deleteMany(List.of(5L, 99L, 6L));
+
+        assertThat(result.deletedIds()).containsExactly(5L, 6L);
+        assertThat(result.failedIds()).containsExactly(99L);
+        org.mockito.Mockito.verify(repo).deleteById(5L);
+        org.mockito.Mockito.verify(repo).deleteById(6L);
+        org.mockito.Mockito.verify(repo, org.mockito.Mockito.never()).deleteById(99L);
+    }
+
+    // ── nextCardNumber (§retour utilisateur : "le numéro de carte doit utiliser le format de numéro
+    // qu'ils ont décidé") — réutilise le format de matricule configuré par l'école, pas un format
+    // figé. ──────────────────────────────────────────────────────────────────────────────────────
+
+    @Test
+    void create_usesConfiguredMatriculeFormatForCardNumber() {
+        StudentCardService s = service();
+        when(tenantInfoProvider.findTenantInfo(1L)).thenReturn(Optional.of(
+                new TenantPublicInfo(1L, "École Test", null, null, null, null, null, null, null, null, null,
+                        null, null, null, null, null, null, null, "{PREFIXE}-CARTE-{NUM}", 4, null, false)));
+        when(repo.countByTenantId(1L)).thenReturn(0L);
+        when(repo.existsByTenantIdAndCardNumber(org.mockito.ArgumentMatchers.eq(1L), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(false);
+        when(repo.save(org.mockito.ArgumentMatchers.any())).thenAnswer(i -> i.getArgument(0));
+
+        StudentCard result = s.issue(new StudentCardService.IssueCardCommand(
+                1L, 7L, null, null, 20L, "MAT-1", null, null));
+
+        assertThat(result.getCardNumber()).endsWith("-CARTE-0001");
     }
 }
