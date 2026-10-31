@@ -1095,6 +1095,30 @@ class InvoiceServiceTest {
         verify(repo, never()).save(any());
     }
 
+    // ── findFullyExemptedDanglingInvoices (§retour comptable, nettoyage des factures fantômes créées
+    // avant le correctif ci-dessus) ─────────────────────────────────────────────────────────────────
+
+    @Test
+    void findFullyExemptedDanglingInvoices_returnsOnlyFullyDiscountedNonCancelledInvoices() {
+        Invoice dangling = Invoice.builder().id(1L).tenantId(10L)
+                .totalAmount(new BigDecimal("500000")).discountAmount(new BigDecimal("500000"))
+                .remainingBalance(BigDecimal.ZERO).status(InvoiceStatus.UNPAID).build();
+        Invoice partialDiscount = Invoice.builder().id(2L).tenantId(10L)
+                .totalAmount(new BigDecimal("100")).discountAmount(new BigDecimal("50"))
+                .remainingBalance(new BigDecimal("50")).status(InvoiceStatus.UNPAID).build();
+        Invoice alreadyCancelled = Invoice.builder().id(3L).tenantId(10L)
+                .totalAmount(new BigDecimal("100")).discountAmount(new BigDecimal("100"))
+                .remainingBalance(BigDecimal.ZERO).status(InvoiceStatus.CANCELLED).build();
+        Invoice noDiscountAtAll = Invoice.builder().id(4L).tenantId(10L)
+                .totalAmount(new BigDecimal("100")).discountAmount(BigDecimal.ZERO)
+                .remainingBalance(new BigDecimal("100")).status(InvoiceStatus.UNPAID).build();
+        when(repo.findByTenantId(10L)).thenReturn(List.of(dangling, partialDiscount, alreadyCancelled, noDiscountAtAll));
+
+        List<Invoice> result = service().findFullyExemptedDanglingInvoices(10L);
+
+        assertThat(result).containsExactly(dangling);
+    }
+
     // ── discountSource (§billing ↔ payroll, avantage personnel → reste retenu sur salaire) ────────────
 
     @Test

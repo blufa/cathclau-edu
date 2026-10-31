@@ -537,6 +537,15 @@ public class InvoiceService implements InvoiceUseCase {
         return new StaffBenefitBackfillResult(updatedIds.size(), updatedIds);
     }
 
+    @Override @Transactional(readOnly = true)
+    public List<Invoice> findFullyExemptedDanglingInvoices(Long tenantId) {
+        return repo.findByTenantId(tenantId).stream()
+                .filter(inv -> inv.getStatus() != InvoiceStatus.CANCELLED)
+                .filter(inv -> inv.getDiscountAmount() != null
+                        && inv.getDiscountAmount().compareTo(inv.getTotalAmount()) >= 0)
+                .toList();
+    }
+
     /** Un des parents de {@code studentId} est-il un membre du personnel — par compte partagé ou par
      * lien direct (sans compte) — indépendamment de tout opt-out (même logique que
      * {@code StaffChildBenefitService#isStaffLinked}, dupliquée ici pour éviter une dépendance

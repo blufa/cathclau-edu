@@ -118,6 +118,13 @@ public interface InvoiceUseCase {
 
     StaffBenefitBackfillResult backfillStaffBenefitTagging(Long tenantId);
 
+    /** Factures « fantômes » créées AVANT le correctif §billing/fondation (frais ponctuel entièrement
+     * couvert par une exonération — discountAmount == totalAmount — qui créait quand même une facture
+     * à 0 GNF au lieu de n'en créer aucune, contrairement à la mensualité échelonnée qui a toujours eu
+     * cette garde). Lecture seule, pour aperçu avant suppression manuelle via {@link #delete} —
+     * jamais supprimée automatiquement : le comptable valide la liste d'abord. */
+    List<Invoice> findFullyExemptedDanglingInvoices(Long tenantId);
+
     /** {@code staffChild} : au moins un parent de cet élève est personnel de l'école (affiche ou non le
      * bouton retirer/réintégrer sur les écrans de facturation — fiche élève, modal d'encaissement).
      * {@code excluded} : cet élève est actuellement exclu de la retenue (réglage par enfant OU global

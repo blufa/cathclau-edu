@@ -26,7 +26,9 @@ public class DuplicateDetectionController {
             + "le profil financier réel de chacun (factures, encaissé, mensualités facturées) — le champ "
             + "\"suspect\" indique lequel a nettement moins de facturation que les autres du groupe")
     @GetMapping
-    @PreAuthorize("hasAuthority('eleve:read') and hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','ACCOUNTANT')")
+    // Réservé au SUPER_ADMIN (§retour utilisateur) : mène à une suppression de fiche élève, trop
+    // sensible pour le laisser au personnel d'école.
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     public List<DuplicateDetectionService.Group> find() {
         return service.findDuplicateGroups(TenantContext.get());
     }
