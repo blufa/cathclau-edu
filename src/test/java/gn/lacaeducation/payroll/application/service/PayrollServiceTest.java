@@ -18,6 +18,8 @@ import gn.lacaeducation.payroll.domain.PayMode;
 import gn.lacaeducation.payroll.domain.Payslip;
 import gn.lacaeducation.payroll.domain.PayslipLine;
 import gn.lacaeducation.payroll.domain.PayslipLineType;
+import gn.lacaeducation.payroll.domain.SalaryAdvance;
+import gn.lacaeducation.payroll.domain.SalaryAdvanceStatus;
 import gn.lacaeducation.payroll.domain.TeacherCompensation;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -676,6 +678,40 @@ class PayrollServiceTest {
         assertThat(lines.get(0).getLabel()).isEqualTo("Avance sur salaire");
         assertThat(lines.get(0).getAmount()).isEqualByComparingTo("50000");
         assertThat(result.getNetSalary()).isEqualByComparingTo("250000");
+    }
+
+    /** Net déjà à zéro/négatif à ce stade (ex. enseignant à l'heure, peu d'heures + grosses retenues) :
+     * l'avance active existe mais ne peut pas être prélevée sans pousser le net plus bas — doit rester
+     * visible sur la fiche (note), jamais silencieuse (§retour utilisateur : "il ne prend pas l'avance",
+     * confusion alors qu'elle est juste reportée faute de net suffisant). */
+    @Test
+    void generate_netAlreadyExhausted_notesOutstandingAdvanceInsteadOfSilentlySkipping() {
+        Long teacherId = 7L;
+        when(payslipRepo.existsByTenantIdAndTeacherIdAndPeriodLabelAndEmployeeType(9L, teacherId, "Mars 2026", EmployeeType.TEACHER))
+                .thenReturn(false);
+        when(salaryAdvanceUseCase.applyDeduction(eq(9L), eq(teacherId), eq(EmployeeType.TEACHER), any()))
+                .thenReturn(new SalaryAdvanceUseCase.AdvanceDeductionResult(BigDecimal.ZERO, null));
+        when(employeePublicInfoProvider.findByLinkedTeacherId(9L, teacherId)).thenReturn(Optional.empty());
+        when(salaryAdvanceUseCase.findByTeacherId(9L, teacherId, EmployeeType.TEACHER)).thenReturn(List.of(
+                SalaryAdvance.builder().id(1L).status(SalaryAdvanceStatus.ACTIVE)
+                        .remainingBalance(new BigDecimal("150000")).build()));
+
+        AtomicReference<Payslip> saved = new AtomicReference<>();
+        when(payslipRepo.save(any())).thenAnswer(i -> {
+            Payslip p = i.getArgument(0);
+            if (p.getId() == null) p.setId(202L);
+            saved.set(p);
+            return p;
+        });
+        when(payslipRepo.findById(202L)).thenAnswer(i -> Optional.of(saved.get()));
+        when(lineRepo.findByPayslipId(202L)).thenReturn(List.of());
+
+        Payslip result = payrollService.generate(new PayrollService.GenerateCommand(
+                9L, EmployeeType.TEACHER, teacherId, "M. Diallo", "Mars 2026",
+                null, null, BigDecimal.ZERO, null, null,
+                null, null, null, null, null, null, null));
+
+        assertThat(result.getNotes()).contains("150 000").contains("NON prélevée");
     }
 
     /** Reste non couvert par un avantage personnel PARTIEL (§billing) : ajouté comme ligne de retenue

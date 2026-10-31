@@ -37,6 +37,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -883,7 +884,62 @@ public class PayrollService {
         }
         if (result.amount() != null && result.amount().signum() > 0) {
             saveLine(p, result.label(), PayslipLineType.DEDUCTION, result.amount());
+        } else if (netSoFar.signum() <= 0) {
+            noteActiveAdvanceNotDeducted(p, c.tenantId(), c.teacherId(), type);
         }
+    }
+
+    /** Avance active existante (identité courante OU liée) mais non prélevée ce cycle faute de net
+     * disponible (§retour utilisateur : "il ne prend pas l'avance" alors qu'elle existe bien, juste
+     * silencieusement reportée — un enseignant à l'heure avec peu d'heures + de grosses retenues
+     * épuise déjà le net avant même d'atteindre l'avance). Rendu visible sur la fiche plutôt que
+     * silencieux ; ne pousse jamais le net plus bas, l'avance reste intégralement due. */
+    private void noteActiveAdvanceNotDeducted(Payslip p, Long tenantId, Long teacherId,
+                                              gn.lacaeducation.payroll.domain.EmployeeType type) {
+        BigDecimal outstanding = activeAdvanceRemainingBalance(tenantId, teacherId, type);
+        if (outstanding == null || outstanding.signum() <= 0) return;
+        java.text.DecimalFormatSymbols sym = new java.text.DecimalFormatSymbols(java.util.Locale.FRANCE);
+        sym.setGroupingSeparator(' ');
+        String formatted = new java.text.DecimalFormat("#,##0", sym).format(outstanding);
+        String note = "Avance sur salaire en cours (" + formatted
+                + " GNF restant) NON prélevée ce mois — solde net insuffisant.";
+        p.setNotes(p.getNotes() == null || p.getNotes().isBlank() ? note : p.getNotes() + " — " + note);
+        payslipRepo.save(p);
+    }
+
+    private BigDecimal activeAdvanceRemainingBalance(Long tenantId, Long teacherId,
+                                                      gn.lacaeducation.payroll.domain.EmployeeType type) {
+        BigDecimal primary = salaryAdvanceUseCase.findByTeacherId(tenantId, teacherId, type).stream()
+                .filter(a -> a.getStatus() == SalaryAdvanceStatus.ACTIVE)
+                .map(SalaryAdvance::getRemainingBalance).filter(b -> b != null && b.signum() > 0)
+                .findFirst().orElse(null);
+        if (primary != null) return primary;
+        if (type == gn.lacaeducation.payroll.domain.EmployeeType.TEACHER) {
+            return employeePublicInfoProvider.findByLinkedTeacherId(tenantId, teacherId)
+                    .flatMap(emp -> {
+                        try {
+                            return Optional.of(salaryAdvanceUseCase.findByTeacherId(
+                                    tenantId, emp.id(), gn.lacaeducation.payroll.domain.EmployeeType.valueOf(emp.category())));
+                        } catch (IllegalArgumentException e) {
+                            return Optional.<List<SalaryAdvance>>empty();
+                        }
+                    })
+                    .flatMap(advances -> advances.stream()
+                            .filter(a -> a.getStatus() == SalaryAdvanceStatus.ACTIVE)
+                            .map(SalaryAdvance::getRemainingBalance).filter(b -> b != null && b.signum() > 0)
+                            .findFirst())
+                    .orElse(null);
+        }
+        return employeePublicInfoProvider.findEmployee(teacherId)
+                .map(gn.lacaeducation.staff.EmployeePublicInfoProvider.EmployeeInfo::linkedTeacherId)
+                .filter(java.util.Objects::nonNull)
+                .map(linkedTeacherId -> salaryAdvanceUseCase.findByTeacherId(
+                        tenantId, linkedTeacherId, gn.lacaeducation.payroll.domain.EmployeeType.TEACHER))
+                .flatMap(advances -> advances.stream()
+                        .filter(a -> a.getStatus() == SalaryAdvanceStatus.ACTIVE)
+                        .map(SalaryAdvance::getRemainingBalance).filter(b -> b != null && b.signum() > 0)
+                        .findFirst())
+                .orElse(null);
     }
 
     /** Tente la déduction sous l'identité LIÉE à {@code (teacherId, type)} — la fiche Employee liée si
