@@ -19,6 +19,10 @@ public interface InvoiceUseCase {
      * automatique" : une exonération accordée ou révoquée en cours d'année est reflétée dès le
      * prochain appel, sans action manuelle sur les échéances déjà traitées). */
     record GenerateMonthlyResult(List<Invoice> created, List<ExemptedPeriod> exemptedPeriods) {}
+    /** Crée une facture pour un frais ponctuel (inscription, transport fixe, examen...). Retourne
+     * {@code null} — et ne crée RIEN — si le frais est entièrement couvert par une exonération/avantage
+     * personnel (même garde que {@link #generateMonthly} pour la mensualité échelonnée) : jamais de
+     * facture à 0 GNF. */
     Invoice create(CreateInvoiceCommand command);
     GenerateMonthlyResult generateMonthly(GenerateMonthlyCommand command);
     /** Génère UNIQUEMENT les échéances demandées (pas forcément toutes celles configurées comme

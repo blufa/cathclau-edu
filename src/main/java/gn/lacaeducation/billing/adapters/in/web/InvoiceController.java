@@ -36,7 +36,9 @@ public class InvoiceController {
     @Operation(summary = "Créer une nouvelle facture pour un élève")
     @PreAuthorize("hasAuthority('facture:create')")
     @PostMapping public ResponseEntity<Invoice> create(@RequestBody CreateRequest r) {
-        return ResponseEntity.ok(useCase.create(new InvoiceUseCase.CreateInvoiceCommand(r.tenantId(), r.studentId(), r.feeId(), r.reference(), r.totalAmount(), r.academicYearId())));
+        Invoice inv = useCase.create(new InvoiceUseCase.CreateInvoiceCommand(r.tenantId(), r.studentId(), r.feeId(), r.reference(), r.totalAmount(), r.academicYearId()));
+        // Frais entièrement exonéré (§billing) : aucune facture créée, rien à renvoyer.
+        return inv != null ? ResponseEntity.ok(inv) : ResponseEntity.noContent().build();
     }
     @Operation(summary = "Générer en masse les factures de tous les élèves inscrits dans une classe")
     @PreAuthorize("hasAuthority('facture:create')")

@@ -192,6 +192,15 @@ public class InvoiceService implements InvoiceUseCase {
         var discountInfo = computeApplicableDiscount(c.tenantId(), c.studentId(), feeType);
         var discount = resolveDiscount(grossAmount, discountInfo);
         BigDecimal netAmount = grossAmount.subtract(discount.amount());
+        // Même garde qu'buildAndSaveInvoice (facturation mensuelle) : un frais ponctuel (inscription,
+        // transport fixe, examen...) entièrement couvert par une exonération/avantage personnel ne doit
+        // jamais produire de facture à 0 GNF — §retour comptable, fondation : "il ne doit generer aucune
+        // facture". Avant ce correctif, seule la mensualité échelonnée appliquait déjà cette règle.
+        if (discount.source() != null && netAmount.signum() <= 0) {
+            log.info("Facture non créée (exonération totale) pour l'élève id={} frais id={} montant={} — {}",
+                    c.studentId(), c.feeId(), grossAmount, discount.reason());
+            return null;
+        }
         Invoice inv = repo.save(Invoice.builder().tenantId(c.tenantId()).studentId(c.studentId()).feeId(c.feeId())
                 .academicYearId(academicYearId)
                 .reference(reference).totalAmount(grossAmount).paidAmount(BigDecimal.ZERO).discountAmount(discount.amount())
@@ -347,7 +356,7 @@ public class InvoiceService implements InvoiceUseCase {
                     + "-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
             var fee = schoolFeeRepository.findById(cmd.feeId()).orElseThrow();
             Invoice inv = create(new CreateInvoiceCommand(cmd.tenantId(), studentId, cmd.feeId(), reference, fee.getAmount(), cmd.academicYearId()));
-            created.add(inv);
+            if (inv != null) created.add(inv);
         }
         log.info("Bulk invoice generation: created {} invoices for class id={} fee id={}", created.size(), cmd.classId(), cmd.feeId());
         return created;
