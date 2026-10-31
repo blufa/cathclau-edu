@@ -519,24 +519,58 @@ public class PayrollService {
     }
 
     /** Cycle résolu depuis les "Niveaux enseignés" de l'enseignant (checklist déclarative sur sa
-     * fiche, module staff) — JAMAIS depuis ses classes/matières réellement assignées (§retour
-     * utilisateur : "base-toi sur le niveau enseigné, pas sur les matières"). Un moniteur maternelle/
-     * primaire sans aucune matière affectée (cas normal, voir LessonService#resolveHeadTeacherId)
-     * n'était auparavant jamais détecté comme tel (classé Secondaire par défaut, faussant "État
-     * financier du mois") : la checklist "Niveaux enseignés" est une déclaration DIRECTE et
-     * volontaire, qui ne dépend d'aucune assignation de classe. Présence simple (pas de majorité) :
-     * dès qu'un des niveaux déclarés est Maternelle (ou sinon Primaire), ce cycle l'emporte — Secondaire
-     * seulement si aucun niveau Maternelle/Primaire n'est déclaré (y compris aucun niveau du tout). */
+     * fiche, module staff) — JAMAIS depuis ses classes/matières réellement assignées quand cette
+     * checklist est renseignée (§retour utilisateur : "base-toi sur le niveau enseigné, pas sur les
+     * matières"). Un moniteur maternelle/primaire sans aucune matière affectée (cas normal, voir
+     * LessonService#resolveHeadTeacherId) n'était auparavant jamais détecté comme tel (classé
+     * Secondaire par défaut, faussant "État financier du mois") : la checklist "Niveaux enseignés" est
+     * une déclaration DIRECTE et volontaire, qui ne dépend d'aucune assignation de classe. Présence
+     * simple (pas de majorité) : dès qu'un des niveaux déclarés est Maternelle (ou sinon Primaire), ce
+     * cycle l'emporte.
+     * <p>Repli (§retour comptable, écart production : 4 enseignants de Primaire sans aucune checklist
+     * renseignée, classés Secondaire par défaut — gonflant Secondaire au détriment de Primaire sur
+     * l'état financier) : si la checklist est VIDE (aucun niveau déclaré du tout, pas "déclaré
+     * Secondaire"), le cycle est déduit de ses classes réellement assignées (principal ou matière) —
+     * mieux qu'un Secondaire par défaut silencieux, sans jamais court-circuiter une déclaration
+     * explicite même uniquement Collège/Lycée. */
     private TeacherCycleBucket resolveCycleBucket(Long teacherId) {
+        List<Long> levelIds = teacherPublicInfoProvider.findAssignedLevelIds(teacherId);
         boolean maternelle = false;
         boolean primaire = false;
-        for (Long levelId : teacherPublicInfoProvider.findAssignedLevelIds(teacherId)) {
+        for (Long levelId : levelIds) {
             TeacherCycleBucket bucket = cycleBucketOf(academics.findLevelCycle(levelId).orElse(null));
             if (bucket == TeacherCycleBucket.MATERNELLE) maternelle = true;
             else if (bucket == TeacherCycleBucket.PRIMAIRE) primaire = true;
         }
         if (maternelle) return TeacherCycleBucket.MATERNELLE;
         if (primaire) return TeacherCycleBucket.PRIMAIRE;
+        if (levelIds.isEmpty()) {
+            TeacherCycleBucket fromClasses = resolveCycleBucketFromAssignedClasses(teacherId);
+            if (fromClasses != null) return fromClasses;
+        }
+        return TeacherCycleBucket.SECONDAIRE;
+    }
+
+    /** Déduit le cycle depuis les classes réellement assignées (principal, puis matières) quand
+     * aucun "niveau enseigné" n'est déclaré — {@code null} si l'enseignant n'a non plus aucune classe
+     * assignée (vraiment rien à déduire, repli final sur Secondaire dans l'appelant). */
+    private TeacherCycleBucket resolveCycleBucketFromAssignedClasses(Long teacherId) {
+        List<String> cycles = new java.util.ArrayList<>();
+        for (gn.lacaeducation.academics.ClassPublicInfo c : academics.findClassesByHeadTeacher(teacherId)) {
+            if (c.schoolCycle() != null) cycles.add(c.schoolCycle());
+        }
+        for (var cs : academics.findClassSubjectsByTeacher(teacherId)) {
+            academics.findClass(cs.classId()).ifPresent(c -> {
+                if (c.schoolCycle() != null) cycles.add(c.schoolCycle());
+            });
+        }
+        if (cycles.isEmpty()) return null;
+        if (cycles.stream().anyMatch(c -> cycleBucketOf(c) == TeacherCycleBucket.MATERNELLE)) {
+            return TeacherCycleBucket.MATERNELLE;
+        }
+        if (cycles.stream().anyMatch(c -> cycleBucketOf(c) == TeacherCycleBucket.PRIMAIRE)) {
+            return TeacherCycleBucket.PRIMAIRE;
+        }
         return TeacherCycleBucket.SECONDAIRE;
     }
 
