@@ -64,6 +64,15 @@ public class StudentCardController {
     @PatchMapping("/cartes/{id}/declarer-perdue")
     public StudentCard declareLost(@PathVariable Long id) { return service.declareLost(id); }
 
+    @Operation(summary = "Supprimer définitivement une carte (ex. matricule modifié depuis l'émission) — "
+            + "sans aucune carte ACTIVE restante, la prochaine émission repart à neuf avec les données à jour")
+    @PreAuthorize("hasAuthority('carte:manage')")
+    @DeleteMapping("/cartes/{id}")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        service.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+
     public record MarkPrintedRequest(List<Long> ids) {}
 
     @Operation(summary = "Marquer ces cartes comme imprimées (après passage sur une planche de badges)")

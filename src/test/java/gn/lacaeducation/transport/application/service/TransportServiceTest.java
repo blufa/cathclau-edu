@@ -11,7 +11,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 
-import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.Map;
 import java.util.Set;
@@ -44,10 +43,12 @@ class TransportServiceTest {
     }
 
     @Test
-    void studentIdsPaidForMonth_delegatesToInvoiceQueryPort_withMonthBounds() {
+    void studentIdsPaidForMonth_delegatesToInvoiceQueryPort_withYearMonthString() {
+        // §retour utilisateur : "si tu filtres par mois rien ne vient" — le filtre doit porter sur le
+        // mois réellement couvert ("2026-10"), jamais sur des bornes de date d'échéance (qui tombait
+        // le mois suivant par convention et décalait tout le filtre).
         YearMonth october = YearMonth.of(2026, 10);
-        when(invoiceQueryPort.findStudentIdsPaidForMonth(10L, LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 31)))
-                .thenReturn(Set.of(7L, 8L));
+        when(invoiceQueryPort.findStudentIdsPaidForMonth(10L, "2026-10")).thenReturn(Set.of(7L, 8L));
 
         Set<Long> result = service.studentIdsPaidForMonth(10L, october);
 

@@ -1,6 +1,5 @@
 package gn.lacaeducation.transport.application.port.out;
 
-import java.time.LocalDate;
 import java.util.Map;
 import java.util.Set;
 
@@ -15,7 +14,8 @@ public interface TransportInvoiceQueryPort {
      * map si l'élève n'a encore rien payé (jamais une entrée à 0). */
     Map<Long, Long> countPaidTransportMonthsByStudentId(Long tenantId);
 
-    /** Élèves ayant réglé une facture TRANSPORT dont l'échéance liée tombe dans [from, to] — pour
-     * filtrer "qui a payé le mois en cours" (§retour comptable) sur la liste des abonnés. */
-    Set<Long> findStudentIdsPaidForMonth(Long tenantId, LocalDate from, LocalDate to);
+    /** Élèves ayant réglé une facture TRANSPORT dont l'échéance COUVRE {@code month} (format
+     * "YYYY-MM", ex. {@link java.time.YearMonth#toString()}) — pour filtrer "qui a payé le mois en
+     * cours" (§retour comptable) sur la liste des abonnés. */
+    Set<Long> findStudentIdsPaidForMonth(Long tenantId, String month);
 }

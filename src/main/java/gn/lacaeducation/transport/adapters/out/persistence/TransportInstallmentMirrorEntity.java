@@ -12,9 +12,13 @@ import lombok.Setter;
 
 import java.time.LocalDate;
 
-/** Vue en lecture seule de la table "installments" (possédée par billing) pour le module transport —
- * seule {@code dueDate} sert, à déterminer si une facture transport payée couvre le mois en cours
- * (§retour comptable : "qui a payé le mois en cours"). Pas de tenant_id : filtrage via la facture liée. */
+/** Vue en lecture seule de la table "installments" (possédée par billing) pour le module transport,
+ * à déterminer si une facture transport payée couvre un mois donné (§retour comptable : "qui a payé
+ * le mois en cours"). {@code months} (ex. "2026-10", plusieurs mois séparés par des virgules pour une
+ * tranche multi-mois) porte le(s) mois RÉELLEMENT couverts — {@code dueDate} n'est qu'une échéance de
+ * paiement (le 5 du mois SUIVANT par convention), jamais le mois couvert lui-même (§retour utilisateur :
+ * "si tu filtres par mois rien ne vient", filtrer sur dueDate décalait tout d'un mois). Pas de
+ * tenant_id : filtrage via la facture liée. */
 @Entity
 @Table(name = "installments")
 @Getter @Setter @NoArgsConstructor
@@ -23,4 +27,6 @@ class TransportInstallmentMirrorEntity {
     private Long id;
     @Column(name = "due_date", nullable = false)
     private LocalDate dueDate;
+    @Column(name = "months")
+    private String months;
 }

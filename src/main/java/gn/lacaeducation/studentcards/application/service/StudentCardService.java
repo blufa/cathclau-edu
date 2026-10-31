@@ -106,6 +106,18 @@ public class StudentCardService {
         return repo.save(c);
     }
 
+    /** Supprime définitivement cette carte (pas un simple changement de statut) — §retour utilisateur :
+     * "je remets le badge, il prend toujours l'ancien matricule" malgré une modification du matricule
+     * entre-temps. {@link #getOrRefresh} régénère déjà automatiquement si le matricule soumis diffère,
+     * mais ne couvre pas tous les cas (ex. appelant qui soumet encore une valeur mise en cache côté
+     * front) — cette suppression manuelle est le filet de sécurité : sans AUCUNE carte ACTIVE restante
+     * pour l'élève, {@link #issue}/{@link #getOrRefresh} en créent une toute neuve avec les données
+     * soumises au moment de l'appel, garanties à jour. */
+    public void delete(Long id) {
+        load(id);
+        repo.deleteById(id);
+    }
+
     /** Marque ces cartes comme imprimées (passées sur une planche) — pour pouvoir ensuite filtrer les
      * cartes restant à imprimer et ne jamais réimprimer par erreur un badge déjà sorti. */
     public List<StudentCard> markPrinted(List<Long> ids) {

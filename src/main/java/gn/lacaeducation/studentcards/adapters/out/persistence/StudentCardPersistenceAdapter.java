@@ -18,4 +18,5 @@ class StudentCardPersistenceAdapter implements StudentCardRepository {
     @Override public Optional<StudentCard> findByStudentIdAndStatus(Long s, CardStatus st) { return jpa.findByStudentIdAndStatus(s, st).map(mapper::toDomain); }
     @Override public Optional<StudentCard> findByQrPayload(String p) { return jpa.findByQrPayload(p).map(mapper::toDomain); }
     @Override public long countByTenantId(Long t) { return jpa.countByTenantId(t); }
+    @Override public void deleteById(Long id) { jpa.deleteById(id); }
 }

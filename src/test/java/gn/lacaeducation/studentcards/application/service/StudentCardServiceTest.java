@@ -150,4 +150,28 @@ class StudentCardServiceTest {
         assertThat(result.getReplacesCardId()).isEqualTo(5L);
         assertThat(stale.getStatus()).isEqualTo(CardStatus.REPLACED);
     }
+
+    @Test
+    void delete_removesCardFromRepository() {
+        // §retour utilisateur : filet de sécurité manuel quand getOrRefresh ne suffit pas (ex. appelant
+        // qui soumet encore un matricule mis en cache côté front) — suppression définitive, pas un
+        // simple changement de statut.
+        StudentCardService s = service();
+        StudentCard card = StudentCard.builder().id(5L).studentId(7L).tenantId(1L).status(CardStatus.ACTIVE).build();
+        when(repo.findById(5L)).thenReturn(Optional.of(card));
+
+        s.delete(5L);
+
+        org.mockito.Mockito.verify(repo).deleteById(5L);
+    }
+
+    @Test
+    void delete_unknownId_throwsResourceNotFound() {
+        StudentCardService s = service();
+        when(repo.findById(99L)).thenReturn(Optional.empty());
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> s.delete(99L))
+                .isInstanceOf(gn.lacaeducation.common.ResourceNotFoundException.class);
+        org.mockito.Mockito.verify(repo, org.mockito.Mockito.never()).deleteById(org.mockito.ArgumentMatchers.any());
+    }
 }

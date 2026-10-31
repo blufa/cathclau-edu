@@ -107,7 +107,7 @@ class SalaryAdvanceServiceTest {
         when(repo.findByTenantIdAndTeacherIdAndEmployeeType(1L, 12L, EmployeeType.ADMINISTRATIVE)).thenReturn(List.of());
         when(payslipRepo.findByTenantIdAndTeacherId(1L, 12L)).thenReturn(List.of());
         when(employeeProvider.findEmployee(12L)).thenReturn(Optional.of(
-                new EmployeeInfo(12L, "Aissatou Bah", "ADMINISTRATIVE", new BigDecimal("400000"), true, null, null, null, null)));
+                new EmployeeInfo(12L, "Aissatou Bah", "ADMINISTRATIVE", new BigDecimal("400000"), true, null, null, null, null, null)));
         when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
 
         SalaryAdvance a = service.grant(new GrantCommand(1L, EmployeeType.ADMINISTRATIVE, 12L, "Aissatou Bah",
