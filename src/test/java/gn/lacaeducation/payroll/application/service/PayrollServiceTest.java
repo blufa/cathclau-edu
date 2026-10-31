@@ -62,6 +62,7 @@ class PayrollServiceTest {
     @Mock org.springframework.context.ApplicationEventPublisher eventPublisher;
     @Mock gn.lacaeducation.iam.UserPublicInfoProvider userPublicInfoProvider;
     @Mock gn.lacaeducation.staff.TeacherPublicInfoProvider teacherPublicInfoProvider;
+    @Mock gn.lacaeducation.staff.EmployeePublicInfoProvider employeePublicInfoProvider;
 
     @InjectMocks PayrollService payrollService;
 
@@ -625,6 +626,53 @@ class PayrollServiceTest {
 
         assertThat(lines).hasSize(1);
         assertThat(lines.get(0).getLineType()).isEqualTo(PayslipLineType.DEDUCTION);
+        assertThat(lines.get(0).getLabel()).isEqualTo("Avance sur salaire");
+        assertThat(lines.get(0).getAmount()).isEqualByComparingTo("50000");
+        assertThat(result.getNetSalary()).isEqualByComparingTo("250000");
+    }
+
+    /** Double profil (§retour utilisateur urgence production, "il ne prend pas l'avance sur salaire") :
+     * avance accordée sous l'identité Employee (ex. Direction), fiche générée sous l'identité Teacher
+     * (ex. depuis la page "Paie du mois") — doit quand même être retenue via la fiche Employee liée
+     * ({@code Employee#linkedTeacherId}). */
+    @Test
+    void generate_teacherWithLinkedEmployeeAdvance_appliesDeductionViaLinkedIdentity() {
+        Long teacherId = 7L;
+        Long employeeId = 70L;
+        when(payslipRepo.existsByTenantIdAndTeacherIdAndPeriodLabelAndEmployeeType(9L, teacherId, "Mars 2026", EmployeeType.TEACHER))
+                .thenReturn(false);
+        // Rien sous l'identité Teacher : l'avance a été accordée sous l'identité Personnel (Direction).
+        when(salaryAdvanceUseCase.applyDeduction(eq(9L), eq(teacherId), eq(EmployeeType.TEACHER), any()))
+                .thenReturn(new SalaryAdvanceUseCase.AdvanceDeductionResult(BigDecimal.ZERO, null));
+        when(employeePublicInfoProvider.findByLinkedTeacherId(9L, teacherId)).thenReturn(Optional.of(
+                new gn.lacaeducation.staff.EmployeePublicInfoProvider.EmployeeInfo(
+                        employeeId, "M. Diallo", "DIRECTION", null, true, null, null, null, null, teacherId)));
+        when(salaryAdvanceUseCase.applyDeduction(eq(9L), eq(employeeId), eq(EmployeeType.DIRECTION), any()))
+                .thenReturn(new SalaryAdvanceUseCase.AdvanceDeductionResult(new BigDecimal("50000"), "Avance sur salaire"));
+
+        AtomicReference<Payslip> saved = new AtomicReference<>();
+        when(payslipRepo.save(any())).thenAnswer(i -> {
+            Payslip p = i.getArgument(0);
+            if (p.getId() == null) p.setId(201L);
+            saved.set(p);
+            return p;
+        });
+        when(payslipRepo.findById(201L)).thenAnswer(i -> Optional.of(saved.get()));
+
+        List<PayslipLine> lines = new ArrayList<>();
+        when(lineRepo.save(any())).thenAnswer(i -> {
+            PayslipLine l = i.getArgument(0);
+            lines.add(l);
+            return l;
+        });
+        when(lineRepo.findByPayslipId(201L)).thenAnswer(i -> lines);
+
+        Payslip result = payrollService.generate(new PayrollService.GenerateCommand(
+                9L, EmployeeType.TEACHER, teacherId, "M. Diallo", "Mars 2026",
+                null, null, new BigDecimal("300000"), null, null,
+                null, null, null, null, null, null, null));
+
+        assertThat(lines).hasSize(1);
         assertThat(lines.get(0).getLabel()).isEqualTo("Avance sur salaire");
         assertThat(lines.get(0).getAmount()).isEqualByComparingTo("50000");
         assertThat(result.getNetSalary()).isEqualByComparingTo("250000");

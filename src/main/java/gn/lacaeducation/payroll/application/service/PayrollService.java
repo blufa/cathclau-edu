@@ -69,6 +69,7 @@ public class PayrollService {
     private final ApplicationEventPublisher eventPublisher;
     private final gn.lacaeducation.iam.UserPublicInfoProvider userPublicInfoProvider;
     private final TeacherPublicInfoProvider teacherPublicInfoProvider;
+    private final gn.lacaeducation.staff.EmployeePublicInfoProvider employeePublicInfoProvider;
 
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
 
@@ -855,6 +856,15 @@ public class PayrollService {
      * borné par le net déjà calculé sur la fiche à ce stade (lignes de structure/absences/scolarité déjà
      * appliquées) — jamais un net négatif. Répété à chaque génération de fiche tant que le solde n'est
      * pas épuisé (voir {@code SalaryAdvanceService#applyDeduction}).
+     *
+     * <p>Double profil (§retour utilisateur urgence production, "il ne prend pas l'avance sur salaire") :
+     * une personne à la fois enseignante ET personnel direction/administratif a DEUX identités
+     * distinctes ({@code teacherId}+TEACHER, {@code employeeId}+catégorie) — l'écran d'octroi d'avance
+     * liste les deux séparément. Si l'avance a été accordée sous une identité mais que la fiche de paie
+     * est générée sous l'AUTRE (ex. avance accordée "Personnel", fiche générée depuis la page enseignant
+     * "Paie du mois"), la recherche ne trouvait jamais l'avance et ne la déduisait jamais. On tente donc
+     * systématiquement l'identité liée (via {@code Employee#linkedTeacherId}) en repli si la première
+     * tentative n'a rien trouvé.</p>
      */
     private void applySalaryAdvanceDeduction(Payslip p, GenerateCommand c) {
         BigDecimal base = p.getBaseSalary() != null ? p.getBaseSalary() : BigDecimal.ZERO;
@@ -868,9 +878,41 @@ public class PayrollService {
         gn.lacaeducation.payroll.domain.EmployeeType type = c.employeeType() != null
                 ? c.employeeType() : gn.lacaeducation.payroll.domain.EmployeeType.TEACHER;
         var result = salaryAdvanceUseCase.applyDeduction(c.tenantId(), c.teacherId(), type, netSoFar);
+        if ((result.amount() == null || result.amount().signum() <= 0)) {
+            result = applySalaryAdvanceDeductionViaLinkedIdentity(c.tenantId(), c.teacherId(), type, netSoFar);
+        }
         if (result.amount() != null && result.amount().signum() > 0) {
             saveLine(p, result.label(), PayslipLineType.DEDUCTION, result.amount());
         }
+    }
+
+    /** Tente la déduction sous l'identité LIÉE à {@code (teacherId, type)} — la fiche Employee liée si
+     * {@code type == TEACHER}, ou la fiche Teacher liée à l'Employee sinon. Résultat à zéro (jamais
+     * d'exception) si cette personne n'a pas de double profil ou que l'identité liée n'a pas d'avance
+     * active non plus. */
+    private gn.lacaeducation.payroll.application.port.in.SalaryAdvanceUseCase.AdvanceDeductionResult
+            applySalaryAdvanceDeductionViaLinkedIdentity(Long tenantId, Long teacherId,
+                    gn.lacaeducation.payroll.domain.EmployeeType type, BigDecimal netSoFar) {
+        var none = new gn.lacaeducation.payroll.application.port.in.SalaryAdvanceUseCase.AdvanceDeductionResult(BigDecimal.ZERO, null);
+        if (type == gn.lacaeducation.payroll.domain.EmployeeType.TEACHER) {
+            return employeePublicInfoProvider.findByLinkedTeacherId(tenantId, teacherId)
+                    .map(emp -> {
+                        try {
+                            gn.lacaeducation.payroll.domain.EmployeeType empType =
+                                    gn.lacaeducation.payroll.domain.EmployeeType.valueOf(emp.category());
+                            return salaryAdvanceUseCase.applyDeduction(tenantId, emp.id(), empType, netSoFar);
+                        } catch (IllegalArgumentException e) {
+                            return none;
+                        }
+                    })
+                    .orElse(none);
+        }
+        return employeePublicInfoProvider.findEmployee(teacherId)
+                .map(gn.lacaeducation.staff.EmployeePublicInfoProvider.EmployeeInfo::linkedTeacherId)
+                .filter(java.util.Objects::nonNull)
+                .map(linkedTeacherId -> salaryAdvanceUseCase.applyDeduction(
+                        tenantId, linkedTeacherId, gn.lacaeducation.payroll.domain.EmployeeType.TEACHER, netSoFar))
+                .orElse(none);
     }
 
     /**

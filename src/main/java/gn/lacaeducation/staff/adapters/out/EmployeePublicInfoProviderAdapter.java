@@ -38,10 +38,16 @@ class EmployeePublicInfoProviderAdapter implements EmployeePublicInfoProvider {
         return employeeRepository.findById(employeeId).map(gn.lacaeducation.staff.domain.Employee::getUserId);
     }
 
+    @Override
+    public Optional<EmployeeInfo> findByLinkedTeacherId(Long tenantId, Long teacherId) {
+        if (tenantId == null || teacherId == null) return Optional.empty();
+        return employeeRepository.findByTenantIdAndLinkedTeacherId(tenantId, teacherId).map(this::toInfo);
+    }
+
     private EmployeeInfo toInfo(gn.lacaeducation.staff.domain.Employee e) {
         return new EmployeeInfo(e.getId(), e.fullName(),
                 e.getCategory() != null ? e.getCategory().name() : null,
                 e.getBaseSalary(), Boolean.TRUE.equals(e.getActive()), e.getPhone(), e.getEmail(),
-                e.getJobTitle(), e.getPhoto());
+                e.getJobTitle(), e.getPhoto(), e.getLinkedTeacherId());
     }
 }
