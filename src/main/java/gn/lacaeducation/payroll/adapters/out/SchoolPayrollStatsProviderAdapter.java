@@ -65,8 +65,6 @@ class SchoolPayrollStatsProviderAdapter implements SchoolPayrollStatsProvider {
     @Override
     @Transactional(readOnly = true)
     public MonthlyFinancialSummary monthlyFinancialSummary(Long tenantId, int year, int month) {
-        PayrollService.TeacherPayrollMass teachers = payrollService.teacherPayrollMass(tenantId, year, month, validTeacherIds(tenantId));
-        BigDecimal staffPayroll = activeStaffPayroll(tenantId);
         List<SalaryAdvance> advancesThisMonth = salaryAdvanceService.findByTenant(tenantId).stream()
                 .filter(a -> a.getStatus() != SalaryAdvanceStatus.CANCELLED)
                 .filter(a -> a.getGrantedAt() != null
@@ -80,24 +78,53 @@ class SchoolPayrollStatsProviderAdapter implements SchoolPayrollStatsProvider {
                         a.getEmployeeType() == EmployeeType.TEACHER ? resolveClassName(a.getTeacherId()) : null,
                         a.getGrantedAt().toLocalDate(), a.getAmount()))
                 .toList();
-        BigDecimal total = teachers.monthlyPayroll().add(staffPayroll).add(advancesTotal);
-        BigDecimal actualPaidSalariesTotal = actualPaidSalaries(tenantId, year, month);
-        return new MonthlyFinancialSummary(teachers.maternelleMonthlyPayroll(), teachers.primaryMonthlyPayroll(),
-                teachers.secondaryMonthlyPayroll(), staffPayroll, advancesTotal, total, actualPaidSalariesTotal,
-                advanceDetails);
+        // §retour comptable, écart constaté en production ("je ne sais pas d'où vient cet écart") : CE
+        // cumul se basait sur une masse salariale THÉORIQUE (teacherPayrollMass — heures projetées depuis
+        // l'emploi du temps, salaire de base configuré pour le personnel), jamais rapprochable des sommes
+        // RÉELLEMENT décaissées affichées juste à côté sur "Cumul payé pour la paie". Désormais basé,
+        // comme demandé ("sur les heures réalisées, l'heure qui a été payée"), sur les MÊMES fiches de
+        // paie PAID que actualPaidSalariesTotal — les deux cumuls se rapprochent enfin exactement
+        // (total ci-dessous == actualPaidSalariesTotal + advancesTotal).
+        ActualPaidBreakdown paid = actualPaidBreakdown(tenantId, year, month);
+        BigDecimal total = paid.total().add(advancesTotal);
+        return new MonthlyFinancialSummary(paid.maternelle(), paid.primary(), paid.secondary(),
+                paid.staff(), advancesTotal, total, paid.total(), advanceDetails);
     }
 
-    /** Cumul réel des salaires payés du mois : somme des fiches de paie au statut PAID dont
-     * {@code paidAt} tombe dans le mois demandé — pas une masse théorique, le montant réellement
-     * décaissé à chaque "Marquer payée" (§retour comptable). */
-    private BigDecimal actualPaidSalaries(Long tenantId, int year, int month) {
+    private record ActualPaidBreakdown(BigDecimal maternelle, BigDecimal primary, BigDecimal secondary,
+                                        BigDecimal staff, BigDecimal total) {}
+
+    /** Répartition RÉELLE (Maternelle/Primaire/Secondaire/Personnel) des fiches de paie au statut PAID
+     * dont {@code paidAt} tombe dans le mois demandé — jamais une masse théorique projetée. Le cycle
+     * d'un enseignant est résolu comme partout ailleurs (§{@link PayrollService#resolveTeacherCycles},
+     * niveaux enseignés déclarés, pas les classes/matières assignées). */
+    private ActualPaidBreakdown actualPaidBreakdown(Long tenantId, int year, int month) {
         YearMonth target = YearMonth.of(year, month);
-        return payslipRepository.findByTenantIdAndStatus(tenantId, gn.lacaeducation.payroll.domain.PayslipStatus.PAID)
+        List<Payslip> paidThisMonth = payslipRepository.findByTenantIdAndStatus(tenantId, gn.lacaeducation.payroll.domain.PayslipStatus.PAID)
                 .stream()
                 .filter(p -> p.getPaidAt() != null && YearMonth.from(p.getPaidAt()).equals(target))
-                .map(Payslip::getNetSalary)
-                .filter(Objects::nonNull)
+                .toList();
+        List<Payslip> teacherPayslips = paidThisMonth.stream()
+                .filter(p -> p.getEmployeeType() == EmployeeType.TEACHER)
+                .toList();
+        BigDecimal staff = paidThisMonth.stream()
+                .filter(p -> p.getEmployeeType() != EmployeeType.TEACHER)
+                .map(Payslip::getNetSalary).filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+        List<Long> teacherIds = teacherPayslips.stream().map(Payslip::getTeacherId)
+                .filter(Objects::nonNull).distinct().toList();
+        Map<Long, String> cycles = payrollService.resolveTeacherCycles(teacherIds);
+        BigDecimal maternelle = BigDecimal.ZERO, primary = BigDecimal.ZERO, secondary = BigDecimal.ZERO;
+        for (Payslip p : teacherPayslips) {
+            BigDecimal net = p.getNetSalary() != null ? p.getNetSalary() : BigDecimal.ZERO;
+            switch (cycles.getOrDefault(p.getTeacherId(), "SECONDAIRE")) {
+                case "MATERNELLE" -> maternelle = maternelle.add(net);
+                case "PRIMAIRE" -> primary = primary.add(net);
+                default -> secondary = secondary.add(net);
+            }
+        }
+        return new ActualPaidBreakdown(maternelle, primary, secondary, staff,
+                maternelle.add(primary).add(secondary).add(staff));
     }
 
     /** Première classe trouvée pour cet enseignant (professeur principal, sinon matière assignée) —
