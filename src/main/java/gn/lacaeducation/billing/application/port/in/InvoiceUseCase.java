@@ -19,6 +19,10 @@ public interface InvoiceUseCase {
      * automatique" : une exonération accordée ou révoquée en cours d'année est reflétée dès le
      * prochain appel, sans action manuelle sur les échéances déjà traitées). */
     record GenerateMonthlyResult(List<Invoice> created, List<ExemptedPeriod> exemptedPeriods) {}
+    /** Crée une facture pour un frais ponctuel (inscription, transport fixe, examen...). Retourne
+     * {@code null} — et ne crée RIEN — si le frais est entièrement couvert par une exonération/avantage
+     * personnel (même garde que {@link #generateMonthly} pour la mensualité échelonnée) : jamais de
+     * facture à 0 GNF. */
     Invoice create(CreateInvoiceCommand command);
     GenerateMonthlyResult generateMonthly(GenerateMonthlyCommand command);
     /** Génère UNIQUEMENT les échéances demandées (pas forcément toutes celles configurées comme
@@ -113,6 +117,13 @@ public interface InvoiceUseCase {
     record StaffBenefitBackfillResult(int invoicesUpdated, java.util.List<Long> invoiceIds) {}
 
     StaffBenefitBackfillResult backfillStaffBenefitTagging(Long tenantId);
+
+    /** Factures « fantômes » créées AVANT le correctif §billing/fondation (frais ponctuel entièrement
+     * couvert par une exonération — discountAmount == totalAmount — qui créait quand même une facture
+     * à 0 GNF au lieu de n'en créer aucune, contrairement à la mensualité échelonnée qui a toujours eu
+     * cette garde). Lecture seule, pour aperçu avant suppression manuelle via {@link #delete} —
+     * jamais supprimée automatiquement : le comptable valide la liste d'abord. */
+    List<Invoice> findFullyExemptedDanglingInvoices(Long tenantId);
 
     /** {@code staffChild} : au moins un parent de cet élève est personnel de l'école (affiche ou non le
      * bouton retirer/réintégrer sur les écrans de facturation — fiche élève, modal d'encaissement).

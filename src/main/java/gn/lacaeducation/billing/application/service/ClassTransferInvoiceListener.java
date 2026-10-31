@@ -130,6 +130,13 @@ public class ClassTransferInvoiceListener {
             if (invoiceUseCase.existsByStudentIdAndFeeId(event.studentId(), fee.getId())) continue;
             Invoice newInvoice = invoiceUseCase.create(new CreateInvoiceCommand(
                     fee.getTenantId(), event.studentId(), fee.getId(), null, fee.getAmount(), event.academicYearId()));
+            if (newInvoice == null) {
+                // Frais d'inscription de la nouvelle classe entièrement exonéré (§billing) : rien à
+                // créditer ici, le crédit tente le frais suivant (ou finit en surplus ci-dessous).
+                log.info("Transfert de classe : frais d'inscription id={} entièrement exonéré pour l'élève id={}, "
+                        + "aucune facture à créditer.", fee.getId(), event.studentId());
+                continue;
+            }
             // Solde net (remise/exonération déjà appliquée par InvoiceUseCase#create), jamais le total
             // brut — même garde-fou que reconcileMonthly pour ne jamais reporter plus que le dû réel.
             BigDecimal toApply = remaining.min(newInvoice.getRemainingBalance());

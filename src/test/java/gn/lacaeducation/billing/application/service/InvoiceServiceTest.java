@@ -1059,21 +1059,64 @@ class InvoiceServiceTest {
     }
 
     @Test
-    void create_discountNeverExceedsGrossAmount() {
+    void create_discountNeverExceedsGrossAmount_andFullyCoveredFeeSkipsInvoiceCreation() {
         // Cumul défensif : même si le pourcentage gagnant + la remise exceptionnelle dépassent le
-        // montant brut, la remise totale est plafonnée au montant brut (jamais un net négatif).
+        // montant brut, la remise totale est plafonnée au montant brut (jamais un net négatif) — ce qui
+        // déclenche désormais aussi la garde "jamais de facture à 0 GNF" (voir le test dédié plus bas,
+        // §retour comptable, fondation : "il ne doit generer aucune facture").
         when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(
                 gn.lacaeducation.billing.domain.SchoolFee.builder().id(3L)
                         .type(gn.lacaeducation.billing.domain.FeeType.EXAM).build()));
         when(exemptionUseCase.computeApplicable(7L, gn.lacaeducation.billing.domain.FeeType.EXAM))
                 .thenReturn(new ApplicableExemption(new BigDecimal("100"), "Exonération totale", false,
                         new BigDecimal("50"), "Geste directeur"));
-        when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
 
         Invoice inv = service().create(new CreateInvoiceCommand(10L, 7L, 3L, "FAC-1", new BigDecimal("100.00"), 99L));
 
-        assertThat(inv.getDiscountAmount()).isEqualByComparingTo("100.00");
-        assertThat(inv.getRemainingBalance()).isEqualByComparingTo("0.00");
+        assertThat(inv).isNull();
+        verify(repo, never()).save(any());
+    }
+
+    @Test
+    void create_totalExemptionOnAllFees_atEnrollment_createsNoInvoiceAtAll() {
+        // Scénario exact du retour comptable : règle d'exonération "tous les frais" (feeTypes vide),
+        // TOTAL/100% (ex. enfants pris en charge par la fondation) — aucune facture, même pas à 0 GNF,
+        // pour le frais d'inscription généré automatiquement à l'inscription de l'enfant.
+        when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(
+                gn.lacaeducation.billing.domain.SchoolFee.builder().id(3L)
+                        .type(gn.lacaeducation.billing.domain.FeeType.ENROLLMENT).build()));
+        when(exemptionUseCase.computeApplicable(7L, gn.lacaeducation.billing.domain.FeeType.ENROLLMENT))
+                .thenReturn(new ApplicableExemption(new BigDecimal("100"), "Pris en charge par la fondation",
+                        false, BigDecimal.ZERO, null));
+
+        Invoice inv = service().create(new CreateInvoiceCommand(10L, 7L, 3L, "FAC-1", new BigDecimal("500000"), 99L));
+
+        assertThat(inv).isNull();
+        verify(repo, never()).save(any());
+    }
+
+    // ── findFullyExemptedDanglingInvoices (§retour comptable, nettoyage des factures fantômes créées
+    // avant le correctif ci-dessus) ─────────────────────────────────────────────────────────────────
+
+    @Test
+    void findFullyExemptedDanglingInvoices_returnsOnlyFullyDiscountedNonCancelledInvoices() {
+        Invoice dangling = Invoice.builder().id(1L).tenantId(10L)
+                .totalAmount(new BigDecimal("500000")).discountAmount(new BigDecimal("500000"))
+                .remainingBalance(BigDecimal.ZERO).status(InvoiceStatus.UNPAID).build();
+        Invoice partialDiscount = Invoice.builder().id(2L).tenantId(10L)
+                .totalAmount(new BigDecimal("100")).discountAmount(new BigDecimal("50"))
+                .remainingBalance(new BigDecimal("50")).status(InvoiceStatus.UNPAID).build();
+        Invoice alreadyCancelled = Invoice.builder().id(3L).tenantId(10L)
+                .totalAmount(new BigDecimal("100")).discountAmount(new BigDecimal("100"))
+                .remainingBalance(BigDecimal.ZERO).status(InvoiceStatus.CANCELLED).build();
+        Invoice noDiscountAtAll = Invoice.builder().id(4L).tenantId(10L)
+                .totalAmount(new BigDecimal("100")).discountAmount(BigDecimal.ZERO)
+                .remainingBalance(new BigDecimal("100")).status(InvoiceStatus.UNPAID).build();
+        when(repo.findByTenantId(10L)).thenReturn(List.of(dangling, partialDiscount, alreadyCancelled, noDiscountAtAll));
+
+        List<Invoice> result = service().findFullyExemptedDanglingInvoices(10L);
+
+        assertThat(result).containsExactly(dangling);
     }
 
     // ── discountSource (§billing ↔ payroll, avantage personnel → reste retenu sur salaire) ────────────
@@ -1097,18 +1140,22 @@ class InvoiceServiceTest {
 
     @Test
     void create_staffBenefitExemption_ruleAlreadyNamedAvantagePersonnel_doesNotDuplicatePrefix() {
+        // 99% (pas 100%) pour que la facture soit réellement créée et que le libellé soit vérifiable —
+        // une exonération à 100% ne produit plus aucune facture (voir
+        // create_totalExemptionOnAllFees_atEnrollment_createsNoInvoiceAtAll), la logique de formatage du
+        // motif testée ici est indépendante du pourcentage.
         when(schoolFeeRepository.findById(3L)).thenReturn(Optional.of(
                 gn.lacaeducation.billing.domain.SchoolFee.builder().id(3L)
                         .type(gn.lacaeducation.billing.domain.FeeType.MONTHLY).build()));
         when(exemptionUseCase.computeApplicable(7L, gn.lacaeducation.billing.domain.FeeType.MONTHLY))
-                .thenReturn(new ApplicableExemption(new BigDecimal("100"), "Avantage personnel", true, BigDecimal.ZERO, null));
+                .thenReturn(new ApplicableExemption(new BigDecimal("99"), "Avantage personnel", true, BigDecimal.ZERO, null));
         when(repo.save(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
 
         Invoice inv = service().create(new CreateInvoiceCommand(10L, 7L, 3L, "FAC-1", new BigDecimal("100.00"), 99L));
 
         // §retour comptable : "je les vois encombrant" — le comptable a nommé sa règle "Avantage
         // personnel" dans le catalogue, le préfixe automatique ne doit pas le répéter.
-        assertThat(inv.getDiscountReason()).isEqualTo("Avantage personnel (100%)");
+        assertThat(inv.getDiscountReason()).isEqualTo("Avantage personnel (99%)");
     }
 
     @Test
