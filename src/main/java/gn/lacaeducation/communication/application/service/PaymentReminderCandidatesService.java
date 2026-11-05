@@ -38,7 +38,7 @@ public class PaymentReminderCandidatesService {
 
     public record ParentContact(Long parentId, String name, String phone) {}
 
-    public record Candidate(Long studentId, String studentName, Long classId, String className,
+    public record Candidate(Long studentId, String studentName, String studentNumber, Long classId, String className,
                             Status status, BigDecimal amountDue, LocalDate dueDate, int daysLate,
                             int tranchesPaid, int totalTranches, List<ParentContact> parents) {}
 
@@ -108,7 +108,7 @@ public class PaymentReminderCandidatesService {
                         .toList()
                 : List.of();
 
-        return new Candidate(student.id(), student.firstName() + " " + student.lastName(), classId, className,
+        return new Candidate(student.id(), student.firstName() + " " + student.lastName(), student.studentNumber(), classId, className,
                 status, amountDue, dueDate, daysLate, tranchesPaid, totalTranches, parents);
     }
 }

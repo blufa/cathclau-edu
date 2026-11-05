@@ -1,6 +1,7 @@
 package gn.lacaeducation.transport.adapters.in.web;
 
 import gn.lacaeducation.common.TenantContext;
+import gn.lacaeducation.transport.application.port.out.TransportSubscriptionListPdfGenerator;
 import gn.lacaeducation.transport.application.service.TransportService;
 import gn.lacaeducation.transport.application.service.TransportService.SubscribeCommand;
 import gn.lacaeducation.transport.domain.TransportDirection;
@@ -8,6 +9,8 @@ import gn.lacaeducation.transport.domain.TransportSubscription;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -23,6 +26,7 @@ import java.util.List;
 public class TransportSubscriptionController {
 
     private final TransportService service;
+    private final TransportSubscriptionListPdfGenerator pdfGenerator;
 
     public record SubscribeRequest(Long routeId, Long stopId, Long studentId, TransportDirection direction,
                                    LocalDate startDate, BigDecimal monthlyFee) {}
@@ -60,6 +64,20 @@ public class TransportSubscriptionController {
     public TransportSubscription subscribe(@RequestBody SubscribeRequest r) {
         return service.subscribe(new SubscribeCommand(TenantContext.get(), r.routeId(), r.stopId(), r.studentId(),
                 r.direction(), r.startDate(), r.monthlyFee()));
+    }
+
+    public record PrintRequest(List<Long> subscriptionIds) {}
+
+    @Operation(summary = "Imprimer la liste (telle que filtrée à l'écran) des abonnés transport sélectionnés, "
+            + "avec leur classe — §retour comptable")
+    @PostMapping("/pdf")
+    public ResponseEntity<byte[]> printPdf(@RequestBody PrintRequest r) {
+        Long tenantId = TenantContext.get();
+        byte[] pdf = pdfGenerator.generate(tenantId, service.printableSubscriptions(tenantId, r.subscriptionIds()));
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=liste-transport.pdf")
+                .body(pdf);
     }
 
     @Operation(summary = "Résilier un abonnement")
