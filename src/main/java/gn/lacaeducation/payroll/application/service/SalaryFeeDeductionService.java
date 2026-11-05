@@ -167,11 +167,18 @@ public class SalaryFeeDeductionService implements SalaryFeeDeductionUseCase {
 
     @Override
     public void applyStaffBenefitRemainderAsInvoicePayment(Long tenantId, EmployeeType employeeType, Long staffId,
-                                                            LocalDate periodStart, String periodLabel) {
+                                                            LocalDate periodStart, String periodLabel, BigDecimal maxAmount) {
+        BigDecimal budget = maxAmount;
         for (Long studentId : resolveChildStudentIds(employeeType, staffId)) {
+            if (budget != null && budget.signum() <= 0) break;
             BigDecimal remainder = studentFeePaymentApi.outstandingStaffBenefitRemainder(studentId, periodStart, periodLabel);
             if (remainder != null && remainder.signum() > 0) {
-                studentFeePaymentApi.applyStaffBenefitRemainderPayment(studentId, periodStart, periodLabel, remainder);
+                // Jamais plus que ce qui reste du plafond (§retour comptable, salaire négatif) : un
+                // enfant dont la part dépasse le reliquat n'est réglé que partiellement, le reste reste
+                // dû sur sa facture — jamais reversé sans que l'argent ait réellement été retenu.
+                BigDecimal toApply = budget != null ? remainder.min(budget) : remainder;
+                studentFeePaymentApi.applyStaffBenefitRemainderPayment(studentId, periodStart, periodLabel, toApply);
+                if (budget != null) budget = budget.subtract(toApply);
             }
         }
     }

@@ -858,9 +858,37 @@ public class PayrollService {
     private void applyStaffBenefitRemainderDeduction(Payslip p, GenerateCommand c) {
         var deduction = salaryFeeDeductionUseCase.computeStaffBenefitRemainder(c.tenantId(), p.getEmployeeType(), c.teacherId(),
                 c.periodStart(), c.periodLabel());
-        if (deduction.amount() != null && deduction.amount().signum() > 0) {
-            saveLine(p, STAFF_BENEFIT_LINE_PREFIX + " (" + deduction.childrenCount() + " enfant(s))",
-                    PayslipLineType.DEDUCTION, deduction.amount());
+        applyCappedStaffBenefitLine(p, deduction.amount(), deduction.childrenCount());
+    }
+
+    /** Pose la ligne "Reste avantage personnel", plafonnée au net déjà calculé sur la fiche à ce stade
+     * (même principe que {@link #applySalaryAdvanceDeduction} — jamais un net négatif) — §retour
+     * comptable, écart constaté en production : un salarié avec 8 enfants à charge avait un salaire net
+     * à -114 000 GNF, la retenue dépassant largement son salaire de base. Le reliquat non retenu reste
+     * dû sur les factures des enfants (rien n'est jamais effacé), reporté au mois suivant comme pour une
+     * avance sur salaire — voir {@link #markPaid}, qui ne répercute jamais plus que CE montant posé ici. */
+    private void applyCappedStaffBenefitLine(Payslip p, BigDecimal rawAmount, int childrenCount) {
+        if (rawAmount == null || rawAmount.signum() <= 0) return;
+        BigDecimal base = p.getBaseSalary() != null ? p.getBaseSalary() : BigDecimal.ZERO;
+        BigDecimal earnings = BigDecimal.ZERO;
+        BigDecimal deductions = BigDecimal.ZERO;
+        for (PayslipLine l : lineRepo.findByPayslipId(p.getId())) {
+            if (l.getLineType() == PayslipLineType.EARNING) earnings = earnings.add(l.getAmount());
+            else deductions = deductions.add(l.getAmount());
+        }
+        BigDecimal netSoFar = base.add(earnings).subtract(deductions);
+        BigDecimal capped = netSoFar.signum() > 0 ? rawAmount.min(netSoFar) : BigDecimal.ZERO;
+        if (capped.signum() > 0) {
+            saveLine(p, STAFF_BENEFIT_LINE_PREFIX + " (" + childrenCount + " enfant(s))",
+                    PayslipLineType.DEDUCTION, capped);
+        }
+        if (capped.compareTo(rawAmount) < 0) {
+            BigDecimal notDeducted = rawAmount.subtract(capped);
+            java.text.DecimalFormatSymbols sym = new java.text.DecimalFormatSymbols(java.util.Locale.FRANCE);
+            sym.setGroupingSeparator(' ');
+            String formatted = new java.text.DecimalFormat("#,##0", sym).format(notDeducted);
+            String note = "Avantage personnel : " + formatted + " GNF non retenus ce mois — net insuffisant, reste dû sur les factures des enfants.";
+            p.setNotes(p.getNotes() == null || p.getNotes().isBlank() ? note : p.getNotes() + " — " + note);
         }
     }
 
@@ -879,10 +907,7 @@ public class PayrollService {
                 .forEach(l -> lineRepo.deleteById(l.getId()));
         var deduction = salaryFeeDeductionUseCase.computeStaffBenefitRemainder(p.getTenantId(), p.getEmployeeType(),
                 p.getTeacherId(), p.getPeriodStart(), p.getPeriodLabel());
-        if (deduction.amount() != null && deduction.amount().signum() > 0) {
-            saveLine(p, STAFF_BENEFIT_LINE_PREFIX + " (" + deduction.childrenCount() + " enfant(s))",
-                    PayslipLineType.DEDUCTION, deduction.amount());
-        }
+        applyCappedStaffBenefitLine(p, deduction.amount(), deduction.childrenCount());
         return recompute(payslipId);
     }
 
@@ -1152,9 +1177,16 @@ public class PayrollService {
         // Répercute la retenue (solde réel des factures "avantage personnel", voir
         // applyStaffBenefitRemainderDeduction) sur les factures des enfants du salarié, maintenant que
         // la fiche est réellement payée (§payroll ↔ billing) — sans ça, l'école a bien été payée (via
-        // la paie) mais la facturation continue d'afficher ces enfants comme débiteurs.
+        // la paie) mais la facturation continue d'afficher ces enfants comme débiteurs. Plafonné au
+        // montant EXACT de la ligne posée sur la fiche (jamais un recalcul indépendant, §retour
+        // comptable "salaire négatif") : si le net était insuffisant, seule la part réellement retenue
+        // est répercutée, le reste reste dû sur les factures des enfants.
+        BigDecimal staffBenefitDeducted = lineRepo.findByPayslipId(saved.getId()).stream()
+                .filter(l -> l.getLabel() != null && l.getLabel().startsWith(STAFF_BENEFIT_LINE_PREFIX))
+                .map(PayslipLine::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
         salaryFeeDeductionUseCase.applyStaffBenefitRemainderAsInvoicePayment(saved.getTenantId(), saved.getEmployeeType(), saved.getTeacherId(),
-                saved.getPeriodStart(), saved.getPeriodLabel());
+                saved.getPeriodStart(), saved.getPeriodLabel(), staffBenefitDeducted);
         // Fait remonter la paie dans la trésorerie (sortie de caisse "Salaires") — jamais dans le
         // budget annuel voté, qui couvre le fonctionnement courant (carburant, kermesse, événements),
         // financièrement distinct de la masse salariale (toujours puisée dans les recettes de l'école).
