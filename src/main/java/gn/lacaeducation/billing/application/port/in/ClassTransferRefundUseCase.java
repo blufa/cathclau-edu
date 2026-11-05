@@ -13,4 +13,13 @@ public interface ClassTransferRefundUseCase {
     /** Uniquement ceux pas encore remboursés — c'est cette liste qui doit apparaître sur un reçu. */
     List<ClassTransferRefund> findPendingByStudentId(Long studentId);
     ClassTransferRefund markRefunded(Long id);
+
+    /** Surplus en attente, tenant courant, noms déjà résolus (élève/classes) — pour un écran de
+     * régularisation (§retour comptable : "ajouter un écran pour voir/régulariser ces surplus"), aucun
+     * identifiant brut à afficher. */
+    record PendingRefund(Long id, Long studentId, String studentName, String studentNumber,
+                         String oldClassName, String newClassName, BigDecimal amount, String reason,
+                         java.time.LocalDateTime createdAt) {}
+
+    List<PendingRefund> findAllPending();
 }
