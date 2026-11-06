@@ -59,8 +59,11 @@ class BiometricBadgeTest {
 
         assertThat(result.qrPayload()).startsWith("BADGE2|");
         String token = result.qrPayload().substring("BADGE2|".length());
-        assertThat(token).doesNotContain("10", "STUDENT", "42"); // aucune fuite du triplet d'origine
-        assertThat(token).hasSize(32); // UUID sans tirets
+        // Hexadécimal pur (UUID sans tirets) : structurellement indépendant du triplet d'origine, donc
+        // jamais décodable — contrairement à une assertion "doesNotContain(...)" sur des chiffres du
+        // triplet, qui serait intermittente (un hex aléatoire de 32 caractères contient "10" ou "42"
+        // par pur hasard dans ~11% des tirages, sans rapport avec une vraie fuite).
+        assertThat(token).matches("[0-9a-f]{32}");
     }
 
     @Test
