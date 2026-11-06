@@ -27,4 +27,7 @@ public class BiometricEnrollment {
     /** Jeton opaque aléatoire encodé dans le QR de badge (remplace l'ancien triplet tenant|type|id
      * lisible et devinable) — null pour les enrôlements biométriques classiques (non-badge). */
     private String badgeToken;
+    /** UID matériel d'une carte NFC physique associée au même badge que {@link #badgeToken} — les deux
+     * technologies pointent vers la même personne (§BADGES_QR_NFC.md). Null si aucune carte associée. */
+    private String nfcUid;
 }

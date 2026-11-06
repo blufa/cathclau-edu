@@ -25,4 +25,5 @@ public class BiometricEnrollmentJpaEntity {
     @Enumerated(EnumType.STRING) @Column(nullable = false, length = 16) private EnrollmentStatus status;
     @Column(name = "enrolled_at") private LocalDateTime enrolledAt;
     @Column(name = "badge_token", length = 64) private String badgeToken;
+    @Column(name = "nfc_uid", length = 64) private String nfcUid;
 }

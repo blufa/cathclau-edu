@@ -3,6 +3,7 @@ package gn.lacaeducation.biometric.adapters.in.web;
 import gn.lacaeducation.biometric.application.service.BiometricService;
 import gn.lacaeducation.biometric.application.service.BiometricService.BadgeResult;
 import gn.lacaeducation.biometric.application.service.BiometricService.ResolvedBadge;
+import gn.lacaeducation.biometric.domain.BiometricEnrollment;
 import gn.lacaeducation.biometric.domain.BiometricSubjectType;
 import gn.lacaeducation.common.TenantContext;
 import io.swagger.v3.oas.annotations.Operation;
@@ -33,5 +34,21 @@ public class BiometricBadgeController {
     @GetMapping("/resolve")
     public ResolvedBadge resolve(@RequestParam String token) {
         return service.resolveBadge(token);
+    }
+
+    public record NfcUidRequest(String nfcUid) {}
+
+    @Operation(summary = "Associe (ou retire, si vide) l'UID d'une carte NFC physique à un badge déjà généré")
+    @PreAuthorize("hasAuthority('biometrique:manage')")
+    @PatchMapping("/{enrollmentId}/nfc")
+    public BiometricEnrollment associateNfc(@PathVariable Long enrollmentId, @RequestBody NfcUidRequest r) {
+        return service.associateNfcUid(enrollmentId, r.nfcUid());
+    }
+
+    @Operation(summary = "Résout un UID de carte NFC lu en la personne correspondante, pour le pointage")
+    @PreAuthorize("hasAuthority('presence:create') or hasRole('STUDENT')")
+    @GetMapping("/resolve-nfc")
+    public ResolvedBadge resolveNfc(@RequestParam String uid) {
+        return service.resolveBadgeByNfc(uid);
     }
 }

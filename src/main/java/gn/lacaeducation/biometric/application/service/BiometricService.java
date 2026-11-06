@@ -176,6 +176,41 @@ public class BiometricService {
         return new ResolvedBadge(e.getSubjectType(), e.getSubjectId());
     }
 
+    // ── Badges — carte NFC (même badge que le QR, deuxième technologie) ────────
+
+    /**
+     * Associe (ou retire, si {@code nfcUid} est vide) l'UID matériel d'une carte NFC physique à un
+     * badge déjà enrôlé (via {@link #generateBadge}) — les deux technologies pointent ensuite vers la
+     * même personne. Contrairement au jeton QR, l'UID n'est pas généré par le serveur : il vient de la
+     * carte physique réellement présentée (lue par l'agent/app d'enrôlement), d'où un contrôle de
+     * doublon explicite plutôt qu'une simple rotation.
+     */
+    public BiometricEnrollment associateNfcUid(Long enrollmentId, String nfcUid) {
+        BiometricEnrollment e = enrollmentRepo.findById(enrollmentId)
+                .orElseThrow(() -> new ResourceNotFoundException("BiometricEnrollment", enrollmentId));
+        String trimmed = nfcUid != null && !nfcUid.isBlank() ? nfcUid.trim() : null;
+        if (trimmed != null) {
+            enrollmentRepo.findByNfcUid(trimmed)
+                    .filter(other -> !other.getId().equals(enrollmentId))
+                    .ifPresent(other -> { throw new BusinessRuleException("Cette carte NFC est déjà associée à une autre personne."); });
+        }
+        e.setNfcUid(trimmed);
+        return enrollmentRepo.save(e);
+    }
+
+    /**
+     * Résout un UID de carte NFC lu par le lecteur en la personne correspondante — même principe de
+     * prudence que {@link #resolveBadge} : un UID inconnu ou désactivé ne révèle jamais s'il existe.
+     */
+    @Transactional(readOnly = true)
+    public ResolvedBadge resolveBadgeByNfc(String nfcUid) {
+        if (nfcUid == null || nfcUid.isBlank()) throw new BusinessRuleException("UID de carte NFC requis");
+        BiometricEnrollment e = enrollmentRepo.findByNfcUid(nfcUid.trim())
+                .filter(x -> x.getStatus() == EnrollmentStatus.ENROLLED)
+                .orElseThrow(() -> new BusinessRuleException("Carte NFC inconnue ou désactivée"));
+        return new ResolvedBadge(e.getSubjectType(), e.getSubjectId());
+    }
+
     // ── Pointages (Push API) ────────────────────────────────────────────────────
 
     public record PunchCommand(String externalUserId, LocalDateTime punchTime, PunchDirection direction,

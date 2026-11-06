@@ -10,4 +10,5 @@ interface BiometricEnrollmentJpaRepository extends JpaRepository<BiometricEnroll
     List<BiometricEnrollmentJpaEntity> findByDeviceId(Long deviceId);
     Optional<BiometricEnrollmentJpaEntity> findByDeviceIdAndExternalUserId(Long deviceId, String externalUserId);
     Optional<BiometricEnrollmentJpaEntity> findByBadgeToken(String badgeToken);
+    Optional<BiometricEnrollmentJpaEntity> findByNfcUid(String nfcUid);
 }
