@@ -2,6 +2,7 @@ package gn.lacaeducation.biometric.adapters.in.web;
 
 import gn.lacaeducation.biometric.application.service.BiometricService;
 import gn.lacaeducation.biometric.application.service.BiometricService.BadgeResult;
+import gn.lacaeducation.biometric.application.service.BiometricService.ResolvedBadge;
 import gn.lacaeducation.biometric.domain.BiometricSubjectType;
 import gn.lacaeducation.common.TenantContext;
 import io.swagger.v3.oas.annotations.Operation;
@@ -20,10 +21,17 @@ public class BiometricBadgeController {
 
     public record BadgeRequest(BiometricSubjectType subjectType, Long subjectId) {}
 
-    @Operation(summary = "Générer un badge QR pour une personne (auto-enrôlement)")
+    @Operation(summary = "Générer un badge QR pour une personne (auto-enrôlement). Révoque silencieusement tout ancien QR déjà imprimé pour elle.")
     @PreAuthorize("hasAuthority('biometrique:manage')")
     @PostMapping
     public BadgeResult generate(@RequestBody BadgeRequest r) {
         return service.generateBadge(TenantContext.get(), r.subjectType(), r.subjectId());
+    }
+
+    @Operation(summary = "Résout un jeton de badge scanné (QR « BADGE2|<jeton> ») en la personne correspondante, pour le pointage")
+    @PreAuthorize("hasAuthority('presence:create') or hasRole('STUDENT')")
+    @GetMapping("/resolve")
+    public ResolvedBadge resolve(@RequestParam String token) {
+        return service.resolveBadge(token);
     }
 }

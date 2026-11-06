@@ -20,5 +20,6 @@ class BiometricEnrollmentPersistenceAdapter implements BiometricEnrollmentReposi
     @Override public List<BiometricEnrollment> findByTenantId(Long t) { return jpa.findByTenantId(t).stream().map(mapper::toDomain).toList(); }
     @Override public List<BiometricEnrollment> findByDeviceId(Long d) { return jpa.findByDeviceId(d).stream().map(mapper::toDomain).toList(); }
     @Override public Optional<BiometricEnrollment> findByDeviceIdAndExternalUserId(Long d, String u) { return jpa.findByDeviceIdAndExternalUserId(d, u).map(mapper::toDomain); }
+    @Override public Optional<BiometricEnrollment> findByBadgeToken(String t) { return jpa.findByBadgeToken(t).map(mapper::toDomain); }
     @Override public void deleteById(Long id) { jpa.deleteById(id); }
 }

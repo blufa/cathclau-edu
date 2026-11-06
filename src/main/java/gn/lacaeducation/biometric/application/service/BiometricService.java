@@ -138,7 +138,12 @@ public class BiometricService {
 
     /**
      * Génère un badge QR pour une personne (élève ou enseignant) et l'enrôle automatiquement (contre un
-     * appareil virtuel « Badge QR »). Le QR « BADGE|tenant|type|id » est scannable pour le pointage.
+     * appareil virtuel « Badge QR »). Le QR « BADGE2|&lt;jeton opaque&gt; » est scannable pour le
+     * pointage — contrairement à l'ancien format « BADGE|tenant|type|id » (lisible et devinable : voir
+     * BADGES_QR_NFC.md), ce jeton aléatoire ne permet à personne de construire un badge valide sans
+     * avoir réellement généré/possédé le badge d'origine. Régénérer le badge d'une personne révoque
+     * silencieusement tout ancien QR déjà imprimé pour elle (perte/vol : on régénère, l'ancien devient
+     * inutilisable).
      */
     public BadgeResult generateBadge(Long tenantId, BiometricSubjectType subjectType, Long subjectId) {
         if (subjectId == null) throw new BusinessRuleException("La personne est requise");
@@ -149,8 +154,26 @@ public class BiometricService {
                         null, null, "Virtuel", true, false, null, null, null, false, null)));
         String externalUserId = "BADGE-" + type.name() + "-" + subjectId;
         BiometricEnrollment e = enroll(tenantId, badgeDevice.getId(), type, subjectId, BiometricType.FACE, externalUserId);
-        String qrPayload = "BADGE|" + tenantId + "|" + type.name() + "|" + subjectId;
+        e.setBadgeToken(java.util.UUID.randomUUID().toString().replace("-", ""));
+        e = enrollmentRepo.save(e);
+        String qrPayload = "BADGE2|" + e.getBadgeToken();
         return new BadgeResult(qrPayload, externalUserId, type, subjectId, e.getId());
+    }
+
+    public record ResolvedBadge(BiometricSubjectType subjectType, Long subjectId) {}
+
+    /**
+     * Résout un jeton de badge opaque scanné (format « BADGE2|&lt;jeton&gt; », le jeton seul est passé
+     * ici) en la personne correspondante — jamais l'inverse (le jeton ne révèle rien à qui ne l'a pas
+     * scanné). Le filtre tenant Hibernate restreint déjà la recherche au tenant courant.
+     */
+    @Transactional(readOnly = true)
+    public ResolvedBadge resolveBadge(String badgeToken) {
+        if (badgeToken == null || badgeToken.isBlank()) throw new BusinessRuleException("Jeton de badge requis");
+        BiometricEnrollment e = enrollmentRepo.findByBadgeToken(badgeToken)
+                .filter(x -> x.getStatus() == EnrollmentStatus.ENROLLED)
+                .orElseThrow(() -> new BusinessRuleException("Badge inconnu ou désactivé"));
+        return new ResolvedBadge(e.getSubjectType(), e.getSubjectId());
     }
 
     // ── Pointages (Push API) ────────────────────────────────────────────────────

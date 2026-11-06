@@ -24,4 +24,7 @@ public class BiometricEnrollment {
     private String externalUserId;
     private EnrollmentStatus status;
     private LocalDateTime enrolledAt;
+    /** Jeton opaque aléatoire encodé dans le QR de badge (remplace l'ancien triplet tenant|type|id
+     * lisible et devinable) — null pour les enrôlements biométriques classiques (non-badge). */
+    private String badgeToken;
 }
