@@ -3,6 +3,7 @@ package gn.lacaeducation.biometric.adapters.out.persistence;
 import gn.lacaeducation.biometric.adapters.out.persistence.mapper.BiometricMapper;
 import gn.lacaeducation.biometric.application.port.out.BiometricPunchRepository;
 import gn.lacaeducation.biometric.domain.BiometricPunch;
+import gn.lacaeducation.biometric.domain.BiometricSubjectType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -21,4 +22,7 @@ class BiometricPunchPersistenceAdapter implements BiometricPunchRepository {
     @Override public List<BiometricPunch> findByTenantIdAndDeviceId(Long t, Long d) { return jpa.findByTenantIdAndDeviceIdOrderByPunchTimeDesc(t, d).stream().map(mapper::toDomain).toList(); }
     @Override public List<BiometricPunch> findByTenantIdAndPunchTimeBetween(Long t, LocalDateTime f, LocalDateTime to) { return jpa.findByTenantIdAndPunchTimeBetweenOrderByPunchTimeDesc(t, f, to).stream().map(mapper::toDomain).toList(); }
     @Override public Optional<BiometricPunch> findByDeviceIdAndSyncId(Long d, String syncId) { return jpa.findByDeviceIdAndSyncId(d, syncId).map(mapper::toDomain); }
+    @Override public List<BiometricPunch> findByTenantIdAndSubjectTypeAndSubjectIdAndPunchTimeBetween(Long t, BiometricSubjectType st, Long sid, LocalDateTime f, LocalDateTime to) {
+        return jpa.findByTenantIdAndSubjectTypeAndSubjectIdAndPunchTimeBetween(t, st, sid, f, to).stream().map(mapper::toDomain).toList();
+    }
 }

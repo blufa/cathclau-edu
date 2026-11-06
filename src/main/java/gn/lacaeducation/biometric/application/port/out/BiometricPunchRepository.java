@@ -1,6 +1,7 @@
 package gn.lacaeducation.biometric.application.port.out;
 
 import gn.lacaeducation.biometric.domain.BiometricPunch;
+import gn.lacaeducation.biometric.domain.BiometricSubjectType;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -12,4 +13,6 @@ public interface BiometricPunchRepository {
     List<BiometricPunch> findByTenantIdAndDeviceId(Long tenantId, Long deviceId);
     List<BiometricPunch> findByTenantIdAndPunchTimeBetween(Long tenantId, LocalDateTime from, LocalDateTime to);
     Optional<BiometricPunch> findByDeviceIdAndSyncId(Long deviceId, String syncId);
+    List<BiometricPunch> findByTenantIdAndSubjectTypeAndSubjectIdAndPunchTimeBetween(
+            Long tenantId, BiometricSubjectType subjectType, Long subjectId, LocalDateTime from, LocalDateTime to);
 }

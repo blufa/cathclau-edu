@@ -2,18 +2,19 @@ package gn.lacaeducation.biometric.application.service;
 
 import gn.lacaeducation.biometric.application.port.out.BiometricDeviceRepository;
 import gn.lacaeducation.biometric.application.port.out.BiometricEnrollmentRepository;
+import gn.lacaeducation.biometric.application.port.out.BiometricPunchConflictRepository;
 import gn.lacaeducation.biometric.application.port.out.BiometricPunchRepository;
 import gn.lacaeducation.biometric.application.service.BiometricService.PunchCommand;
 import gn.lacaeducation.biometric.domain.*;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -31,6 +32,7 @@ class BiometricServiceTest {
     @Mock BiometricDeviceRepository deviceRepo;
     @Mock BiometricEnrollmentRepository enrollmentRepo;
     @Mock BiometricPunchRepository punchRepo;
+    @Mock BiometricPunchConflictRepository conflictRepo;
     @Mock ApplicationEventPublisher eventPublisher;
     @InjectMocks BiometricService service;
 
@@ -54,6 +56,8 @@ class BiometricServiceTest {
             p.setId(99L);
             return p;
         });
+        when(punchRepo.findByTenantIdAndSubjectTypeAndSubjectIdAndPunchTimeBetween(any(), any(), any(), any(), any()))
+                .thenReturn(List.of());
 
         BiometricPunch result = service.ingestPunch(10L, 1L,
                 new PunchCommand("EXT-42", LocalDateTime.of(2026, 11, 6, 8, 0), PunchDirection.IN, null, null, "SYNC-1"));
@@ -62,6 +66,7 @@ class BiometricServiceTest {
         assertThat(result.getSyncId()).isEqualTo("SYNC-1");
         verify(punchRepo, times(1)).save(any());
         verify(eventPublisher, times(1)).publishEvent(any(gn.lacaeducation.biometric.application.event.BiometricPunchRecorded.class));
+        verify(conflictRepo, never()).save(any());
     }
 
     @Test
