@@ -1,5 +1,6 @@
 package gn.lacaeducation.students.adapters.out.persistence;
 import gn.lacaeducation.students.AbandonedStudentInfo;
+import gn.lacaeducation.students.EnrollmentDayInfo;
 import gn.lacaeducation.students.StudentDataProvider;
 import gn.lacaeducation.students.ParentPublicInfo;
 import gn.lacaeducation.students.StudentPublicInfo;
@@ -7,6 +8,7 @@ import gn.lacaeducation.students.application.port.out.EnrollmentRepository;
 import gn.lacaeducation.students.domain.EnrollmentStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 @Component @RequiredArgsConstructor
@@ -109,6 +111,19 @@ public class StudentDataProviderAdapter implements StudentDataProvider {
                                 e.getClassId()))
                         .orElse(null))
                 .filter(s -> s != null)
+                .toList();
+    }
+
+    @Override
+    public List<EnrollmentDayInfo> findEnrollmentsByDate(Long tenantId, LocalDate date) {
+        return enrollmentRepository.findByTenantIdAndEnrolledAt(tenantId, date).stream()
+                .map(e -> findStudent(e.getStudentId())
+                        .map(s -> new EnrollmentDayInfo(s.id(),
+                                ((s.firstName() != null ? s.firstName() : "") + " "
+                                        + (s.lastName() != null ? s.lastName() : "")).trim(),
+                                s.studentNumber(), e.getClassId(), e.getType(), e.getStatus().name()))
+                        .orElse(null))
+                .filter(e -> e != null)
                 .toList();
     }
 }
