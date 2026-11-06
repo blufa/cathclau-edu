@@ -19,6 +19,8 @@ public class BiometricPunch {
     private Long id;
     private Long tenantId;
     private Long deviceId;
+    /** Identifiant généré côté appareil/agent pour une ingestion idempotente (pointage hors ligne rejoué). */
+    private String syncId;
     private String externalUserId;
     private BiometricSubjectType subjectType;
     private Long subjectId;

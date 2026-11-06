@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Component
 @RequiredArgsConstructor
@@ -19,4 +20,5 @@ class BiometricPunchPersistenceAdapter implements BiometricPunchRepository {
     @Override public List<BiometricPunch> findByTenantId(Long t) { return jpa.findByTenantIdOrderByPunchTimeDesc(t).stream().map(mapper::toDomain).toList(); }
     @Override public List<BiometricPunch> findByTenantIdAndDeviceId(Long t, Long d) { return jpa.findByTenantIdAndDeviceIdOrderByPunchTimeDesc(t, d).stream().map(mapper::toDomain).toList(); }
     @Override public List<BiometricPunch> findByTenantIdAndPunchTimeBetween(Long t, LocalDateTime f, LocalDateTime to) { return jpa.findByTenantIdAndPunchTimeBetweenOrderByPunchTimeDesc(t, f, to).stream().map(mapper::toDomain).toList(); }
+    @Override public Optional<BiometricPunch> findByDeviceIdAndSyncId(Long d, String syncId) { return jpa.findByDeviceIdAndSyncId(d, syncId).map(mapper::toDomain); }
 }

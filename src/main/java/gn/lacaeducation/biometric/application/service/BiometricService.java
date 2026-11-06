@@ -148,11 +148,20 @@ public class BiometricService {
     // ── Pointages (Push API) ────────────────────────────────────────────────────
 
     public record PunchCommand(String externalUserId, LocalDateTime punchTime, PunchDirection direction,
-                               BigDecimal temperature, String rawPayload) {}
+                               BigDecimal temperature, String rawPayload, String syncId) {}
 
+    /**
+     * Ingestion idempotente : un appareil/agent qui a enregistré un pointage hors ligne et le pousse
+     * (ou le repousse après une coupure réseau) avec le même {@code syncId} ne crée jamais de doublon —
+     * le pointage déjà connu est simplement renvoyé tel quel, sans re-publier d'événement.
+     */
     public BiometricPunch ingestPunch(Long tenantId, Long deviceId, PunchCommand c) {
         BiometricDevice d = load(deviceId);
         if (c.externalUserId() == null || c.externalUserId().isBlank()) throw new BusinessRuleException("User ID appareil requis");
+        if (c.syncId() != null && !c.syncId().isBlank()) {
+            BiometricPunch existing = punchRepo.findByDeviceIdAndSyncId(deviceId, c.syncId()).orElse(null);
+            if (existing != null) return existing;
+        }
         BiometricEnrollment enr = enrollmentRepo.findByDeviceIdAndExternalUserId(deviceId, c.externalUserId()).orElse(null);
         d.setStatus(DeviceStatus.CONNECTED);
         d.setLastSyncAt(LocalDateTime.now());
@@ -160,7 +169,7 @@ public class BiometricService {
         LocalDateTime when = c.punchTime() != null ? c.punchTime() : LocalDateTime.now();
         PunchDirection dir = c.direction() != null ? c.direction() : PunchDirection.UNKNOWN;
         BiometricPunch punch = punchRepo.save(BiometricPunch.builder()
-                .tenantId(tenantId).deviceId(deviceId).externalUserId(c.externalUserId())
+                .tenantId(tenantId).deviceId(deviceId).syncId(c.syncId()).externalUserId(c.externalUserId())
                 .subjectType(enr != null ? enr.getSubjectType() : null)
                 .subjectId(enr != null ? enr.getSubjectId() : null)
                 .punchTime(when).direction(dir)
