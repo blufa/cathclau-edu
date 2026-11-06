@@ -3,6 +3,7 @@ package gn.lacaeducation.reporting.adapters.in.web;
 import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.attendance.StudentAttendanceStatsProvider;
 import gn.lacaeducation.attendance.TeacherWorkProvider;
+import gn.lacaeducation.audit.AuditTrailProvider;
 import gn.lacaeducation.billing.SchoolBillingStatsProvider;
 import gn.lacaeducation.billing.SchoolBillingStatsProvider.BillingStats;
 import gn.lacaeducation.billing.SchoolBillingStatsProvider.RecoveryBreakdown;
@@ -19,6 +20,7 @@ import gn.lacaeducation.payroll.SchoolPayrollStatsProvider.SchoolYearProjection;
 import gn.lacaeducation.payroll.SchoolPayrollStatsProvider.TeacherHoursProgress;
 import gn.lacaeducation.payroll.SchoolPayrollStatsProvider.TeacherSalary;
 import gn.lacaeducation.staff.TeacherPublicInfoProvider;
+import gn.lacaeducation.students.EnrollmentDayInfo;
 import gn.lacaeducation.students.StudentDataProvider;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -30,6 +32,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
 
@@ -52,6 +55,7 @@ public class SchoolDashboardController {
     private final TeacherPublicInfoProvider teacherPublicInfoProvider;
     private final AcademicsDataProvider academicsDataProvider;
     private final StudentDataProvider studentDataProvider;
+    private final AuditTrailProvider auditTrailProvider;
 
     // ── 10.1 Académique ─────────────────────────────────────────────────────
     public record ClassAcademicRow(Long classId, String className, int studentCount,
@@ -113,6 +117,50 @@ public class SchoolDashboardController {
         java.time.LocalDate now = java.time.LocalDate.now();
         return payrollStatsProvider.monthlyFinancialSummary(TenantContext.get(),
                 year != null ? year : now.getYear(), month != null ? month : now.getMonthValue());
+    }
+
+    // ── Journal du jour (§retour comptable : "ce jour tu inscris tant d'élèves en classe, voici les
+    // factures encaissées, voici l'argent collecté", même pour les élèves transférés) ───────────────
+    public record JournalEnrollmentLine(Long studentId, String studentName, String studentNumber,
+                                        String className, String type, String status) {}
+    public record JournalPaymentLine(Long paymentId, Long studentId, String studentName,
+                                     BigDecimal amount, String channel, String reference) {}
+    public record JournalTransferLine(Long studentId, String studentName, String oldClassName, String newClassName) {}
+    public record DailyJournal(LocalDate date, List<JournalEnrollmentLine> enrollments,
+                               List<JournalPaymentLine> payments, BigDecimal totalCollected,
+                               List<JournalTransferLine> transfers) {}
+
+    @Operation(summary = "Journal d'un jour précis : élèves inscrits (avec classe), factures encaissées "
+            + "(avec montant), total collecté, et élèves transférés de classe ce jour-là — pour que le "
+            + "fondateur puisse confronter le comptable sur son activité réelle, jour par jour")
+    @PreAuthorize("hasAuthority('dashboard:admin')")
+    @GetMapping("/journal-jour")
+    public DailyJournal dailyJournal(@RequestParam(required = false) LocalDate date) {
+        Long tenantId = TenantContext.get();
+        LocalDate day = date != null ? date : LocalDate.now();
+
+        List<JournalEnrollmentLine> enrollments = studentDataProvider.findEnrollmentsByDate(tenantId, day).stream()
+                .map(e -> new JournalEnrollmentLine(e.studentId(), e.studentName(), e.studentNumber(),
+                        className(e.classId()), e.type() != null ? e.type().name() : null, e.status()))
+                .toList();
+
+        List<JournalPaymentLine> payments = collectionStatsProvider.dailyCollectionLines(tenantId, day).stream()
+                .map(p -> new JournalPaymentLine(p.paymentId(), p.studentId(), studentName(p.studentId()),
+                        p.amount(), p.channel(), p.reference()))
+                .toList();
+        BigDecimal totalCollected = payments.stream().map(JournalPaymentLine::amount)
+                .filter(java.util.Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        // Transferts : journalisés dans audit_logs depuis ce correctif (§retour comptable) — un
+        // transfert fait AVANT ce correctif n'apparaît jamais ici (aucune date fiable n'existait).
+        List<JournalTransferLine> transfers = auditTrailProvider.findClassTransfersBetween(
+                        day.atStartOfDay(), day.plusDays(1).atStartOfDay().minusNanos(1))
+                .stream()
+                .map(t -> new JournalTransferLine(t.studentId(), studentName(t.studentId()),
+                        className(t.oldClassId()), className(t.newClassId())))
+                .toList();
+
+        return new DailyJournal(day, enrollments, payments, totalCollected, transfers);
     }
 
     // ── Présences élèves du jour ─────────────────────────────────────────────

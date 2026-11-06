@@ -29,6 +29,11 @@ class ClassTransferRefundPersistenceAdapter implements ClassTransferRefundReposi
         return jpa.findByStudentId(studentId).stream().map(this::toDomain).toList();
     }
 
+    @Override
+    public List<ClassTransferRefund> findPending() {
+        return jpa.findByRefundedAtIsNullOrderByCreatedAtAsc().stream().map(this::toDomain).toList();
+    }
+
     private ClassTransferRefund toDomain(ClassTransferRefundJpaEntity e) {
         return ClassTransferRefund.builder()
                 .id(e.getId()).tenantId(e.getTenantId()).studentId(e.getStudentId())

@@ -34,4 +34,7 @@ class InscriptionPersistenceAdapter implements EnrollmentRepository {
     @Override public List<Enrollment> search(Long sid, Long cid, Long aid, EnrollmentStatus status) {
         return repo.search(sid, cid, aid, status).stream().map(mapper::toDomain).toList();
     }
+    @Override public List<Enrollment> findByTenantIdAndEnrolledAt(Long tenantId, java.time.LocalDate date) {
+        return repo.findByTenantIdAndEnrolledAt(tenantId, date).stream().map(mapper::toDomain).toList();
+    }
 }

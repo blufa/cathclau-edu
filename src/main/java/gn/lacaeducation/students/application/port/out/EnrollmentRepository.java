@@ -2,6 +2,7 @@ package gn.lacaeducation.students.application.port.out;
 
 import gn.lacaeducation.students.domain.Enrollment;
 import gn.lacaeducation.students.domain.EnrollmentStatus;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -11,6 +12,10 @@ public interface EnrollmentRepository {
     List<Enrollment> findByStudentId(Long studentId);
     List<Enrollment> findByClassId(Long classId);
     List<Enrollment> findByAcademicYearId(Long academicYearId);
+    /** Inscriptions dont la date (saisie) tombe ce jour-là, tenant courant (§retour comptable : "ce
+     * jour tu inscris tant d'élèves") — {@code enrollments} n'a pas de tenant_id propre, filtré via
+     * l'élève. */
+    List<Enrollment> findByTenantIdAndEnrolledAt(Long tenantId, LocalDate date);
     void deleteById(Long id);
     boolean existsById(Long id);
     long countByClassIdAndStatus(Long classId, EnrollmentStatus status);

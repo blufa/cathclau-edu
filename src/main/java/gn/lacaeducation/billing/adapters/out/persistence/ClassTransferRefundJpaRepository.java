@@ -6,4 +6,6 @@ import java.util.List;
 
 interface ClassTransferRefundJpaRepository extends JpaRepository<ClassTransferRefundJpaEntity, Long> {
     List<ClassTransferRefundJpaEntity> findByStudentId(Long studentId);
+    /** Filtre Hibernate tenantFilter déjà actif sur l'entité — pas de tenantId explicite nécessaire. */
+    List<ClassTransferRefundJpaEntity> findByRefundedAtIsNullOrderByCreatedAtAsc();
 }

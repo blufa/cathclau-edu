@@ -53,19 +53,17 @@ class OpenPdfPaymentStatusListGenerator implements PaymentStatusListPdfGenerator
             AdminDocumentLayout.header(doc, info);
             titleBox(doc, "SUIVI DES PAIEMENTS — " + candidates.size() + " ÉLÈVE(S)");
 
-            PdfPTable table = dataTable(new float[]{2.4f, 1.6f, 1.3f, 1f, 1.4f, 1.2f});
+            PdfPTable table = dataTable(new float[]{1.6f, 2.4f, 1.6f, 1.3f, 1.2f});
+            headerCell(table, "Matricule");
             headerCell(table, "Élève");
             headerCell(table, "Classe");
             headerCell(table, "Statut");
-            headerCell(table, "Jours");
-            headerCell(table, "Montant dû");
             headerCell(table, "Tranches");
             for (Candidate c : candidates) {
+                cell(table, c.studentNumber() != null ? c.studentNumber() : "-", Element.ALIGN_LEFT);
                 cell(table, c.studentName(), Element.ALIGN_LEFT);
                 cell(table, c.className(), Element.ALIGN_LEFT);
                 cell(table, STATUS_LABEL.get(c.status()), Element.ALIGN_LEFT);
-                cell(table, c.status() == Status.UP_TO_DATE ? "-" : String.valueOf(Math.abs(c.daysLate())), Element.ALIGN_RIGHT);
-                cell(table, c.amountDue() != null && c.amountDue().signum() > 0 ? money(c.amountDue()) + " GNF" : "-", Element.ALIGN_RIGHT);
                 cell(table, c.totalTranches() > 0 ? c.tranchesPaid() + "/" + c.totalTranches() : "-", Element.ALIGN_RIGHT);
             }
             doc.add(table);

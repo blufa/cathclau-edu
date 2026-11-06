@@ -2,10 +2,12 @@ package gn.lacaeducation.biometric.adapters.out.persistence.mapper;
 
 import gn.lacaeducation.biometric.adapters.out.persistence.BiometricDeviceJpaEntity;
 import gn.lacaeducation.biometric.adapters.out.persistence.BiometricEnrollmentJpaEntity;
+import gn.lacaeducation.biometric.adapters.out.persistence.BiometricPunchConflictJpaEntity;
 import gn.lacaeducation.biometric.adapters.out.persistence.BiometricPunchJpaEntity;
 import gn.lacaeducation.biometric.domain.BiometricDevice;
 import gn.lacaeducation.biometric.domain.BiometricEnrollment;
 import gn.lacaeducation.biometric.domain.BiometricPunch;
+import gn.lacaeducation.biometric.domain.BiometricPunchConflict;
 import org.mapstruct.Mapper;
 
 @Mapper(componentModel = "spring")
@@ -18,4 +20,7 @@ public interface BiometricMapper {
 
     BiometricPunch toDomain(BiometricPunchJpaEntity e);
     BiometricPunchJpaEntity toEntity(BiometricPunch d);
+
+    BiometricPunchConflict toDomain(BiometricPunchConflictJpaEntity e);
+    BiometricPunchConflictJpaEntity toEntity(BiometricPunchConflict d);
 }
