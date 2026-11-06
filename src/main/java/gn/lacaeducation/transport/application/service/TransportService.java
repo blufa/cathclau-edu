@@ -1,7 +1,10 @@
 package gn.lacaeducation.transport.application.service;
 
+import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.common.ResourceNotFoundException;
+import gn.lacaeducation.students.StudentDataProvider;
+import gn.lacaeducation.students.StudentPublicInfo;
 import gn.lacaeducation.transport.application.event.TransportSubscriptionCreatedEvent;
 import gn.lacaeducation.transport.application.port.out.TransportInvoiceQueryPort;
 import gn.lacaeducation.transport.application.port.out.TransportRouteRepository;
@@ -18,6 +21,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Transport scolaire (inspiré OpenEduCat) : lignes (avec véhicule/chauffeur), arrêts et abonnements
@@ -34,6 +38,8 @@ public class TransportService {
     private final TransportSubscriptionRepository subRepo;
     private final ApplicationEventPublisher eventPublisher;
     private final TransportInvoiceQueryPort invoiceQueryPort;
+    private final StudentDataProvider studentDataProvider;
+    private final AcademicsDataProvider academicsDataProvider;
 
     // ── Lignes ───────────────────────────────────────────────────────────────
 
@@ -134,6 +140,37 @@ public class TransportService {
      * ceux qui ont payé le mois en cours" + filtre par mois sur la liste des abonnés). */
     public java.util.Set<Long> studentIdsPaidForMonth(Long tenantId, java.time.YearMonth month) {
         return invoiceQueryPort.findStudentIdsPaidForMonth(tenantId, month.toString());
+    }
+
+    /** Ligne imprimable de la liste des abonnés transport (§retour comptable : "ajouter la classe des
+     * élèves, et qu'il puisse l'imprimer") — matricule/classe résolus ici une seule fois plutôt que
+     * côté PDF, pour que l'impression reflète exactement ce que l'écran affiche (WYSIWYG, même principe
+     * que PaymentReminderCandidatesService). */
+    public record SubscriptionPrintRow(String studentNumber, String studentName, String className,
+                                       String routeName, TransportDirection direction, SubscriptionStatus status,
+                                       long paidMonthsCount) {}
+
+    @Transactional(readOnly = true)
+    public List<SubscriptionPrintRow> printableSubscriptions(Long tenantId, List<Long> subscriptionIds) {
+        Map<Long, String> routeNames = routeRepo.findByTenantId(tenantId).stream()
+                .collect(java.util.stream.Collectors.toMap(TransportRoute::getId, TransportRoute::getName));
+        Map<Long, Long> paidMonths = paidMonthsCountByStudentId(tenantId);
+        return subscriptionIds.stream()
+                .map(id -> subRepo.findById(id).orElse(null))
+                .filter(java.util.Objects::nonNull)
+                .map(s -> {
+                    StudentPublicInfo student = studentDataProvider.findStudent(s.getStudentId()).orElse(null);
+                    String studentName = student != null ? (student.firstName() + " " + student.lastName()).trim() : "—";
+                    String studentNumber = student != null ? student.studentNumber() : null;
+                    String className = studentDataProvider.findCurrentClassId(s.getStudentId())
+                            .flatMap(academicsDataProvider::findClass)
+                            .map(gn.lacaeducation.academics.ClassPublicInfo::label)
+                            .orElse(null);
+                    return new SubscriptionPrintRow(studentNumber, studentName, className,
+                            routeNames.getOrDefault(s.getRouteId(), "—"), s.getDirection(), s.getStatus(),
+                            paidMonths.getOrDefault(s.getStudentId(), 0L));
+                })
+                .toList();
     }
 
     private TransportRoute loadRoute(Long id) {

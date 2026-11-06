@@ -601,7 +601,7 @@ class PayrollServiceTest {
                         "Mamadou Diallo", "622000000", "Mars 2026"));
         // Répercute la retenue (solde réel avantage personnel) sur les factures des enfants du
         // salarié, maintenant que la fiche est réellement payée (§payroll ↔ billing).
-        org.mockito.Mockito.verify(salaryFeeDeductionUseCase).applyStaffBenefitRemainderAsInvoicePayment(9L, EmployeeType.TEACHER, 7L, null, "Mars 2026");
+        org.mockito.Mockito.verify(salaryFeeDeductionUseCase).applyStaffBenefitRemainderAsInvoicePayment(9L, EmployeeType.TEACHER, 7L, null, "Mars 2026", BigDecimal.ZERO);
     }
 
     /** Empêche un double-clic/rejeu de repayer une fiche déjà payée — sans ce garde-fou, la retenue
@@ -618,7 +618,7 @@ class PayrollServiceTest {
         org.mockito.Mockito.verify(salaryFeeDeductionUseCase, org.mockito.Mockito.never())
                 .applyDeductionAsInvoicePayment(any(), any(), any());
         org.mockito.Mockito.verify(salaryFeeDeductionUseCase, org.mockito.Mockito.never())
-                .applyStaffBenefitRemainderAsInvoicePayment(any(), any(), any(), any(), any());
+                .applyStaffBenefitRemainderAsInvoicePayment(any(), any(), any(), any(), any(), any());
         org.mockito.Mockito.verify(payslipRepo, org.mockito.Mockito.never()).save(any());
     }
 
@@ -796,6 +796,51 @@ class PayrollServiceTest {
         assertThat(lines.get(0).getLabel()).isEqualTo("Reste avantage personnel (1 enfant(s))");
         assertThat(lines.get(0).getAmount()).isEqualByComparingTo("20000");
         assertThat(result.getNetSalary()).isEqualByComparingTo("280000");
+    }
+
+    /** §retour comptable, écart constaté en production : un salarié avec 8 enfants à charge avait un
+     * salaire net à -114 000 GNF — la retenue "avantage personnel" (1 314 000 GNF) dépassait largement
+     * son salaire de base (1 200 000 GNF), sans aucun plafond contrairement à l'avance sur salaire.
+     * Désormais plafonnée au net disponible, jamais un salaire négatif ; le reliquat non retenu est
+     * tracé dans une note, jamais effacé (reste dû sur les factures des enfants). */
+    @Test
+    void generate_staffBenefitRemainderExceedsNet_cappedAtAvailableNet_neverNegative() {
+        Long teacherId = 31L;
+        when(payslipRepo.existsByTenantIdAndTeacherIdAndPeriodLabelAndEmployeeType(9L, teacherId, "Octobre 2026", EmployeeType.TEACHER))
+                .thenReturn(false);
+        when(salaryFeeDeductionUseCase.computeStaffBenefitRemainder(9L, EmployeeType.TEACHER, teacherId, null, "Octobre 2026"))
+                .thenReturn(new SalaryFeeDeductionUseCase.StaffBenefitRemainderDeduction(new BigDecimal("1314000"), 8));
+        when(salaryAdvanceUseCase.applyDeduction(eq(9L), eq(teacherId), eq(EmployeeType.TEACHER), any()))
+                .thenReturn(new SalaryAdvanceUseCase.AdvanceDeductionResult(BigDecimal.ZERO, null));
+
+        AtomicReference<Payslip> saved = new AtomicReference<>();
+        when(payslipRepo.save(any())).thenAnswer(i -> {
+            Payslip p = i.getArgument(0);
+            if (p.getId() == null) p.setId(202L);
+            saved.set(p);
+            return p;
+        });
+        when(payslipRepo.findById(202L)).thenAnswer(i -> Optional.of(saved.get()));
+
+        List<PayslipLine> lines = new ArrayList<>();
+        when(lineRepo.save(any())).thenAnswer(i -> {
+            PayslipLine l = i.getArgument(0);
+            lines.add(l);
+            return l;
+        });
+        when(lineRepo.findByPayslipId(202L)).thenAnswer(i -> lines);
+
+        Payslip result = payrollService.generate(new PayrollService.GenerateCommand(
+                9L, EmployeeType.TEACHER, teacherId, "Kadiatou Diallo", "Octobre 2026",
+                null, null, new BigDecimal("1200000"), null, null,
+                null, null, null, null, null, null, null));
+
+        assertThat(lines).hasSize(1);
+        assertThat(lines.get(0).getLabel()).isEqualTo("Reste avantage personnel (8 enfant(s))");
+        // Plafonné au net disponible (1 200 000), jamais les 1 314 000 bruts calculés.
+        assertThat(lines.get(0).getAmount()).isEqualByComparingTo("1200000");
+        assertThat(result.getNetSalary()).isEqualByComparingTo("0");
+        assertThat(result.getNotes()).contains("114 000 GNF non retenus ce mois");
     }
 
     /** §retour comptable : "j'ai retiré deux factures, j'ai rechargé mais le montant global de la

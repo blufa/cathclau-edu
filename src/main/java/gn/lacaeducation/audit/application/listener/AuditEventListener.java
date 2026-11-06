@@ -163,6 +163,18 @@ public class AuditEventListener {
 
     @TransactionalEventListener
     @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onEnrollmentClassChanged(gn.lacaeducation.students.application.event.EnrollmentClassChangedEvent event) {
+        // tenantId porté par l'événement est toujours null au point de publication actuel
+        // (InscriptionService#transferClass) — résolu depuis le contexte comme onEnrollmentCreated.
+        // §retour comptable : "je veux savoir les élèves transférés par jour" — jusqu'ici aucune trace
+        // datée d'un transfert de classe n'existait nulle part (l'inscription est modifiée en place,
+        // sans historique).
+        save(TenantContext.get(), null, "ENROLLMENT_CLASS_CHANGED", "Enrollment", event.enrollmentId(),
+                "studentId=" + event.studentId() + ";oldClassId=" + event.oldClassId() + ";newClassId=" + event.newClassId());
+    }
+
+    @TransactionalEventListener
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onEnrollmentValidated(EnrollmentValidatedEvent event) {
         save(event.tenantId(), null, "ENROLLMENT_VALIDATED", "Student", event.studentId(),
                 "classId=" + event.classId() + ";academicYearId=" + event.academicYearId());

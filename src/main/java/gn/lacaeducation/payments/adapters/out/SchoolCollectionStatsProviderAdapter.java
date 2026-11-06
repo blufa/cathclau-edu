@@ -44,4 +44,16 @@ class SchoolCollectionStatsProviderAdapter implements SchoolCollectionStatsProvi
         }
         return result;
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DailyCollectionLine> dailyCollectionLines(Long tenantId, LocalDate date) {
+        return paymentRepository.findByPaidAtBetween(date.atStartOfDay(), date.plusDays(1).atStartOfDay().minusNanos(1))
+                .stream()
+                .filter(p -> p.getStatus() == PaymentStatus.SUCCEEDED)
+                .filter(p -> tenantId.equals(p.getTenantId()))
+                .map(p -> new DailyCollectionLine(p.getId(), p.getStudentId(), p.getAmount(),
+                        p.getChannel() != null ? p.getChannel().name() : null, p.getReference()))
+                .toList();
+    }
 }

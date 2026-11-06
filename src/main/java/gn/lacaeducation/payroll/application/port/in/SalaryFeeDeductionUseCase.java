@@ -49,9 +49,21 @@ public interface SalaryFeeDeductionUseCase {
 
     /** Répercute {@link #computeStaffBenefitRemainder} comme paiement sur les factures du même mois
      * (même portée), au moment où la fiche de paie est réellement PAYÉE (même principe que
-     * {@link #applyDeductionAsInvoicePayment}). */
+     * {@link #applyDeductionAsInvoicePayment}).
+     *
+     * @param maxAmount plafonne le total réparti sur les factures des enfants — exactement le montant
+     * de la ligne "Reste avantage personnel" réellement posée sur LA FICHE (voir
+     * {@code PayrollService#applyStaffBenefitRemainderDeduction}, déjà plafonnée au net disponible,
+     * jamais un salaire négatif). §retour comptable, écart constaté en production (salaire net négatif,
+     * -114 000 GNF pour 8 enfants) : avant ce correctif, cette méthode recalculait et répercutait le
+     * solde réel SANS AUCUN lien avec ce qui avait été effectivement déduit sur la fiche (qui, elle,
+     * n'était déjà pas plafonnée non plus) — l'école "recevait" sur les factures plus que ce qui avait
+     * pu être réellement retenu sur un salaire insuffisant. Les enfants dont la part dépasse le
+     * plafond restent dus sur leur facture, reportés au mois suivant comme pour une avance sur salaire.
+     * {@code null} = pas de plafond (compatibilité : jamais utilisé en production, toujours appelé
+     * avec le montant de la ligne). */
     void applyStaffBenefitRemainderAsInvoicePayment(Long tenantId, EmployeeType employeeType, Long staffId,
-                                                     LocalDate periodStart, String periodLabel);
+                                                     LocalDate periodStart, String periodLabel, BigDecimal maxAmount);
 
     /** Détail de la retenue "avantage personnel" d'un salarié, enfant par enfant (§retour comptable :
      * "détailler bien les retenues sur le modal du détail de la fiche, afficher pour chaque enfant les

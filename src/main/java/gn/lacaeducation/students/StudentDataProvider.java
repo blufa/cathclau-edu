@@ -1,4 +1,5 @@
 package gn.lacaeducation.students;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 public interface StudentDataProvider {
@@ -25,4 +26,9 @@ public interface StudentDataProvider {
     /** Élèves dont l'inscription est ABANDONED sur cette année scolaire (départ en cours d'année),
      * avec leur classe — Vision Fondateur (§14). */
     List<AbandonedStudentInfo> findAbandonedStudents(Long academicYearId);
+
+    /** Toutes les inscriptions saisies CE jour précis (§retour comptable : "ce jour tu inscris tant
+     * d'élèves en classe") — jamais filtré par statut (une inscription PENDING compte déjà comme du
+     * travail accompli ce jour-là, pas seulement une fois validée). */
+    List<EnrollmentDayInfo> findEnrollmentsByDate(Long tenantId, LocalDate date);
 }
