@@ -137,6 +137,7 @@ class OpenPdfExamConvocationGenerator implements ExamConvocationPdfGenerator {
             case "SEMESTER" -> "Composition semestrielle";
             case "ANNUAL" -> "Examen annuel";
             case "NATIONAL" -> "Examen national";
+            case "MONTHLY" -> "Évaluation mensuelle";
             default -> e.getType().name();
         };
     }
