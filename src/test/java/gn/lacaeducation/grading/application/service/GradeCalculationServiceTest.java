@@ -41,6 +41,7 @@ class GradeCalculationServiceTest {
     @Mock AcademicsDataProvider academicsDataProvider;
     @Mock TeacherNameProvider teacherNameProvider;
     @Mock ApplicationEventPublisher eventPublisher;
+    @Mock gn.lacaeducation.common.TenantInfoProvider tenantInfoProvider;
     @InjectMocks GradeCalculationService service;
 
     @Test

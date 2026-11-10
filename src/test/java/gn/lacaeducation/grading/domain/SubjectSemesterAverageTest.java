@@ -185,6 +185,36 @@ class SubjectSemesterAverageTest {
     }
 
     @Test
+    void secondaire_monthlyTypeAssessments_areExcludedByDefault() {
+        // Comportement historique (§censeur) : MONTHLY est un diagnostic séparé, jamais compté dans
+        // la moyenne semestrielle, sauf activation explicite du réglage école (voir le test suivant).
+        Assessment monthly = assessment(AssessmentType.MONTHLY, "2026-10-10");
+        List<Assessment> assessments = List.of(monthly);
+        List<Grade> grades = List.of(grade(monthly, "15"));
+
+        SubjectSemesterAverage.Result r = SubjectSemesterAverage.compute(
+                CycleGroup.SECONDAIRE, BigDecimal.ONE, assessments, grades);
+
+        assertThat(r.coursValue()).isNull();
+        assertThat(r.finalValue()).isNull();
+    }
+
+    @Test
+    void secondaire_monthlyTypeAssessments_countAsCoursWhenTenantOptsIn() {
+        // §censeur, école visitée : une seule évaluation mensuelle par matière = sa moyenne de cours
+        // du mois, alors utilisée dans le calcul semestriel comme n'importe quelle note QUIZ/HOMEWORK.
+        Assessment monthly = assessment(AssessmentType.MONTHLY, "2026-10-10");
+        List<Assessment> assessments = List.of(monthly);
+        List<Grade> grades = List.of(grade(monthly, "15"));
+
+        SubjectSemesterAverage.Result r = SubjectSemesterAverage.compute(
+                CycleGroup.SECONDAIRE, BigDecimal.ONE, assessments, grades, true);
+
+        assertThat(r.coursValue()).isEqualByComparingTo("15.00");
+        assertThat(r.finalValue()).isEqualByComparingTo("15.00");
+    }
+
+    @Test
     void secondaire_coursNoteWithoutDate_isExcludedFromMonthlyGrouping() {
         // Une note « cours » sans date ne peut être rattachée à aucun mois : exclue de M_cours, pas
         // d'exception levée (donnée incomplète, ne doit pas casser le calcul des autres matières/élèves).

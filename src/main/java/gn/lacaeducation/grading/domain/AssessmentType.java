@@ -11,9 +11,12 @@ public enum AssessmentType {
     EXAM(120, "Composition"),
     FINAL(180, "Examen"),
     /** Évaluation mensuelle (§censeur) : contrôle de niveau en cours d'année, saisie dans la période
-     * semestrielle/trimestrielle en cours — jamais compté dans la moyenne de cette période (voir
-     * SubjectSemesterAverage, qui ne reconnaît que QUIZ/HOMEWORK/EXAM, exactement comme FINAL déjà
-     * aujourd'hui). Alimente uniquement le bulletin mensuel séparé (MonthlyReportCardService). */
+     * semestrielle/trimestrielle en cours — exclu de la moyenne de cette période par défaut (voir
+     * SubjectSemesterAverage, qui ne reconnaît que QUIZ/HOMEWORK/EXAM, exactement comme FINAL),
+     * SAUF si l'école a activé {@code Tenant#monthlyCountsAsCours} (§censeur, école visitée : une
+     * seule évaluation mensuelle par matière = sa moyenne de cours du mois), où elle entre alors dans
+     * le calcul au même titre que QUIZ/HOMEWORK. Alimente toujours, indépendamment de ce réglage, le
+     * bulletin mensuel séparé (MonthlyReportCardService). */
     MONTHLY(30, "Évaluation mensuelle");
 
     private final int sessionMinutes;

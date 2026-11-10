@@ -62,9 +62,25 @@ public final class SubjectSemesterAverage {
     private static final RoundingMode ROUNDING = RoundingMode.HALF_UP;
 
     /** @param subjectCoefficient coefficient de la matière (Secondaire uniquement — ignoré en
-     * Primaire, où le coefficient n'entre jamais en jeu) ; absent = 1. */
+     * Primaire, où le coefficient n'entre jamais en jeu) ; absent = 1.
+     * MONTHLY toujours exclu (comportement historique) — voir la surcharge à 5 paramètres pour le
+     * réglage {@code Tenant#monthlyCountsAsCours}. */
     public static Result compute(CycleGroup cycleGroup, BigDecimal subjectCoefficient,
                                   List<Assessment> assessments, List<Grade> grades) {
+        return compute(cycleGroup, subjectCoefficient, assessments, grades, false);
+    }
+
+    /**
+     * @param includeMonthlyAsCours §censeur, école visitée : certaines écoles ne font qu'une
+     * évaluation mensuelle par matière et l'utilisent directement comme moyenne de cours du mois —
+     * quand {@code true}, AssessmentType.MONTHLY entre dans le filtre "cours" au même titre que
+     * QUIZ/HOMEWORK (regroupement par mois calendaire inchangé : avec une seule note MONTHLY ce
+     * mois-là, M_mois devient directement cette note coefficientée). Réglage par école
+     * ({@code Tenant#monthlyCountsAsCours}), {@code false} par défaut (comportement historique).
+     */
+    public static Result compute(CycleGroup cycleGroup, BigDecimal subjectCoefficient,
+                                  List<Assessment> assessments, List<Grade> grades,
+                                  boolean includeMonthlyAsCours) {
         Map<Long, Assessment> byId = new HashMap<>();
         for (Assessment a : assessments) {
             byId.put(a.getId(), a);
@@ -90,7 +106,8 @@ public final class SubjectSemesterAverage {
 
         List<WeightedNote> cours = noted.stream()
                 .filter(n -> n.assessment.getType() == AssessmentType.QUIZ
-                        || n.assessment.getType() == AssessmentType.HOMEWORK)
+                        || n.assessment.getType() == AssessmentType.HOMEWORK
+                        || (includeMonthlyAsCours && n.assessment.getType() == AssessmentType.MONTHLY))
                 .toList();
         List<WeightedNote> compo = noted.stream()
                 .filter(n -> n.assessment.getType() == AssessmentType.EXAM)

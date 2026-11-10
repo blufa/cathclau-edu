@@ -51,7 +51,12 @@ public record TenantResponse(
     /** Alerte SMS au personnel (fondateur + encaisseur) à chaque paiement reçu, en plus du parent —
      * réglable uniquement par le SUPER_ADMIN (voir TenantController#setNotifyStaffOnPayment), jamais
      * via {@link #from}/UpdateTenantRequest. Désactivé par défaut. */
-    boolean notifyStaffOnPayment
+    boolean notifyStaffOnPayment,
+    /** §censeur, école visitée : une seule évaluation mensuelle par matière compte comme moyenne de
+     * cours du mois dans le calcul semestriel — réglable par l'école elle-même via
+     * {@code SchoolProfileController}, contrairement à {@code notifyStaffOnPayment}. Désactivé par
+     * défaut. Voir {@code Tenant#monthlyCountsAsCours}. */
+    boolean monthlyCountsAsCours
 ) {
     public static TenantResponse from(Tenant tenant) {
         return from(tenant, null);
@@ -70,7 +75,7 @@ public record TenantResponse(
             tenant.getStatus(), tenant.getTrialEndsAt(), tenant.getActivatedAt(), tenant.getCreatedAt(),
             temporaryPassword, tenant.getPrefectureId(),
             tenant.getMatriculeFormat(), tenant.getMatriculeDigits(),
-            tenant.isNotifyStaffOnPayment()
+            tenant.isNotifyStaffOnPayment(), tenant.isMonthlyCountsAsCours()
         );
     }
 }

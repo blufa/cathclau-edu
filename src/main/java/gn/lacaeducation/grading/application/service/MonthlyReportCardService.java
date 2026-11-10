@@ -72,11 +72,16 @@ public class MonthlyReportCardService {
         for (Long studentId : studentIds) {
             cards.add(generateForStudent(studentId, classId, month, monthly));
         }
+        updateRanks(cards);
         return cards;
     }
 
     public MonthlyReportCard generateForStudent(Long studentId, Long classId, YearMonth month) {
-        return generateForStudent(studentId, classId, month, monthlyAssessments(classId, month));
+        MonthlyReportCard saved = generateForStudent(studentId, classId, month, monthlyAssessments(classId, month));
+        // Même convention que GradeCalculationService.generateForStudent : un bulletin individuel
+        // recalcule le rang pour toute la classe, pour rester cohérent avec les autres élèves.
+        updateRanks(findByClass(classId, month));
+        return monthlyReportCardRepository.findById(saved.getId()).orElse(saved);
     }
 
     private MonthlyReportCard generateForStudent(Long studentId, Long classId, YearMonth month, List<Assessment> monthly) {
@@ -146,6 +151,19 @@ public class MonthlyReportCardService {
             case "Passable" -> "Résultats justes ; des révisions sont recommandées.";
             default -> "Résultats insuffisants ; des révisions sont nécessaires.";
         };
+    }
+
+    /** Classement du mois, parmi les élèves de la classe ayant un bulletin mensuel ce mois-ci —
+     * même règle d'ex æquo que le bulletin officiel, voir {@link RankingUtil}. */
+    private void updateRanks(List<MonthlyReportCard> cards) {
+        if (cards.isEmpty()) return;
+        int classSize = cards.size();
+        for (RankingUtil.Ranked<MonthlyReportCard> entry : RankingUtil.rank(cards, MonthlyReportCard::getOverallAverage)) {
+            MonthlyReportCard card = entry.item();
+            card.setRank(entry.rank());
+            card.setClassSize(classSize);
+            monthlyReportCardRepository.save(card);
+        }
     }
 
     /** Remplace le bulletin mensuel existant pour ce (élève, classe, mois) s'il y en a un — même
@@ -227,7 +245,8 @@ public class MonthlyReportCardService {
 
         MonthlyReportCardDocument doc = new MonthlyReportCardDocument(
                 card.getTenantId(), studentName, student != null ? student.studentNumber() : null,
-                className, monthLabel(card.getYearMonth()), card.getOverallAverage(), pdfLines,
+                className, monthLabel(card.getYearMonth()), card.getOverallAverage(),
+                card.getRank(), card.getClassSize(), pdfLines,
                 card.getAutoAppreciation(), card.getComment());
 
         return pdfGenerator.generate(doc);

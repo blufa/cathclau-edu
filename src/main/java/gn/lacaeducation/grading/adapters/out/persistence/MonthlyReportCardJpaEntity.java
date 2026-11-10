@@ -13,6 +13,8 @@ public class MonthlyReportCardJpaEntity {
     @Column(name = "class_id", nullable = false) private Long classId;
     @Column(name = "year_month", nullable = false, length = 7) private String yearMonth;
     @Column(name = "overall_average", precision = 5, scale = 2) private BigDecimal overallAverage;
+    private Integer rank;
+    @Column(name = "class_size") private Integer classSize;
     @Column(name = "auto_appreciation") private String autoAppreciation;
     @Column(columnDefinition = "text") private String comment;
     @Column(name = "generated_at", nullable = false) private LocalDateTime generatedAt;
