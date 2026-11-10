@@ -5,10 +5,13 @@ import gn.lacaeducation.academics.ClassPublicInfo;
 import gn.lacaeducation.payroll.SchoolPayrollStatsProvider.MonthlyFinancialSummary;
 import gn.lacaeducation.payroll.SchoolPayrollStatsProvider.PayrollMassSummary;
 import gn.lacaeducation.payroll.SchoolPayrollStatsProvider.TeacherSalary;
+import gn.lacaeducation.payroll.application.port.out.PayslipRepository;
 import gn.lacaeducation.payroll.application.service.PayrollService;
 import gn.lacaeducation.payroll.application.service.PayrollService.TeacherSalaryBreakdown;
 import gn.lacaeducation.payroll.application.service.SalaryAdvanceService;
 import gn.lacaeducation.payroll.domain.EmployeeType;
+import gn.lacaeducation.payroll.domain.Payslip;
+import gn.lacaeducation.payroll.domain.PayslipStatus;
 import gn.lacaeducation.payroll.domain.SalaryAdvance;
 import gn.lacaeducation.payroll.domain.SalaryAdvanceStatus;
 import gn.lacaeducation.staff.EmployeePublicInfoProvider;
@@ -45,6 +48,7 @@ class SchoolPayrollStatsProviderAdapterTest {
     @Mock TeacherPublicInfoProvider teacherPublicInfoProvider;
     @Mock SalaryAdvanceService salaryAdvanceService;
     @Mock AcademicsDataProvider academics;
+    @Mock PayslipRepository payslipRepository;
     @InjectMocks SchoolPayrollStatsProviderAdapter adapter;
 
     @Test
@@ -110,18 +114,26 @@ class SchoolPayrollStatsProviderAdapterTest {
         assertThat(summary.teacherMonthlyPayroll()).isEqualByComparingTo("900000");
     }
 
-    private PayrollService.TeacherPayrollMass teacherPayrollMass(String primary, String secondary) {
-        return new PayrollService.TeacherPayrollMass(BigDecimal.ZERO, BigDecimal.ZERO,
-                new BigDecimal(primary).add(new BigDecimal(secondary)), 2,
-                BigDecimal.ZERO, new BigDecimal(primary), new BigDecimal(secondary));
-    }
+    // §retour comptable, écart constaté en production ("je ne sais pas d'où vient cet écart") : la
+    // répartition Maternelle/Primaire/Secondaire/Personnel se base désormais sur les fiches PAID
+    // réellement décaissées ce mois (même source que actualPaidSalariesTotal), jamais sur la masse
+    // théorique projetée (teacherPayrollMass/activeStaffPayroll) — les deux cumuls se rapprochent enfin.
 
     @Test
-    void monthlyFinancialSummary_sumsPayrollAndAdvancesGrantedThisMonth() {
-        when(teacherPublicInfoProvider.listTeachers(10L)).thenReturn(List.of());
-        when(payrollService.teacherPayrollMass(eq(10L), eq(2026), eq(10), any()))
-                .thenReturn(teacherPayrollMass("1000000", "1200000"));
-        when(employeePublicInfoProvider.listEmployees(10L)).thenReturn(List.of());
+    void monthlyFinancialSummary_basesBreakdownOnActualPaidPayslipsByTeacherCycle() {
+        Payslip maternelleTeacher = Payslip.builder().employeeType(EmployeeType.TEACHER).teacherId(1L)
+                .netSalary(new BigDecimal("1000000")).paidAt(LocalDateTime.of(2026, 10, 20, 10, 0)).build();
+        Payslip secondaryTeacher = Payslip.builder().employeeType(EmployeeType.TEACHER).teacherId(2L)
+                .netSalary(new BigDecimal("1200000")).paidAt(LocalDateTime.of(2026, 10, 21, 10, 0)).build();
+        Payslip staffPayslip = Payslip.builder().employeeType(EmployeeType.ADMINISTRATIVE).teacherId(9L)
+                .netSalary(new BigDecimal("300000")).paidAt(LocalDateTime.of(2026, 10, 22, 10, 0)).build();
+        // Payée le mois précédent — ne doit JAMAIS compter dans l'état financier d'octobre.
+        Payslip paidLastMonth = Payslip.builder().employeeType(EmployeeType.TEACHER).teacherId(1L)
+                .netSalary(new BigDecimal("400000")).paidAt(LocalDateTime.of(2026, 9, 20, 10, 0)).build();
+        when(payslipRepository.findByTenantIdAndStatus(10L, PayslipStatus.PAID)).thenReturn(List.of(
+                maternelleTeacher, secondaryTeacher, staffPayslip, paidLastMonth));
+        when(payrollService.resolveTeacherCycles(List.of(1L, 2L)))
+                .thenReturn(java.util.Map.of(1L, "MATERNELLE", 2L, "SECONDAIRE"));
         SalaryAdvance inMonth = SalaryAdvance.builder().teacherId(5L).teacherName("Mamadou Diallo")
                 .employeeType(EmployeeType.TEACHER).amount(new BigDecimal("300000"))
                 .status(SalaryAdvanceStatus.ACTIVE).grantedAt(LocalDateTime.of(2026, 10, 15, 9, 0)).build();
@@ -137,10 +149,16 @@ class SchoolPayrollStatsProviderAdapterTest {
 
         MonthlyFinancialSummary summary = adapter.monthlyFinancialSummary(10L, 2026, 10);
 
-        assertThat(summary.primaryTeacherPayroll()).isEqualByComparingTo("1000000");
+        assertThat(summary.maternelleTeacherPayroll()).isEqualByComparingTo("1000000");
         assertThat(summary.secondaryTeacherPayroll()).isEqualByComparingTo("1200000");
+        assertThat(summary.primaryTeacherPayroll()).isEqualByComparingTo("0");
+        assertThat(summary.staffPayroll()).isEqualByComparingTo("300000");
         assertThat(summary.salaryAdvancesTotal()).isEqualByComparingTo("300000");
-        assertThat(summary.total()).isEqualByComparingTo("2500000");
+        // 1 000 000 + 1 200 000 + 300 000 (fiches payées en octobre) + 300 000 (avance d'octobre).
+        assertThat(summary.total()).isEqualByComparingTo("2800000");
+        // Même rapprochement que "Cumul payé pour la paie" (frontend) : actualPaidSalariesTotal +
+        // salaryAdvancesTotal == total ci-dessus.
+        assertThat(summary.actualPaidSalariesTotal()).isEqualByComparingTo("2500000");
         assertThat(summary.advances()).hasSize(1);
         assertThat(summary.advances().get(0).employeeName()).isEqualTo("Mamadou Diallo");
         assertThat(summary.advances().get(0).className()).isEqualTo("CM2");
@@ -148,10 +166,7 @@ class SchoolPayrollStatsProviderAdapterTest {
 
     @Test
     void monthlyFinancialSummary_nonTeacherAdvance_noClassName() {
-        when(teacherPublicInfoProvider.listTeachers(10L)).thenReturn(List.of());
-        when(payrollService.teacherPayrollMass(eq(10L), eq(2026), eq(10), any()))
-                .thenReturn(teacherPayrollMass("0", "0"));
-        when(employeePublicInfoProvider.listEmployees(10L)).thenReturn(List.of());
+        when(payslipRepository.findByTenantIdAndStatus(10L, PayslipStatus.PAID)).thenReturn(List.of());
         SalaryAdvance staffAdvance = SalaryAdvance.builder().teacherId(8L).teacherName("Aissatou Sow")
                 .employeeType(EmployeeType.ADMINISTRATIVE).amount(new BigDecimal("150000"))
                 .status(SalaryAdvanceStatus.ACTIVE).grantedAt(LocalDateTime.of(2026, 10, 5, 9, 0)).build();

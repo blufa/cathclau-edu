@@ -36,7 +36,9 @@ public class InvoiceController {
     @Operation(summary = "Créer une nouvelle facture pour un élève")
     @PreAuthorize("hasAuthority('facture:create')")
     @PostMapping public ResponseEntity<Invoice> create(@RequestBody CreateRequest r) {
-        return ResponseEntity.ok(useCase.create(new InvoiceUseCase.CreateInvoiceCommand(r.tenantId(), r.studentId(), r.feeId(), r.reference(), r.totalAmount(), r.academicYearId())));
+        Invoice inv = useCase.create(new InvoiceUseCase.CreateInvoiceCommand(r.tenantId(), r.studentId(), r.feeId(), r.reference(), r.totalAmount(), r.academicYearId()));
+        // Frais entièrement exonéré (§billing) : aucune facture créée, rien à renvoyer.
+        return inv != null ? ResponseEntity.ok(inv) : ResponseEntity.noContent().build();
     }
     @Operation(summary = "Générer en masse les factures de tous les élèves inscrits dans une classe")
     @PreAuthorize("hasAuthority('facture:create')")
@@ -136,6 +138,27 @@ public class InvoiceController {
     @PatchMapping("/staff-deduction/student")
     public void setStaffChildDeductionExcluded(@RequestParam Long studentId, @RequestParam boolean excluded) {
         useCase.setStaffChildDeductionExcluded(studentId, excluded);
+    }
+    @Operation(summary = "Rattrapage ponctuel : retague \"avantage personnel\" toute facture encore due "
+            + "(inscription, réinscription, annexe, mensualité...) d'un enfant de personnel qui n'a "
+            + "actuellement aucune remise — pour les factures émises avant que le lien parent↔personnel "
+            + "soit établi ou avant un correctif, jamais retouchées depuis (§retour comptable : \"ces "
+            + "factures ne se grisent pas pour retenue sur salaire\"). Sûr à relancer plusieurs fois.")
+    @PreAuthorize("hasAuthority('paie:manage')")
+    @PostMapping("/staff-deduction/backfill")
+    public InvoiceUseCase.StaffBenefitBackfillResult backfillStaffBenefitTagging() {
+        return useCase.backfillStaffBenefitTagging(gn.lacaeducation.common.TenantContext.get());
+    }
+    @Operation(summary = "Lister les factures \"fantômes\" à 0 GNF créées avant le correctif §billing/fondation "
+            + "(frais ponctuel — inscription, réinscription, annexe — entièrement couvert par une exonération, "
+            + "qui créait quand même une facture au lieu de n'en créer aucune). Lecture seule : le comptable "
+            + "choisit lesquelles supprimer via DELETE /billing/invoices/{id}.")
+    // Réservé au SUPER_ADMIN (§retour utilisateur) : mène à une suppression définitive de factures,
+    // trop sensible pour le laisser au personnel d'école.
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @GetMapping("/dangling-exempted")
+    public List<Invoice> danglingExemptedInvoices() {
+        return useCase.findFullyExemptedDanglingInvoices(gn.lacaeducation.common.TenantContext.get());
     }
     // facture:create (pas facture:update) : ce n'est pas une correction administrative d'une facture
     // existante, mais une étape normale du processus d'encaissement — le comptable l'applique

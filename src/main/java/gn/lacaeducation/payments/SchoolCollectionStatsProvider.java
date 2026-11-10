@@ -1,6 +1,7 @@
 package gn.lacaeducation.payments;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -14,4 +15,12 @@ public interface SchoolCollectionStatsProvider {
 
     /** Les {@code months} derniers mois civils (du plus ancien au plus récent), y compris à zéro. */
     List<MonthlyCollection> monthlyCollections(Long tenantId, int months);
+
+    /** Un paiement réussi encaissé ce jour-là — détail ligne par ligne (§retour comptable : "voici les
+     * factures encaissées, voici l'argent collecté" pour un jour précis), contrairement à
+     * {@link #monthlyCollections} qui n'agrège qu'un total par mois. {@code studentId} résolu en nom
+     * par l'appelant (voir StudentDataProvider), jamais d'identifiant brut affiché côté écran. */
+    record DailyCollectionLine(Long paymentId, Long studentId, BigDecimal amount, String channel, String reference) {}
+
+    List<DailyCollectionLine> dailyCollectionLines(Long tenantId, LocalDate date);
 }

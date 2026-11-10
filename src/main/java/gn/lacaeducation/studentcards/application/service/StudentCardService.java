@@ -4,7 +4,6 @@ import gn.lacaeducation.academics.AcademicYearPublicInfo;
 import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.common.ConflictException;
 import gn.lacaeducation.common.ResourceNotFoundException;
-import gn.lacaeducation.common.SchoolCode;
 import gn.lacaeducation.common.TenantInfoProvider;
 import gn.lacaeducation.studentcards.application.port.out.StudentCardRepository;
 import gn.lacaeducation.studentcards.domain.CardStatus;
@@ -106,6 +105,37 @@ public class StudentCardService {
         return repo.save(c);
     }
 
+    /** Supprime définitivement cette carte (pas un simple changement de statut) — §retour utilisateur :
+     * "je remets le badge, il prend toujours l'ancien matricule" malgré une modification du matricule
+     * entre-temps. {@link #getOrRefresh} régénère déjà automatiquement si le matricule soumis diffère,
+     * mais ne couvre pas tous les cas (ex. appelant qui soumet encore une valeur mise en cache côté
+     * front) — cette suppression manuelle est le filet de sécurité : sans AUCUNE carte ACTIVE restante
+     * pour l'élève, {@link #issue}/{@link #getOrRefresh} en créent une toute neuve avec les données
+     * soumises au moment de l'appel, garanties à jour. */
+    public void delete(Long id) {
+        load(id);
+        repo.deleteById(id);
+    }
+
+    /** Suppression multiple (§retour utilisateur, liste des cartes) — mêmes garanties que {@link
+     * #delete}, juste répétée ; jamais atomique sur l'ensemble (une carte introuvable au milieu de la
+     * sélection ne doit pas empêcher de supprimer les autres). */
+    public DeleteManyResult deleteMany(List<Long> ids) {
+        List<Long> deleted = new java.util.ArrayList<>();
+        List<Long> failed = new java.util.ArrayList<>();
+        for (Long id : ids) {
+            try {
+                delete(id);
+                deleted.add(id);
+            } catch (RuntimeException e) {
+                failed.add(id);
+            }
+        }
+        return new DeleteManyResult(deleted, failed);
+    }
+
+    public record DeleteManyResult(List<Long> deletedIds, List<Long> failedIds) {}
+
     /** Marque ces cartes comme imprimées (passées sur une planche) — pour pouvoir ensuite filtrer les
      * cartes restant à imprimer et ne jamais réimprimer par erreur un badge déjà sorti. */
     public List<StudentCard> markPrinted(List<Long> ids) {
@@ -153,10 +183,15 @@ public class StudentCardService {
     }
 
     /** Numéro de carte au format simple {@code SIGLESEQ} (ex. {@code AT00001}) — comme le matricule élève. */
+    /** Même format que le matricule élève, configuré par l'école (§retour utilisateur : "le numéro de
+     * carte doit utiliser le format de numéro qu'ils ont décidé") — réutilise {@code MatriculeAllocator}
+     * (déjà partagé par EnseignantService/EmployeeService) plutôt que de redupliquer la résolution
+     * préfixe+format+digits+unicité. Séquence propre aux cartes (pas celle des élèves) : {@code
+     * {PREFIXE}00042} pour la 42ᵉ carte émise, indépendamment du nombre d'élèves. */
     private String nextCardNumber(Long tenantId) {
-        String prefix = SchoolCode.prefix(tenantInfoProvider, tenantId);
         long seq = repo.countByTenantId(tenantId) + 1;
-        return String.format("%s%05d", prefix, seq);
+        return gn.lacaeducation.common.MatriculeAllocator.resolveUnique(tenantInfoProvider, tenantId, seq,
+                candidate -> repo.existsByTenantIdAndCardNumber(tenantId, candidate));
     }
 
     private String sign(String payload) {

@@ -33,6 +33,8 @@ interface EleveJpaRepository extends JpaRepository<EleveJpaEntity, Long> {
               AND (:q IS NULL OR LOWER(s.firstName) LIKE CONCAT('%', CAST(:q AS string), '%')
                               OR LOWER(s.lastName) LIKE CONCAT('%', CAST(:q AS string), '%')
                               OR LOWER(s.studentNumber) LIKE CONCAT('%', CAST(:q AS string), '%')
+                              OR LOWER(CONCAT(s.firstName, ' ', s.lastName)) LIKE CONCAT('%', CAST(:q AS string), '%')
+                              OR LOWER(CONCAT(s.lastName, ' ', s.firstName)) LIKE CONCAT('%', CAST(:q AS string), '%')
                               OR EXISTS (SELECT 1 FROM EleveParentJpaEntity ep JOIN ParentJpaEntity p ON p.id = ep.parentId
                                          WHERE ep.studentId = s.id
                                            AND (LOWER(p.firstName) LIKE CONCAT('%', CAST(:q AS string), '%')

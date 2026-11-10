@@ -11,5 +11,7 @@ public interface BiometricEnrollmentRepository {
     List<BiometricEnrollment> findByTenantId(Long tenantId);
     List<BiometricEnrollment> findByDeviceId(Long deviceId);
     Optional<BiometricEnrollment> findByDeviceIdAndExternalUserId(Long deviceId, String externalUserId);
+    Optional<BiometricEnrollment> findByBadgeToken(String badgeToken);
+    Optional<BiometricEnrollment> findByNfcUid(String nfcUid);
     void deleteById(Long id);
 }

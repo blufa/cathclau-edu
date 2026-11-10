@@ -204,7 +204,13 @@ class SchoolBillingStatsProviderAdapter implements SchoolBillingStatsProvider {
 
     private BillingStats computeStats(List<Invoice> invoices) {
         BigDecimal invoiced = sum(invoices, Invoice::getTotalAmount);
-        BigDecimal collected = sum(invoices, Invoice::getPaidAmount);
+        // §retour comptable, écart constaté en production (~5-6M GNF) : paidAmount inclut le crédit
+        // reporté d'un transfert de classe (creditedAmount, voir Invoice#getCreditedAmount) — un
+        // montant déjà compté comme "encaissé" sur l'ANCIENNE facture, jamais un nouvel encaissement.
+        // Sans cette soustraction, "Encaissé" additionnait deux fois le même argent (l'encaissement
+        // d'origine + le report automatique sur la nouvelle facture), gonflant le cumul réel sans
+        // qu'aucune somme supplémentaire n'ait réellement été reçue.
+        BigDecimal collected = sum(invoices, Invoice::getPaidAmount).subtract(sum(invoices, Invoice::getCreditedAmount));
         BigDecimal outstanding = sum(invoices, Invoice::getRemainingBalance);
         BigDecimal recoveryRate = invoiced.signum() == 0 ? BigDecimal.ZERO
                 : collected.multiply(HUNDRED).divide(invoiced, 2, RoundingMode.HALF_UP);

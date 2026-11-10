@@ -13,7 +13,10 @@ public interface EmployeePublicInfoProvider {
                          * documents imprimés (fiche de paie…), distinct de {@link #category}. */
                         String jobTitle,
                         /** Photo (URL Cloudinary) pour les documents imprimés — null si jamais capturée. */
-                        String photo) {}
+                        String photo,
+                        /** Fiche enseignant liée (§payroll, double profil direction/admin + enseignant) —
+                         * null si cette personne n'enseigne pas aussi. */
+                        Long linkedTeacherId) {}
 
     /** Tout le personnel non-enseignant d'un tenant (actifs et inactifs — filtrer côté appelant). */
     List<EmployeeInfo> listEmployees(Long tenantId);
@@ -29,4 +32,10 @@ public interface EmployeePublicInfoProvider {
      * scolarisés — symétrique de {@code TeacherPublicInfoProvider#findUserIdByTeacherId} pour les
      * salariés administratifs/direction/support). */
     Optional<Long> findUserIdByEmployeeId(Long employeeId);
+
+    /** Fiche personnel (direction/administratif/support) dont la fiche ENSEIGNANT liée est
+     * {@code teacherId} — résout le double profil dans l'autre sens (§payroll, retour utilisateur :
+     * une avance sur salaire accordée sous un profil n'était jamais retenue quand la fiche de paie
+     * était générée sous l'autre profil de la même personne). */
+    Optional<EmployeeInfo> findByLinkedTeacherId(Long tenantId, Long teacherId);
 }

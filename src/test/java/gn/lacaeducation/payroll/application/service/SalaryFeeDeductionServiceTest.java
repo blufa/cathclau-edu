@@ -283,12 +283,12 @@ class SalaryFeeDeductionServiceTest {
     }
 
     @Test
-    void applyStaffBenefitRemainderAsInvoicePayment_appliesEachChildsRemainderSeparately() {
+    void applyStaffBenefitRemainderAsInvoicePayment_noCapGiven_appliesEachChildsRemainderSeparately() {
         staffWithTwoChildren();
         when(studentFeePaymentApi.outstandingStaffBenefitRemainder(1L, OCTOBER, "Octobre 2026")).thenReturn(new BigDecimal("15000"));
         when(studentFeePaymentApi.outstandingStaffBenefitRemainder(2L, OCTOBER, "Octobre 2026")).thenReturn(new BigDecimal("25000"));
 
-        service.applyStaffBenefitRemainderAsInvoicePayment(1L, EmployeeType.TEACHER, 9L, OCTOBER, "Octobre 2026");
+        service.applyStaffBenefitRemainderAsInvoicePayment(1L, EmployeeType.TEACHER, 9L, OCTOBER, "Octobre 2026", null);
 
         verify(studentFeePaymentApi).applyStaffBenefitRemainderPayment(1L, OCTOBER, "Octobre 2026", new BigDecimal("15000"));
         verify(studentFeePaymentApi).applyStaffBenefitRemainderPayment(2L, OCTOBER, "Octobre 2026", new BigDecimal("25000"));
@@ -300,7 +300,31 @@ class SalaryFeeDeductionServiceTest {
         when(studentFeePaymentApi.outstandingStaffBenefitRemainder(1L, OCTOBER, "Octobre 2026")).thenReturn(BigDecimal.ZERO);
         when(studentFeePaymentApi.outstandingStaffBenefitRemainder(2L, OCTOBER, "Octobre 2026")).thenReturn(BigDecimal.ZERO);
 
-        service.applyStaffBenefitRemainderAsInvoicePayment(1L, EmployeeType.TEACHER, 9L, OCTOBER, "Octobre 2026");
+        service.applyStaffBenefitRemainderAsInvoicePayment(1L, EmployeeType.TEACHER, 9L, OCTOBER, "Octobre 2026", null);
+
+        verify(studentFeePaymentApi, never()).applyStaffBenefitRemainderPayment(any(), any(), any(), any());
+    }
+
+    @Test
+    void applyStaffBenefitRemainderAsInvoicePayment_capped_stopsOnceBudgetExhausted() {
+        // §retour comptable, écart constaté en production (salaire net négatif) : plafonné au montant
+        // réellement retenu sur la fiche — le 2e enfant ne récupère que ce qu'il reste du plafond, le
+        // reliquat reste dû sur sa facture plutôt que d'être répercuté sans contrepartie salariale.
+        staffWithTwoChildren();
+        when(studentFeePaymentApi.outstandingStaffBenefitRemainder(1L, OCTOBER, "Octobre 2026")).thenReturn(new BigDecimal("15000"));
+        when(studentFeePaymentApi.outstandingStaffBenefitRemainder(2L, OCTOBER, "Octobre 2026")).thenReturn(new BigDecimal("25000"));
+
+        service.applyStaffBenefitRemainderAsInvoicePayment(1L, EmployeeType.TEACHER, 9L, OCTOBER, "Octobre 2026", new BigDecimal("20000"));
+
+        verify(studentFeePaymentApi).applyStaffBenefitRemainderPayment(1L, OCTOBER, "Octobre 2026", new BigDecimal("15000"));
+        verify(studentFeePaymentApi).applyStaffBenefitRemainderPayment(2L, OCTOBER, "Octobre 2026", new BigDecimal("5000"));
+    }
+
+    @Test
+    void applyStaffBenefitRemainderAsInvoicePayment_zeroBudget_appliesNothing() {
+        staffWithTwoChildren();
+
+        service.applyStaffBenefitRemainderAsInvoicePayment(1L, EmployeeType.TEACHER, 9L, OCTOBER, "Octobre 2026", BigDecimal.ZERO);
 
         verify(studentFeePaymentApi, never()).applyStaffBenefitRemainderPayment(any(), any(), any(), any());
     }

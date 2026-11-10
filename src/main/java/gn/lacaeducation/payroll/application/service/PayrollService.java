@@ -37,6 +37,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -69,6 +70,7 @@ public class PayrollService {
     private final ApplicationEventPublisher eventPublisher;
     private final gn.lacaeducation.iam.UserPublicInfoProvider userPublicInfoProvider;
     private final TeacherPublicInfoProvider teacherPublicInfoProvider;
+    private final gn.lacaeducation.staff.EmployeePublicInfoProvider employeePublicInfoProvider;
 
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
 
@@ -355,6 +357,43 @@ public class PayrollService {
                 mp.grossPay(), structureId, notes, null, null, null, null, null, teacherPhone, bankAccount));
     }
 
+    /**
+     * Génère la fiche à partir d'heures réalisées saisies MANUELLEMENT par le comptable (§retour
+     * comptable : "le directeur des études n'a pas créé de séances ce mois pour les enseignants du
+     * secondaire donc la paie des cours est à 0 GNF, pourtant le comptable veut payer — avances sur
+     * salaire et enfants de personnel à défalquer"). Le TARIF appliqué reste celui configuré pour
+     * l'enseignant ({@link TeacherCompensation}), jamais saisi manuellement : seules les heures sont
+     * une saisie de secours quand le cahier de textes est vide, le calcul du montant reste automatique
+     * et cohérent avec {@link #computeMonthlyPay}.
+     */
+    public Payslip generateFromManualHours(Long tenantId, Long teacherId, String teacherName, int year, int month,
+                                           Long structureId, String teacherPhone, String bankAccount,
+                                           int manualNormalMinutes, int manualExamMinutes) {
+        TeacherCompensation comp = compRepo.findByTeacherId(teacherId).orElse(null);
+        PayMode mode = comp != null && comp.getPayMode() != null ? comp.getPayMode() : PayMode.HOURLY;
+        BigDecimal rateNormal = comp != null && comp.getHourlyRateNormal() != null ? comp.getHourlyRateNormal() : BigDecimal.ZERO;
+        BigDecimal rateExam = comp != null && comp.getHourlyRateExam() != null ? comp.getHourlyRateExam() : BigDecimal.ZERO;
+        BigDecimal fixed = comp != null && comp.getFixedSalary() != null ? comp.getFixedSalary() : BigDecimal.ZERO;
+        BigDecimal normalHours = BigDecimal.valueOf(Math.max(0, manualNormalMinutes)).divide(BigDecimal.valueOf(60), 2, RoundingMode.HALF_UP);
+        BigDecimal examHours = BigDecimal.valueOf(Math.max(0, manualExamMinutes)).divide(BigDecimal.valueOf(60), 2, RoundingMode.HALF_UP);
+        BigDecimal teachingPay = normalHours.multiply(rateNormal).add(examHours.multiply(rateExam)).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal gross = mode == PayMode.FIXED ? fixed.add(teachingPay) : teachingPay;
+        LocalDate from = LocalDate.of(year, month, 1);
+        LocalDate to = from.withDayOfMonth(from.lengthOfMonth());
+        String periodLabel = FR_MONTHS[month - 1] + " " + year;
+        String notes = String.format(
+                "%dh%02d réalisées SAISIES MANUELLEMENT par le comptable (dont %dh%02d classes normales, "
+                        + "%dh%02d classes d'examen)%s — séances non créées/validées ce mois dans le cahier de textes.",
+                (Math.max(0, manualNormalMinutes) + Math.max(0, manualExamMinutes)) / 60,
+                (Math.max(0, manualNormalMinutes) + Math.max(0, manualExamMinutes)) % 60,
+                Math.max(0, manualNormalMinutes) / 60, Math.max(0, manualNormalMinutes) % 60,
+                Math.max(0, manualExamMinutes) / 60, Math.max(0, manualExamMinutes) % 60,
+                mode == PayMode.FIXED ? " + salaire fixe" : "");
+        return generate(new GenerateCommand(tenantId, gn.lacaeducation.payroll.domain.EmployeeType.TEACHER,
+                teacherId, teacherName, periodLabel, from, to,
+                gross, structureId, notes, null, null, null, null, null, teacherPhone, bankAccount));
+    }
+
     // ── Calcul automatique par typologie de classe, depuis l'emploi du temps validé (§6) ──────
 
     private static final Map<String, DayOfWeek> DAY_OF_WEEK = Map.of(
@@ -480,24 +519,58 @@ public class PayrollService {
     }
 
     /** Cycle résolu depuis les "Niveaux enseignés" de l'enseignant (checklist déclarative sur sa
-     * fiche, module staff) — JAMAIS depuis ses classes/matières réellement assignées (§retour
-     * utilisateur : "base-toi sur le niveau enseigné, pas sur les matières"). Un moniteur maternelle/
-     * primaire sans aucune matière affectée (cas normal, voir LessonService#resolveHeadTeacherId)
-     * n'était auparavant jamais détecté comme tel (classé Secondaire par défaut, faussant "État
-     * financier du mois") : la checklist "Niveaux enseignés" est une déclaration DIRECTE et
-     * volontaire, qui ne dépend d'aucune assignation de classe. Présence simple (pas de majorité) :
-     * dès qu'un des niveaux déclarés est Maternelle (ou sinon Primaire), ce cycle l'emporte — Secondaire
-     * seulement si aucun niveau Maternelle/Primaire n'est déclaré (y compris aucun niveau du tout). */
+     * fiche, module staff) — JAMAIS depuis ses classes/matières réellement assignées quand cette
+     * checklist est renseignée (§retour utilisateur : "base-toi sur le niveau enseigné, pas sur les
+     * matières"). Un moniteur maternelle/primaire sans aucune matière affectée (cas normal, voir
+     * LessonService#resolveHeadTeacherId) n'était auparavant jamais détecté comme tel (classé
+     * Secondaire par défaut, faussant "État financier du mois") : la checklist "Niveaux enseignés" est
+     * une déclaration DIRECTE et volontaire, qui ne dépend d'aucune assignation de classe. Présence
+     * simple (pas de majorité) : dès qu'un des niveaux déclarés est Maternelle (ou sinon Primaire), ce
+     * cycle l'emporte.
+     * <p>Repli (§retour comptable, écart production : 4 enseignants de Primaire sans aucune checklist
+     * renseignée, classés Secondaire par défaut — gonflant Secondaire au détriment de Primaire sur
+     * l'état financier) : si la checklist est VIDE (aucun niveau déclaré du tout, pas "déclaré
+     * Secondaire"), le cycle est déduit de ses classes réellement assignées (principal ou matière) —
+     * mieux qu'un Secondaire par défaut silencieux, sans jamais court-circuiter une déclaration
+     * explicite même uniquement Collège/Lycée. */
     private TeacherCycleBucket resolveCycleBucket(Long teacherId) {
+        List<Long> levelIds = teacherPublicInfoProvider.findAssignedLevelIds(teacherId);
         boolean maternelle = false;
         boolean primaire = false;
-        for (Long levelId : teacherPublicInfoProvider.findAssignedLevelIds(teacherId)) {
+        for (Long levelId : levelIds) {
             TeacherCycleBucket bucket = cycleBucketOf(academics.findLevelCycle(levelId).orElse(null));
             if (bucket == TeacherCycleBucket.MATERNELLE) maternelle = true;
             else if (bucket == TeacherCycleBucket.PRIMAIRE) primaire = true;
         }
         if (maternelle) return TeacherCycleBucket.MATERNELLE;
         if (primaire) return TeacherCycleBucket.PRIMAIRE;
+        if (levelIds.isEmpty()) {
+            TeacherCycleBucket fromClasses = resolveCycleBucketFromAssignedClasses(teacherId);
+            if (fromClasses != null) return fromClasses;
+        }
+        return TeacherCycleBucket.SECONDAIRE;
+    }
+
+    /** Déduit le cycle depuis les classes réellement assignées (principal, puis matières) quand
+     * aucun "niveau enseigné" n'est déclaré — {@code null} si l'enseignant n'a non plus aucune classe
+     * assignée (vraiment rien à déduire, repli final sur Secondaire dans l'appelant). */
+    private TeacherCycleBucket resolveCycleBucketFromAssignedClasses(Long teacherId) {
+        List<String> cycles = new java.util.ArrayList<>();
+        for (gn.lacaeducation.academics.ClassPublicInfo c : academics.findClassesByHeadTeacher(teacherId)) {
+            if (c.schoolCycle() != null) cycles.add(c.schoolCycle());
+        }
+        for (var cs : academics.findClassSubjectsByTeacher(teacherId)) {
+            academics.findClass(cs.classId()).ifPresent(c -> {
+                if (c.schoolCycle() != null) cycles.add(c.schoolCycle());
+            });
+        }
+        if (cycles.isEmpty()) return null;
+        if (cycles.stream().anyMatch(c -> cycleBucketOf(c) == TeacherCycleBucket.MATERNELLE)) {
+            return TeacherCycleBucket.MATERNELLE;
+        }
+        if (cycles.stream().anyMatch(c -> cycleBucketOf(c) == TeacherCycleBucket.PRIMAIRE)) {
+            return TeacherCycleBucket.PRIMAIRE;
+        }
         return TeacherCycleBucket.SECONDAIRE;
     }
 
@@ -785,9 +858,37 @@ public class PayrollService {
     private void applyStaffBenefitRemainderDeduction(Payslip p, GenerateCommand c) {
         var deduction = salaryFeeDeductionUseCase.computeStaffBenefitRemainder(c.tenantId(), p.getEmployeeType(), c.teacherId(),
                 c.periodStart(), c.periodLabel());
-        if (deduction.amount() != null && deduction.amount().signum() > 0) {
-            saveLine(p, STAFF_BENEFIT_LINE_PREFIX + " (" + deduction.childrenCount() + " enfant(s))",
-                    PayslipLineType.DEDUCTION, deduction.amount());
+        applyCappedStaffBenefitLine(p, deduction.amount(), deduction.childrenCount());
+    }
+
+    /** Pose la ligne "Reste avantage personnel", plafonnée au net déjà calculé sur la fiche à ce stade
+     * (même principe que {@link #applySalaryAdvanceDeduction} — jamais un net négatif) — §retour
+     * comptable, écart constaté en production : un salarié avec 8 enfants à charge avait un salaire net
+     * à -114 000 GNF, la retenue dépassant largement son salaire de base. Le reliquat non retenu reste
+     * dû sur les factures des enfants (rien n'est jamais effacé), reporté au mois suivant comme pour une
+     * avance sur salaire — voir {@link #markPaid}, qui ne répercute jamais plus que CE montant posé ici. */
+    private void applyCappedStaffBenefitLine(Payslip p, BigDecimal rawAmount, int childrenCount) {
+        if (rawAmount == null || rawAmount.signum() <= 0) return;
+        BigDecimal base = p.getBaseSalary() != null ? p.getBaseSalary() : BigDecimal.ZERO;
+        BigDecimal earnings = BigDecimal.ZERO;
+        BigDecimal deductions = BigDecimal.ZERO;
+        for (PayslipLine l : lineRepo.findByPayslipId(p.getId())) {
+            if (l.getLineType() == PayslipLineType.EARNING) earnings = earnings.add(l.getAmount());
+            else deductions = deductions.add(l.getAmount());
+        }
+        BigDecimal netSoFar = base.add(earnings).subtract(deductions);
+        BigDecimal capped = netSoFar.signum() > 0 ? rawAmount.min(netSoFar) : BigDecimal.ZERO;
+        if (capped.signum() > 0) {
+            saveLine(p, STAFF_BENEFIT_LINE_PREFIX + " (" + childrenCount + " enfant(s))",
+                    PayslipLineType.DEDUCTION, capped);
+        }
+        if (capped.compareTo(rawAmount) < 0) {
+            BigDecimal notDeducted = rawAmount.subtract(capped);
+            java.text.DecimalFormatSymbols sym = new java.text.DecimalFormatSymbols(java.util.Locale.FRANCE);
+            sym.setGroupingSeparator(' ');
+            String formatted = new java.text.DecimalFormat("#,##0", sym).format(notDeducted);
+            String note = "Avantage personnel : " + formatted + " GNF non retenus ce mois — net insuffisant, reste dû sur les factures des enfants.";
+            p.setNotes(p.getNotes() == null || p.getNotes().isBlank() ? note : p.getNotes() + " — " + note);
         }
     }
 
@@ -806,10 +907,7 @@ public class PayrollService {
                 .forEach(l -> lineRepo.deleteById(l.getId()));
         var deduction = salaryFeeDeductionUseCase.computeStaffBenefitRemainder(p.getTenantId(), p.getEmployeeType(),
                 p.getTeacherId(), p.getPeriodStart(), p.getPeriodLabel());
-        if (deduction.amount() != null && deduction.amount().signum() > 0) {
-            saveLine(p, STAFF_BENEFIT_LINE_PREFIX + " (" + deduction.childrenCount() + " enfant(s))",
-                    PayslipLineType.DEDUCTION, deduction.amount());
-        }
+        applyCappedStaffBenefitLine(p, deduction.amount(), deduction.childrenCount());
         return recompute(payslipId);
     }
 
@@ -818,6 +916,15 @@ public class PayrollService {
      * borné par le net déjà calculé sur la fiche à ce stade (lignes de structure/absences/scolarité déjà
      * appliquées) — jamais un net négatif. Répété à chaque génération de fiche tant que le solde n'est
      * pas épuisé (voir {@code SalaryAdvanceService#applyDeduction}).
+     *
+     * <p>Double profil (§retour utilisateur urgence production, "il ne prend pas l'avance sur salaire") :
+     * une personne à la fois enseignante ET personnel direction/administratif a DEUX identités
+     * distinctes ({@code teacherId}+TEACHER, {@code employeeId}+catégorie) — l'écran d'octroi d'avance
+     * liste les deux séparément. Si l'avance a été accordée sous une identité mais que la fiche de paie
+     * est générée sous l'AUTRE (ex. avance accordée "Personnel", fiche générée depuis la page enseignant
+     * "Paie du mois"), la recherche ne trouvait jamais l'avance et ne la déduisait jamais. On tente donc
+     * systématiquement l'identité liée (via {@code Employee#linkedTeacherId}) en repli si la première
+     * tentative n'a rien trouvé.</p>
      */
     private void applySalaryAdvanceDeduction(Payslip p, GenerateCommand c) {
         BigDecimal base = p.getBaseSalary() != null ? p.getBaseSalary() : BigDecimal.ZERO;
@@ -831,9 +938,96 @@ public class PayrollService {
         gn.lacaeducation.payroll.domain.EmployeeType type = c.employeeType() != null
                 ? c.employeeType() : gn.lacaeducation.payroll.domain.EmployeeType.TEACHER;
         var result = salaryAdvanceUseCase.applyDeduction(c.tenantId(), c.teacherId(), type, netSoFar);
+        if ((result.amount() == null || result.amount().signum() <= 0)) {
+            result = applySalaryAdvanceDeductionViaLinkedIdentity(c.tenantId(), c.teacherId(), type, netSoFar);
+        }
         if (result.amount() != null && result.amount().signum() > 0) {
             saveLine(p, result.label(), PayslipLineType.DEDUCTION, result.amount());
+        } else if (netSoFar.signum() <= 0) {
+            noteActiveAdvanceNotDeducted(p, c.tenantId(), c.teacherId(), type);
         }
+    }
+
+    /** Avance active existante (identité courante OU liée) mais non prélevée ce cycle faute de net
+     * disponible (§retour utilisateur : "il ne prend pas l'avance" alors qu'elle existe bien, juste
+     * silencieusement reportée — un enseignant à l'heure avec peu d'heures + de grosses retenues
+     * épuise déjà le net avant même d'atteindre l'avance). Rendu visible sur la fiche plutôt que
+     * silencieux ; ne pousse jamais le net plus bas, l'avance reste intégralement due. */
+    private void noteActiveAdvanceNotDeducted(Payslip p, Long tenantId, Long teacherId,
+                                              gn.lacaeducation.payroll.domain.EmployeeType type) {
+        BigDecimal outstanding = activeAdvanceRemainingBalance(tenantId, teacherId, type);
+        if (outstanding == null || outstanding.signum() <= 0) return;
+        java.text.DecimalFormatSymbols sym = new java.text.DecimalFormatSymbols(java.util.Locale.FRANCE);
+        sym.setGroupingSeparator(' ');
+        String formatted = new java.text.DecimalFormat("#,##0", sym).format(outstanding);
+        String note = "Avance sur salaire en cours (" + formatted
+                + " GNF restant) NON prélevée ce mois — solde net insuffisant.";
+        p.setNotes(p.getNotes() == null || p.getNotes().isBlank() ? note : p.getNotes() + " — " + note);
+        payslipRepo.save(p);
+    }
+
+    private BigDecimal activeAdvanceRemainingBalance(Long tenantId, Long teacherId,
+                                                      gn.lacaeducation.payroll.domain.EmployeeType type) {
+        BigDecimal primary = salaryAdvanceUseCase.findByTeacherId(tenantId, teacherId, type).stream()
+                .filter(a -> a.getStatus() == SalaryAdvanceStatus.ACTIVE)
+                .map(SalaryAdvance::getRemainingBalance).filter(b -> b != null && b.signum() > 0)
+                .findFirst().orElse(null);
+        if (primary != null) return primary;
+        if (type == gn.lacaeducation.payroll.domain.EmployeeType.TEACHER) {
+            return employeePublicInfoProvider.findByLinkedTeacherId(tenantId, teacherId)
+                    .flatMap(emp -> {
+                        try {
+                            return Optional.of(salaryAdvanceUseCase.findByTeacherId(
+                                    tenantId, emp.id(), gn.lacaeducation.payroll.domain.EmployeeType.valueOf(emp.category())));
+                        } catch (IllegalArgumentException e) {
+                            return Optional.<List<SalaryAdvance>>empty();
+                        }
+                    })
+                    .flatMap(advances -> advances.stream()
+                            .filter(a -> a.getStatus() == SalaryAdvanceStatus.ACTIVE)
+                            .map(SalaryAdvance::getRemainingBalance).filter(b -> b != null && b.signum() > 0)
+                            .findFirst())
+                    .orElse(null);
+        }
+        return employeePublicInfoProvider.findEmployee(teacherId)
+                .map(gn.lacaeducation.staff.EmployeePublicInfoProvider.EmployeeInfo::linkedTeacherId)
+                .filter(java.util.Objects::nonNull)
+                .map(linkedTeacherId -> salaryAdvanceUseCase.findByTeacherId(
+                        tenantId, linkedTeacherId, gn.lacaeducation.payroll.domain.EmployeeType.TEACHER))
+                .flatMap(advances -> advances.stream()
+                        .filter(a -> a.getStatus() == SalaryAdvanceStatus.ACTIVE)
+                        .map(SalaryAdvance::getRemainingBalance).filter(b -> b != null && b.signum() > 0)
+                        .findFirst())
+                .orElse(null);
+    }
+
+    /** Tente la déduction sous l'identité LIÉE à {@code (teacherId, type)} — la fiche Employee liée si
+     * {@code type == TEACHER}, ou la fiche Teacher liée à l'Employee sinon. Résultat à zéro (jamais
+     * d'exception) si cette personne n'a pas de double profil ou que l'identité liée n'a pas d'avance
+     * active non plus. */
+    private gn.lacaeducation.payroll.application.port.in.SalaryAdvanceUseCase.AdvanceDeductionResult
+            applySalaryAdvanceDeductionViaLinkedIdentity(Long tenantId, Long teacherId,
+                    gn.lacaeducation.payroll.domain.EmployeeType type, BigDecimal netSoFar) {
+        var none = new gn.lacaeducation.payroll.application.port.in.SalaryAdvanceUseCase.AdvanceDeductionResult(BigDecimal.ZERO, null);
+        if (type == gn.lacaeducation.payroll.domain.EmployeeType.TEACHER) {
+            return employeePublicInfoProvider.findByLinkedTeacherId(tenantId, teacherId)
+                    .map(emp -> {
+                        try {
+                            gn.lacaeducation.payroll.domain.EmployeeType empType =
+                                    gn.lacaeducation.payroll.domain.EmployeeType.valueOf(emp.category());
+                            return salaryAdvanceUseCase.applyDeduction(tenantId, emp.id(), empType, netSoFar);
+                        } catch (IllegalArgumentException e) {
+                            return none;
+                        }
+                    })
+                    .orElse(none);
+        }
+        return employeePublicInfoProvider.findEmployee(teacherId)
+                .map(gn.lacaeducation.staff.EmployeePublicInfoProvider.EmployeeInfo::linkedTeacherId)
+                .filter(java.util.Objects::nonNull)
+                .map(linkedTeacherId -> salaryAdvanceUseCase.applyDeduction(
+                        tenantId, linkedTeacherId, gn.lacaeducation.payroll.domain.EmployeeType.TEACHER, netSoFar))
+                .orElse(none);
     }
 
     /**
@@ -970,7 +1164,10 @@ public class PayrollService {
         // scolarité (voir ci-dessous) serait répercutée deux fois sur les factures des enfants.
         if (p.getStatus() == PayslipStatus.PAID) throw new BusinessRuleException("Fiche déjà payée");
         p.setStatus(PayslipStatus.PAID);
-        p.setPaymentMethod(paymentMethod != null ? paymentMethod : "BANK_TRANSFER");
+        // Jamais de présomption "virement bancaire" quand rien n'est fourni (§retour utilisateur : une
+        // fiche payée en espèces affichait "Virement bancaire" sur le PDF) — le mode de paiement réel
+        // est désormais toujours choisi explicitement côté appelant (modal "Marquer comme payée").
+        p.setPaymentMethod(paymentMethod);
         p.setPaidAt(LocalDateTime.now());
         // Comptable ayant traité le paiement — imprimé sous la signature "Signature et Cachet de
         // l'Établissement" du PDF (demande utilisateur), résolu en nom à l'impression (voir pdfBytes),
@@ -980,9 +1177,16 @@ public class PayrollService {
         // Répercute la retenue (solde réel des factures "avantage personnel", voir
         // applyStaffBenefitRemainderDeduction) sur les factures des enfants du salarié, maintenant que
         // la fiche est réellement payée (§payroll ↔ billing) — sans ça, l'école a bien été payée (via
-        // la paie) mais la facturation continue d'afficher ces enfants comme débiteurs.
+        // la paie) mais la facturation continue d'afficher ces enfants comme débiteurs. Plafonné au
+        // montant EXACT de la ligne posée sur la fiche (jamais un recalcul indépendant, §retour
+        // comptable "salaire négatif") : si le net était insuffisant, seule la part réellement retenue
+        // est répercutée, le reste reste dû sur les factures des enfants.
+        BigDecimal staffBenefitDeducted = lineRepo.findByPayslipId(saved.getId()).stream()
+                .filter(l -> l.getLabel() != null && l.getLabel().startsWith(STAFF_BENEFIT_LINE_PREFIX))
+                .map(PayslipLine::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
         salaryFeeDeductionUseCase.applyStaffBenefitRemainderAsInvoicePayment(saved.getTenantId(), saved.getEmployeeType(), saved.getTeacherId(),
-                saved.getPeriodStart(), saved.getPeriodLabel());
+                saved.getPeriodStart(), saved.getPeriodLabel(), staffBenefitDeducted);
         // Fait remonter la paie dans la trésorerie (sortie de caisse "Salaires") — jamais dans le
         // budget annuel voté, qui couvre le fonctionnement courant (carburant, kermesse, événements),
         // financièrement distinct de la masse salariale (toujours puisée dans les recettes de l'école).

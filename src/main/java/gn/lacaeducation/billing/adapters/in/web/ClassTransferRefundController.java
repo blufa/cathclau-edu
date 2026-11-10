@@ -30,6 +30,13 @@ public class ClassTransferRefundController {
         return useCase.findByStudentId(studentId);
     }
 
+    @Operation(summary = "Tous les surplus en attente de remboursement (tout élève confondu), noms déjà résolus")
+    @PreAuthorize("hasAuthority('facture:read')")
+    @GetMapping("/en-attente")
+    public List<ClassTransferRefundUseCase.PendingRefund> findAllPending() {
+        return useCase.findAllPending();
+    }
+
     @Operation(summary = "Confirmer que le surplus a été physiquement remboursé au parent")
     @PreAuthorize("hasAuthority('facture:update')")
     @PatchMapping("/{id}/rembourse")

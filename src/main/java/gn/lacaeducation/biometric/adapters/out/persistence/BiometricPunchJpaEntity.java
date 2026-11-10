@@ -18,6 +18,7 @@ public class BiometricPunchJpaEntity {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
     @Column(name = "tenant_id", nullable = false) private Long tenantId;
     @Column(name = "device_id", nullable = false) private Long deviceId;
+    @Column(name = "sync_id", length = 64) private String syncId;
     @Column(name = "external_user_id", nullable = false, length = 64) private String externalUserId;
     @Enumerated(EnumType.STRING) @Column(name = "subject_type", length = 16) private BiometricSubjectType subjectType;
     @Column(name = "subject_id") private Long subjectId;

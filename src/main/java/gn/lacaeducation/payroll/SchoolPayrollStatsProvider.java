@@ -74,9 +74,14 @@ public interface SchoolPayrollStatsProvider {
      */
     record SalaryAdvanceDetail(String employeeName, String className, java.time.LocalDate grantedAt, BigDecimal amount) {}
 
+    /** {@code actualPaidSalariesTotal} : somme des fiches de paie RÉELLEMENT marquées payées
+     * ({@code paidAt} dans le mois demandé), pas une masse théorique projetée — §retour comptable :
+     * le cumul affiché sur le tableau de bord doit refléter l'argent qui a vraiment quitté la caisse
+     * à chaque paiement de salaire, pas une estimation. S'accroît à chaque "Marquer payée". */
     record MonthlyFinancialSummary(BigDecimal maternelleTeacherPayroll, BigDecimal primaryTeacherPayroll,
                                    BigDecimal secondaryTeacherPayroll, BigDecimal staffPayroll,
                                    BigDecimal salaryAdvancesTotal, BigDecimal total,
+                                   BigDecimal actualPaidSalariesTotal,
                                    List<SalaryAdvanceDetail> advances) {}
 
     MonthlyFinancialSummary monthlyFinancialSummary(Long tenantId, int year, int month);
