@@ -271,4 +271,36 @@ class SubjectSemesterAverageTest {
 
         assertThat(r.coursValue()).isEqualByComparingTo("10.00");
     }
+
+    // ── Bulletin mensuel (§censeur) : même formule, notes déjà filtrées par l'appelant ─────────────
+
+    @Test
+    void computeMonthly_secondaire_scalesByCoefficient_sameFormulaAsScaledAverage() {
+        BigDecimal avg = SubjectSemesterAverage.computeMonthly(
+                CycleGroup.SECONDAIRE, new BigDecimal("2"), List.of(new BigDecimal("14"), new BigDecimal("15")));
+
+        // (2×14 + 2×15) / 2 = 29, pas la moyenne simple 14.50 — même principe que scaledAverage.
+        assertThat(avg).isEqualByComparingTo("29.00");
+    }
+
+    @Test
+    void computeMonthly_primaire_simpleAverage_notScaledByCoefficient() {
+        BigDecimal avg = SubjectSemesterAverage.computeMonthly(
+                CycleGroup.PRIMAIRE, new BigDecimal("3"), List.of(new BigDecimal("12"), new BigDecimal("16")));
+
+        assertThat(avg).isEqualByComparingTo("14.00");
+    }
+
+    @Test
+    void computeMonthly_noValues_returnsNull() {
+        assertThat(SubjectSemesterAverage.computeMonthly(CycleGroup.SECONDAIRE, BigDecimal.ONE, List.of())).isNull();
+        assertThat(SubjectSemesterAverage.computeMonthly(CycleGroup.SECONDAIRE, BigDecimal.ONE, null)).isNull();
+    }
+
+    @Test
+    void computeMonthly_secondaire_nullCoefficient_defaultsToOne() {
+        BigDecimal avg = SubjectSemesterAverage.computeMonthly(CycleGroup.SECONDAIRE, null, List.of(new BigDecimal("10")));
+
+        assertThat(avg).isEqualByComparingTo("10.00");
+    }
 }

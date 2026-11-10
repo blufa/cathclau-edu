@@ -104,6 +104,29 @@ public final class SubjectSemesterAverage {
         return new Result(mSem, mCours, mComp, monthlyCours);
     }
 
+    /**
+     * Moyenne d'une matière pour le bulletin de contrôle mensuel (§censeur) — même formule que
+     * {@link #simpleAverage} (Primaire, non pondérée) ou {@link #scaledAverage} (Secondaire,
+     * coefficient × moyenne) selon le cycle, appliquée aux seules notes MONTHLY déjà filtrées par
+     * l'appelant (type + mois calendaire) : c'est le "même moteur de calcul" que la moyenne
+     * semestrielle, sans dupliquer la logique de {@link #compute}, qui reste inchangée.
+     *
+     * @param values notes déjà filtrées par l'appelant (type MONTHLY, mois demandé) ; {@code null}
+     * si vide — jamais zéro, pour ne pas fausser la moyenne générale du bulletin mensuel.
+     */
+    public static BigDecimal computeMonthly(CycleGroup cycleGroup, BigDecimal subjectCoefficient, List<BigDecimal> values) {
+        if (values == null || values.isEmpty()) return null;
+        BigDecimal sum = BigDecimal.ZERO;
+        for (BigDecimal v : values) {
+            sum = sum.add(v);
+        }
+        if (cycleGroup == CycleGroup.PRIMAIRE) {
+            return sum.divide(BigDecimal.valueOf(values.size()), SCALE, ROUNDING);
+        }
+        BigDecimal coef = subjectCoefficient != null ? subjectCoefficient : BigDecimal.ONE;
+        return sum.multiply(coef).divide(BigDecimal.valueOf(values.size()), SCALE, ROUNDING);
+    }
+
     /** {@code coefficient_matière × (Σ notes du mois / nombre de notes)} de chaque mois calendaire ayant
      * au moins une note — mois sans note absents de la carte (jamais une entrée à {@code null}/zéro). */
     private static SortedMap<YearMonth, BigDecimal> monthlyBreakdown(List<WeightedNote> cours, BigDecimal coef) {

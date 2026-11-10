@@ -9,7 +9,12 @@ public enum AssessmentType {
     QUIZ(30, "Interrogation"),
     HOMEWORK(60, "Devoir"),
     EXAM(120, "Composition"),
-    FINAL(180, "Examen");
+    FINAL(180, "Examen"),
+    /** Évaluation mensuelle (§censeur) : contrôle de niveau en cours d'année, saisie dans la période
+     * semestrielle/trimestrielle en cours — jamais compté dans la moyenne de cette période (voir
+     * SubjectSemesterAverage, qui ne reconnaît que QUIZ/HOMEWORK/EXAM, exactement comme FINAL déjà
+     * aujourd'hui). Alimente uniquement le bulletin mensuel séparé (MonthlyReportCardService). */
+    MONTHLY(30, "Évaluation mensuelle");
 
     private final int sessionMinutes;
     private final String frenchLabel;
