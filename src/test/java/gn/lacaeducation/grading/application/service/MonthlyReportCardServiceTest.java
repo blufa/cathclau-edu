@@ -117,8 +117,12 @@ class MonthlyReportCardServiceTest {
 
         service.generateForStudent(studentId, classId, MONTH);
 
+        // La ligne existante (id=42) est réutilisée (UPDATE), jamais supprimée puis réinsérée — sinon
+        // l'ordre de flush par défaut d'Hibernate (INSERT avant DELETE) viole la contrainte unique
+        // (student_id, class_id, year_month), voir persistWithLines.
         verify(monthlyReportCardRepository).deleteLinesByMonthlyReportCardId(42L);
-        verify(monthlyReportCardRepository).deleteById(42L);
+        verify(monthlyReportCardRepository, never()).deleteById(any());
+        assertThat(cardCaptor.getValue().getId()).isEqualTo(42L);
         assertThat(cardCaptor.getValue().getComment()).isEqualTo("Bon trimestre, continue comme ça");
     }
 

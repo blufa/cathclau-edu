@@ -166,16 +166,19 @@ public class MonthlyReportCardService {
         }
     }
 
-    /** Remplace le bulletin mensuel existant pour ce (élève, classe, mois) s'il y en a un — même
-     * principe que {@code GradeCalculationService.persistReportCardWithLines}. L'appréciation
-     * manuelle du censeur ({@code comment}) est reportée sur le nouvel enregistrement : une
-     * régénération (ex. après correction d'une note) ne doit jamais effacer ce qu'il a écrit. */
+    /** Remplace le bulletin mensuel existant pour ce (élève, classe, mois) s'il y en a un, en
+     * réutilisant sa ligne (UPDATE) plutôt que supprimer puis réinsérer — sinon l'ordre de flush par
+     * défaut d'Hibernate (INSERT avant DELETE) viole la contrainte unique (student_id, class_id,
+     * year_month) : bug réel rencontré en test, la 1ère régénération d'un mois déjà généré échouait
+     * systématiquement en 409. L'appréciation manuelle du censeur ({@code comment}) est reportée sur
+     * la ligne réutilisée : une régénération (ex. après correction d'une note) ne doit jamais
+     * effacer ce qu'il a écrit. */
     private MonthlyReportCard persistWithLines(MonthlyReportCard card, List<MonthlyReportCardLine> lines) {
         monthlyReportCardRepository.findByStudentIdAndClassIdAndYearMonth(card.getStudentId(), card.getClassId(), card.getYearMonth())
                 .ifPresent(existing -> {
+                    card.setId(existing.getId());
                     card.setComment(existing.getComment());
                     monthlyReportCardRepository.deleteLinesByMonthlyReportCardId(existing.getId());
-                    monthlyReportCardRepository.deleteById(existing.getId());
                 });
         MonthlyReportCard saved = monthlyReportCardRepository.save(card);
         for (MonthlyReportCardLine line : lines) {

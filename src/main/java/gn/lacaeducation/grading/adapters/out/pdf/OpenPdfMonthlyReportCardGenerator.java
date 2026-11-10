@@ -133,7 +133,7 @@ class OpenPdfMonthlyReportCardGenerator implements MonthlyReportCardPdfGenerator
             Color bg = zebra ? new Color(252, 250, 244) : WHITE;
             zebra = !zebra;
             bodyCell(table, l.subjectName(), Element.ALIGN_LEFT, bg);
-            bodyCell(table, dec(l.average()), Element.ALIGN_CENTER, bg);
+            bodyCell(table, dec(normalized(l.average(), l.coefficient())), Element.ALIGN_CENTER, bg);
             bodyCell(table, dec(l.coefficient()), Element.ALIGN_CENTER, bg);
             bodyCell(table, safe(l.teacherName(), "—"), Element.ALIGN_LEFT, bg);
         }
@@ -213,7 +213,12 @@ class OpenPdfMonthlyReportCardGenerator implements MonthlyReportCardPdfGenerator
 
         for (int i = 0; i < n; i++) {
             Line l = lines.get(i);
-            BigDecimal avg = l.average();
+            // IMPORTANT : l.average() est la moyenne DÉJÀ multipliée par le coefficient de la matière
+            // (même convention que le bulletin officiel, voir SubjectSemesterAverage — "gonflée", pas
+            // une note sur 20). Le diagramme et le seuil de réussite (10/20) ont besoin de la note
+            // brute : on divise par le coefficient avant de calculer la hauteur de la barre — bug réel
+            // rencontré en test (coefficient 4 → barre de 390pt de haut, débordait toute la page).
+            BigDecimal avg = normalized(l.average(), l.coefficient());
             float x = left + i * slot + (slot - barWidth) / 2f;
             float h = avg == null ? 0 : avg.floatValue() / 20f * CHART_HEIGHT;
             boolean passing = avg != null && avg.compareTo(BigDecimal.TEN) >= 0;
@@ -279,5 +284,14 @@ class OpenPdfMonthlyReportCardGenerator implements MonthlyReportCardPdfGenerator
     private static String truncate(String s, int max) {
         if (s == null) return "";
         return s.length() <= max ? s : s.substring(0, max - 1) + "…";
+    }
+
+    /** Ramène une moyenne déjà "gonflée" par le coefficient (voir SubjectSemesterAverage) à une note
+     * sur 20 lisible par un parent — utilisé uniquement pour l'affichage (tableau + diagramme), jamais
+     * pour un calcul ultérieur. */
+    private static BigDecimal normalized(BigDecimal avg, BigDecimal coefficient) {
+        if (avg == null) return null;
+        if (coefficient == null || coefficient.signum() <= 0) return avg;
+        return avg.divide(coefficient, 2, java.math.RoundingMode.HALF_UP);
     }
 }
