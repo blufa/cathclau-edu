@@ -35,7 +35,7 @@ class UpcomingDeadlineNotifyProcessorTest {
     }
 
     private Candidate candidate(Long studentId, Status status) {
-        return new Candidate(studentId, "Élève " + studentId, 3L, "CM2 A", status,
+        return new Candidate(studentId, "Élève " + studentId, "MAT-" + studentId, 3L, "CM2 A", status,
                 BigDecimal.ZERO, null, 0, 1, 3, List.of());
     }
 

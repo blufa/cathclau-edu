@@ -11,13 +11,12 @@ import gn.lacaeducation.common.pdf.AdminDocumentLayout;
 import gn.lacaeducation.common.pdf.SchoolPdfPageFooter;
 import gn.lacaeducation.communication.application.port.out.PaymentStatusListPdfGenerator;
 import gn.lacaeducation.communication.application.service.PaymentReminderCandidatesService.Candidate;
-import gn.lacaeducation.communication.application.service.PaymentReminderCandidatesService.Status;
+import gn.lacaeducation.communication.application.service.PaymentReminderCandidatesService.ParentContact;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayOutputStream;
 import java.util.List;
-import java.util.Map;
 
 import static gn.lacaeducation.common.pdf.AdminDocumentLayout.*;
 
@@ -25,17 +24,15 @@ import static gn.lacaeducation.common.pdf.AdminDocumentLayout.*;
  * Liste imprimable des élèves filtrés sur l'écran "Relances paiement" (classe/statut/tranches),
  * même en-tête (logo, établissement, année scolaire) que les autres documents officiels — demande
  * utilisateur explicite ("il faut toujours reproduire les mêmes entêtes de la facture"). Une seule
- * page large (A4 paysage) : la table a 6 colonnes et une liste de plusieurs dizaines d'élèves tiendrait
- * mal en portrait sans rapetisser le texte au point d'être illisible.
+ * page large (A4 paysage) : la table a plusieurs colonnes et une liste de plusieurs dizaines d'élèves
+ * tiendrait mal en portrait sans rapetisser le texte au point d'être illisible.
+ *
+ * §retour comptable : colonnes Statut/Jours/Montant dû retirées, "Tranches" remplacée par le nombre de
+ * mois payés (compréhensible sans contexte supplémentaire), Matricule et Parent ajoutés.
  */
 @Component
 @RequiredArgsConstructor
 class OpenPdfPaymentStatusListGenerator implements PaymentStatusListPdfGenerator {
-
-    private static final Map<Status, String> STATUS_LABEL = Map.of(
-            Status.OVERDUE, "En retard",
-            Status.UPCOMING, "Échéance proche",
-            Status.UP_TO_DATE, "À jour");
 
     private final TenantInfoProvider tenantInfoProvider;
 
@@ -53,20 +50,20 @@ class OpenPdfPaymentStatusListGenerator implements PaymentStatusListPdfGenerator
             AdminDocumentLayout.header(doc, info);
             titleBox(doc, "SUIVI DES PAIEMENTS — " + candidates.size() + " ÉLÈVE(S)");
 
-            PdfPTable table = dataTable(new float[]{2.4f, 1.6f, 1.3f, 1f, 1.4f, 1.2f});
+            PdfPTable table = dataTable(new float[]{1.4f, 2.4f, 1.6f, 1.6f, 2.4f});
+            headerCell(table, "Matricule");
             headerCell(table, "Élève");
             headerCell(table, "Classe");
-            headerCell(table, "Statut");
-            headerCell(table, "Jours");
-            headerCell(table, "Montant dû");
-            headerCell(table, "Tranches");
+            headerCell(table, "Mois payés");
+            headerCell(table, "Parent");
             for (Candidate c : candidates) {
+                cell(table, c.studentNumber(), Element.ALIGN_LEFT);
                 cell(table, c.studentName(), Element.ALIGN_LEFT);
                 cell(table, c.className(), Element.ALIGN_LEFT);
-                cell(table, STATUS_LABEL.get(c.status()), Element.ALIGN_LEFT);
-                cell(table, c.status() == Status.UP_TO_DATE ? "-" : String.valueOf(Math.abs(c.daysLate())), Element.ALIGN_RIGHT);
-                cell(table, c.amountDue() != null && c.amountDue().signum() > 0 ? money(c.amountDue()) + " GNF" : "-", Element.ALIGN_RIGHT);
-                cell(table, c.totalTranches() > 0 ? c.tranchesPaid() + "/" + c.totalTranches() : "-", Element.ALIGN_RIGHT);
+                cell(table, String.valueOf(c.tranchesPaid()), Element.ALIGN_RIGHT);
+                cell(table, c.parents().isEmpty() ? "-"
+                        : c.parents().stream().map(ParentContact::name).collect(java.util.stream.Collectors.joining(", ")),
+                        Element.ALIGN_LEFT);
             }
             doc.add(table);
             doc.close();
