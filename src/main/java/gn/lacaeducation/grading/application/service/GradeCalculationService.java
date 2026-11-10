@@ -9,12 +9,15 @@ import gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort;
 import gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort.ClassSubjectInfo;
 import gn.lacaeducation.grading.application.port.out.GradeRepository;
 import gn.lacaeducation.grading.application.port.out.ReportCardRepository;
+import gn.lacaeducation.common.TenantContext;
+import gn.lacaeducation.common.TenantInfoProvider;
 import gn.lacaeducation.grading.domain.Assessment;
 import gn.lacaeducation.grading.domain.CycleGroup;
 import gn.lacaeducation.grading.domain.GradingScale;
 import gn.lacaeducation.grading.domain.Grade;
 import gn.lacaeducation.grading.domain.ReportCard;
 import gn.lacaeducation.grading.domain.ReportCardLine;
+import gn.lacaeducation.grading.domain.RankingUtil;
 import gn.lacaeducation.grading.domain.ReportCardStatus;
 import gn.lacaeducation.grading.domain.SubjectMonthlyBreakdown;
 import gn.lacaeducation.grading.domain.SubjectSemesterAverage;
@@ -67,6 +70,13 @@ public class GradeCalculationService {
     private final TeacherNameProvider teacherNameProvider;
     private final AttendanceSummaryProvider attendanceSummaryProvider;
     private final ApplicationEventPublisher eventPublisher;
+    private final TenantInfoProvider tenantInfoProvider;
+
+    /** §censeur, école visitée : certaines écoles comptent l'évaluation mensuelle comme moyenne de
+     * cours — voir {@code Tenant#monthlyCountsAsCours} / {@code SubjectSemesterAverage#compute}. */
+    private boolean includeMonthlyAsCours() {
+        return tenantInfoProvider.monthlyCountsAsCours(TenantContext.get());
+    }
 
     /** Internal value object pairing a report card with its computed lines. */
     private record ReportCardWithLines(ReportCard reportCard, List<ReportCardLine> lines) {}
@@ -190,7 +200,7 @@ public class GradeCalculationService {
                     : subjectCoeffMap.getOrDefault(subjectId, BigDecimal.ONE);
 
             SubjectSemesterAverage.Result formulaResult =
-                    SubjectSemesterAverage.compute(cycleGroup, subjectCoeff, subjectAssessments, grades);
+                    SubjectSemesterAverage.compute(cycleGroup, subjectCoeff, subjectAssessments, grades, includeMonthlyAsCours());
             BigDecimal subjectAverage = formulaResult.finalValue();
             if (subjectAverage == null) {
                 continue; // notes présentes mais sans valeur exploitable (cas dégradé, voir domaine)
@@ -306,10 +316,8 @@ public class GradeCalculationService {
     private void updateRanksAndStats(List<ReportCard> reportCards) {
         if (reportCards.isEmpty()) return;
 
-        List<ReportCard> sorted = reportCards.stream()
-                .sorted(Comparator.comparing(ReportCard::getOverallAverage,
-                        Comparator.nullsLast(Comparator.reverseOrder())))
-                .toList();
+        List<RankingUtil.Ranked<ReportCard>> ranked = RankingUtil.rank(reportCards, ReportCard::getOverallAverage);
+        List<ReportCard> sorted = ranked.stream().map(RankingUtil.Ranked::item).toList();
 
         long validCount = sorted.stream()
                 .map(ReportCard::getOverallAverage)
@@ -337,21 +345,11 @@ public class GradeCalculationService {
 
         int classSize = sorted.size();
 
-        // Ex æquo (§4, règle confirmée) : deux moyennes identiques partagent le même rang, et l'élève
-        // suivant reprend au rang correspondant à sa position réelle (ex. 3, 3, 5 — jamais 3, 4, 5).
-        // Un élève sans moyenne (aucune note) ne partage jamais son rang, y compris avec un autre élève
-        // sans moyenne — cas limite non couvert par la règle, tranché pour rester simple et prévisible.
-        int rank = 1;
-        BigDecimal previousAverage = null;
-        int position = 0;
-        for (ReportCard rc : sorted) {
-            position++;
-            BigDecimal current = rc.getOverallAverage();
-            if (previousAverage == null || current == null || previousAverage.compareTo(current) != 0) {
-                rank = position;
-            }
-            rc.setRank(rank);
-            previousAverage = current;
+        // Ex æquo (§4, règle confirmée) : voir RankingUtil.rank (même règle utilisée aussi par
+        // MonthlyReportCardService pour le bulletin mensuel).
+        for (RankingUtil.Ranked<ReportCard> entry : ranked) {
+            ReportCard rc = entry.item();
+            rc.setRank(entry.rank());
             rc.setClassAverage(classAvg);
             rc.setHighestAverage(highest);
             rc.setLowestAverage(lowest);
@@ -416,7 +414,7 @@ public class GradeCalculationService {
         Long subjectId = subjectAssessments.stream()
                 .map(Assessment::getSubjectId).filter(java.util.Objects::nonNull).findFirst().orElse(null);
         BigDecimal subjectCoeff = subjectCoefficient(classId, subjectId);
-        return SubjectSemesterAverage.compute(resolveCycleGroup(classId), subjectCoeff, subjectAssessments, studentGrades);
+        return SubjectSemesterAverage.compute(resolveCycleGroup(classId), subjectCoeff, subjectAssessments, studentGrades, includeMonthlyAsCours());
     }
 
     /** Coefficient configuré de la matière pour la classe (Classes → Matières), {@code
@@ -455,7 +453,7 @@ public class GradeCalculationService {
             if (grades.isEmpty()) continue;
             BigDecimal subjectCoeff = subjectCoeffMap.getOrDefault(subjectId, BigDecimal.ONE);
             SubjectSemesterAverage.Result formulaResult =
-                    SubjectSemesterAverage.compute(cycleGroup, subjectCoeff, entry.getValue(), grades);
+                    SubjectSemesterAverage.compute(cycleGroup, subjectCoeff, entry.getValue(), grades, includeMonthlyAsCours());
             result.add(new SubjectMonthlyBreakdown(subjectId, subjectCoeff,
                     formulaResult.monthlyCours(), formulaResult.compoValue(), formulaResult.finalValue()));
         }

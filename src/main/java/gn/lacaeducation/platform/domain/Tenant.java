@@ -98,4 +98,11 @@ public class Tenant {
     /** Nombre de chiffres du numéro séquentiel du matricule (avec zéros de tête) — null = 5 par
      * défaut (comportement historique). */
     private Integer matriculeDigits;
+    /** Certaines écoles ne font qu'UNE évaluation mensuelle par matière et l'utilisent directement
+     * comme moyenne de cours du mois (§censeur, école visitée) — quand activé, cette note
+     * (AssessmentType.MONTHLY) entre dans le calcul de la moyenne semestrielle officielle au même
+     * titre que QUIZ/HOMEWORK, voir SubjectSemesterAverage.compute(). Réglable par l'école
+     * elle-même (SchoolProfileController), désactivé par défaut (comportement historique :
+     * MONTHLY toujours exclu). */
+    private boolean monthlyCountsAsCours;
 }

@@ -62,9 +62,25 @@ public final class SubjectSemesterAverage {
     private static final RoundingMode ROUNDING = RoundingMode.HALF_UP;
 
     /** @param subjectCoefficient coefficient de la matière (Secondaire uniquement — ignoré en
-     * Primaire, où le coefficient n'entre jamais en jeu) ; absent = 1. */
+     * Primaire, où le coefficient n'entre jamais en jeu) ; absent = 1.
+     * MONTHLY toujours exclu (comportement historique) — voir la surcharge à 5 paramètres pour le
+     * réglage {@code Tenant#monthlyCountsAsCours}. */
     public static Result compute(CycleGroup cycleGroup, BigDecimal subjectCoefficient,
                                   List<Assessment> assessments, List<Grade> grades) {
+        return compute(cycleGroup, subjectCoefficient, assessments, grades, false);
+    }
+
+    /**
+     * @param includeMonthlyAsCours §censeur, école visitée : certaines écoles ne font qu'une
+     * évaluation mensuelle par matière et l'utilisent directement comme moyenne de cours du mois —
+     * quand {@code true}, AssessmentType.MONTHLY entre dans le filtre "cours" au même titre que
+     * QUIZ/HOMEWORK (regroupement par mois calendaire inchangé : avec une seule note MONTHLY ce
+     * mois-là, M_mois devient directement cette note coefficientée). Réglage par école
+     * ({@code Tenant#monthlyCountsAsCours}), {@code false} par défaut (comportement historique).
+     */
+    public static Result compute(CycleGroup cycleGroup, BigDecimal subjectCoefficient,
+                                  List<Assessment> assessments, List<Grade> grades,
+                                  boolean includeMonthlyAsCours) {
         Map<Long, Assessment> byId = new HashMap<>();
         for (Assessment a : assessments) {
             byId.put(a.getId(), a);
@@ -90,7 +106,8 @@ public final class SubjectSemesterAverage {
 
         List<WeightedNote> cours = noted.stream()
                 .filter(n -> n.assessment.getType() == AssessmentType.QUIZ
-                        || n.assessment.getType() == AssessmentType.HOMEWORK)
+                        || n.assessment.getType() == AssessmentType.HOMEWORK
+                        || (includeMonthlyAsCours && n.assessment.getType() == AssessmentType.MONTHLY))
                 .toList();
         List<WeightedNote> compo = noted.stream()
                 .filter(n -> n.assessment.getType() == AssessmentType.EXAM)
@@ -102,6 +119,29 @@ public final class SubjectSemesterAverage {
         BigDecimal mSem = combine(mCours, mComp);
 
         return new Result(mSem, mCours, mComp, monthlyCours);
+    }
+
+    /**
+     * Moyenne d'une matière pour le bulletin de contrôle mensuel (§censeur) — même formule que
+     * {@link #simpleAverage} (Primaire, non pondérée) ou {@link #scaledAverage} (Secondaire,
+     * coefficient × moyenne) selon le cycle, appliquée aux seules notes MONTHLY déjà filtrées par
+     * l'appelant (type + mois calendaire) : c'est le "même moteur de calcul" que la moyenne
+     * semestrielle, sans dupliquer la logique de {@link #compute}, qui reste inchangée.
+     *
+     * @param values notes déjà filtrées par l'appelant (type MONTHLY, mois demandé) ; {@code null}
+     * si vide — jamais zéro, pour ne pas fausser la moyenne générale du bulletin mensuel.
+     */
+    public static BigDecimal computeMonthly(CycleGroup cycleGroup, BigDecimal subjectCoefficient, List<BigDecimal> values) {
+        if (values == null || values.isEmpty()) return null;
+        BigDecimal sum = BigDecimal.ZERO;
+        for (BigDecimal v : values) {
+            sum = sum.add(v);
+        }
+        if (cycleGroup == CycleGroup.PRIMAIRE) {
+            return sum.divide(BigDecimal.valueOf(values.size()), SCALE, ROUNDING);
+        }
+        BigDecimal coef = subjectCoefficient != null ? subjectCoefficient : BigDecimal.ONE;
+        return sum.multiply(coef).divide(BigDecimal.valueOf(values.size()), SCALE, ROUNDING);
     }
 
     /** {@code coefficient_matière × (Σ notes du mois / nombre de notes)} de chaque mois calendaire ayant

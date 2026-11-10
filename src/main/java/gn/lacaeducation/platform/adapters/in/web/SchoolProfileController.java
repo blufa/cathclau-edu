@@ -46,6 +46,16 @@ public class SchoolProfileController {
                 req.matriculeFormat(), req.matriculeDigits())));
     }
 
+    @Operation(summary = "Active/désactive : une seule évaluation mensuelle par matière compte comme "
+            + "moyenne de cours du mois dans le calcul semestriel (§censeur, école visitée). Désactivé par défaut.")
+    @PatchMapping("/monthly-counts-as-cours")
+    @PreAuthorize("hasAuthority('ecole:profil')")
+    public TenantResponse setMonthlyCountsAsCours(@RequestParam boolean enabled) {
+        Long tenantId = requireTenant();
+        tenantUseCase.setMonthlyCountsAsCours(tenantId, enabled);
+        return TenantResponse.from(tenantUseCase.findById(tenantId));
+    }
+
     private Long requireTenant() {
         Long tenantId = TenantContext.get();
         if (tenantId == null) {

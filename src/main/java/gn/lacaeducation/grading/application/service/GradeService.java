@@ -315,7 +315,7 @@ public class GradeService implements GradeUseCase {
     private static List<ReleveAssessment> toReleveAssessments(List<Assessment> assessments) {
         return assessments.stream()
                 .map(a -> new ReleveAssessment(a.getId(), a.getLabel(),
-                        a.getType() == null ? null : a.getType().name(), a.getDate(), a.getMaxScore(), a.getCoefficient()))
+                        a.getType() == null ? null : a.getType().frenchLabel(), a.getDate(), a.getMaxScore(), a.getCoefficient()))
                 .toList();
     }
 

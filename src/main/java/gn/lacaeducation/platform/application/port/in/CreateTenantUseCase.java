@@ -20,6 +20,9 @@ public interface CreateTenantUseCase {
      * voir {@code SchoolProfileController}) pour qu'une école ne puisse jamais s'auto-activer cette
      * option (§retour comptable). Voir {@code Tenant#notifyStaffOnPayment}. */
     void setNotifyStaffOnPayment(Long id, boolean enabled);
+    /** Self-service (contrairement à {@link #setNotifyStaffOnPayment}) : l'école active elle-même
+     * ce réglage via {@code SchoolProfileController}. Voir {@code Tenant#monthlyCountsAsCours}. */
+    void setMonthlyCountsAsCours(Long id, boolean enabled);
     /** Generic status change for SUPER_ADMIN (ACTIVATE | SUSPEND | ARCHIVE) routed through the lifecycle. */
     void changeStatus(Long id, TenantStatus target);
     void delete(Long id);

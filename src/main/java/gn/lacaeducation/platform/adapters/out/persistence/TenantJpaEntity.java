@@ -65,6 +65,12 @@ public class TenantJpaEntity {
     @Column(name = "notify_staff_on_payment", nullable = false)
     private boolean notifyStaffOnPayment;
 
+    /** §censeur, école visitée : une seule évaluation mensuelle par matière compte directement comme
+     * moyenne de cours du mois ; voir {@code Tenant#monthlyCountsAsCours}. Réglable par l'école
+     * elle-même, désactivé par défaut. */
+    @Column(name = "monthly_counts_as_cours", nullable = false)
+    private boolean monthlyCountsAsCours;
+
     @Column(name = "accreditation_number")
     private String accreditationNumber;
 
