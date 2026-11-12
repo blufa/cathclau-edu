@@ -142,6 +142,25 @@ class StudentAttendanceServiceTest {
     }
 
     @Test
+    void recordEntry_neverPublishesStudentAbsentEvent() {
+        // §retour censeur : "lorsque l'élève scanne tu n'envoies pas le message" — le scan d'entrée ne
+        // déclenche plus aucun SMS, qu'il soit à l'heure (PRESENT) ou en retard (LATE) ; le seul SMS de
+        // présence part désormais au scan de SORTIE (voir recordExit_publishesStudentExitEvent_*).
+        when(studentDataProvider.findCurrentClassId(10L)).thenReturn(Optional.of(20L));
+        when(academicsProvider.findScheduleByClass(20L)).thenReturn(List.of());
+        when(sessionResolver.currentBlock(any(), any(), any(), anyInt())).thenReturn(block("00:00", "23:59"));
+        when(sessionResolver.graceDeadline(any(), anyInt(), any())).thenReturn(java.time.LocalTime.of(0, 0));
+        when(checkinRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(checkinRepository.findByStudentIdAndDate(eq(10L), any())).thenReturn(List.of());
+        when(repo.findByStudentIdAndClassIdAndDate(eq(10L), eq(20L), any())).thenReturn(Optional.empty());
+        when(repo.save(any())).thenAnswer(i -> { StudentAttendance a = i.getArgument(0); a.setId(1L); return a; });
+
+        service.recordEntry(10L, null);
+
+        verify(eventPublisher, never()).publishEvent(any(StudentAbsentEvent.class));
+    }
+
+    @Test
     void recordEntry_secondScanBeforeExit_rejectedWithClearMessage() {
         // §16 cahier des charges : un badge déjà scanné à l'entrée AUJOURD'HUI (toutes séances
         // confondues, pas de sortie) doit être refusé explicitement, pas silencieusement accepté —

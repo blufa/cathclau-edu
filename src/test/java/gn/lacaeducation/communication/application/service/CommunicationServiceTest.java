@@ -1,6 +1,7 @@
 package gn.lacaeducation.communication.application.service;
 
 import gn.lacaeducation.common.TenantInfoProvider;
+import gn.lacaeducation.common.TenantPublicInfo;
 import gn.lacaeducation.communication.application.event.CommunicationRecipientsPendingEvent;
 import gn.lacaeducation.communication.application.port.in.CommunicationUseCase.RecipientTarget;
 import gn.lacaeducation.communication.application.port.in.CommunicationUseCase.SendCommunicationCommand;
