@@ -18,6 +18,8 @@ import gn.lacaeducation.payroll.domain.PayMode;
 import gn.lacaeducation.payroll.domain.Payslip;
 import gn.lacaeducation.payroll.domain.PayslipLine;
 import gn.lacaeducation.payroll.domain.PayslipLineType;
+import gn.lacaeducation.payroll.domain.SalaryAdvance;
+import gn.lacaeducation.payroll.domain.SalaryAdvanceStatus;
 import gn.lacaeducation.payroll.domain.TeacherCompensation;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -62,6 +64,7 @@ class PayrollServiceTest {
     @Mock org.springframework.context.ApplicationEventPublisher eventPublisher;
     @Mock gn.lacaeducation.iam.UserPublicInfoProvider userPublicInfoProvider;
     @Mock gn.lacaeducation.staff.TeacherPublicInfoProvider teacherPublicInfoProvider;
+    @Mock gn.lacaeducation.staff.EmployeePublicInfoProvider employeePublicInfoProvider;
 
     @InjectMocks PayrollService payrollService;
 
@@ -172,6 +175,49 @@ class PayrollServiceTest {
         assertThat(mass.primaryMonthlyPayroll()).isEqualByComparingTo("1000000");
         assertThat(mass.secondaryMonthlyPayroll()).isEqualByComparingTo("1200000");
         assertThat(mass.monthlyPayroll()).isEqualByComparingTo("2200000");
+    }
+
+    @Test
+    void resolveTeacherCycles_noDeclaredLevels_fallsBackToAssignedClassCycle() {
+        // Incident réel (§retour comptable, écart constaté en production sur l'état financier) : 4
+        // enseignants de Primaire sans aucun "niveau enseigné" déclaré (checklist vide) se retrouvaient
+        // classés Secondaire par défaut, gonflant Secondaire au détriment de Primaire — alors que leur
+        // classe principale réellement assignée (ex. "5ème Année") est bien de cycle Primaire.
+        when(teacherPublicInfoProvider.findAssignedLevelIds(1L)).thenReturn(List.of());
+        when(academics.findClassesByHeadTeacher(1L)).thenReturn(List.of(
+                new gn.lacaeducation.academics.ClassPublicInfo(8L, "5ème Année", "Primaire", "NORMALE", null, 1L, "PRIMAIRE")));
+        when(academics.findClassSubjectsByTeacher(1L)).thenReturn(List.of());
+
+        java.util.Map<Long, String> cycles = payrollService.resolveTeacherCycles(List.of(1L));
+
+        assertThat(cycles).containsEntry(1L, "PRIMAIRE");
+    }
+
+    @Test
+    void resolveTeacherCycles_declaredLevelsOnlySecondary_neverFallsBackToClasses() {
+        // Contre-exemple : une checklist renseignée (même uniquement Secondaire) est une déclaration
+        // explicite — jamais court-circuitée par le repli sur les classes assignées, même si celles-ci
+        // suggéreraient autre chose.
+        when(teacherPublicInfoProvider.findAssignedLevelIds(1L)).thenReturn(List.of(200L));
+        when(academics.findLevelCycle(200L)).thenReturn(Optional.of("COLLEGE"));
+
+        java.util.Map<Long, String> cycles = payrollService.resolveTeacherCycles(List.of(1L));
+
+        assertThat(cycles).containsEntry(1L, "SECONDAIRE");
+        org.mockito.Mockito.verify(academics, org.mockito.Mockito.never()).findClassesByHeadTeacher(any());
+    }
+
+    @Test
+    void resolveTeacherCycles_noDeclaredLevelsAndNoAssignedClass_defaultsToSecondary() {
+        // Vraiment rien à déduire (ni checklist, ni classe assignée) : repli final sur Secondaire,
+        // comportement inchangé par rapport à avant ce correctif.
+        when(teacherPublicInfoProvider.findAssignedLevelIds(1L)).thenReturn(List.of());
+        when(academics.findClassesByHeadTeacher(1L)).thenReturn(List.of());
+        when(academics.findClassSubjectsByTeacher(1L)).thenReturn(List.of());
+
+        java.util.Map<Long, String> cycles = payrollService.resolveTeacherCycles(List.of(1L));
+
+        assertThat(cycles).containsEntry(1L, "SECONDAIRE");
     }
 
     @Test
@@ -555,7 +601,7 @@ class PayrollServiceTest {
                         "Mamadou Diallo", "622000000", "Mars 2026"));
         // Répercute la retenue (solde réel avantage personnel) sur les factures des enfants du
         // salarié, maintenant que la fiche est réellement payée (§payroll ↔ billing).
-        org.mockito.Mockito.verify(salaryFeeDeductionUseCase).applyStaffBenefitRemainderAsInvoicePayment(9L, EmployeeType.TEACHER, 7L, null, "Mars 2026");
+        org.mockito.Mockito.verify(salaryFeeDeductionUseCase).applyStaffBenefitRemainderAsInvoicePayment(9L, EmployeeType.TEACHER, 7L, null, "Mars 2026", BigDecimal.ZERO);
     }
 
     /** Empêche un double-clic/rejeu de repayer une fiche déjà payée — sans ce garde-fou, la retenue
@@ -572,7 +618,7 @@ class PayrollServiceTest {
         org.mockito.Mockito.verify(salaryFeeDeductionUseCase, org.mockito.Mockito.never())
                 .applyDeductionAsInvoicePayment(any(), any(), any());
         org.mockito.Mockito.verify(salaryFeeDeductionUseCase, org.mockito.Mockito.never())
-                .applyStaffBenefitRemainderAsInvoicePayment(any(), any(), any(), any(), any());
+                .applyStaffBenefitRemainderAsInvoicePayment(any(), any(), any(), any(), any(), any());
         org.mockito.Mockito.verify(payslipRepo, org.mockito.Mockito.never()).save(any());
     }
 
@@ -630,6 +676,87 @@ class PayrollServiceTest {
         assertThat(result.getNetSalary()).isEqualByComparingTo("250000");
     }
 
+    /** Double profil (§retour utilisateur urgence production, "il ne prend pas l'avance sur salaire") :
+     * avance accordée sous l'identité Employee (ex. Direction), fiche générée sous l'identité Teacher
+     * (ex. depuis la page "Paie du mois") — doit quand même être retenue via la fiche Employee liée
+     * ({@code Employee#linkedTeacherId}). */
+    @Test
+    void generate_teacherWithLinkedEmployeeAdvance_appliesDeductionViaLinkedIdentity() {
+        Long teacherId = 7L;
+        Long employeeId = 70L;
+        when(payslipRepo.existsByTenantIdAndTeacherIdAndPeriodLabelAndEmployeeType(9L, teacherId, "Mars 2026", EmployeeType.TEACHER))
+                .thenReturn(false);
+        // Rien sous l'identité Teacher : l'avance a été accordée sous l'identité Personnel (Direction).
+        when(salaryAdvanceUseCase.applyDeduction(eq(9L), eq(teacherId), eq(EmployeeType.TEACHER), any()))
+                .thenReturn(new SalaryAdvanceUseCase.AdvanceDeductionResult(BigDecimal.ZERO, null));
+        when(employeePublicInfoProvider.findByLinkedTeacherId(9L, teacherId)).thenReturn(Optional.of(
+                new gn.lacaeducation.staff.EmployeePublicInfoProvider.EmployeeInfo(
+                        employeeId, "M. Diallo", "DIRECTION", null, true, null, null, null, null, teacherId)));
+        when(salaryAdvanceUseCase.applyDeduction(eq(9L), eq(employeeId), eq(EmployeeType.DIRECTION), any()))
+                .thenReturn(new SalaryAdvanceUseCase.AdvanceDeductionResult(new BigDecimal("50000"), "Avance sur salaire"));
+
+        AtomicReference<Payslip> saved = new AtomicReference<>();
+        when(payslipRepo.save(any())).thenAnswer(i -> {
+            Payslip p = i.getArgument(0);
+            if (p.getId() == null) p.setId(201L);
+            saved.set(p);
+            return p;
+        });
+        when(payslipRepo.findById(201L)).thenAnswer(i -> Optional.of(saved.get()));
+
+        List<PayslipLine> lines = new ArrayList<>();
+        when(lineRepo.save(any())).thenAnswer(i -> {
+            PayslipLine l = i.getArgument(0);
+            lines.add(l);
+            return l;
+        });
+        when(lineRepo.findByPayslipId(201L)).thenAnswer(i -> lines);
+
+        Payslip result = payrollService.generate(new PayrollService.GenerateCommand(
+                9L, EmployeeType.TEACHER, teacherId, "M. Diallo", "Mars 2026",
+                null, null, new BigDecimal("300000"), null, null,
+                null, null, null, null, null, null, null));
+
+        assertThat(lines).hasSize(1);
+        assertThat(lines.get(0).getLabel()).isEqualTo("Avance sur salaire");
+        assertThat(lines.get(0).getAmount()).isEqualByComparingTo("50000");
+        assertThat(result.getNetSalary()).isEqualByComparingTo("250000");
+    }
+
+    /** Net déjà à zéro/négatif à ce stade (ex. enseignant à l'heure, peu d'heures + grosses retenues) :
+     * l'avance active existe mais ne peut pas être prélevée sans pousser le net plus bas — doit rester
+     * visible sur la fiche (note), jamais silencieuse (§retour utilisateur : "il ne prend pas l'avance",
+     * confusion alors qu'elle est juste reportée faute de net suffisant). */
+    @Test
+    void generate_netAlreadyExhausted_notesOutstandingAdvanceInsteadOfSilentlySkipping() {
+        Long teacherId = 7L;
+        when(payslipRepo.existsByTenantIdAndTeacherIdAndPeriodLabelAndEmployeeType(9L, teacherId, "Mars 2026", EmployeeType.TEACHER))
+                .thenReturn(false);
+        when(salaryAdvanceUseCase.applyDeduction(eq(9L), eq(teacherId), eq(EmployeeType.TEACHER), any()))
+                .thenReturn(new SalaryAdvanceUseCase.AdvanceDeductionResult(BigDecimal.ZERO, null));
+        when(employeePublicInfoProvider.findByLinkedTeacherId(9L, teacherId)).thenReturn(Optional.empty());
+        when(salaryAdvanceUseCase.findByTeacherId(9L, teacherId, EmployeeType.TEACHER)).thenReturn(List.of(
+                SalaryAdvance.builder().id(1L).status(SalaryAdvanceStatus.ACTIVE)
+                        .remainingBalance(new BigDecimal("150000")).build()));
+
+        AtomicReference<Payslip> saved = new AtomicReference<>();
+        when(payslipRepo.save(any())).thenAnswer(i -> {
+            Payslip p = i.getArgument(0);
+            if (p.getId() == null) p.setId(202L);
+            saved.set(p);
+            return p;
+        });
+        when(payslipRepo.findById(202L)).thenAnswer(i -> Optional.of(saved.get()));
+        when(lineRepo.findByPayslipId(202L)).thenReturn(List.of());
+
+        Payslip result = payrollService.generate(new PayrollService.GenerateCommand(
+                9L, EmployeeType.TEACHER, teacherId, "M. Diallo", "Mars 2026",
+                null, null, BigDecimal.ZERO, null, null,
+                null, null, null, null, null, null, null));
+
+        assertThat(result.getNotes()).contains("150 000").contains("NON prélevée");
+    }
+
     /** Reste non couvert par un avantage personnel PARTIEL (§billing) : ajouté comme ligne de retenue
      * distincte de la déduction scolarité à montant fixe (§payroll), voir applyStaffBenefitRemainderDeduction. */
     @Test
@@ -669,6 +796,51 @@ class PayrollServiceTest {
         assertThat(lines.get(0).getLabel()).isEqualTo("Reste avantage personnel (1 enfant(s))");
         assertThat(lines.get(0).getAmount()).isEqualByComparingTo("20000");
         assertThat(result.getNetSalary()).isEqualByComparingTo("280000");
+    }
+
+    /** §retour comptable, écart constaté en production : un salarié avec 8 enfants à charge avait un
+     * salaire net à -114 000 GNF — la retenue "avantage personnel" (1 314 000 GNF) dépassait largement
+     * son salaire de base (1 200 000 GNF), sans aucun plafond contrairement à l'avance sur salaire.
+     * Désormais plafonnée au net disponible, jamais un salaire négatif ; le reliquat non retenu est
+     * tracé dans une note, jamais effacé (reste dû sur les factures des enfants). */
+    @Test
+    void generate_staffBenefitRemainderExceedsNet_cappedAtAvailableNet_neverNegative() {
+        Long teacherId = 31L;
+        when(payslipRepo.existsByTenantIdAndTeacherIdAndPeriodLabelAndEmployeeType(9L, teacherId, "Octobre 2026", EmployeeType.TEACHER))
+                .thenReturn(false);
+        when(salaryFeeDeductionUseCase.computeStaffBenefitRemainder(9L, EmployeeType.TEACHER, teacherId, null, "Octobre 2026"))
+                .thenReturn(new SalaryFeeDeductionUseCase.StaffBenefitRemainderDeduction(new BigDecimal("1314000"), 8));
+        when(salaryAdvanceUseCase.applyDeduction(eq(9L), eq(teacherId), eq(EmployeeType.TEACHER), any()))
+                .thenReturn(new SalaryAdvanceUseCase.AdvanceDeductionResult(BigDecimal.ZERO, null));
+
+        AtomicReference<Payslip> saved = new AtomicReference<>();
+        when(payslipRepo.save(any())).thenAnswer(i -> {
+            Payslip p = i.getArgument(0);
+            if (p.getId() == null) p.setId(202L);
+            saved.set(p);
+            return p;
+        });
+        when(payslipRepo.findById(202L)).thenAnswer(i -> Optional.of(saved.get()));
+
+        List<PayslipLine> lines = new ArrayList<>();
+        when(lineRepo.save(any())).thenAnswer(i -> {
+            PayslipLine l = i.getArgument(0);
+            lines.add(l);
+            return l;
+        });
+        when(lineRepo.findByPayslipId(202L)).thenAnswer(i -> lines);
+
+        Payslip result = payrollService.generate(new PayrollService.GenerateCommand(
+                9L, EmployeeType.TEACHER, teacherId, "Kadiatou Diallo", "Octobre 2026",
+                null, null, new BigDecimal("1200000"), null, null,
+                null, null, null, null, null, null, null));
+
+        assertThat(lines).hasSize(1);
+        assertThat(lines.get(0).getLabel()).isEqualTo("Reste avantage personnel (8 enfant(s))");
+        // Plafonné au net disponible (1 200 000), jamais les 1 314 000 bruts calculés.
+        assertThat(lines.get(0).getAmount()).isEqualByComparingTo("1200000");
+        assertThat(result.getNetSalary()).isEqualByComparingTo("0");
+        assertThat(result.getNotes()).contains("114 000 GNF non retenus ce mois");
     }
 
     /** §retour comptable : "j'ai retiré deux factures, j'ai rechargé mais le montant global de la

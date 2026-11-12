@@ -2,6 +2,7 @@ package gn.lacaeducation.biometric.application.service;
 
 import gn.lacaeducation.biometric.application.port.out.BiometricDeviceRepository;
 import gn.lacaeducation.biometric.application.port.out.BiometricEnrollmentRepository;
+import gn.lacaeducation.biometric.application.port.out.BiometricPunchConflictRepository;
 import gn.lacaeducation.biometric.application.port.out.BiometricPunchRepository;
 import gn.lacaeducation.biometric.domain.*;
 import gn.lacaeducation.common.BusinessRuleException;
@@ -13,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -30,7 +32,13 @@ public class BiometricService {
     private final BiometricDeviceRepository deviceRepo;
     private final BiometricEnrollmentRepository enrollmentRepo;
     private final BiometricPunchRepository punchRepo;
+    private final BiometricPunchConflictRepository conflictRepo;
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
+
+    /** Fenêtre en deçà de laquelle deux pointages du même sujet sur des appareils de localisations
+     * différentes sont considérés physiquement incompatibles (§suivi-examen, "à quelques minutes
+     * d'intervalle"). */
+    private static final Duration CONFLICT_WINDOW = Duration.ofMinutes(5);
 
     // ── Appareils ─────────────────────────────────────────────────────────────
 
@@ -130,7 +138,12 @@ public class BiometricService {
 
     /**
      * Génère un badge QR pour une personne (élève ou enseignant) et l'enrôle automatiquement (contre un
-     * appareil virtuel « Badge QR »). Le QR « BADGE|tenant|type|id » est scannable pour le pointage.
+     * appareil virtuel « Badge QR »). Le QR « BADGE2|&lt;jeton opaque&gt; » est scannable pour le
+     * pointage — contrairement à l'ancien format « BADGE|tenant|type|id » (lisible et devinable : voir
+     * BADGES_QR_NFC.md), ce jeton aléatoire ne permet à personne de construire un badge valide sans
+     * avoir réellement généré/possédé le badge d'origine. Régénérer le badge d'une personne révoque
+     * silencieusement tout ancien QR déjà imprimé pour elle (perte/vol : on régénère, l'ancien devient
+     * inutilisable).
      */
     public BadgeResult generateBadge(Long tenantId, BiometricSubjectType subjectType, Long subjectId) {
         if (subjectId == null) throw new BusinessRuleException("La personne est requise");
@@ -141,18 +154,80 @@ public class BiometricService {
                         null, null, "Virtuel", true, false, null, null, null, false, null)));
         String externalUserId = "BADGE-" + type.name() + "-" + subjectId;
         BiometricEnrollment e = enroll(tenantId, badgeDevice.getId(), type, subjectId, BiometricType.FACE, externalUserId);
-        String qrPayload = "BADGE|" + tenantId + "|" + type.name() + "|" + subjectId;
+        e.setBadgeToken(java.util.UUID.randomUUID().toString().replace("-", ""));
+        e = enrollmentRepo.save(e);
+        String qrPayload = "BADGE2|" + e.getBadgeToken();
         return new BadgeResult(qrPayload, externalUserId, type, subjectId, e.getId());
+    }
+
+    public record ResolvedBadge(BiometricSubjectType subjectType, Long subjectId) {}
+
+    /**
+     * Résout un jeton de badge opaque scanné (format « BADGE2|&lt;jeton&gt; », le jeton seul est passé
+     * ici) en la personne correspondante — jamais l'inverse (le jeton ne révèle rien à qui ne l'a pas
+     * scanné). Le filtre tenant Hibernate restreint déjà la recherche au tenant courant.
+     */
+    @Transactional(readOnly = true)
+    public ResolvedBadge resolveBadge(String badgeToken) {
+        if (badgeToken == null || badgeToken.isBlank()) throw new BusinessRuleException("Jeton de badge requis");
+        BiometricEnrollment e = enrollmentRepo.findByBadgeToken(badgeToken)
+                .filter(x -> x.getStatus() == EnrollmentStatus.ENROLLED)
+                .orElseThrow(() -> new BusinessRuleException("Badge inconnu ou désactivé"));
+        return new ResolvedBadge(e.getSubjectType(), e.getSubjectId());
+    }
+
+    // ── Badges — carte NFC (même badge que le QR, deuxième technologie) ────────
+
+    /**
+     * Associe (ou retire, si {@code nfcUid} est vide) l'UID matériel d'une carte NFC physique à un
+     * badge déjà enrôlé (via {@link #generateBadge}) — les deux technologies pointent ensuite vers la
+     * même personne. Contrairement au jeton QR, l'UID n'est pas généré par le serveur : il vient de la
+     * carte physique réellement présentée (lue par l'agent/app d'enrôlement), d'où un contrôle de
+     * doublon explicite plutôt qu'une simple rotation.
+     */
+    public BiometricEnrollment associateNfcUid(Long enrollmentId, String nfcUid) {
+        BiometricEnrollment e = enrollmentRepo.findById(enrollmentId)
+                .orElseThrow(() -> new ResourceNotFoundException("BiometricEnrollment", enrollmentId));
+        String trimmed = nfcUid != null && !nfcUid.isBlank() ? nfcUid.trim() : null;
+        if (trimmed != null) {
+            enrollmentRepo.findByNfcUid(trimmed)
+                    .filter(other -> !other.getId().equals(enrollmentId))
+                    .ifPresent(other -> { throw new BusinessRuleException("Cette carte NFC est déjà associée à une autre personne."); });
+        }
+        e.setNfcUid(trimmed);
+        return enrollmentRepo.save(e);
+    }
+
+    /**
+     * Résout un UID de carte NFC lu par le lecteur en la personne correspondante — même principe de
+     * prudence que {@link #resolveBadge} : un UID inconnu ou désactivé ne révèle jamais s'il existe.
+     */
+    @Transactional(readOnly = true)
+    public ResolvedBadge resolveBadgeByNfc(String nfcUid) {
+        if (nfcUid == null || nfcUid.isBlank()) throw new BusinessRuleException("UID de carte NFC requis");
+        BiometricEnrollment e = enrollmentRepo.findByNfcUid(nfcUid.trim())
+                .filter(x -> x.getStatus() == EnrollmentStatus.ENROLLED)
+                .orElseThrow(() -> new BusinessRuleException("Carte NFC inconnue ou désactivée"));
+        return new ResolvedBadge(e.getSubjectType(), e.getSubjectId());
     }
 
     // ── Pointages (Push API) ────────────────────────────────────────────────────
 
     public record PunchCommand(String externalUserId, LocalDateTime punchTime, PunchDirection direction,
-                               BigDecimal temperature, String rawPayload) {}
+                               BigDecimal temperature, String rawPayload, String syncId) {}
 
+    /**
+     * Ingestion idempotente : un appareil/agent qui a enregistré un pointage hors ligne et le pousse
+     * (ou le repousse après une coupure réseau) avec le même {@code syncId} ne crée jamais de doublon —
+     * le pointage déjà connu est simplement renvoyé tel quel, sans re-publier d'événement.
+     */
     public BiometricPunch ingestPunch(Long tenantId, Long deviceId, PunchCommand c) {
         BiometricDevice d = load(deviceId);
         if (c.externalUserId() == null || c.externalUserId().isBlank()) throw new BusinessRuleException("User ID appareil requis");
+        if (c.syncId() != null && !c.syncId().isBlank()) {
+            BiometricPunch existing = punchRepo.findByDeviceIdAndSyncId(deviceId, c.syncId()).orElse(null);
+            if (existing != null) return existing;
+        }
         BiometricEnrollment enr = enrollmentRepo.findByDeviceIdAndExternalUserId(deviceId, c.externalUserId()).orElse(null);
         d.setStatus(DeviceStatus.CONNECTED);
         d.setLastSyncAt(LocalDateTime.now());
@@ -160,7 +235,7 @@ public class BiometricService {
         LocalDateTime when = c.punchTime() != null ? c.punchTime() : LocalDateTime.now();
         PunchDirection dir = c.direction() != null ? c.direction() : PunchDirection.UNKNOWN;
         BiometricPunch punch = punchRepo.save(BiometricPunch.builder()
-                .tenantId(tenantId).deviceId(deviceId).externalUserId(c.externalUserId())
+                .tenantId(tenantId).deviceId(deviceId).syncId(c.syncId()).externalUserId(c.externalUserId())
                 .subjectType(enr != null ? enr.getSubjectType() : null)
                 .subjectId(enr != null ? enr.getSubjectId() : null)
                 .punchTime(when).direction(dir)
@@ -170,12 +245,65 @@ public class BiometricService {
         if (enr != null) {
             eventPublisher.publishEvent(new gn.lacaeducation.biometric.application.event.BiometricPunchRecorded(
                     tenantId, enr.getSubjectType().name(), enr.getSubjectId(), when, dir.name()));
+            detectConflicts(tenantId, punch, d);
         }
         return punch;
     }
 
     public List<BiometricPunch> ingestBatch(Long tenantId, Long deviceId, List<PunchCommand> punches) {
         return punches.stream().map(p -> ingestPunch(tenantId, deviceId, p)).toList();
+    }
+
+    // ── Détection de conflit métier (jamais résolue automatiquement) ───────────
+
+    /**
+     * Signale, sans jamais bloquer ni corriger silencieusement, qu'un même sujet a été pointé sur un
+     * autre appareil de localisation différente à quelques minutes d'intervalle — physiquement
+     * incompatible. Chaque paire en tension est tracée pour une revue humaine
+     * ({@link #reviewConflict}) ; les deux pointages d'origine ne sont jamais modifiés.
+     */
+    private void detectConflicts(Long tenantId, BiometricPunch punch, BiometricDevice device) {
+        LocalDateTime from = punch.getPunchTime().minus(CONFLICT_WINDOW);
+        LocalDateTime to = punch.getPunchTime().plus(CONFLICT_WINDOW);
+        List<BiometricPunch> nearby = punchRepo.findByTenantIdAndSubjectTypeAndSubjectIdAndPunchTimeBetween(
+                tenantId, punch.getSubjectType(), punch.getSubjectId(), from, to);
+        for (BiometricPunch other : nearby) {
+            if (other.getId().equals(punch.getId()) || other.getDeviceId().equals(punch.getDeviceId())) continue;
+            BiometricDevice otherDevice = deviceRepo.findById(other.getDeviceId()).orElse(null);
+            if (!incompatibleLocations(device, otherDevice)) continue;
+            conflictRepo.save(BiometricPunchConflict.builder()
+                    .tenantId(tenantId).subjectType(punch.getSubjectType()).subjectId(punch.getSubjectId())
+                    .punchAId(other.getId()).punchBId(punch.getId())
+                    .deviceAId(other.getDeviceId()).deviceBId(punch.getDeviceId())
+                    .detectedAt(LocalDateTime.now()).status(ConflictStatus.OPEN).build());
+        }
+    }
+
+    /** Localisation inconnue d'un des deux appareils : on signale par prudence plutôt que d'ignorer. */
+    private boolean incompatibleLocations(BiometricDevice a, BiometricDevice b) {
+        if (a == null || b == null) return true;
+        String la = a.getLocation(), lb = b.getLocation();
+        if (la == null || la.isBlank() || lb == null || lb.isBlank()) return true;
+        return !la.equalsIgnoreCase(lb);
+    }
+
+    @Transactional(readOnly = true)
+    public List<BiometricPunchConflict> conflicts(Long tenantId, ConflictStatus status) {
+        return status != null ? conflictRepo.findByTenantIdAndStatus(tenantId, status) : conflictRepo.findByTenantId(tenantId);
+    }
+
+    /** Décision humaine sur un conflit détecté — ne touche jamais aux pointages d'origine. */
+    public BiometricPunchConflict reviewConflict(Long id, ConflictStatus decision, Long reviewedBy, String note) {
+        if (decision == null || decision == ConflictStatus.OPEN) {
+            throw new BusinessRuleException("La décision doit être DISMISSED ou CONFIRMED_ANOMALY");
+        }
+        BiometricPunchConflict c = conflictRepo.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("BiometricPunchConflict", id));
+        c.setStatus(decision);
+        c.setReviewedBy(reviewedBy);
+        c.setReviewedAt(LocalDateTime.now());
+        c.setReviewNote(note);
+        return conflictRepo.save(c);
     }
 
     @Transactional(readOnly = true)

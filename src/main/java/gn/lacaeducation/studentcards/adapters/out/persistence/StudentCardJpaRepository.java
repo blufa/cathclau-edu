@@ -9,4 +9,5 @@ interface StudentCardJpaRepository extends JpaRepository<StudentCardJpaEntity, L
     Optional<StudentCardJpaEntity> findByStudentIdAndStatus(Long studentId, CardStatus status);
     Optional<StudentCardJpaEntity> findByQrPayload(String qrPayload);
     long countByTenantId(Long tenantId);
+    boolean existsByTenantIdAndCardNumber(Long tenantId, String cardNumber);
 }

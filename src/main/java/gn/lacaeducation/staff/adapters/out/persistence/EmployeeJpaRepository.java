@@ -11,6 +11,7 @@ interface EmployeeJpaRepository extends JpaRepository<EmployeeJpaEntity, Long> {
     List<EmployeeJpaEntity> findByTenantIdAndCategory(Long tenantId, EmployeeCategory category);
     boolean existsByTenantIdAndEmployeeNumber(Long tenantId, String employeeNumber);
     Optional<EmployeeJpaEntity> findByUserId(Long userId);
+    Optional<EmployeeJpaEntity> findByTenantIdAndLinkedTeacherId(Long tenantId, Long linkedTeacherId);
     @Query("SELECT e FROM EmployeeJpaEntity e WHERE e.employeeNumber IS NULL OR e.employeeNumber = ''")
     List<EmployeeJpaEntity> findMissingEmployeeNumber();
 }

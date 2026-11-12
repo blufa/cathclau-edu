@@ -26,7 +26,7 @@ public class BiometricPunchController {
     private final BiometricService service;
 
     public record PunchRequest(String externalUserId, LocalDateTime punchTime, PunchDirection direction,
-                               BigDecimal temperature, String rawPayload) {}
+                               BigDecimal temperature, String rawPayload, String syncId) {}
 
     @Operation(summary = "Journal des pointages (filtres appareil / période)")
     @GetMapping("/punches")
@@ -36,18 +36,20 @@ public class BiometricPunchController {
         return service.punches(TenantContext.get(), deviceId, from, to);
     }
 
-    @Operation(summary = "Ingestion d'un pointage poussé par l'appareil/agent (Push API)")
+    @Operation(summary = "Ingestion d'un pointage poussé par l'appareil/agent (Push API). " +
+            "Le champ syncId, généré côté appareil (ex. UUID), rend l'ingestion idempotente : un pointage " +
+            "enregistré hors ligne puis renvoyé après coupure réseau ne crée jamais de doublon.")
     @PostMapping("/devices/{deviceId}/punches")
     public BiometricPunch ingest(@PathVariable Long deviceId, @RequestBody PunchRequest r) {
         return service.ingestPunch(TenantContext.get(), deviceId,
-                new PunchCommand(r.externalUserId(), r.punchTime(), r.direction(), r.temperature(), r.rawPayload()));
+                new PunchCommand(r.externalUserId(), r.punchTime(), r.direction(), r.temperature(), r.rawPayload(), r.syncId()));
     }
 
-    @Operation(summary = "Ingestion d'un lot de pointages")
+    @Operation(summary = "Ingestion d'un lot de pointages (ex. synchronisation différée après reconnexion)")
     @PostMapping("/devices/{deviceId}/punches/batch")
     public List<BiometricPunch> ingestBatch(@PathVariable Long deviceId, @RequestBody List<PunchRequest> r) {
         return service.ingestBatch(TenantContext.get(), deviceId, r.stream()
-                .map(x -> new PunchCommand(x.externalUserId(), x.punchTime(), x.direction(), x.temperature(), x.rawPayload()))
+                .map(x -> new PunchCommand(x.externalUserId(), x.punchTime(), x.direction(), x.temperature(), x.rawPayload(), x.syncId()))
                 .toList());
     }
 }

@@ -77,8 +77,11 @@ public class EnrollmentBillingService implements EnrollmentBillingUseCase {
                     new InvoiceUseCase.GenerateMonthlyCommand(tenantId, studentId, fee.getId(), academicYearId)).created();
         } else if (!invoiceUseCase.existsByStudentIdAndFeeId(studentId, fee.getId())) {
             String reference = generateReference(tenantId);
-            invoices = List.of(invoiceUseCase.create(new InvoiceUseCase.CreateInvoiceCommand(
-                    tenantId, studentId, fee.getId(), reference, fee.getAmount(), academicYearId)));
+            Invoice created = invoiceUseCase.create(new InvoiceUseCase.CreateInvoiceCommand(
+                    tenantId, studentId, fee.getId(), reference, fee.getAmount(), academicYearId));
+            // Frais entièrement exonéré (§billing, fondation) : aucune facture créée, pas une liste
+            // contenant null.
+            invoices = created != null ? List.of(created) : List.of();
         } else {
             invoices = List.of();
         }

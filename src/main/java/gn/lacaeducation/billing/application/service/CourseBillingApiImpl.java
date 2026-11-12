@@ -42,6 +42,8 @@ class CourseBillingApiImpl implements CourseBillingApi {
     public Long issueCourseInvoice(Long tenantId, Long studentId, Long feeId, Long academicYearId, BigDecimal amount) {
         Invoice invoice = invoiceUseCase.create(new InvoiceUseCase.CreateInvoiceCommand(
                 tenantId, studentId, feeId, null, amount, academicYearId));
-        return invoice.getId();
+        // Cours entièrement exonéré (§billing) : aucune facture créée ; null = "rien à payer" pour
+        // l'appelant (voir CoursePurchaseService, qui marque alors l'achat PAID directement).
+        return invoice != null ? invoice.getId() : null;
     }
 }

@@ -25,4 +25,10 @@ interface InscriptionJpaRepository extends JpaRepository<InscriptionJpaEntity, L
                                        @Param("classId") Long classId,
                                        @Param("academicYearId") Long academicYearId,
                                        @Param("status") EnrollmentStatus status);
+
+    /** {@code enrollments} n'a pas de tenant_id propre : filtré via l'élève (EleveJpaEntity). */
+    @Query("SELECT e FROM InscriptionJpaEntity e WHERE e.enrolledAt = :date AND e.studentId IN "
+            + "(SELECT s.id FROM EleveJpaEntity s WHERE s.tenantId = :tenantId)")
+    List<InscriptionJpaEntity> findByTenantIdAndEnrolledAt(@Param("tenantId") Long tenantId,
+                                                            @Param("date") java.time.LocalDate date);
 }
