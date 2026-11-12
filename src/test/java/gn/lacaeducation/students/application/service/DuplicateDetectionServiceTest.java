@@ -26,9 +26,9 @@ class DuplicateDetectionServiceTest {
     void findDuplicateGroups_oneMemberWithFewerMonthlyInvoices_isMarkedSuspect() {
         // Reproduit le cas type : une fiche "vide" créée par erreur à côté de la vraie fiche facturée.
         when(port.findDuplicateCandidates(1L)).thenReturn(List.of(
-                new StudentFinancialRow(10L, "Amadou", "Diallo", null, 5L, "CM2",
+                new StudentFinancialRow(10L, "Amadou", "Diallo", null, 5L, "CM2", "Diallo",
                         new BigDecimal("1800000"), new BigDecimal("1200000"), 9),
-                new StudentFinancialRow(11L, "Amadou", "Diallo", null, 5L, "CM2",
+                new StudentFinancialRow(11L, "Amadou", "Diallo", null, 5L, "CM2", "Diallo",
                         BigDecimal.ZERO, BigDecimal.ZERO, 0)));
 
         List<DuplicateDetectionService.Group> groups = service().findDuplicateGroups(1L);
@@ -48,9 +48,9 @@ class DuplicateDetectionServiceTest {
         // jamais marqué suspect sur le seul nom (§retour comptable : "sans la même dans la même
         // classe").
         when(port.findDuplicateCandidates(1L)).thenReturn(List.of(
-                new StudentFinancialRow(20L, "Fatoumata", "Camara", null, 6L, "6ème A",
+                new StudentFinancialRow(20L, "Fatoumata", "Camara", null, 6L, "6ème A", "Camara",
                         new BigDecimal("1800000"), new BigDecimal("900000"), 9),
-                new StudentFinancialRow(21L, "Fatoumata", "Camara", null, 6L, "6ème A",
+                new StudentFinancialRow(21L, "Fatoumata", "Camara", null, 6L, "6ème A", "Camara",
                         new BigDecimal("1800000"), new BigDecimal("1800000"), 9)));
 
         List<DuplicateDetectionService.Group> groups = service().findDuplicateGroups(1L);
@@ -64,14 +64,46 @@ class DuplicateDetectionServiceTest {
         // Aucune mensualité facturée pour personne dans le groupe (ex. frais annuel unique, pas de
         // tranches) — aucune preuve financière à comparer, on ne marque jamais suspect sans preuve.
         when(port.findDuplicateCandidates(1L)).thenReturn(List.of(
-                new StudentFinancialRow(30L, "Ibrahima", "Barry", null, 7L, "CP1",
+                new StudentFinancialRow(30L, "Ibrahima", "Barry", null, 7L, "CP1", "Barry",
                         BigDecimal.ZERO, BigDecimal.ZERO, 0),
-                new StudentFinancialRow(31L, "Ibrahima", "Barry", null, 7L, "CP1",
+                new StudentFinancialRow(31L, "Ibrahima", "Barry", null, 7L, "CP1", "Barry",
                         BigDecimal.ZERO, BigDecimal.ZERO, 0)));
 
         List<DuplicateDetectionService.Group> groups = service().findDuplicateGroups(1L);
 
         assertThat(groups.get(0).members()).extracting(DuplicateDetectionService.Candidate::suspect)
                 .containsExactly(false, false);
+    }
+
+    @Test
+    void findDuplicateGroups_groupsAcrossDifferentClasses_whenSameParentLastName() {
+        // Requête élargie (§retour comptable) : plus limité à la même classe, tant que le nom de
+        // famille d'un parent correspond aussi.
+        when(port.findDuplicateCandidates(1L)).thenReturn(List.of(
+                new StudentFinancialRow(40L, "Mamadou", "Bah", null, 5L, "CM2", "Bah",
+                        BigDecimal.ZERO, BigDecimal.ZERO, 0),
+                new StudentFinancialRow(41L, "Mamadou", "Bah", null, 6L, "6ème A", "Bah",
+                        BigDecimal.ZERO, BigDecimal.ZERO, 0)));
+
+        List<DuplicateDetectionService.Group> groups = service().findDuplicateGroups(1L);
+
+        assertThat(groups).hasSize(1);
+        assertThat(groups.get(0).members()).hasSize(2);
+    }
+
+    @Test
+    void findDuplicateGroups_neverGroups_whenParentLastNameDiffers() {
+        // Même prénom/nom élève mais parents de noms différents : jamais un doublon (le nouveau
+        // critère exige aussi le même nom de famille parent).
+        when(port.findDuplicateCandidates(1L)).thenReturn(List.of(
+                new StudentFinancialRow(50L, "Mariam", "Diallo", null, 5L, "CM2", "Diallo",
+                        BigDecimal.ZERO, BigDecimal.ZERO, 0),
+                new StudentFinancialRow(51L, "Mariam", "Diallo", null, 5L, "CM2", "Keita",
+                        BigDecimal.ZERO, BigDecimal.ZERO, 0)));
+
+        List<DuplicateDetectionService.Group> groups = service().findDuplicateGroups(1L);
+
+        assertThat(groups).hasSize(2);
+        assertThat(groups).allSatisfy(g -> assertThat(g.members()).hasSize(1));
     }
 }
