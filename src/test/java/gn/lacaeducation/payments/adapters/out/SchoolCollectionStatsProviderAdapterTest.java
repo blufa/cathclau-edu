@@ -62,4 +62,18 @@ class SchoolCollectionStatsProviderAdapterTest {
 
         assertThat(result).isEmpty();
     }
+
+    @Test
+    void collectedTotal_onlySumsPaymentsFromTheRequestedMonth() {
+        Payment october = Payment.builder().tenantId(10L).amount(new BigDecimal("500000"))
+                .status(PaymentStatus.SUCCEEDED).paidAt(LocalDateTime.of(2026, 10, 15, 9, 0)).build();
+        Payment november = Payment.builder().tenantId(10L).amount(new BigDecimal("300000"))
+                .status(PaymentStatus.SUCCEEDED).paidAt(LocalDateTime.of(2026, 11, 2, 9, 0)).build();
+        when(paymentRepository.findByTenantIdAndStatus(10L, PaymentStatus.SUCCEEDED))
+                .thenReturn(List.of(october, november));
+
+        BigDecimal result = adapter.collectedTotal(10L, 2026, 11);
+
+        assertThat(result).isEqualByComparingTo("300000");
+    }
 }

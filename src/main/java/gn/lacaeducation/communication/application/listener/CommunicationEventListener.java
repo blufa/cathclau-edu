@@ -7,7 +7,6 @@ import gn.lacaeducation.attendance.application.event.TeacherAbsentEvent;
 import gn.lacaeducation.attendance.application.event.UndeclaredAttendanceEvent;
 import gn.lacaeducation.audit.application.event.AccountantAnomalyDetectedEvent;
 import gn.lacaeducation.billing.application.event.ClassTransferCreditSurplusEvent;
-import gn.lacaeducation.billing.application.event.EcheanceDepasseeEvent;
 import gn.lacaeducation.billing.application.event.InvoicePaymentAppliedEvent;
 import gn.lacaeducation.communication.application.port.in.CommunicationUseCase;
 import gn.lacaeducation.communication.application.port.in.CommunicationUseCase.RecipientTarget;
@@ -121,9 +120,13 @@ public class CommunicationEventListener {
     }
 
     /**
-     * Notifie le parent par SMS à chaque pointage — présent à l'heure, en retard, ou absent — pas
-     * uniquement les absences/retards comme avant : un scan de badge réussi doit confirmer l'arrivée
-     * de l'enfant en temps réel, quelle que soit l'issue.
+     * Notifie le parent par SMS pour un pointage ABSENT, ou pour une re-notification manuelle
+     * ("Notifier parent" sur un retard déjà enregistré, voir {@code StudentAttendanceService.
+     * notifyParentNow}) — jamais déclenché automatiquement au scan d'ENTRÉE PRESENT/LATE depuis
+     * {@code StudentAttendanceService.upsertDailyAttendance} (§retour censeur : "lorsque l'élève
+     * scanne tu n'envoies pas le message, c'est lorsqu'il scanne à la sortie que tu envoies le
+     * message" — un seul SMS combiné entrée+sortie, voir {@link #onStudentExit}). Jamais le nom de
+     * la classe dans le message (§retour censeur, message à réduire).
      */
     @TransactionalEventListener
     @Async
@@ -136,30 +139,32 @@ public class CommunicationEventListener {
             Map<String, String> vars = Map.of(
                     "nom_eleve", fullName(student), "ecole", schoolName(event.tenantId()),
                     "classe", className, "date", date);
-            // Corps raccourcis (§retour comptable, points 9/17) : tiennent en un seul segment SMS
-            // même avec le préfixe "[Nom de l'école]" ajouté automatiquement à l'envoi.
+            // Corps raccourcis (§retour comptable, points 9/17 ; §retour censeur) : tiennent en un seul
+            // segment SMS même avec le préfixe "[Sigle]" ajouté automatiquement à l'envoi — jamais la
+            // classe, retirée du message (toujours gardée dans `vars` pour un modèle personnalisé qui
+            // voudrait encore l'utiliser).
             if ("LATE".equals(status)) {
                 int minutes = event.lateMinutes() != null ? event.lateMinutes() : 0;
                 String arrival = time != null ? " à " + time : "";
-                String defaultBody = fullName(student) + " : retard de " + minutes + " min" + arrival
-                        + " le " + date + " (classe " + className + ").";
+                String defaultBody = fullName(student) + " : retard de " + minutes + " min" + arrival + " le " + date + ".";
                 dispatch(event.tenantId(), CommunicationReason.LATE, "Retard signalé", defaultBody, vars, event.studentId());
             } else if ("PRESENT".equals(status)) {
                 String arrival = time != null ? " à " + time : "";
-                String defaultBody = fullName(student) + " est arrivé(e)" + arrival + " le " + date
-                        + " (classe " + className + ").";
+                String defaultBody = fullName(student) + " est arrivé(e)" + arrival + " le " + date + ".";
                 dispatch(event.tenantId(), CommunicationReason.GENERAL, "Arrivée confirmée", defaultBody, vars, event.studentId());
             } else {
-                String defaultBody = fullName(student) + " absent(e) le " + date + " (classe " + className + ").";
+                String defaultBody = fullName(student) + " absent(e) le " + date + ".";
                 dispatch(event.tenantId(), CommunicationReason.ABSENCE, "Absence signalée", defaultBody, vars, event.studentId());
             }
         });
     }
 
     /**
-     * Notifie le parent au scan de sortie, avec la durée passée à l'école ce jour (§retour
-     * fondateurs) — aucun lien de connexion ici (décision explicite : message quotidien, fréquent
-     * par élève, le coût d'un 2e segment SMS n'est pas justifié, contrairement au paiement/bulletin).
+     * Seul SMS de présence envoyé au scan (§retour censeur) — au scan de SORTIE uniquement, jamais à
+     * l'entrée : un message combiné donnant l'heure d'entrée ET l'heure de sortie de la journée
+     * ({@code event.checkInTime()} déjà porté par l'événement, voir {@code StudentExitEvent}), plutôt
+     * que deux SMS séparés comme avant (un à l'entrée confirmant l'arrivée, un second à la sortie).
+     * Jamais le nom de la classe dans le message.
      */
     @TransactionalEventListener
     @Async
@@ -167,15 +172,18 @@ public class CommunicationEventListener {
         studentDataProvider.findStudent(event.studentId()).ifPresent(student -> {
             String className = academicsDataProvider.findClass(event.classId()).map(c -> c.label()).orElse("N/A");
             String date = event.date() != null ? event.date().format(DATE_FMT) : "N/A";
-            String time = event.checkOutTime() != null ? event.checkOutTime().format(TIME_FMT) : null;
+            String entryTime = event.checkInTime() != null ? event.checkInTime().format(TIME_FMT) : null;
+            String exitTime = event.checkOutTime() != null ? event.checkOutTime().format(TIME_FMT) : null;
             String duration = formatDuration(event.minutesAtSchool());
             Map<String, String> vars = Map.of(
                     "nom_eleve", fullName(student), "ecole", schoolName(event.tenantId()),
                     "classe", className, "date", date);
-            String defaultBody = fullName(student) + " est sorti(e)" + (time != null ? " à " + time : "")
-                    + " le " + date + (duration != null ? " — " + duration + " à l'école" : "")
-                    + " (classe " + className + ").";
-            dispatch(event.tenantId(), CommunicationReason.GENERAL, "Sortie confirmée", defaultBody, vars, event.studentId());
+            StringBuilder body = new StringBuilder(fullName(student)).append(" le ").append(date).append(" : ");
+            body.append(entryTime != null ? "entrée " + entryTime : "entrée inconnue");
+            body.append(", ").append(exitTime != null ? "sortie " + exitTime : "sortie inconnue");
+            if (duration != null) body.append(" (").append(duration).append(" à l'école)");
+            body.append(".");
+            dispatch(event.tenantId(), CommunicationReason.GENERAL, "Présence du jour", body.toString(), vars, event.studentId());
         });
     }
 
@@ -482,28 +490,6 @@ public class CommunicationEventListener {
      * payé et le reste à payer, sans détailler le canal, la classe, le frais ou les mois couverts. */
     private String paymentSmsBody(String studentName, String amount, String restLine) {
         return "Paiement de " + amount + " reçu pour " + studentName + ".\n" + restLine;
-    }
-
-    /**
-     * Relance le parent de l'élève dont la facture rattachée à l'échéance dépassée n'est pas soldée
-     * (§8.2) — un événement par élève, déjà résolu côté {@code billing} (qui a accès à son propre
-     * dépôt de factures ; `communication` n'est autorisé à dépendre que des événements de `billing`,
-     * pas de son API de requête, voir ModularityTests). `event.tenantId()` est indispensable ici : ce
-     * job tourne hors requête HTTP (planifié), donc sans {@link gn.lacaeducation.common.TenantContext}
-     * déjà résolu par le filtre JWT — l'événement porte lui-même le tenant concerné plutôt que de
-     * dépendre du contexte ambiant.
-     */
-    @TransactionalEventListener
-    @Async
-    public void onEcheanceDepassee(EcheanceDepasseeEvent event) {
-        String amount = event.amount() + " GNF";
-        String date = event.dueDate() != null ? event.dueDate().format(DATE_FMT) : "N/A";
-        Map<String, String> vars = Map.of(
-                "ecole", schoolName(event.tenantId()), "montant", amount, "date", date,
-                "reference", event.invoiceReference() == null ? "" : event.invoiceReference());
-        String defaultBody = "Rappel : échéance du " + date + " (" + amount + ") non réglée. Merci de régulariser.";
-        dispatch(event.tenantId(), CommunicationReason.PAYMENT_DUE, "Échéance de paiement dépassée",
-                defaultBody, vars, event.studentId());
     }
 
     /**

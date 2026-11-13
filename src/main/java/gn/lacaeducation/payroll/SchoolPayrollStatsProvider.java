@@ -77,11 +77,17 @@ public interface SchoolPayrollStatsProvider {
     /** {@code actualPaidSalariesTotal} : somme des fiches de paie RÉELLEMENT marquées payées
      * ({@code paidAt} dans le mois demandé), pas une masse théorique projetée — §retour comptable :
      * le cumul affiché sur le tableau de bord doit refléter l'argent qui a vraiment quitté la caisse
-     * à chaque paiement de salaire, pas une estimation. S'accroît à chaque "Marquer payée". */
+     * à chaque paiement de salaire, pas une estimation. S'accroît à chaque "Marquer payée".
+     * {@code collectedTotal} : encaissé RÉEL (paiements réussis) du MÊME mois demandé — §retour
+     * comptable, "surplus" de 2,4M GNF inexpliqué sur le tableau de bord : le frontend calculait
+     * jusqu'ici "Encaissé net (après paie)" en soustrayant {@code actualPaidSalariesTotal} (un seul
+     * mois) d'un encaissé CUMULÉ depuis le début de l'année scolaire — deux périodes différentes,
+     * l'écart grandissait chaque mois sans rapport avec une vraie anomalie de caisse. Exposé ici pour
+     * que le frontend compare enfin le même mois des deux côtés. */
     record MonthlyFinancialSummary(BigDecimal maternelleTeacherPayroll, BigDecimal primaryTeacherPayroll,
                                    BigDecimal secondaryTeacherPayroll, BigDecimal staffPayroll,
                                    BigDecimal salaryAdvancesTotal, BigDecimal total,
-                                   BigDecimal actualPaidSalariesTotal,
+                                   BigDecimal actualPaidSalariesTotal, BigDecimal collectedTotal,
                                    List<SalaryAdvanceDetail> advances) {}
 
     MonthlyFinancialSummary monthlyFinancialSummary(Long tenantId, int year, int month);

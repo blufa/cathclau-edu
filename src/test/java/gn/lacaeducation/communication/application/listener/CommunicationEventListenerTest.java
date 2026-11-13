@@ -80,7 +80,30 @@ class CommunicationEventListenerTest {
         verify(communicationUseCase).send(captor.capture());
         SendCommunicationCommand cmd = captor.getValue();
         assertThat(cmd.channel()).isEqualTo(CommunicationChannel.SMS);
-        assertThat(cmd.content()).contains("Awa Diallo").contains("7 h 55 min").doesNotContain("http");
+        // §retour censeur : un seul SMS combiné, avec l'heure d'ENTRÉE et de SORTIE, jamais la classe.
+        assertThat(cmd.content()).contains("Awa Diallo").contains("08h05").contains("16h00")
+                .contains("7 h 55 min").doesNotContain("6ème A").doesNotContain("http");
+    }
+
+    // ── onStudentAbsent (§retour censeur : jamais la classe ; jamais déclenché au scan d'entrée,
+    //    seulement pour ABSENT ou une re-notification manuelle, voir notifyParentNow) ───────────────
+
+    @Test
+    void onStudentAbsent_late_neverMentionsClassName() {
+        when(studentDataProvider.findStudent(7L)).thenReturn(Optional.of(student));
+        when(studentDataProvider.hasPlatformAccessOptIn(7L)).thenReturn(true);
+        when(academicsDataProvider.findClass(3L)).thenReturn(Optional.of(
+                new gn.lacaeducation.academics.ClassPublicInfo(3L, "6ème A", "Collège", "NORMALE", null, null, null)));
+        when(studentDataProvider.findParentsByStudent(7L))
+                .thenReturn(List.of(new ParentPublicInfo(1L, "Mariama", "Bah", null, "621000000")));
+        when(templateRepository.findByTenantIdAndReason(any(), any())).thenReturn(Optional.empty());
+
+        listener().onStudentAbsent(new gn.lacaeducation.attendance.application.event.StudentAbsentEvent(
+                1L, 10L, 7L, 3L, java.time.LocalDate.of(2026, 10, 5), "LATE", 15, java.time.LocalTime.of(8, 15)));
+
+        ArgumentCaptor<SendCommunicationCommand> captor = ArgumentCaptor.forClass(SendCommunicationCommand.class);
+        verify(communicationUseCase).send(captor.capture());
+        assertThat(captor.getValue().content()).contains("Awa Diallo").contains("15 min").doesNotContain("6ème A");
     }
 
     // ── onTeacherAbsent (§retour fondateurs : direction ET enseignant alertés, pas de lien) ────────
