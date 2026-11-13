@@ -2,6 +2,7 @@ package gn.lacaeducation.payroll.adapters.out;
 
 import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.academics.ClassPublicInfo;
+import gn.lacaeducation.payments.SchoolCollectionStatsProvider;
 import gn.lacaeducation.payroll.SchoolPayrollStatsProvider;
 import gn.lacaeducation.payroll.application.port.out.PayslipRepository;
 import gn.lacaeducation.payroll.application.service.PayrollService;
@@ -35,6 +36,7 @@ class SchoolPayrollStatsProviderAdapter implements SchoolPayrollStatsProvider {
     private final TeacherPublicInfoProvider teacherPublicInfoProvider;
     private final SalaryAdvanceService salaryAdvanceService;
     private final AcademicsDataProvider academics;
+    private final SchoolCollectionStatsProvider collectionStatsProvider;
 
     @Override
     @Transactional(readOnly = true)
@@ -87,8 +89,9 @@ class SchoolPayrollStatsProviderAdapter implements SchoolPayrollStatsProvider {
         // (total ci-dessous == actualPaidSalariesTotal + advancesTotal).
         ActualPaidBreakdown paid = actualPaidBreakdown(tenantId, year, month);
         BigDecimal total = paid.total().add(advancesTotal);
+        BigDecimal collectedTotal = collectionStatsProvider.collectedTotal(tenantId, year, month);
         return new MonthlyFinancialSummary(paid.maternelle(), paid.primary(), paid.secondary(),
-                paid.staff(), advancesTotal, total, paid.total(), advanceDetails);
+                paid.staff(), advancesTotal, total, paid.total(), collectedTotal, advanceDetails);
     }
 
     private record ActualPaidBreakdown(BigDecimal maternelle, BigDecimal primary, BigDecimal secondary,

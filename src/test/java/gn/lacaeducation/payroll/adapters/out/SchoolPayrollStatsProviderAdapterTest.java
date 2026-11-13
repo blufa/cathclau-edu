@@ -2,6 +2,7 @@ package gn.lacaeducation.payroll.adapters.out;
 
 import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.academics.ClassPublicInfo;
+import gn.lacaeducation.payments.SchoolCollectionStatsProvider;
 import gn.lacaeducation.payroll.SchoolPayrollStatsProvider.MonthlyFinancialSummary;
 import gn.lacaeducation.payroll.SchoolPayrollStatsProvider.PayrollMassSummary;
 import gn.lacaeducation.payroll.SchoolPayrollStatsProvider.TeacherSalary;
@@ -49,6 +50,7 @@ class SchoolPayrollStatsProviderAdapterTest {
     @Mock SalaryAdvanceService salaryAdvanceService;
     @Mock AcademicsDataProvider academics;
     @Mock PayslipRepository payslipRepository;
+    @Mock SchoolCollectionStatsProvider collectionStatsProvider;
     @InjectMocks SchoolPayrollStatsProviderAdapter adapter;
 
     @Test
@@ -146,9 +148,14 @@ class SchoolPayrollStatsProviderAdapterTest {
         when(salaryAdvanceService.findByTenant(10L)).thenReturn(List.of(inMonth, otherMonth, cancelledInMonth));
         when(academics.findClassesByHeadTeacher(5L)).thenReturn(List.of(
                 new ClassPublicInfo(1L, "CM2", "CM2", "NORMALE", null, 5L, "PRIMAIRE")));
+        // §retour comptable, "surplus" de 2,4M GNF inexpliqué sur le tableau de bord : collectedTotal
+        // doit porter le MÊME mois (octobre) que actualPaidSalariesTotal ci-dessous, jamais un cumul
+        // depuis le début de l'année — c'est exactement ce que le frontend soustrayait par erreur.
+        when(collectionStatsProvider.collectedTotal(10L, 2026, 10)).thenReturn(new BigDecimal("4000000"));
 
         MonthlyFinancialSummary summary = adapter.monthlyFinancialSummary(10L, 2026, 10);
 
+        assertThat(summary.collectedTotal()).isEqualByComparingTo("4000000");
         assertThat(summary.maternelleTeacherPayroll()).isEqualByComparingTo("1000000");
         assertThat(summary.secondaryTeacherPayroll()).isEqualByComparingTo("1200000");
         assertThat(summary.primaryTeacherPayroll()).isEqualByComparingTo("0");
