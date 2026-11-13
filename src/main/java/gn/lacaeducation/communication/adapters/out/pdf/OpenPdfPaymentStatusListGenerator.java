@@ -50,7 +50,9 @@ class OpenPdfPaymentStatusListGenerator implements PaymentStatusListPdfGenerator
             AdminDocumentLayout.header(doc, info);
             titleBox(doc, "SUIVI DES PAIEMENTS — " + candidates.size() + " ÉLÈVE(S)");
 
-            PdfPTable table = dataTable(new float[]{1.4f, 2.4f, 1.6f, 1.6f, 2.4f});
+            // "Mois payés" élargie (1.6f → 3f) : affiche désormais la liste des mois (ex. "Octobre,
+            // Novembre"), pas un simple compte — §retour comptable : "il faut mettre ces mois".
+            PdfPTable table = dataTable(new float[]{1.2f, 2.2f, 1.3f, 3f, 2.1f});
             headerCell(table, "Matricule");
             headerCell(table, "Élève");
             headerCell(table, "Classe");
@@ -60,7 +62,7 @@ class OpenPdfPaymentStatusListGenerator implements PaymentStatusListPdfGenerator
                 cell(table, c.studentNumber(), Element.ALIGN_LEFT);
                 cell(table, c.studentName(), Element.ALIGN_LEFT);
                 cell(table, c.className(), Element.ALIGN_LEFT);
-                cell(table, String.valueOf(c.tranchesPaid()), Element.ALIGN_RIGHT);
+                cell(table, c.paidMonths().isEmpty() ? "-" : String.join(", ", c.paidMonths()), Element.ALIGN_LEFT);
                 cell(table, c.parents().isEmpty() ? "-"
                         : c.parents().stream().map(ParentContact::name).collect(java.util.stream.Collectors.joining(", ")),
                         Element.ALIGN_LEFT);

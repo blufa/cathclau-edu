@@ -47,11 +47,11 @@ class OpenPdfPaymentStatusListGeneratorTest {
 
         List<Candidate> candidates = List.of(
                 new Candidate(7L, "Mamadou Camara", "MAT-007", 3L, "CM2 A", Status.OVERDUE,
-                        new BigDecimal("50000"), LocalDate.now().minusDays(5), 5, 1, 3, List.of()),
+                        new BigDecimal("50000"), LocalDate.now().minusDays(5), 5, 1, 3, List.of(), List.of("octobre")),
                 new Candidate(8L, "Fatou Sylla", "MAT-008", 3L, "CM2 A", Status.UPCOMING,
-                        new BigDecimal("50000"), LocalDate.now().plusDays(3), -3, 1, 3, List.of()),
+                        new BigDecimal("50000"), LocalDate.now().plusDays(3), -3, 1, 3, List.of(), List.of("octobre")),
                 new Candidate(9L, "Ibrahima Diallo", "MAT-009", 4L, "6ème A", Status.UP_TO_DATE,
-                        BigDecimal.ZERO, null, 0, 2, 2, List.of())
+                        BigDecimal.ZERO, null, 0, 2, 2, List.of(), List.of("septembre", "octobre"))
         );
 
         byte[] pdf = generator().generate(10L, candidates);
