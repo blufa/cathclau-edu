@@ -16,6 +16,12 @@ public interface SchoolCollectionStatsProvider {
     /** Les {@code months} derniers mois civils (du plus ancien au plus récent), y compris à zéro. */
     List<MonthlyCollection> monthlyCollections(Long tenantId, int months);
 
+    /** Total encaissé (paiements réussis) d'un mois civil précis, passé ou présent — contrairement à
+     * {@link #monthlyCollections}, qui ne couvre qu'une fenêtre glissante se terminant au mois en
+     * cours, utilisable pour rapprocher un encaissement du même mois qu'une autre statistique
+     * (ex. masse salariale réellement payée, §retour comptable "Encaissé net"). */
+    BigDecimal collectedTotal(Long tenantId, int year, int month);
+
     /** Un paiement réussi encaissé ce jour-là — détail ligne par ligne (§retour comptable : "voici les
      * factures encaissées, voici l'argent collecté" pour un jour précis), contrairement à
      * {@link #monthlyCollections} qui n'agrège qu'un total par mois. {@code studentId} résolu en nom

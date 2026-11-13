@@ -47,6 +47,16 @@ class SchoolCollectionStatsProviderAdapter implements SchoolCollectionStatsProvi
 
     @Override
     @Transactional(readOnly = true)
+    public BigDecimal collectedTotal(Long tenantId, int year, int month) {
+        YearMonth target = YearMonth.of(year, month);
+        return paymentRepository.findByTenantIdAndStatus(tenantId, PaymentStatus.SUCCEEDED).stream()
+                .filter(p -> p.getPaidAt() != null && p.getAmount() != null && YearMonth.from(p.getPaidAt()).equals(target))
+                .map(Payment::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<DailyCollectionLine> dailyCollectionLines(Long tenantId, LocalDate date) {
         return paymentRepository.findByPaidAtBetween(date.atStartOfDay(), date.plusDays(1).atStartOfDay().minusNanos(1))
                 .stream()

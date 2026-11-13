@@ -326,9 +326,9 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
     }
 
     /** Statut du jour toujours PRESENT depuis un scan (le retard reste représenté par lateMinutes > 0 —
-     * un scan ne peut jamais produire ABSENT, voir {@link #markAbsent}). Notifie le parent par SMS à
-     * chaque premier scan du jour (arrivée confirmée), qu'il soit à l'heure ou en retard — un second
-     * scan le même jour (ex. retour après la pause) ne renvoie pas de notification. */
+     * un scan ne peut jamais produire ABSENT, voir {@link #markAbsent}). Ne notifie plus le parent ici
+     * (§retour censeur : "lorsque l'élève scanne tu n'envoies pas le message") — le seul SMS de
+     * présence part au scan de SORTIE ({@link #recordExit}), combinant heure d'entrée et de sortie. */
     private void upsertDailyAttendance(Long studentId, Long classId, LocalDate today) {
         // Retard = celui du PREMIER pointage du jour uniquement (l'arrivée du matin) — jamais la somme
         // des lateMinutes de chaque créneau/période scanné dans la journée : un élève pointant à
@@ -340,8 +340,7 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
         LocalTime firstCheckIn = firstCheckin != null ? firstCheckin.getCheckInTime() : null;
         int dayLate = firstCheckin != null && firstCheckin.getLateMinutes() != null ? firstCheckin.getLateMinutes() : 0;
         Optional<StudentAttendance> existing = attendanceRepository.findByStudentIdAndClassIdAndDate(studentId, classId, today);
-        boolean firstScanOfDay = existing.isEmpty();
-        StudentAttendance saved = existing
+        existing
                 .map(a -> {
                     a.setStatus(AttendanceStatus.PRESENT);
                     a.setCheckInTime(firstCheckIn);
@@ -352,13 +351,6 @@ public class StudentAttendanceService implements StudentAttendanceUseCase, Stude
                         .tenantId(TenantContext.get()).studentId(studentId).classId(classId).date(today)
                         .status(AttendanceStatus.PRESENT).reason("Scan carte scolaire").parentNotified(false)
                         .checkInTime(firstCheckIn).lateMinutes(dayLate).build()));
-        // Notification uniquement au premier scan du jour — un scan suivant (retour de pause, autre
-        // période) ne doit jamais redéclencher un SMS au parent, déjà prévenu de l'arrivée.
-        if (firstScanOfDay) {
-            String status = dayLate > 0 ? AttendanceStatus.LATE.name() : AttendanceStatus.PRESENT.name();
-            eventPublisher.publishEvent(new StudentAbsentEvent(saved.getId(), saved.getTenantId(),
-                    saved.getStudentId(), saved.getClassId(), saved.getDate(), status, dayLate, firstCheckIn));
-        }
     }
 
     @Override

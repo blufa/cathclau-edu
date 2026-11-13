@@ -1,6 +1,6 @@
 package gn.lacaeducation.communication.application.service;
+import gn.lacaeducation.common.SchoolCode;
 import gn.lacaeducation.common.TenantInfoProvider;
-import gn.lacaeducation.common.TenantPublicInfo;
 import gn.lacaeducation.communication.application.event.CommunicationRecipientsPendingEvent;
 import gn.lacaeducation.communication.application.port.in.CommunicationUseCase;
 import gn.lacaeducation.communication.application.port.out.CommunicationRepository;
@@ -79,11 +79,14 @@ public class CommunicationService implements CommunicationUseCase {
         return comm;
     }
 
+    /** Préfixe le SMS du SIGLE de l'école (même mécanisme que les matricules/badges, voir
+     * {@link SchoolCode}) — plus court que le nom complet (§retour censeur : "mettre GS comme sur le
+     * badges" au lieu du nom complet, qui gonflait le message à un segment SMS de plus). */
     private String withSchoolPrefix(Long tenantId, CommunicationChannel channel, String content) {
         if (channel != CommunicationChannel.SMS || content == null || content.isBlank() || tenantId == null) return content;
-        String school = tenantInfoProvider.findTenantInfo(tenantId).map(TenantPublicInfo::schoolName).orElse(null);
-        if (school == null || school.isBlank() || content.contains(school)) return content;
-        return "[" + school + "] " + content;
+        String sigle = SchoolCode.prefix(tenantInfoProvider, tenantId);
+        if (sigle == null || sigle.isBlank() || content.contains(sigle)) return content;
+        return "[" + sigle + "] " + content;
     }
 
     private NotificationGateway gatewayFor(CommunicationChannel channel) {

@@ -27,4 +27,10 @@ public class TenantInfoProviderAdapter implements TenantInfoProvider {
                 .map(t -> t.getStatus() == TenantStatus.ACTIVE || t.getStatus() == TenantStatus.TRIAL)
                 .orElse(false);
     }
+
+    @Override
+    public boolean monthlyCountsAsCours(Long tenantId) {
+        if (tenantId == null) return false;
+        return jpa.findById(tenantId).map(TenantJpaEntity::isMonthlyCountsAsCours).orElse(false);
+    }
 }

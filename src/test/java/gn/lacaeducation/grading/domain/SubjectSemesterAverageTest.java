@@ -185,6 +185,36 @@ class SubjectSemesterAverageTest {
     }
 
     @Test
+    void secondaire_monthlyTypeAssessments_areExcludedByDefault() {
+        // Comportement historique (§censeur) : MONTHLY est un diagnostic séparé, jamais compté dans
+        // la moyenne semestrielle, sauf activation explicite du réglage école (voir le test suivant).
+        Assessment monthly = assessment(AssessmentType.MONTHLY, "2026-10-10");
+        List<Assessment> assessments = List.of(monthly);
+        List<Grade> grades = List.of(grade(monthly, "15"));
+
+        SubjectSemesterAverage.Result r = SubjectSemesterAverage.compute(
+                CycleGroup.SECONDAIRE, BigDecimal.ONE, assessments, grades);
+
+        assertThat(r.coursValue()).isNull();
+        assertThat(r.finalValue()).isNull();
+    }
+
+    @Test
+    void secondaire_monthlyTypeAssessments_countAsCoursWhenTenantOptsIn() {
+        // §censeur, école visitée : une seule évaluation mensuelle par matière = sa moyenne de cours
+        // du mois, alors utilisée dans le calcul semestriel comme n'importe quelle note QUIZ/HOMEWORK.
+        Assessment monthly = assessment(AssessmentType.MONTHLY, "2026-10-10");
+        List<Assessment> assessments = List.of(monthly);
+        List<Grade> grades = List.of(grade(monthly, "15"));
+
+        SubjectSemesterAverage.Result r = SubjectSemesterAverage.compute(
+                CycleGroup.SECONDAIRE, BigDecimal.ONE, assessments, grades, true);
+
+        assertThat(r.coursValue()).isEqualByComparingTo("15.00");
+        assertThat(r.finalValue()).isEqualByComparingTo("15.00");
+    }
+
+    @Test
     void secondaire_coursNoteWithoutDate_isExcludedFromMonthlyGrouping() {
         // Une note « cours » sans date ne peut être rattachée à aucun mois : exclue de M_cours, pas
         // d'exception levée (donnée incomplète, ne doit pas casser le calcul des autres matières/élèves).
@@ -270,5 +300,37 @@ class SubjectSemesterAverageTest {
                 CycleGroup.SECONDAIRE, BigDecimal.ONE, assessments, grades);
 
         assertThat(r.coursValue()).isEqualByComparingTo("10.00");
+    }
+
+    // ── Bulletin mensuel (§censeur) : même formule, notes déjà filtrées par l'appelant ─────────────
+
+    @Test
+    void computeMonthly_secondaire_scalesByCoefficient_sameFormulaAsScaledAverage() {
+        BigDecimal avg = SubjectSemesterAverage.computeMonthly(
+                CycleGroup.SECONDAIRE, new BigDecimal("2"), List.of(new BigDecimal("14"), new BigDecimal("15")));
+
+        // (2×14 + 2×15) / 2 = 29, pas la moyenne simple 14.50 — même principe que scaledAverage.
+        assertThat(avg).isEqualByComparingTo("29.00");
+    }
+
+    @Test
+    void computeMonthly_primaire_simpleAverage_notScaledByCoefficient() {
+        BigDecimal avg = SubjectSemesterAverage.computeMonthly(
+                CycleGroup.PRIMAIRE, new BigDecimal("3"), List.of(new BigDecimal("12"), new BigDecimal("16")));
+
+        assertThat(avg).isEqualByComparingTo("14.00");
+    }
+
+    @Test
+    void computeMonthly_noValues_returnsNull() {
+        assertThat(SubjectSemesterAverage.computeMonthly(CycleGroup.SECONDAIRE, BigDecimal.ONE, List.of())).isNull();
+        assertThat(SubjectSemesterAverage.computeMonthly(CycleGroup.SECONDAIRE, BigDecimal.ONE, null)).isNull();
+    }
+
+    @Test
+    void computeMonthly_secondaire_nullCoefficient_defaultsToOne() {
+        BigDecimal avg = SubjectSemesterAverage.computeMonthly(CycleGroup.SECONDAIRE, null, List.of(new BigDecimal("10")));
+
+        assertThat(avg).isEqualByComparingTo("10.00");
     }
 }
