@@ -30,14 +30,16 @@ public class DuplicateDetectionController {
             + "mensualités facturées) — le champ \"suspect\" indique lequel a nettement moins de "
             + "facturation que les autres du groupe")
     @GetMapping
-    @PreAuthorize("hasAuthority('eleve:read') and hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','ACCOUNTANT')")
+    // Réservé au SUPER_ADMIN (§retour utilisateur) : mène à une suppression de fiche élève, trop
+    // sensible pour le laisser au personnel d'école.
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     public List<DuplicateDetectionService.Group> find() {
         return service.findDuplicateGroups(TenantContext.get());
     }
 
     @Operation(summary = "PDF imprimable de tous les groupes de doublons détectés actuellement")
     @GetMapping(value = "/pdf", produces = org.springframework.http.MediaType.APPLICATION_PDF_VALUE)
-    @PreAuthorize("hasAuthority('eleve:read') and hasAnyRole('SCHOOL_ADMIN','DIRECTOR','SECRETARY','ACCOUNTANT')")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     public org.springframework.http.ResponseEntity<byte[]> printPdf() {
         Long tenantId = TenantContext.get();
         byte[] pdf = pdfGenerator.generate(tenantId, service.findDuplicateGroups(tenantId));
