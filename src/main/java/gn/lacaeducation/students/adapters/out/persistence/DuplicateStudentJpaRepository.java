@@ -28,6 +28,8 @@ interface DuplicateStudentJpaRepository extends JpaRepository<EleveJpaEntity, Lo
         Long getClassId();
         String getClassName();
         String getParentLastName();
+        String getParentFirstName();
+        String getParentPhone();
         BigDecimal getTotalInvoiced();
         BigDecimal getTotalPaid();
         Long getMonthlyInvoiceCount();
@@ -41,14 +43,23 @@ interface DuplicateStudentJpaRepository extends JpaRepository<EleveJpaEntity, Lo
                 ORDER BY e.student_id, e.id DESC
             ),
             student_parent_name AS (
-                SELECT DISTINCT sp.student_id, LOWER(TRIM(p.last_name)) AS norm_parent_last, p.last_name
+                -- Un même nom de famille peut être partagé par plusieurs parents d'un même élève (père
+                -- ET mère) : DISTINCT ON retient un seul parent par (élève, nom normalisé) — le plus
+                -- ancien (plus petit id) — pour ne jamais dédoubler artificiellement un élève qui n'a
+                -- qu'un seul vrai doublon, tout en exposant son prénom/téléphone pour la fiche imprimée
+                -- (§retour comptable : "il faut mettre le prénom, nom, numéro du parent").
+                SELECT DISTINCT ON (sp.student_id, LOWER(TRIM(p.last_name)))
+                       sp.student_id, LOWER(TRIM(p.last_name)) AS norm_parent_last,
+                       p.last_name, p.first_name AS parent_first_name, p.phone AS parent_phone
                 FROM student_parents sp
                 JOIN parents p ON p.id = sp.parent_id
                 WHERE p.last_name IS NOT NULL AND TRIM(p.last_name) <> ''
+                ORDER BY sp.student_id, LOWER(TRIM(p.last_name)), p.id
             ),
             cand AS (
                 SELECT s.id AS student_id, s.first_name, s.last_name, s.photo, en.class_id,
                        sc.label AS class_label, spn.last_name AS parent_last_name,
+                       spn.parent_first_name, spn.parent_phone,
                        LOWER(TRIM(s.first_name)) AS norm_first, LOWER(TRIM(s.last_name)) AS norm_last,
                        spn.norm_parent_last
                 FROM students s
@@ -65,7 +76,8 @@ interface DuplicateStudentJpaRepository extends JpaRepository<EleveJpaEntity, Lo
             )
             SELECT c.student_id AS studentId, c.first_name AS firstName, c.last_name AS lastName,
                    c.photo AS photo, c.class_id AS classId, c.class_label AS className,
-                   c.parent_last_name AS parentLastName,
+                   c.parent_last_name AS parentLastName, c.parent_first_name AS parentFirstName,
+                   c.parent_phone AS parentPhone,
                    COALESCE(SUM(i.total_amount), 0) AS totalInvoiced,
                    COALESCE(SUM(i.paid_amount), 0) AS totalPaid,
                    COUNT(DISTINCT CASE WHEN sf.type = 'MONTHLY' THEN i.id END) AS monthlyInvoiceCount
@@ -73,7 +85,8 @@ interface DuplicateStudentJpaRepository extends JpaRepository<EleveJpaEntity, Lo
             JOIN dupe_groups g ON g.norm_first = c.norm_first AND g.norm_last = c.norm_last AND g.norm_parent_last = c.norm_parent_last
             LEFT JOIN invoices i ON i.student_id = c.student_id
             LEFT JOIN school_fees sf ON sf.id = i.fee_id
-            GROUP BY c.student_id, c.first_name, c.last_name, c.photo, c.class_id, c.class_label, c.parent_last_name
+            GROUP BY c.student_id, c.first_name, c.last_name, c.photo, c.class_id, c.class_label,
+                     c.parent_last_name, c.parent_first_name, c.parent_phone
             ORDER BY c.last_name, c.first_name, c.student_id
             """, nativeQuery = true)
     List<DuplicateCandidateRow> findDuplicateCandidates(@Param("tenantId") Long tenantId);

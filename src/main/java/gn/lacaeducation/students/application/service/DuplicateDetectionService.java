@@ -28,7 +28,7 @@ public class DuplicateDetectionService {
     private final DuplicateDetectionPort port;
 
     public record Candidate(Long studentId, String firstName, String lastName, String photo,
-                            Long classId, String className,
+                            Long classId, String className, String parentFirstName, String parentPhone,
                             java.math.BigDecimal totalInvoiced, java.math.BigDecimal totalPaid,
                             long monthlyInvoiceCount, boolean suspect) {}
 
@@ -55,7 +55,8 @@ public class DuplicateDetectionService {
         long maxMonthly = members.stream().mapToLong(StudentFinancialRow::monthlyInvoiceCount).max().orElse(0);
         List<Candidate> candidates = members.stream()
                 .map(r -> new Candidate(r.studentId(), r.firstName(), r.lastName(), r.photo(),
-                        r.classId(), r.className(), r.totalInvoiced(), r.totalPaid(), r.monthlyInvoiceCount(),
+                        r.classId(), r.className(), r.parentFirstName(), r.parentPhone(),
+                        r.totalInvoiced(), r.totalPaid(), r.monthlyInvoiceCount(),
                         // Aucun signal financier du tout (personne n'a de mensualité facturée dans le
                         // groupe) : rien à comparer, on ne marque jamais suspect sans preuve.
                         maxMonthly > 0 && r.monthlyInvoiceCount() < maxMonthly))

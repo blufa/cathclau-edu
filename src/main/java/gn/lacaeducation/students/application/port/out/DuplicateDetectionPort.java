@@ -9,6 +9,7 @@ import java.util.List;
 public interface DuplicateDetectionPort {
     record StudentFinancialRow(Long studentId, String firstName, String lastName, String photo,
                                Long classId, String className, String parentLastName,
+                               String parentFirstName, String parentPhone,
                                BigDecimal totalInvoiced, BigDecimal totalPaid, long monthlyInvoiceCount) {}
 
     List<StudentFinancialRow> findDuplicateCandidates(Long tenantId);
