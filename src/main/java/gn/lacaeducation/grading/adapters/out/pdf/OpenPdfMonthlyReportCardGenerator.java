@@ -46,6 +46,13 @@ class OpenPdfMonthlyReportCardGenerator implements MonthlyReportCardPdfGenerator
 
     private static final Color BAR_FAIL_COLOR = new Color(179, 38, 30);
     private static final Color AXIS_COLOR = new Color(180, 180, 180);
+    // Une couleur par matière (cycle), §retour utilisateur : "mettre différentes couleurs sur ces
+    // diagrammes" — le rouge (BAR_FAIL_COLOR) reste réservé aux moyennes sous la moyenne de passage
+    // (10/20), jamais réutilisé ici, pour ne pas perdre ce signal.
+    private static final Color[] BAR_PALETTE = {
+            DARK_GREEN, GOLD, new Color(30, 86, 160), new Color(106, 76, 156),
+            new Color(23, 128, 135), new Color(180, 95, 6), new Color(60, 90, 150), new Color(120, 110, 40),
+    };
     private static final float MIN_CHART_HEIGHT = 55f;
     private static final float MAX_CHART_HEIGHT = 120f;
     private static final float CHART_LABEL_SPACE = 30f;
@@ -214,7 +221,9 @@ class OpenPdfMonthlyReportCardGenerator implements MonthlyReportCardPdfGenerator
 
         int n = lines.size();
         float slot = (right - left) / n;
-        float barWidth = Math.min(slot * 0.5f, 34f);
+        // Barres plus fines (§retour utilisateur : "diminuer l'épaisseur") — 0.5/34pt max devenait
+        // large dès que peu de matières, resserré à 0.3/20pt.
+        float barWidth = Math.min(slot * 0.3f, 20f);
 
         for (int i = 0; i < n; i++) {
             Line l = lines.get(i);
@@ -228,7 +237,7 @@ class OpenPdfMonthlyReportCardGenerator implements MonthlyReportCardPdfGenerator
             float h = avg == null ? 0 : avg.floatValue() / 20f * chartHeight;
             boolean passing = avg != null && avg.compareTo(BigDecimal.TEN) >= 0;
 
-            cb.setColorFill(passing ? DARK_GREEN : BAR_FAIL_COLOR);
+            cb.setColorFill(passing ? BAR_PALETTE[i % BAR_PALETTE.length] : BAR_FAIL_COLOR);
             cb.rectangle(x, baseline, barWidth, h);
             cb.fill();
 
