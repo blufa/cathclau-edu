@@ -16,7 +16,8 @@ class DuplicateDetectionAdapter implements DuplicateDetectionPort {
     public List<StudentFinancialRow> findDuplicateCandidates(Long tenantId) {
         return jpa.findDuplicateCandidates(tenantId).stream()
                 .map(r -> new StudentFinancialRow(r.getStudentId(), r.getFirstName(), r.getLastName(), r.getPhoto(),
-                        r.getClassId(), r.getClassName(), r.getParentLastName(), r.getTotalInvoiced(), r.getTotalPaid(),
+                        r.getClassId(), r.getClassName(), r.getParentLastName(), r.getParentFirstName(),
+                        r.getParentPhone(), r.getTotalInvoiced(), r.getTotalPaid(),
                         r.getMonthlyInvoiceCount() == null ? 0L : r.getMonthlyInvoiceCount()))
                 .toList();
     }

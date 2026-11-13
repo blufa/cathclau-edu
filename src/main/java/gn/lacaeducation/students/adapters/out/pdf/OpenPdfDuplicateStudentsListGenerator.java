@@ -46,10 +46,11 @@ class OpenPdfDuplicateStudentsListGenerator implements DuplicateStudentsPdfGener
             AdminDocumentLayout.header(doc, info);
             titleBox(doc, "DOUBLONS ÉLÈVES — " + groups.size() + " GROUPE(S), " + memberCount + " FICHE(S)");
 
-            PdfPTable table = dataTable(new float[]{2.2f, 1.6f, 1.8f, 1.4f, 1.4f, 1.4f, 1.6f});
+            PdfPTable table = dataTable(new float[]{2.0f, 1.3f, 1.8f, 1.5f, 1.1f, 1.3f, 1.3f, 1.5f});
             headerCell(table, "Élève");
             headerCell(table, "Classe");
-            headerCell(table, "Nom du parent");
+            headerCell(table, "Parent");
+            headerCell(table, "Téléphone");
             headerCell(table, "Mensualités");
             headerCell(table, "Total facturé");
             headerCell(table, "Total encaissé");
@@ -58,7 +59,8 @@ class OpenPdfDuplicateStudentsListGenerator implements DuplicateStudentsPdfGener
                 for (Candidate c : g.members()) {
                     cell(table, c.firstName() + " " + c.lastName(), Element.ALIGN_LEFT);
                     cell(table, safe(c.className()), Element.ALIGN_LEFT);
-                    cell(table, safe(g.parentLastName()), Element.ALIGN_LEFT);
+                    cell(table, safe(c.parentFirstName()) + " " + safe(g.parentLastName()), Element.ALIGN_LEFT);
+                    cell(table, safe(c.parentPhone()), Element.ALIGN_LEFT);
                     cell(table, String.valueOf(c.monthlyInvoiceCount()), Element.ALIGN_RIGHT);
                     cell(table, money(c.totalInvoiced()) + " GNF", Element.ALIGN_RIGHT);
                     cell(table, money(c.totalPaid()) + " GNF", Element.ALIGN_RIGHT);
