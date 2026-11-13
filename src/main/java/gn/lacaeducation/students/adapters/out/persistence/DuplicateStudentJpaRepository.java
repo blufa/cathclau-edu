@@ -74,7 +74,7 @@ interface DuplicateStudentJpaRepository extends JpaRepository<EleveJpaEntity, Lo
             LEFT JOIN invoices i ON i.student_id = c.student_id
             LEFT JOIN school_fees sf ON sf.id = i.fee_id
             GROUP BY c.student_id, c.first_name, c.last_name, c.photo, c.class_id, c.class_label, c.parent_last_name
-            ORDER BY c.norm_last, c.norm_first, c.student_id
+            ORDER BY c.last_name, c.first_name, c.student_id
             """, nativeQuery = true)
     List<DuplicateCandidateRow> findDuplicateCandidates(@Param("tenantId") Long tenantId);
 }
