@@ -40,7 +40,10 @@ public class PaymentReminderCandidatesService {
 
     public record Candidate(Long studentId, String studentName, String studentNumber, Long classId, String className,
                             Status status, BigDecimal amountDue, LocalDate dueDate, int daysLate,
-                            int tranchesPaid, int totalTranches, List<ParentContact> parents) {}
+                            int tranchesPaid, int totalTranches, List<ParentContact> parents,
+                            // §retour comptable : "il faut mettre ces mois" — un simple compte de
+                            // tranches payées ne dit pas AU COMPTABLE lesquels, triés chronologiquement.
+                            List<String> paidMonths) {}
 
     public List<Candidate> listByClass(Long tenantId, Long classId) {
         String className = academicsDataProvider.findClass(classId)
@@ -81,11 +84,21 @@ public class PaymentReminderCandidatesService {
 
     private Candidate toCandidate(StudentPublicInfo student, Long classId, String className,
                                   List<ClassFeeLine> lines, int totalTranches, LocalDate today) {
-        int tranchesPaid = (int) lines.stream()
+        // Une tranche payée = toutes ses lignes PAID ; son mois est celui de l'échéance (toutes les
+        // lignes d'une même tranche partagent la même dueDate, voir ClassFeeLine) — trié
+        // chronologiquement, pas dans un ordre arbitraire de regroupement.
+        List<LocalDate> paidInstallmentDueDates = lines.stream()
                 .collect(Collectors.groupingBy(ClassFeeLine::installmentId))
                 .values().stream()
                 .filter(group -> group.stream().allMatch(l -> "PAID".equals(l.status())))
-                .count();
+                .map(group -> group.get(0).dueDate())
+                .filter(java.util.Objects::nonNull)
+                .sorted()
+                .toList();
+        int tranchesPaid = paidInstallmentDueDates.size();
+        List<String> paidMonths = paidInstallmentDueDates.stream()
+                .map(d -> d.getMonth().getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.FRENCH))
+                .toList();
 
         List<ClassFeeLine> due = lines.stream()
                 .filter(l -> !"PAID".equals(l.status()) && !"CANCELLED".equals(l.status()))
@@ -109,6 +122,6 @@ public class PaymentReminderCandidatesService {
                 : List.of();
 
         return new Candidate(student.id(), student.firstName() + " " + student.lastName(), student.studentNumber(), classId, className,
-                status, amountDue, dueDate, daysLate, tranchesPaid, totalTranches, parents);
+                status, amountDue, dueDate, daysLate, tranchesPaid, totalTranches, parents, paidMonths);
     }
 }

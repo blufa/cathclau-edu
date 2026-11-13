@@ -23,6 +23,7 @@ import org.springframework.stereotype.Component;
 import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -45,7 +46,19 @@ class OpenPdfMonthlyReportCardGenerator implements MonthlyReportCardPdfGenerator
 
     private static final Color BAR_FAIL_COLOR = new Color(179, 38, 30);
     private static final Color AXIS_COLOR = new Color(180, 180, 180);
-    private static final float CHART_HEIGHT = 130f;
+    // Une couleur par matière (cycle), §retour utilisateur : "mettre différentes couleurs sur ces
+    // diagrammes" — le rouge (BAR_FAIL_COLOR) reste réservé aux moyennes sous la moyenne de passage
+    // (10/20), jamais réutilisé ici, pour ne pas perdre ce signal.
+    private static final Color[] BAR_PALETTE = {
+            DARK_GREEN, GOLD, new Color(30, 86, 160), new Color(106, 76, 156),
+            new Color(23, 128, 135), new Color(180, 95, 6), new Color(60, 90, 150), new Color(120, 110, 40),
+    };
+    private static final float MIN_CHART_HEIGHT = 55f;
+    private static final float MAX_CHART_HEIGHT = 120f;
+    private static final float CHART_LABEL_SPACE = 30f;
+    // Hauteur estimée du bloc appréciation+signature (voir appreciationAndSignature) — réservée AVANT
+    // de calculer la hauteur du diagramme, pour que les deux tiennent ensemble sur la page.
+    private static final float FOOTER_BLOCK_RESERVE = mm(30f);
 
     private final TenantInfoProvider tenantInfoProvider;
 
@@ -67,12 +80,21 @@ class OpenPdfMonthlyReportCardGenerator implements MonthlyReportCardPdfGenerator
             subjectTable(doc, d);
             bilan(doc, d);
 
+            // Hauteur du diagramme calculée sur l'espace RESTANT jusqu'au bas de page, moins une
+            // réserve pour le bloc appréciation+signature ci-dessous — pour que le document tienne
+            // sur une seule page quel que soit le nombre de matières (§retour utilisateur), plutôt
+            // qu'une hauteur fixe qui déborde dès qu'il y a beaucoup de matières dans la classe. Si
+            // même la hauteur minimale lisible ne tient plus (classe avec un très grand nombre de
+            // matières), on omet le diagramme plutôt que de forcer un débordement sur une 2e page —
+            // la contrainte "une seule page" prime sur le diagramme, qui reste un bonus visuel.
             if (!d.lines().isEmpty()) {
-                barChart(doc, writer, d.lines());
+                float available = writer.getVerticalPosition(true) - doc.bottom() - FOOTER_BLOCK_RESERVE - CHART_LABEL_SPACE;
+                if (available >= MIN_CHART_HEIGHT) {
+                    barChart(doc, writer, d.lines(), Math.min(MAX_CHART_HEIGHT, available));
+                }
             }
 
-            appreciations(doc, d);
-            signature(doc);
+            appreciationAndSignatureBlock(doc, d, info);
 
             doc.close();
             return out.toByteArray();
@@ -105,7 +127,7 @@ class OpenPdfMonthlyReportCardGenerator implements MonthlyReportCardPdfGenerator
 
     private static void identityCell(PdfPTable grid, String label, String value, boolean borderRight, boolean borderBottom) {
         PdfPCell c = new PdfPCell();
-        c.setPadding(mm(2.2f));
+        c.setPadding(mm(1.6f));
         c.setPaddingLeft(mm(3));
         c.setBorder(0);
         if (borderRight) { c.setBorder(c.getBorder() | Rectangle.RIGHT); c.setBorderColorRight(BORDER); c.setBorderWidthRight(0.6f); }
@@ -118,55 +140,43 @@ class OpenPdfMonthlyReportCardGenerator implements MonthlyReportCardPdfGenerator
         grid.addCell(c);
     }
 
+    /** N° | Matière | Coef | Moyenne | Enseignant + ligne TOTAL/MOYENNE OBTENUE SUR 20 — même habillage
+     * que le tableau du bulletin officiel (§retour utilisateur : "il faut rendre le tableau comme le
+     * bulletin normal"), voir les cellules partagées dans {@link BulletinPremiumChrome}. La colonne
+     * Enseignant n'existe pas sur le bulletin officiel : sa cellule reste vide (même fond) sur la
+     * ligne TOTAL pour ne pas casser l'alignement des colonnes. */
     private static void subjectTable(Document doc, MonthlyReportCardDocument d) {
         sectionLabel(doc, "NOTES DU MOIS");
 
-        PdfPTable table = new PdfPTable(new float[]{2.2f, 1f, 0.7f, 1.8f});
+        PdfPTable table = new PdfPTable(new float[]{0.4f, 2.2f, 0.6f, 1f, 1.8f});
         table.setWidthPercentage(100);
-        headerCell(table, "Matière");
-        headerCell(table, "Moyenne");
-        headerCell(table, "Coef");
-        headerCell(table, "Enseignant");
+        // Padding plus compact (1.6mm/1.1mm) que le bulletin officiel (2.2mm/1.5mm, inchangé) : ce
+        // document ajoute un diagramme en bâtonnets en plus, il faut regagner de la place pour tenir
+        // sur une seule page quel que soit le nombre de matières (§retour utilisateur).
+        headerCell(table, "N°", mm(1.6f));
+        headerCell(table, "Matière", mm(1.6f));
+        headerCell(table, "Coef", mm(1.6f));
+        headerCellTint(table, "Moyenne", GOLD, mm(1.6f));
+        headerCell(table, "Enseignant", mm(1.6f));
 
         boolean zebra = false;
+        int n = 1;
         for (Line l : d.lines()) {
-            Color bg = zebra ? new Color(252, 250, 244) : WHITE;
+            Color bg = zebra ? ROW_STRIPE : WHITE;
             zebra = !zebra;
-            bodyCell(table, l.subjectName(), Element.ALIGN_LEFT, bg);
-            bodyCell(table, dec(normalized(l.average(), l.coefficient())), Element.ALIGN_CENTER, bg);
-            bodyCell(table, dec(l.coefficient()), Element.ALIGN_CENTER, bg);
-            bodyCell(table, safe(l.teacherName(), "—"), Element.ALIGN_LEFT, bg);
+            BigDecimal coef = l.coefficient() != null ? l.coefficient() : BigDecimal.ONE;
+            bodyCell(table, String.valueOf(n++), Element.ALIGN_CENTER, bg, LABEL_GREY, true, mm(1.1f));
+            bodyCell(table, l.subjectName(), Element.ALIGN_LEFT, bg, DARK_TEXT, true, mm(1.1f));
+            bodyCell(table, dec(coef), Element.ALIGN_CENTER, bg, TEXT_GREY, false, mm(1.1f));
+            bodyCellMonoTint(table, dec(normalized(l.average(), coef)), RESULT_TINT, mm(1.1f));
+            bodyCell(table, safe(l.teacherName(), "—"), Element.ALIGN_LEFT, bg, DARK_TEXT, false, mm(1.1f));
         }
 
-        PdfPCell outer = new PdfPCell();
-        outer.setBorder(0);
-        outer.setPadding(0);
-        outer.setCellEvent(RoundedCellBorder.fillAndBorder(mm(2.5f), WHITE, BORDER, 0.8f));
-        outer.addElement(table);
-        PdfPTable wrapper = new PdfPTable(1);
-        wrapper.setWidthPercentage(100);
-        wrapper.setSpacingAfter(mm(3.8f));
-        wrapper.addCell(outer);
-        doc.add(wrapper);
-    }
+        totalCell(table, "MOYENNE OBTENUE SUR 20", Element.ALIGN_LEFT, 3, DARK_GREEN, WHITE, mm(1.6f));
+        totalCellMono(table, dec(d.overallAverage()), GOLD, WHITE, mm(1.6f));
+        totalCell(table, "", Element.ALIGN_LEFT, 1, DARK_GREEN, WHITE, mm(1.6f));
 
-    private static void headerCell(PdfPTable table, String text) {
-        PdfPCell c = new PdfPCell(new Phrase(text.toUpperCase(Locale.FRENCH), font(null, FontFactory.HELVETICA_BOLD, 6.5f, LABEL_GREY)));
-        c.setBorder(Rectangle.BOTTOM);
-        c.setBorderColorBottom(BORDER);
-        c.setBorderWidthBottom(0.8f);
-        c.setPadding(mm(1.8f));
-        c.setBackgroundColor(new Color(241, 236, 223));
-        table.addCell(c);
-    }
-
-    private static void bodyCell(PdfPTable table, String text, int align, Color bg) {
-        PdfPCell c = new PdfPCell(new Phrase(text, font(null, FontFactory.HELVETICA, 9f, DARK_TEXT)));
-        c.setBorder(0);
-        c.setHorizontalAlignment(align);
-        c.setPadding(mm(1.8f));
-        c.setBackgroundColor(bg);
-        table.addCell(c);
+        roundedTable(doc, table, mm(3.8f));
     }
 
     /** BILAN : moyenne générale du mois + RANG, même carte que le bulletin officiel — pas de ligne
@@ -175,15 +185,17 @@ class OpenPdfMonthlyReportCardGenerator implements MonthlyReportCardPdfGenerator
         sectionLabel(doc, "BILAN DU MOIS");
         PdfPTable row = cardRow(2);
         // Pas de "mention" courte ici (contrairement au bulletin officiel) : l'appréciation complète
-        // (auto + censeur) est déjà affichée dans sa propre section ci-dessous, voir appreciations().
+        // (auto + censeur) est déjà affichée dans sa propre section ci-dessous, voir appreciationAndSignature().
         addCard(row, "Moyenne du mois", dec(d.overallAverage()), "/ 20", "", true, true);
         addRankCard(row, d.rank(), d.classSize(), false);
         doc.add(row);
     }
 
     /** Diagramme en bâtonnets des moyennes par matière (§censeur) — un coup d'œil pour le parent,
-     * en plus du tableau détaillé ci-dessus. Barre rouge sous la moyenne de passage (10/20). */
-    private static void barChart(Document doc, PdfWriter writer, List<Line> lines) {
+     * en plus du tableau détaillé ci-dessus. Barre rouge sous la moyenne de passage (10/20).
+     * {@code chartHeight} est calculée dynamiquement par l'appelant (espace restant sur la page,
+     * voir {@code generate()}) pour garantir un document tenant sur une seule page. */
+    private static void barChart(Document doc, PdfWriter writer, List<Line> lines, float chartHeight) {
         float left = doc.left();
         float right = doc.right();
         float top = writer.getVerticalPosition(true) - 18f;
@@ -194,11 +206,11 @@ class OpenPdfMonthlyReportCardGenerator implements MonthlyReportCardPdfGenerator
         spacer.setWidthPercentage(100);
         PdfPCell spacerCell = new PdfPCell();
         spacerCell.setBorder(0);
-        spacerCell.setFixedHeight(CHART_HEIGHT + 30f);
+        spacerCell.setFixedHeight(chartHeight + CHART_LABEL_SPACE);
         spacer.addCell(spacerCell);
         doc.add(spacer);
 
-        float baseline = top - CHART_HEIGHT;
+        float baseline = top - chartHeight;
         PdfContentByte cb = writer.getDirectContent();
 
         cb.setColorStroke(AXIS_COLOR);
@@ -209,7 +221,9 @@ class OpenPdfMonthlyReportCardGenerator implements MonthlyReportCardPdfGenerator
 
         int n = lines.size();
         float slot = (right - left) / n;
-        float barWidth = Math.min(slot * 0.5f, 34f);
+        // Barres plus fines (§retour utilisateur : "diminuer l'épaisseur") — 0.5/34pt max devenait
+        // large dès que peu de matières, resserré à 0.3/20pt.
+        float barWidth = Math.min(slot * 0.3f, 20f);
 
         for (int i = 0; i < n; i++) {
             Line l = lines.get(i);
@@ -220,10 +234,10 @@ class OpenPdfMonthlyReportCardGenerator implements MonthlyReportCardPdfGenerator
             // rencontré en test (coefficient 4 → barre de 390pt de haut, débordait toute la page).
             BigDecimal avg = normalized(l.average(), l.coefficient());
             float x = left + i * slot + (slot - barWidth) / 2f;
-            float h = avg == null ? 0 : avg.floatValue() / 20f * CHART_HEIGHT;
+            float h = avg == null ? 0 : avg.floatValue() / 20f * chartHeight;
             boolean passing = avg != null && avg.compareTo(BigDecimal.TEN) >= 0;
 
-            cb.setColorFill(passing ? DARK_GREEN : BAR_FAIL_COLOR);
+            cb.setColorFill(passing ? BAR_PALETTE[i % BAR_PALETTE.length] : BAR_FAIL_COLOR);
             cb.rectangle(x, baseline, barWidth, h);
             cb.fill();
 
@@ -240,45 +254,23 @@ class OpenPdfMonthlyReportCardGenerator implements MonthlyReportCardPdfGenerator
         }
     }
 
-    /** Appréciation automatique (barème existant) + appréciation manuelle du censeur, si renseignée —
-     * jamais l'une sans l'autre quand les deux existent, pour que le parent ait toujours un avis
-     * explicite sur la nécessité de réviser. */
-    private static void appreciations(Document doc, MonthlyReportCardDocument d) {
-        if (d.autoAppreciation() == null && (d.comment() == null || d.comment().isBlank())) return;
-        PdfPCell box = new PdfPCell();
-        box.setBorder(0);
-        box.setPadding(mm(2.5f));
-        box.setCellEvent(RoundedCellBorder.fillAndBorder(mm(2.5f), WHITE, BORDER, 0.8f));
-        if (d.autoAppreciation() != null) {
-            box.addElement(new Paragraph("Appréciation : " + d.autoAppreciation(), font(null, FontFactory.HELVETICA, 9.5f, DARK_TEXT)));
+    /** Appréciation automatique (barème existant) + commentaire manuel du censeur, côte à côte avec
+     * la signature — même disposition que le bulletin officiel (§retour utilisateur : "le même
+     * bulletin que le bulletin normal"), voir {@link BulletinPremiumChrome#appreciationAndSignature}.
+     * Toujours affiché (même sans appréciation/commentaire) pour garder le bloc signature visible. */
+    private static void appreciationAndSignatureBlock(Document doc, MonthlyReportCardDocument d, TenantPublicInfo info) {
+        List<Paragraph> lines = new ArrayList<>();
+        if (d.autoAppreciation() != null && !d.autoAppreciation().isBlank()) {
+            lines.add(new Paragraph(d.autoAppreciation(),
+                    font(gn.lacaeducation.common.pdf.DesignFonts.SERIF_SEMIBOLD_ITALIC, FontFactory.TIMES_BOLDITALIC, 12, DARK_TEXT)));
         }
         if (d.comment() != null && !d.comment().isBlank()) {
-            Paragraph manual = new Paragraph("Commentaire du censeur : " + d.comment(), font(null, FontFactory.HELVETICA_OBLIQUE, 9.5f, TEXT_GREY));
-            manual.setSpacingBefore(4f);
-            box.addElement(manual);
+            lines.add(new Paragraph(d.comment(), font(null, FontFactory.HELVETICA_OBLIQUE, 9.5f, TEXT_GREY)));
         }
-        PdfPTable t = new PdfPTable(1);
-        t.setWidthPercentage(100);
-        t.setSpacingBefore(mm(2f));
-        t.setSpacingAfter(mm(5f));
-        t.addCell(box);
-        doc.add(t);
-    }
-
-    private static void signature(Document doc) {
-        PdfPCell box = new PdfPCell(new Phrase("Signature et cachet de l'établissement", font(null, FontFactory.HELVETICA_OBLIQUE, 8.5f, TEXT_GREY)));
-        box.setBorder(0);
-        box.setFixedHeight(mm(16));
-        box.setHorizontalAlignment(Element.ALIGN_RIGHT);
-        box.setVerticalAlignment(Element.ALIGN_BOTTOM);
-        box.setCellEvent(RoundedCellBorder.fillAndBorder(mm(2.5f), WHITE, BORDER, 0.8f));
-        PdfPTable t = new PdfPTable(new float[]{1f, 1f});
-        t.setWidthPercentage(100);
-        PdfPCell empty = new PdfPCell();
-        empty.setBorder(0);
-        t.addCell(empty);
-        t.addCell(box);
-        doc.add(t);
+        if (lines.isEmpty()) {
+            lines.add(new Paragraph("—", font(null, FontFactory.HELVETICA_OBLIQUE, 9.5f, TEXT_GREY)));
+        }
+        BulletinPremiumChrome.appreciationAndSignature(doc, "Appréciation du censeur", lines, "Le Censeur", info);
     }
 
     private static String truncate(String s, int max) {
