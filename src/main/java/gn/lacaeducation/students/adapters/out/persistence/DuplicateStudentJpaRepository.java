@@ -17,6 +17,16 @@ import java.util.List;
  * de mensualités facturées) — c'est cet écart financier entre les membres d'un même groupe, pas le
  * seul nom, qui distingue un doublon probable (fiche quasi vide créée par erreur) d'une simple
  * homonymie (ex. jumeaux, chacun avec son propre historique complet de factures).
+ *
+ * <p>{@code student_parent_name} : un même nom de famille peut être partagé par plusieurs parents
+ * d'un même élève (père ET mère) — {@code DISTINCT ON} retient un seul parent par (élève, nom
+ * normalisé), le plus ancien (plus petit id), pour ne jamais dédoubler artificiellement un élève et
+ * exposer quand même son prénom/téléphone pour la fiche imprimée (§retour comptable). IMPORTANT :
+ * ne JAMAIS mettre de commentaire {@code --} à l'intérieur du texte de la requête native ci-dessous
+ * — une apostrophe dans un commentaire français casse le scanner de paramètres nommés de Spring Data
+ * (qui ne comprend pas la syntaxe de commentaire SQL, seulement les guillemets simples), et empêche
+ * TOUTE l'application de démarrer (découvert en prod : erreur de création de requête sur ce repository
+ * au bootstrap). Toute explication va ici, dans le Javadoc Java, jamais dans le texte SQL.
  */
 interface DuplicateStudentJpaRepository extends JpaRepository<EleveJpaEntity, Long> {
 
@@ -43,11 +53,6 @@ interface DuplicateStudentJpaRepository extends JpaRepository<EleveJpaEntity, Lo
                 ORDER BY e.student_id, e.id DESC
             ),
             student_parent_name AS (
-                -- Un même nom de famille peut être partagé par plusieurs parents d'un même élève (père
-                -- ET mère) : DISTINCT ON retient un seul parent par (élève, nom normalisé) — le plus
-                -- ancien (plus petit id) — pour ne jamais dédoubler artificiellement un élève qui n'a
-                -- qu'un seul vrai doublon, tout en exposant son prénom/téléphone pour la fiche imprimée
-                -- (§retour comptable : "il faut mettre le prénom, nom, numéro du parent").
                 SELECT DISTINCT ON (sp.student_id, LOWER(TRIM(p.last_name)))
                        sp.student_id, LOWER(TRIM(p.last_name)) AS norm_parent_last,
                        p.last_name, p.first_name AS parent_first_name, p.phone AS parent_phone
