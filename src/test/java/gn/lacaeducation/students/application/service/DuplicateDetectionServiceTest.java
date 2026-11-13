@@ -26,9 +26,9 @@ class DuplicateDetectionServiceTest {
     void findDuplicateGroups_oneMemberWithFewerMonthlyInvoices_isMarkedSuspect() {
         // Reproduit le cas type : une fiche "vide" créée par erreur à côté de la vraie fiche facturée.
         when(port.findDuplicateCandidates(1L)).thenReturn(List.of(
-                new StudentFinancialRow(10L, "Amadou", "Diallo", null, 5L, "CM2", "Diallo",
+                new StudentFinancialRow(10L, "Amadou", "Diallo", null, 5L, "CM2", "Diallo", null, null,
                         new BigDecimal("1800000"), new BigDecimal("1200000"), 9),
-                new StudentFinancialRow(11L, "Amadou", "Diallo", null, 5L, "CM2", "Diallo",
+                new StudentFinancialRow(11L, "Amadou", "Diallo", null, 5L, "CM2", "Diallo", null, null,
                         BigDecimal.ZERO, BigDecimal.ZERO, 0)));
 
         List<DuplicateDetectionService.Group> groups = service().findDuplicateGroups(1L);
@@ -48,9 +48,9 @@ class DuplicateDetectionServiceTest {
         // jamais marqué suspect sur le seul nom (§retour comptable : "sans la même dans la même
         // classe").
         when(port.findDuplicateCandidates(1L)).thenReturn(List.of(
-                new StudentFinancialRow(20L, "Fatoumata", "Camara", null, 6L, "6ème A", "Camara",
+                new StudentFinancialRow(20L, "Fatoumata", "Camara", null, 6L, "6ème A", "Camara", null, null,
                         new BigDecimal("1800000"), new BigDecimal("900000"), 9),
-                new StudentFinancialRow(21L, "Fatoumata", "Camara", null, 6L, "6ème A", "Camara",
+                new StudentFinancialRow(21L, "Fatoumata", "Camara", null, 6L, "6ème A", "Camara", null, null,
                         new BigDecimal("1800000"), new BigDecimal("1800000"), 9)));
 
         List<DuplicateDetectionService.Group> groups = service().findDuplicateGroups(1L);
@@ -64,9 +64,9 @@ class DuplicateDetectionServiceTest {
         // Aucune mensualité facturée pour personne dans le groupe (ex. frais annuel unique, pas de
         // tranches) — aucune preuve financière à comparer, on ne marque jamais suspect sans preuve.
         when(port.findDuplicateCandidates(1L)).thenReturn(List.of(
-                new StudentFinancialRow(30L, "Ibrahima", "Barry", null, 7L, "CP1", "Barry",
+                new StudentFinancialRow(30L, "Ibrahima", "Barry", null, 7L, "CP1", "Barry", null, null,
                         BigDecimal.ZERO, BigDecimal.ZERO, 0),
-                new StudentFinancialRow(31L, "Ibrahima", "Barry", null, 7L, "CP1", "Barry",
+                new StudentFinancialRow(31L, "Ibrahima", "Barry", null, 7L, "CP1", "Barry", null, null,
                         BigDecimal.ZERO, BigDecimal.ZERO, 0)));
 
         List<DuplicateDetectionService.Group> groups = service().findDuplicateGroups(1L);
@@ -80,9 +80,9 @@ class DuplicateDetectionServiceTest {
         // Requête élargie (§retour comptable) : plus limité à la même classe, tant que le nom de
         // famille d'un parent correspond aussi.
         when(port.findDuplicateCandidates(1L)).thenReturn(List.of(
-                new StudentFinancialRow(40L, "Mamadou", "Bah", null, 5L, "CM2", "Bah",
+                new StudentFinancialRow(40L, "Mamadou", "Bah", null, 5L, "CM2", "Bah", null, null,
                         BigDecimal.ZERO, BigDecimal.ZERO, 0),
-                new StudentFinancialRow(41L, "Mamadou", "Bah", null, 6L, "6ème A", "Bah",
+                new StudentFinancialRow(41L, "Mamadou", "Bah", null, 6L, "6ème A", "Bah", null, null,
                         BigDecimal.ZERO, BigDecimal.ZERO, 0)));
 
         List<DuplicateDetectionService.Group> groups = service().findDuplicateGroups(1L);
@@ -96,9 +96,9 @@ class DuplicateDetectionServiceTest {
         // Même prénom/nom élève mais parents de noms différents : jamais un doublon (le nouveau
         // critère exige aussi le même nom de famille parent).
         when(port.findDuplicateCandidates(1L)).thenReturn(List.of(
-                new StudentFinancialRow(50L, "Mariam", "Diallo", null, 5L, "CM2", "Diallo",
+                new StudentFinancialRow(50L, "Mariam", "Diallo", null, 5L, "CM2", "Diallo", null, null,
                         BigDecimal.ZERO, BigDecimal.ZERO, 0),
-                new StudentFinancialRow(51L, "Mariam", "Diallo", null, 5L, "CM2", "Keita",
+                new StudentFinancialRow(51L, "Mariam", "Diallo", null, 5L, "CM2", "Keita", null, null,
                         BigDecimal.ZERO, BigDecimal.ZERO, 0)));
 
         List<DuplicateDetectionService.Group> groups = service().findDuplicateGroups(1L);
