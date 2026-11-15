@@ -60,10 +60,10 @@ public class ReferentielAcademicsService implements GererReferentielUseCase {
     }
 
     @Override
-    public Matiere createSubject(Long tenantId, String label, BigDecimal coefficient, String syllabus) {
+    public Matiere createSubject(Long tenantId, String label, BigDecimal coefficient, String syllabus, SchoolCycle cycle) {
         return referentielRepository.saveSubject(
                 Matiere.builder().tenantId(tenantId).label(label)
-                        .coefficient(coefficient).syllabus(syllabus).build()
+                        .coefficient(coefficient).syllabus(syllabus).cycle(cycle).build()
         );
     }
 
@@ -101,9 +101,9 @@ public class ReferentielAcademicsService implements GererReferentielUseCase {
     @Override public void deleteLevel(Long id) { referentielRepository.deleteLevelById(id); }
 
     @Override
-    public Matiere updateSubject(Long id, String label, BigDecimal coefficient, String syllabus) {
+    public Matiere updateSubject(Long id, String label, BigDecimal coefficient, String syllabus, SchoolCycle cycle) {
         Matiere m = referentielRepository.findSubjectById(id).orElseThrow(() -> new IllegalArgumentException("Subject not found: " + id));
-        m.setLabel(label); m.setCoefficient(coefficient); m.setSyllabus(syllabus);
+        m.setLabel(label); m.setCoefficient(coefficient); m.setSyllabus(syllabus); m.setCycle(cycle);
         return referentielRepository.saveSubject(m);
     }
     @Override @Transactional(readOnly = true)
@@ -127,7 +127,7 @@ public class ReferentielAcademicsService implements GererReferentielUseCase {
             if (labelsExistants.contains(modele.libelle().toLowerCase())) continue;
             creees.add(referentielRepository.saveSubject(
                     Matiere.builder().tenantId(tenantId).label(modele.libelle())
-                            .coefficient(modele.coefficient()).build()));
+                            .coefficient(modele.coefficient()).cycle(cycle).build()));
         }
         return creees;
     }
