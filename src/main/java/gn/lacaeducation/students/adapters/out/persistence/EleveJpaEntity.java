@@ -1,5 +1,6 @@
 package gn.lacaeducation.students.adapters.out.persistence;
 
+import gn.lacaeducation.students.domain.AdmissionType;
 import gn.lacaeducation.students.domain.Gender;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -36,6 +37,7 @@ class EleveJpaEntity {
     @Column(name = "previous_class") private String previousClass;
     private Boolean repeating;
     @Column(name = "transfer_reason") private String transferReason;
+    @Enumerated(EnumType.STRING) @Column(name = "admission_type", nullable = false) private AdmissionType admissionType;
     @Column(name = "medical_notes", length = 2000) private String medicalNotes;
     @CreationTimestamp @Column(name = "created_at", updatable = false) private LocalDateTime createdAt;
     @Column(name = "deleted_at") private LocalDateTime deletedAt;

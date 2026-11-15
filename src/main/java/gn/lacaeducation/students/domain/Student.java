@@ -31,6 +31,10 @@ public class Student {
     private String previousClass;
     private Boolean repeating;
     private String transferReason;
+    /** Nouvelle inscription ou transfert entrant depuis une autre école (§retour fondateur, suivi
+     * façon plateforme de l'État) — TRANSFERT exige {@link #originSchool} et {@link #transferReason}
+     * renseignés. Purement informatif, ne pilote jamais la facturation (voir {@code EnrollmentType}). */
+    private AdmissionType admissionType;
     // Health
     private String medicalNotes;
     private LocalDateTime createdAt;

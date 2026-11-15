@@ -23,4 +23,9 @@ public class Enrollment {
      * autres familles de la même classe ne sont pas affectées. Défaut : false (comportement groupé
      * standard de la classe). */
     private Boolean monthlyPaymentOptIn;
+    /** Renseignés uniquement quand {@code status == ABANDONED} (départ en cours d'année, §retour
+     * fondateur, suivi façon plateforme de l'État) — null sinon. */
+    private LocalDate departureDate;
+    private DepartureReason departureReason;
+    private String destinationSchool;
 }
