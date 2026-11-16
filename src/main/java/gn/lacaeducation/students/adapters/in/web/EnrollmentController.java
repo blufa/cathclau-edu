@@ -112,13 +112,19 @@ public class EnrollmentController {
         return useCase.cancel(id);
     }
 
-    @Operation(summary = "Marquer une inscription validée comme abandon (élève parti en cours d'année) — "
-            + "contrairement à l'annulation, les factures déjà émises continuent de compter dans le recouvrement de la classe")
+    @Operation(summary = "Déclarer le départ d'un élève (transfert vers une autre école, abandon, exclusion...) "
+            + "sur une inscription validée — contrairement à l'annulation, exclut l'élève des listes actives et "
+            + "annule ses factures encore dues, sans jamais toucher à l'historique déjà encaissé")
     @PatchMapping("/{id}/abandon")
     @PreAuthorize("hasAuthority('inscription:validate')")
-    public Enrollment abandon(@PathVariable Long id) {
-        return useCase.abandon(id);
+    public Enrollment abandon(@PathVariable Long id, @RequestBody(required = false) AbandonRequest r) {
+        AbandonRequest req = r != null ? r : new AbandonRequest(null, null, null);
+        return useCase.abandon(id, req.departureDate(), req.reason(), req.destinationSchool());
     }
+
+    public record AbandonRequest(java.time.LocalDate departureDate,
+                                  gn.lacaeducation.students.domain.DepartureReason reason,
+                                  String destinationSchool) {}
 
     @Operation(summary = "Transférer une inscription validée vers une autre classe en cours d'année — "
             + "si les frais scolaires diffèrent, les mensualités impayées de l'ancienne classe sont annulées "

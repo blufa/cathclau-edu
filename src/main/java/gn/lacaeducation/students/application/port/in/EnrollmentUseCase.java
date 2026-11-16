@@ -3,6 +3,7 @@ package gn.lacaeducation.students.application.port.in;
 import gn.lacaeducation.students.EnrollmentType;
 import gn.lacaeducation.students.domain.*;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 
 public interface EnrollmentUseCase {
@@ -37,9 +38,13 @@ public interface EnrollmentUseCase {
      * effectivement eu lieu. {@code overriddenByUserId} identifie qui a forcé le dépassement. */
     Enrollment validate(Long id, boolean overrideCapacity, Long overriddenByUserId);
     Enrollment cancel(Long id);
-    /** Marque une inscription validée comme abandonnée (élève parti en cours d'année) — distinct de
-     * {@link #cancel}, qui reste réservé aux annulations (n'a jamais vraiment commencé). */
-    Enrollment abandon(Long id);
+    /** Marque une inscription validée comme un départ (élève parti en cours d'année — transfert vers
+     * une autre école, abandon, exclusion...), distinct de {@link #cancel}, qui reste réservé aux
+     * annulations (n'a jamais vraiment commencé). Exclut l'élève des listes actives (notes, présences)
+     * et des prochaines factures, et annule ses factures encore dues de l'année (voir
+     * {@code EnrollmentAbandonedInvoiceListener}) — l'historique (notes, paiements déjà encaissés)
+     * n'est jamais touché. {@code destinationSchool} n'a de sens que pour {@link DepartureReason#TRANSFERT}. */
+    Enrollment abandon(Long id, LocalDate departureDate, DepartureReason departureReason, String destinationSchool);
     /** Transfère une inscription validée vers une autre classe en cours d'année (frais scolaires
      * potentiellement différents) — publie {@code EnrollmentClassChangedEvent}, consommé par billing
      * pour annuler les mensualités de l'ancienne classe et reporter le crédit déjà payé sur les

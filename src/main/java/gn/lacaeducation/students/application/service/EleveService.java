@@ -12,6 +12,7 @@ import gn.lacaeducation.students.application.event.StudentCreatedEvent;
 import gn.lacaeducation.students.application.port.in.StudentUseCase;
 import gn.lacaeducation.students.application.port.out.StudentDocumentRepository;
 import gn.lacaeducation.students.application.port.out.StudentRepository;
+import gn.lacaeducation.students.domain.AdmissionType;
 import gn.lacaeducation.students.domain.Student;
 import gn.lacaeducation.students.domain.StudentDocument;
 import lombok.RequiredArgsConstructor;
@@ -54,6 +55,7 @@ public class EleveService implements StudentUseCase {
             throw new QuotaExceededException("Student quota exceeded for tenant " + cmd.tenantId());
         }
         String matricule = resolveStudentNumber(cmd.tenantId(), cmd.studentNumber());
+        requireTransferFieldsIfNeeded(cmd.admissionType(), cmd.originSchool(), cmd.transferReason());
 
         // Accès portail optionnel : login = matricule SANS tirets (« enlève le tiret du 6 »), pas d'email.
         Long userId = cmd.userId();
@@ -83,11 +85,22 @@ public class EleveService implements StudentUseCase {
                 .birthCertificateNumber(cmd.birthCertificateNumber()).bloodGroup(cmd.bloodGroup())
                 .neighborhood(cmd.neighborhood()).landmark(cmd.landmark())
                 .previousClass(cmd.previousClass()).repeating(cmd.repeating()).transferReason(cmd.transferReason())
+                .admissionType(cmd.admissionType() != null ? cmd.admissionType() : AdmissionType.NOUVELLE)
                 .medicalNotes(cmd.medicalNotes())
                 .idempotencyKey(cmd.idempotencyKey())
                 .createdAt(LocalDateTime.now()).build());
         eventPublisher.publishEvent(new StudentCreatedEvent(saved.getTenantId(), saved.getId(), saved.getStudentNumber()));
         return saved;
+    }
+
+    /** Un transfert entrant doit documenter d'où vient l'élève (§retour fondateur) — sans ça,
+     * "Transfert entrant" n'apporte rien de plus qu'une case cochée. */
+    private void requireTransferFieldsIfNeeded(AdmissionType admissionType, String originSchool, String transferReason) {
+        if (admissionType != AdmissionType.TRANSFERT) return;
+        if (originSchool == null || originSchool.isBlank() || transferReason == null || transferReason.isBlank()) {
+            throw new gn.lacaeducation.common.BusinessRuleException(
+                    "Un transfert entrant doit préciser l'école d'origine et le motif du transfert.");
+        }
     }
 
     /**
@@ -149,7 +162,9 @@ public class EleveService implements StudentUseCase {
         s.setNationality(cmd.nationality()); s.setOriginSchool(cmd.originSchool());
         s.setBirthCertificateNumber(cmd.birthCertificateNumber()); s.setBloodGroup(cmd.bloodGroup());
         s.setNeighborhood(cmd.neighborhood()); s.setLandmark(cmd.landmark());
+        requireTransferFieldsIfNeeded(cmd.admissionType(), cmd.originSchool(), cmd.transferReason());
         s.setPreviousClass(cmd.previousClass()); s.setRepeating(cmd.repeating()); s.setTransferReason(cmd.transferReason());
+        s.setAdmissionType(cmd.admissionType() != null ? cmd.admissionType() : AdmissionType.NOUVELLE);
         s.setMedicalNotes(cmd.medicalNotes());
         if (cmd.photo() != null) s.setPhoto(cmd.photo());
         return studentRepository.save(s);

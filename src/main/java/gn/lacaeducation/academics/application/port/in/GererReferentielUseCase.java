@@ -23,8 +23,8 @@ public interface GererReferentielUseCase {
     List<Niveau> findLevels(Long tenantId);
     void deleteLevel(Long id);
     // Subject
-    Matiere createSubject(Long tenantId, String label, BigDecimal coefficient, String syllabus);
-    Matiere updateSubject(Long id, String label, BigDecimal coefficient, String syllabus);
+    Matiere createSubject(Long tenantId, String label, BigDecimal coefficient, String syllabus, SchoolCycle cycle);
+    Matiere updateSubject(Long id, String label, BigDecimal coefficient, String syllabus, SchoolCycle cycle);
     Optional<Matiere> findSubjectById(Long id);
     List<Matiere> findSubjects(Long tenantId);
     void deleteSubject(Long id);
