@@ -109,8 +109,9 @@ public class ReferentielController {
     public ResponseEntity<Matiere> createSubject(
             @RequestParam String label,
             @RequestParam BigDecimal coefficient,
-            @RequestParam(required = false) String syllabus) {
-        Matiere m = useCase.createSubject(TenantContext.get(), label, coefficient, syllabus);
+            @RequestParam(required = false) String syllabus,
+            @RequestParam(required = false) SchoolCycle cycle) {
+        Matiere m = useCase.createSubject(TenantContext.get(), label, coefficient, syllabus, cycle);
         return ResponseEntity.created(URI.create("/api/academics/subjects/" + m.getId())).body(m);
     }
 
@@ -124,8 +125,9 @@ public class ReferentielController {
     public Matiere updateSubject(@PathVariable Long id,
                                  @RequestParam String label,
                                  @RequestParam BigDecimal coefficient,
-                                 @RequestParam(required = false) String syllabus) {
-        return useCase.updateSubject(id, label, coefficient, syllabus);
+                                 @RequestParam(required = false) String syllabus,
+                                 @RequestParam(required = false) SchoolCycle cycle) {
+        return useCase.updateSubject(id, label, coefficient, syllabus, cycle);
     }
 
     @Operation(summary = "Supprimer une matière")
