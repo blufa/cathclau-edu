@@ -16,6 +16,7 @@ import gn.lacaeducation.students.application.port.in.EnrollmentUseCase;
 import gn.lacaeducation.students.ClassCapacityPort;
 import gn.lacaeducation.students.application.port.out.EnrollmentRepository;
 import gn.lacaeducation.students.application.port.out.StudentRepository;
+import gn.lacaeducation.students.domain.DepartureReason;
 import gn.lacaeducation.students.domain.Enrollment;
 import gn.lacaeducation.students.domain.EnrollmentStatus;
 import gn.lacaeducation.students.EnrollmentType;
@@ -197,15 +198,18 @@ public class InscriptionService implements EnrollmentUseCase, EnrollmentValidati
     }
 
     @Override
-    public Enrollment abandon(Long id) {
+    public Enrollment abandon(Long id, LocalDate departureDate, DepartureReason departureReason, String destinationSchool) {
         Enrollment e = load(id);
-        // Un abandon en cours d'année ne se déclare que sur une inscription déjà validée — sinon
+        // Un départ en cours d'année ne se déclare que sur une inscription déjà validée — sinon
         // c'est une simple annulation (cancel) qu'il faut utiliser à la place.
         if (e.getStatus() != EnrollmentStatus.VALIDATED) {
             throw new BusinessRuleException(
-                    "Seule une inscription validée peut être marquée comme abandon : id=" + id);
+                    "Seule une inscription validée peut être marquée comme un départ : id=" + id);
         }
         e.setStatus(EnrollmentStatus.ABANDONED);
+        e.setDepartureDate(departureDate != null ? departureDate : LocalDate.now());
+        e.setDepartureReason(departureReason);
+        e.setDestinationSchool(destinationSchool);
         Enrollment saved = enrollmentRepository.save(e);
         eventPublisher.publishEvent(new EnrollmentAbandonedEvent(
                 null, e.getStudentId(), e.getClassId(), e.getAcademicYearId()));

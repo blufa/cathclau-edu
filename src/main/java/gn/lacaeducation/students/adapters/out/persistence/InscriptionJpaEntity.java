@@ -1,5 +1,6 @@
 package gn.lacaeducation.students.adapters.out.persistence;
 
+import gn.lacaeducation.students.domain.DepartureReason;
 import gn.lacaeducation.students.domain.EnrollmentStatus;
 import gn.lacaeducation.students.EnrollmentType;
 import jakarta.persistence.*;
@@ -20,4 +21,7 @@ class InscriptionJpaEntity {
     @Column(name = "enrolled_at") private LocalDate enrolledAt;
     @Column(name = "platform_access_opt_in", nullable = false) private Boolean platformAccessOptIn;
     @Column(name = "monthly_payment_opt_in", nullable = false) private Boolean monthlyPaymentOptIn;
+    @Column(name = "departure_date") private LocalDate departureDate;
+    @Enumerated(EnumType.STRING) @Column(name = "departure_reason") private DepartureReason departureReason;
+    @Column(name = "destination_school") private String destinationSchool;
 }

@@ -11,7 +11,10 @@ public interface StudentUseCase {
                                 LocalDate birthDate, String birthPlace, String address,
                                 String phone, String email, String nationality, String originSchool, String photo,
                                 String birthCertificateNumber, String bloodGroup, String neighborhood, String landmark,
-                                String previousClass, Boolean repeating, String transferReason, String medicalNotes,
+                                String previousClass, Boolean repeating, String transferReason,
+                                /** Nouvelle inscription ou transfert entrant — null traité comme NOUVELLE. TRANSFERT
+                                 *  exige originSchool et transferReason non vides (voir AdmissionType). */
+                                AdmissionType admissionType, String medicalNotes,
                                 /** Créer un accès au portail (connexion par matricule) + son mot de passe. */
                                 Boolean createLogin, String loginPassword,
                                 /** Clé d'idempotence fournie par le client (mode hors-ligne) : rejouer avec la même
@@ -21,7 +24,8 @@ public interface StudentUseCase {
                                 Gender gender, LocalDate birthDate, String birthPlace,
                                 String address, String phone, String email, String nationality, String originSchool, String photo,
                                 String birthCertificateNumber, String bloodGroup, String neighborhood, String landmark,
-                                String previousClass, Boolean repeating, String transferReason, String medicalNotes) {}
+                                String previousClass, Boolean repeating, String transferReason,
+                                AdmissionType admissionType, String medicalNotes) {}
     record AddDocumentCommand(Long studentId, DocumentType documentType, String fileUrl) {}
     /** Champs modifiables par l'élève lui-même (portail élève) — jamais matricule/état civil/notes médicales. */
     record UpdateOwnProfileCommand(String phone, String email, String address) {}

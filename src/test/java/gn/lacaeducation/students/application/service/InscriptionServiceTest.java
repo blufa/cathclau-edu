@@ -198,9 +198,13 @@ class InscriptionServiceTest {
         when(enrollmentRepository.findById(1L)).thenReturn(Optional.of(validated));
         when(enrollmentRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
-        Enrollment result = service.abandon(1L);
+        Enrollment result = service.abandon(1L, java.time.LocalDate.of(2026, 11, 15),
+                gn.lacaeducation.students.domain.DepartureReason.TRANSFERT, "École Les Palmiers");
 
         assertThat(result.getStatus()).isEqualTo(EnrollmentStatus.ABANDONED);
+        assertThat(result.getDepartureDate()).isEqualTo(java.time.LocalDate.of(2026, 11, 15));
+        assertThat(result.getDepartureReason()).isEqualTo(gn.lacaeducation.students.domain.DepartureReason.TRANSFERT);
+        assertThat(result.getDestinationSchool()).isEqualTo("École Les Palmiers");
         ArgumentCaptor<gn.lacaeducation.students.application.event.EnrollmentAbandonedEvent> captor =
                 ArgumentCaptor.forClass(gn.lacaeducation.students.application.event.EnrollmentAbandonedEvent.class);
         verify(eventPublisher).publishEvent(captor.capture());
@@ -213,7 +217,7 @@ class InscriptionServiceTest {
         Enrollment pending = Enrollment.builder().id(1L).status(EnrollmentStatus.PENDING).build();
         when(enrollmentRepository.findById(1L)).thenReturn(Optional.of(pending));
 
-        assertThatThrownBy(() -> service.abandon(1L))
+        assertThatThrownBy(() -> service.abandon(1L, null, null, null))
                 .isInstanceOf(gn.lacaeducation.common.BusinessRuleException.class);
         verify(eventPublisher, never()).publishEvent(any());
     }
@@ -223,7 +227,7 @@ class InscriptionServiceTest {
         Enrollment cancelled = Enrollment.builder().id(1L).status(EnrollmentStatus.CANCELLED).build();
         when(enrollmentRepository.findById(1L)).thenReturn(Optional.of(cancelled));
 
-        assertThatThrownBy(() -> service.abandon(1L))
+        assertThatThrownBy(() -> service.abandon(1L, null, null, null))
                 .isInstanceOf(gn.lacaeducation.common.BusinessRuleException.class);
         verify(eventPublisher, never()).publishEvent(any());
     }
