@@ -28,7 +28,9 @@ public class AssessmentController {
                                 BigDecimal coefficient, BigDecimal maxScore) {}
     @Operation(summary = "Créer une évaluation")
     @PreAuthorize("hasAuthority('evaluation:create')")
-    @PostMapping public ResponseEntity<Assessment> create(@RequestBody CreateRequest r) {
+    @PostMapping public ResponseEntity<Assessment> create(@RequestBody CreateRequest r,
+                                                           @AuthenticationPrincipal Jwt jwt, Authentication authentication) {
+        ownershipGuard.requireAssignedClassSubject(r.classId(), r.subjectId(), currentUserId(jwt), authentication);
         return ResponseEntity.ok(useCase.create(new AssessmentUseCase.CreateAssessmentCommand(
                 r.tenantId(), r.classId(), r.subjectId(), r.teacherId(), r.periodId(),
                 r.type(), r.assessmentTypeId(), r.label(), r.date(), r.coefficient(), r.maxScore())));
@@ -38,6 +40,7 @@ public class AssessmentController {
     @PutMapping("/{id}") public ResponseEntity<Assessment> update(@PathVariable Long id, @RequestBody CreateRequest r,
                                                                    @AuthenticationPrincipal Jwt jwt, Authentication authentication) {
         ownershipGuard.requireOwnerOrAdmin(id, currentUserId(jwt), authentication);
+        ownershipGuard.requireAssignedClassSubject(r.classId(), r.subjectId(), currentUserId(jwt), authentication);
         return ResponseEntity.ok(useCase.update(id, new AssessmentUseCase.CreateAssessmentCommand(
                 r.tenantId(), r.classId(), r.subjectId(), r.teacherId(), r.periodId(),
                 r.type(), r.assessmentTypeId(), r.label(), r.date(), r.coefficient(), r.maxScore())));
@@ -52,11 +55,11 @@ public class AssessmentController {
     @GetMapping("/period/{periodId}") public List<Assessment> findByPeriod(@PathVariable Long periodId) { return useCase.findByPeriod(periodId); }
 
 
-    @Operation(summary = "Supprimer une évaluation")
+    @Operation(summary = "Supprimer une évaluation (réservé SCHOOL_ADMIN/DIRECTOR, même pour son créateur)")
     @PreAuthorize("hasAuthority('evaluation:delete')")
-    @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id, @AuthenticationPrincipal Jwt jwt,
+    @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id,
                                                                 Authentication authentication) {
-        ownershipGuard.requireOwnerOrAdmin(id, currentUserId(jwt), authentication);
+        ownershipGuard.requireAdmin(authentication);
         useCase.delete(id); return ResponseEntity.noContent().build();
     }
 
