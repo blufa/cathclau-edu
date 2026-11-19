@@ -7,6 +7,9 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -15,6 +18,11 @@ import java.util.List;
 @RestController @RequestMapping("/api/v1/grading/assessments") @RequiredArgsConstructor
 public class AssessmentController {
     private final AssessmentUseCase useCase;
+    private final AssessmentOwnershipGuard ownershipGuard;
+    private Long currentUserId(Jwt jwt) {
+        if (jwt == null) return null;
+        try { return Long.parseLong(jwt.getSubject()); } catch (RuntimeException e) { return null; }
+    }
     public record CreateRequest(Long tenantId, Long classId, Long subjectId, Long teacherId, Long periodId,
                                 AssessmentType type, Long assessmentTypeId, String label, LocalDate date,
                                 BigDecimal coefficient, BigDecimal maxScore) {}
@@ -27,7 +35,9 @@ public class AssessmentController {
     }
     @Operation(summary = "Modifier une évaluation (interdit si la période est clôturée)")
     @PreAuthorize("hasAuthority('evaluation:update')")
-    @PutMapping("/{id}") public ResponseEntity<Assessment> update(@PathVariable Long id, @RequestBody CreateRequest r) {
+    @PutMapping("/{id}") public ResponseEntity<Assessment> update(@PathVariable Long id, @RequestBody CreateRequest r,
+                                                                   @AuthenticationPrincipal Jwt jwt, Authentication authentication) {
+        ownershipGuard.requireOwnerOrAdmin(id, currentUserId(jwt), authentication);
         return ResponseEntity.ok(useCase.update(id, new AssessmentUseCase.CreateAssessmentCommand(
                 r.tenantId(), r.classId(), r.subjectId(), r.teacherId(), r.periodId(),
                 r.type(), r.assessmentTypeId(), r.label(), r.date(), r.coefficient(), r.maxScore())));
@@ -44,7 +54,9 @@ public class AssessmentController {
 
     @Operation(summary = "Supprimer une évaluation")
     @PreAuthorize("hasAuthority('evaluation:delete')")
-    @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id) {
+    @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id, @AuthenticationPrincipal Jwt jwt,
+                                                                Authentication authentication) {
+        ownershipGuard.requireOwnerOrAdmin(id, currentUserId(jwt), authentication);
         useCase.delete(id); return ResponseEntity.noContent().build();
     }
 
