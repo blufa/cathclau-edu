@@ -30,6 +30,7 @@ public class AssessmentService implements AssessmentUseCase {
 
     @Override public Assessment create(CreateAssessmentCommand c) {
         requireOpenPeriod(c.periodId());
+        requireNoDuplicate(c.classId(), c.subjectId(), c.periodId(), c.type(), c.label(), c.date(), null);
 
         // Le front n'envoie pas le tenant : on le résout depuis le contexte (multi-tenant).
         Long tenantId = c.tenantId() != null ? c.tenantId() : gn.lacaeducation.common.TenantContext.get();
@@ -54,6 +55,7 @@ public class AssessmentService implements AssessmentUseCase {
         Assessment a = load(id);
         requireOpenPeriod(a.getPeriodId());
         if (c.periodId() != null) requireOpenPeriod(c.periodId());
+        requireNoDuplicate(c.classId(), c.subjectId(), c.periodId(), c.type(), c.label(), c.date(), id);
         a.setClassId(c.classId()); a.setSubjectId(c.subjectId()); a.setTeacherId(c.teacherId());
         a.setPeriodId(c.periodId()); a.setType(c.type()); a.setLabel(c.label());
         a.setDate(c.date()); a.setCoefficient(c.coefficient()); a.setMaxScore(c.maxScore());
@@ -111,6 +113,20 @@ public class AssessmentService implements AssessmentUseCase {
                         .toList();
         return gradeSheetPdfGenerator.generate(new gn.lacaeducation.grading.application.port.out.AssessmentGradeSheetPdfGenerator.AssessmentGradeSheet(
                 a.getTenantId(), className, subjectName, a.getLabel(), typeLabel, a.getDate(), a.getMaxScore(), rows));
+    }
+
+    /** Évite le doublon accidentel (double clic, nouvelle tentative après un envoi qui semblait
+     * échoué...) : même classe/matière/période/type/libellé/date qu'une évaluation déjà existante
+     * (§retour fondateur — des notes saisies par un professeur se sont retrouvées éclatées entre
+     * plusieurs évaluations identiques, invisibles pour le principal qui n'en consultait qu'une). */
+    private void requireNoDuplicate(Long classId, Long subjectId, Long periodId,
+                                     gn.lacaeducation.grading.domain.AssessmentType type,
+                                     String label, java.time.LocalDate date, Long excludingId) {
+        if (repo.existsDuplicate(classId, subjectId, periodId, type, label, date, excludingId)) {
+            throw new BusinessRuleException(
+                    "Une évaluation identique existe déjà pour cette classe, cette matière et cette date "
+                            + "(\"" + label + "\") — utilisez-la au lieu d'en créer une nouvelle.");
+        }
     }
 
     /** Creating/modifying an assessment is forbidden on a closed period (or a non-EN_COURS year). */
