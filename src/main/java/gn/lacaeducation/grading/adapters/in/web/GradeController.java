@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
@@ -22,6 +23,7 @@ import java.util.List;
 public class GradeController {
 
     private final GradeUseCase useCase;
+    private final AssessmentOwnershipGuard ownershipGuard;
 
     public record EnterRequest(Long assessmentId, Long studentId, BigDecimal value) {}
     public record UpdateRequest(BigDecimal value, String reason) {}
@@ -33,7 +35,9 @@ public class GradeController {
     @Operation(summary = "Saisir la note d'un élève pour une évaluation")
     @PreAuthorize("hasAuthority('note:create')")
     @PostMapping("/grades")
-    public ResponseEntity<Grade> enter(@RequestBody EnterRequest r, @AuthenticationPrincipal Jwt jwt) {
+    public ResponseEntity<Grade> enter(@RequestBody EnterRequest r, @AuthenticationPrincipal Jwt jwt,
+                                       Authentication authentication) {
+        ownershipGuard.requireOwnerOrAdmin(r.assessmentId(), currentUserId(jwt), authentication);
         return ResponseEntity.ok(useCase.enter(
                 new GradeUseCase.EnterGradeCommand(r.assessmentId(), r.studentId(), r.value()), currentUserId(jwt)));
     }
@@ -43,7 +47,10 @@ public class GradeController {
     @PreAuthorize("hasAuthority('note:update')")
     @PutMapping("/grades/{id}")
     public ResponseEntity<Grade> update(@PathVariable Long id, @RequestBody UpdateRequest r,
-                                        @AuthenticationPrincipal Jwt jwt) {
+                                        @AuthenticationPrincipal Jwt jwt, Authentication authentication) {
+        Grade existing = useCase.findById(id)
+                .orElseThrow(() -> new gn.lacaeducation.common.ResourceNotFoundException("Grade", id));
+        ownershipGuard.requireOwnerOrAdmin(existing.getAssessmentId(), currentUserId(jwt), authentication);
         return ResponseEntity.ok(useCase.update(id, r.value(), currentUserId(jwt), r.reason()));
     }
 
@@ -120,7 +127,11 @@ public class GradeController {
     @Operation(summary = "Supprimer une note")
     @PreAuthorize("hasAuthority('note:update')")
     @DeleteMapping("/grades/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id, @AuthenticationPrincipal Jwt jwt) {
+    public ResponseEntity<Void> delete(@PathVariable Long id, @AuthenticationPrincipal Jwt jwt,
+                                       Authentication authentication) {
+        Grade existing = useCase.findById(id)
+                .orElseThrow(() -> new gn.lacaeducation.common.ResourceNotFoundException("Grade", id));
+        ownershipGuard.requireOwnerOrAdmin(existing.getAssessmentId(), currentUserId(jwt), authentication);
         useCase.delete(id, currentUserId(jwt));
         return ResponseEntity.noContent().build();
     }
@@ -146,14 +157,13 @@ public class GradeController {
     public ResponseEntity<List<Grade>> enterBulk(@PathVariable Long assessmentId,
                                                   @RequestBody BulkGradeRequest request,
                                                   @AuthenticationPrincipal Jwt jwt,
-                                                  org.springframework.security.core.Authentication authentication) {
+                                                  Authentication authentication) {
+        ownershipGuard.requireOwnerOrAdmin(assessmentId, currentUserId(jwt), authentication);
         List<GradeUseCase.BulkGradeEntry> entries = request.grades().stream()
                 .map(e -> new GradeUseCase.BulkGradeEntry(e.studentId(), e.value()))
                 .toList();
         // Only ADMIN/DIRECTOR may overwrite an already-entered grade; teachers can only enter new ones.
-        boolean allowOverwrite = authentication != null && authentication.getAuthorities().stream()
-                .map(org.springframework.security.core.GrantedAuthority::getAuthority)
-                .anyMatch(a -> a.equals("ROLE_SCHOOL_ADMIN") || a.equals("ROLE_DIRECTOR"));
+        boolean allowOverwrite = AssessmentOwnershipGuard.isAdminOrDirector(authentication);
         return ResponseEntity.ok(useCase.enterBulk(assessmentId, entries, allowOverwrite, currentUserId(jwt)));
     }
 

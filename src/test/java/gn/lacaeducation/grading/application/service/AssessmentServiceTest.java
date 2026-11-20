@@ -67,6 +67,30 @@ class AssessmentServiceTest {
     }
 
     @Test
+    void create_duplicateClassSubjectPeriodTypeLabelDate_throws() {
+        when(academicsDataProvider.isPeriodOpenForGrades(2L)).thenReturn(true);
+        when(repo.existsDuplicate(1L, 100L, 2L, AssessmentType.HOMEWORK, "Devoir 1",
+                LocalDate.of(2026, 1, 15), null)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.create(cmd())).isInstanceOf(BusinessRuleException.class);
+        verify(repo, never()).save(any());
+    }
+
+    @Test
+    void update_excludesItselfFromDuplicateCheck() {
+        Assessment existing = Assessment.builder().id(9L).periodId(2L).build();
+        when(repo.findById(9L)).thenReturn(Optional.of(existing));
+        when(academicsDataProvider.isPeriodOpenForGrades(2L)).thenReturn(true);
+        when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        Assessment a = service.update(9L, cmd());
+
+        assertThat(a.getLabel()).isEqualTo("Devoir 1");
+        verify(repo).existsDuplicate(1L, 100L, 2L, AssessmentType.HOMEWORK, "Devoir 1",
+                LocalDate.of(2026, 1, 15), 9L);
+    }
+
+    @Test
     void assessmentGradeSheetPdf_includesAlreadyEnteredGrades() {
         Assessment a = Assessment.builder().id(9L).tenantId(10L).classId(1L).subjectId(100L)
                 .type(AssessmentType.HOMEWORK).label("Anglais — Oral — Octobre")
