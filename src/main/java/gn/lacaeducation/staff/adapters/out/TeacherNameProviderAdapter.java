@@ -1,6 +1,7 @@
 package gn.lacaeducation.staff.adapters.out;
 
 import gn.lacaeducation.grading.TeacherNameProvider;
+import gn.lacaeducation.grading.TeacherOwnershipLookup;
 import gn.lacaeducation.staff.application.port.out.TeacherRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -9,7 +10,7 @@ import java.util.Optional;
 
 @Component
 @RequiredArgsConstructor
-class TeacherNameProviderAdapter implements TeacherNameProvider {
+class TeacherNameProviderAdapter implements TeacherNameProvider, TeacherOwnershipLookup {
 
     private final TeacherRepository teacherRepository;
 
@@ -18,5 +19,11 @@ class TeacherNameProviderAdapter implements TeacherNameProvider {
         if (teacherId == null) return Optional.empty();
         return teacherRepository.findById(teacherId)
                 .map(t -> (t.getFirstName() + " " + t.getLastName()).trim());
+    }
+
+    @Override
+    public Optional<Long> findTeacherIdByUserId(Long userId) {
+        if (userId == null) return Optional.empty();
+        return teacherRepository.findByUserId(userId).map(gn.lacaeducation.staff.domain.Teacher::getId);
     }
 }

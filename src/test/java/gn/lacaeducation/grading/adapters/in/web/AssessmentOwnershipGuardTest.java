@@ -5,7 +5,7 @@ import gn.lacaeducation.academics.ClassSubjectPublicInfo;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.grading.application.port.in.AssessmentUseCase;
 import gn.lacaeducation.grading.domain.Assessment;
-import gn.lacaeducation.staff.TeacherPublicInfoProvider;
+import gn.lacaeducation.grading.TeacherOwnershipLookup;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -27,7 +27,7 @@ import static org.mockito.Mockito.when;
 class AssessmentOwnershipGuardTest {
 
     @Mock AssessmentUseCase assessmentUseCase;
-    @Mock TeacherPublicInfoProvider teacherPublicInfoProvider;
+    @Mock TeacherOwnershipLookup teacherOwnershipLookup;
     @Mock AcademicsDataProvider academicsDataProvider;
     @InjectMocks AssessmentOwnershipGuard guard;
 
@@ -42,7 +42,7 @@ class AssessmentOwnershipGuardTest {
     @Test
     void owner_isAllowed() {
         when(assessmentUseCase.findById(9L)).thenReturn(Optional.of(Assessment.builder().id(9L).teacherId(5L).build()));
-        when(teacherPublicInfoProvider.findTeacherIdByUserId(100L)).thenReturn(Optional.of(5L));
+        when(teacherOwnershipLookup.findTeacherIdByUserId(100L)).thenReturn(Optional.of(5L));
 
         assertThatCode(() -> guard.requireOwnerOrAdmin(9L, 100L, teacherAuth())).doesNotThrowAnyException();
     }
@@ -50,7 +50,7 @@ class AssessmentOwnershipGuardTest {
     @Test
     void differentTeacher_isDenied() {
         when(assessmentUseCase.findById(9L)).thenReturn(Optional.of(Assessment.builder().id(9L).teacherId(5L).build()));
-        when(teacherPublicInfoProvider.findTeacherIdByUserId(100L)).thenReturn(Optional.of(6L));
+        when(teacherOwnershipLookup.findTeacherIdByUserId(100L)).thenReturn(Optional.of(6L));
 
         assertThatThrownBy(() -> guard.requireOwnerOrAdmin(9L, 100L, teacherAuth()))
                 .isInstanceOf(AccessDeniedException.class);
@@ -59,7 +59,7 @@ class AssessmentOwnershipGuardTest {
     @Test
     void notATeacherAtAll_isDenied() {
         when(assessmentUseCase.findById(9L)).thenReturn(Optional.of(Assessment.builder().id(9L).teacherId(5L).build()));
-        when(teacherPublicInfoProvider.findTeacherIdByUserId(100L)).thenReturn(Optional.empty());
+        when(teacherOwnershipLookup.findTeacherIdByUserId(100L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> guard.requireOwnerOrAdmin(9L, 100L, teacherAuth()))
                 .isInstanceOf(AccessDeniedException.class);
@@ -95,7 +95,7 @@ class AssessmentOwnershipGuardTest {
 
     @Test
     void requireAssignedClassSubject_teacherAssigned_isAllowed() {
-        when(teacherPublicInfoProvider.findTeacherIdByUserId(100L)).thenReturn(Optional.of(5L));
+        when(teacherOwnershipLookup.findTeacherIdByUserId(100L)).thenReturn(Optional.of(5L));
         when(academicsDataProvider.findClassSubjectsByTeacher(5L)).thenReturn(List.of(
                 new ClassSubjectPublicInfo(1L, 2L, null, 5L, null)));
 
@@ -104,7 +104,7 @@ class AssessmentOwnershipGuardTest {
 
     @Test
     void requireAssignedClassSubject_teacherNotAssignedToThatClass_isDenied() {
-        when(teacherPublicInfoProvider.findTeacherIdByUserId(100L)).thenReturn(Optional.of(5L));
+        when(teacherOwnershipLookup.findTeacherIdByUserId(100L)).thenReturn(Optional.of(5L));
         when(academicsDataProvider.findClassSubjectsByTeacher(5L)).thenReturn(List.of(
                 new ClassSubjectPublicInfo(1L, 2L, null, 5L, null)));
 

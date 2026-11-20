@@ -4,7 +4,7 @@ import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.common.ResourceNotFoundException;
 import gn.lacaeducation.grading.application.port.in.AssessmentUseCase;
 import gn.lacaeducation.grading.domain.Assessment;
-import gn.lacaeducation.staff.TeacherPublicInfoProvider;
+import gn.lacaeducation.grading.TeacherOwnershipLookup;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
@@ -22,14 +22,14 @@ import org.springframework.stereotype.Component;
 class AssessmentOwnershipGuard {
 
     private final AssessmentUseCase assessmentUseCase;
-    private final TeacherPublicInfoProvider teacherPublicInfoProvider;
+    private final TeacherOwnershipLookup teacherOwnershipLookup;
     private final AcademicsDataProvider academicsDataProvider;
 
     void requireOwnerOrAdmin(Long assessmentId, Long currentUserId, Authentication authentication) {
         if (isAdminOrDirector(authentication)) return;
         Assessment a = assessmentUseCase.findById(assessmentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Assessment", assessmentId));
-        Long actingTeacherId = teacherPublicInfoProvider.findTeacherIdByUserId(currentUserId).orElse(null);
+        Long actingTeacherId = teacherOwnershipLookup.findTeacherIdByUserId(currentUserId).orElse(null);
         if (actingTeacherId == null || !actingTeacherId.equals(a.getTeacherId())) {
             throw new AccessDeniedException(
                     "Vous ne pouvez saisir ou modifier que les évaluations que vous avez créées.");
@@ -52,7 +52,7 @@ class AssessmentOwnershipGuard {
      * pouvoir le contourner. */
     void requireAssignedClassSubject(Long classId, Long subjectId, Long currentUserId, Authentication authentication) {
         if (isAdminOrDirector(authentication)) return;
-        Long actingTeacherId = teacherPublicInfoProvider.findTeacherIdByUserId(currentUserId).orElse(null);
+        Long actingTeacherId = teacherOwnershipLookup.findTeacherIdByUserId(currentUserId).orElse(null);
         boolean assigned = actingTeacherId != null && academicsDataProvider.findClassSubjectsByTeacher(actingTeacherId).stream()
                 .anyMatch(cs -> cs.classId().equals(classId) && cs.subjectId().equals(subjectId));
         if (!assigned) {
