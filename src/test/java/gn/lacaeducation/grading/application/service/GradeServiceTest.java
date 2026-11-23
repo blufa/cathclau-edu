@@ -3,6 +3,7 @@ package gn.lacaeducation.grading.application.service;
 import gn.lacaeducation.academics.AcademicsDataProvider;
 import gn.lacaeducation.common.BusinessRuleException;
 import gn.lacaeducation.grading.application.event.GradesValidatedEvent;
+import gn.lacaeducation.grading.application.port.in.GradeUseCase.BulkGradeEntry;
 import gn.lacaeducation.grading.application.port.in.GradeUseCase.EnterGradeCommand;
 import gn.lacaeducation.grading.application.port.out.AssessmentRepository;
 import gn.lacaeducation.grading.application.port.out.GradeRepository;
@@ -68,6 +69,30 @@ class GradeServiceTest {
         Grade g = service.enter(new EnterGradeCommand(1L, 10L, BigDecimal.valueOf(12)));
 
         org.assertj.core.api.Assertions.assertThat(g.getValue()).isEqualByComparingTo("12");
+    }
+
+    @Test
+    void enter_withValueAAndValueB_storesAverageAsValue() {
+        when(assessmentRepository.findById(1L)).thenReturn(Optional.of(assessment()));
+        when(academicsDataProvider.isPeriodOpenForGrades(2L)).thenReturn(true);
+        when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        Grade g = service.enter(new EnterGradeCommand(1L, 10L, null, BigDecimal.valueOf(14), BigDecimal.valueOf(10)));
+
+        org.assertj.core.api.Assertions.assertThat(g.getValue()).isEqualByComparingTo("12.00");
+        org.assertj.core.api.Assertions.assertThat(g.getValueA()).isEqualByComparingTo("14");
+        org.assertj.core.api.Assertions.assertThat(g.getValueB()).isEqualByComparingTo("10");
+    }
+
+    @Test
+    void enter_withOnlyValueA_usesItAsValue() {
+        when(assessmentRepository.findById(1L)).thenReturn(Optional.of(assessment()));
+        when(academicsDataProvider.isPeriodOpenForGrades(2L)).thenReturn(true);
+        when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        Grade g = service.enter(new EnterGradeCommand(1L, 10L, null, BigDecimal.valueOf(15), null));
+
+        org.assertj.core.api.Assertions.assertThat(g.getValue()).isEqualByComparingTo("15");
     }
 
     @Test
@@ -160,11 +185,47 @@ class GradeServiceTest {
     }
 
     @Test
+    void enterBulk_newEntryWithValueAAndValueB_storesAverageAsValue() {
+        when(assessmentRepository.findById(1L)).thenReturn(Optional.of(assessment()));
+        when(academicsDataProvider.isPeriodOpenForGrades(2L)).thenReturn(true);
+        when(repo.findByAssessmentId(1L)).thenReturn(java.util.List.of());
+        when(repo.saveAll(any())).thenAnswer(i -> i.getArgument(0));
+
+        java.util.List<Grade> saved = service.enterBulk(1L,
+                java.util.List.of(new BulkGradeEntry(10L, null, BigDecimal.valueOf(16), BigDecimal.valueOf(8))),
+                false, 99L);
+
+        org.assertj.core.api.Assertions.assertThat(saved).hasSize(1);
+        org.assertj.core.api.Assertions.assertThat(saved.get(0).getValue()).isEqualByComparingTo("12.00");
+        org.assertj.core.api.Assertions.assertThat(saved.get(0).getValueA()).isEqualByComparingTo("16");
+        org.assertj.core.api.Assertions.assertThat(saved.get(0).getValueB()).isEqualByComparingTo("8");
+    }
+
+    @Test
+    void enterBulk_updateExistingEntryWithValueAAndValueB_recomputesValue() {
+        when(assessmentRepository.findById(1L)).thenReturn(Optional.of(assessment()));
+        when(academicsDataProvider.isPeriodOpenForGrades(2L)).thenReturn(true);
+        Grade existing = Grade.builder().id(100L).assessmentId(1L).studentId(10L)
+                .value(BigDecimal.valueOf(9)).validated(false).build();
+        when(repo.findByAssessmentId(1L)).thenReturn(java.util.List.of(existing));
+        when(repo.saveAll(any())).thenAnswer(i -> i.getArgument(0));
+
+        java.util.List<Grade> saved = service.enterBulk(1L,
+                java.util.List.of(new BulkGradeEntry(10L, null, BigDecimal.valueOf(18), BigDecimal.valueOf(14))),
+                true, 99L);
+
+        org.assertj.core.api.Assertions.assertThat(saved.get(0).getValue()).isEqualByComparingTo("16.00");
+        org.assertj.core.api.Assertions.assertThat(saved.get(0).getValueA()).isEqualByComparingTo("18");
+        org.assertj.core.api.Assertions.assertThat(saved.get(0).getValueB()).isEqualByComparingTo("14");
+    }
+
+    @Test
     void gradeSheet_joinsClassRosterWithGrades() {
         when(assessmentRepository.findById(1L)).thenReturn(
                 Optional.of(Assessment.builder().id(1L).classId(55L).periodId(2L).build()));
         when(repo.findByAssessmentId(1L)).thenReturn(java.util.List.of(
-                Grade.builder().id(100L).assessmentId(1L).studentId(10L).value(BigDecimal.valueOf(12)).validated(false).build()));
+                Grade.builder().id(100L).assessmentId(1L).studentId(10L).value(BigDecimal.valueOf(12))
+                        .valueA(BigDecimal.valueOf(14)).valueB(BigDecimal.valueOf(10)).validated(false).build()));
         when(studentDataProvider.findStudentsByClass(55L)).thenReturn(java.util.List.of(
                 new gn.lacaeducation.students.StudentPublicInfo(10L, 3L, "Awa", "Bah", null, null, "MAT-1", null, null, null, null),
                 new gn.lacaeducation.students.StudentPublicInfo(20L, 3L, "Moussa", "Camara", null, null, "MAT-2", null, null, null, null)));
@@ -178,6 +239,8 @@ class GradeServiceTest {
         org.assertj.core.api.Assertions.assertThat(graded.fullName()).isEqualTo("Awa Bah");
         org.assertj.core.api.Assertions.assertThat(graded.value()).isEqualByComparingTo("12");
         org.assertj.core.api.Assertions.assertThat(graded.gradeId()).isEqualTo(100L);
+        org.assertj.core.api.Assertions.assertThat(graded.valueA()).isEqualByComparingTo("14");
+        org.assertj.core.api.Assertions.assertThat(graded.valueB()).isEqualByComparingTo("10");
         // Élève sans note saisie → valeurs nulles mais présent dans la feuille
         var blank = rows.stream().filter(r -> r.studentId().equals(20L)).findFirst().orElseThrow();
         org.assertj.core.api.Assertions.assertThat(blank.value()).isNull();

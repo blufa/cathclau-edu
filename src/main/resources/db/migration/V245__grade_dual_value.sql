@@ -1,0 +1,2 @@
+ALTER TABLE grades ADD COLUMN value_a NUMERIC(5,2);
+ALTER TABLE grades ADD COLUMN value_b NUMERIC(5,2);

@@ -41,11 +41,14 @@ public class GradeService implements GradeUseCase {
     @Override
     public Grade enter(EnterGradeCommand c, Long changedBy) {
         Assessment assessment = requireOpenPeriod(c.assessmentId());
-        validateValue(c.value(), assessment);
+        BigDecimal value = resolveValue(c.value(), c.valueA(), c.valueB());
+        validateValue(value, assessment);
         Grade saved = repo.save(Grade.builder()
                 .assessmentId(c.assessmentId())
                 .studentId(c.studentId())
-                .value(c.value())
+                .value(value)
+                .valueA(c.valueA())
+                .valueB(c.valueB())
                 .validated(false)
                 .enteredAt(LocalDateTime.now())
                 .build());
@@ -53,10 +56,26 @@ public class GradeService implements GradeUseCase {
         return saved;
     }
 
+    /** Saisie en deux cases (Orale/Écrite, ou Dictée-Question/Rédaction pour le Français) : la
+     * note finale ({@code Grade.value}, seule lue par les moteurs de calcul de moyenne) est la
+     * moyenne des deux cases. Une seule case renseignée → elle seule compte. Aucune case → la
+     * valeur unique fournie (comportement historique, une seule case). */
+    private static BigDecimal resolveValue(BigDecimal value, BigDecimal valueA, BigDecimal valueB) {
+        if (valueA == null && valueB == null) return value;
+        if (valueA == null) return valueB;
+        if (valueB == null) return valueA;
+        return valueA.add(valueB).divide(BigDecimal.valueOf(2), 2, java.math.RoundingMode.HALF_UP);
+    }
+
     @Override
     public List<Grade> enterBulk(Long assessmentId, List<BulkGradeEntry> entries, boolean allowOverwrite, Long changedBy) {
         Assessment assessment = requireOpenPeriod(assessmentId);
-        entries.forEach(e -> validateValue(e.value(), assessment));
+        java.util.Map<Long, BigDecimal> resolvedByStudent = new java.util.HashMap<>();
+        for (BulkGradeEntry e : entries) {
+            BigDecimal resolved = resolveValue(e.value(), e.valueA(), e.valueB());
+            validateValue(resolved, assessment);
+            resolvedByStudent.put(e.studentId(), resolved);
+        }
         // Upsert by (assessment, student). An already-entered grade can only be changed by an
         // authorized role (allowOverwrite); a teacher cannot modify a grade once it is entered.
         java.util.Map<Long, Grade> existing = repo.findByAssessmentId(assessmentId).stream()
@@ -66,13 +85,16 @@ public class GradeService implements GradeUseCase {
         java.util.Map<Long, BigDecimal> oldValueByStudent = new java.util.HashMap<>();
         java.util.Map<Long, GradeAction> actionByStudent = new java.util.HashMap<>();
         for (BulkGradeEntry e : entries) {
+            BigDecimal resolved = resolvedByStudent.get(e.studentId());
             Grade g = existing.get(e.studentId());
             if (g != null) {
                 if (Boolean.TRUE.equals(g.getValidated())) continue;        // validated → locked
                 if (!allowOverwrite) continue;                              // teacher: cannot modify an entered grade
                 oldValueByStudent.put(e.studentId(), g.getValue());
                 actionByStudent.put(e.studentId(), GradeAction.UPDATED);
-                g.setValue(e.value());
+                g.setValue(resolved);
+                g.setValueA(e.valueA());
+                g.setValueB(e.valueB());
                 g.setEnteredAt(LocalDateTime.now());
                 toSave.add(g);
             } else {
@@ -80,7 +102,9 @@ public class GradeService implements GradeUseCase {
                 toSave.add(Grade.builder()
                         .assessmentId(assessmentId)
                         .studentId(e.studentId())
-                        .value(e.value())
+                        .value(resolved)
+                        .valueA(e.valueA())
+                        .valueB(e.valueB())
                         .validated(false)
                         .enteredAt(LocalDateTime.now())
                         .build());
@@ -174,7 +198,9 @@ public class GradeService implements GradeUseCase {
                     return new GradeSheetRow(s.id(), s.studentNumber(), fullName(s),
                             g != null ? g.getId() : null,
                             g != null ? g.getValue() : null,
-                            g != null ? g.getValidated() : null);
+                            g != null ? g.getValidated() : null,
+                            g != null ? g.getValueA() : null,
+                            g != null ? g.getValueB() : null);
                 })
                 .toList();
     }
