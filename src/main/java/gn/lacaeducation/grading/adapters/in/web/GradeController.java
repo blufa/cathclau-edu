@@ -25,9 +25,10 @@ public class GradeController {
     private final GradeUseCase useCase;
     private final AssessmentOwnershipGuard ownershipGuard;
 
-    public record EnterRequest(Long assessmentId, Long studentId, BigDecimal value) {}
+    public record EnterRequest(Long assessmentId, Long studentId, BigDecimal value,
+                                BigDecimal valueA, BigDecimal valueB) {}
     public record UpdateRequest(BigDecimal value, String reason) {}
-    public record BulkEntry(Long studentId, BigDecimal value) {}
+    public record BulkEntry(Long studentId, BigDecimal value, BigDecimal valueA, BigDecimal valueB) {}
     public record BulkGradeRequest(List<BulkEntry> grades) {}
 
     // ── Single grade entry ────────────────────────────────────────────────────
@@ -39,7 +40,8 @@ public class GradeController {
                                        Authentication authentication) {
         ownershipGuard.requireOwnerOrAdmin(r.assessmentId(), currentUserId(jwt), authentication);
         return ResponseEntity.ok(useCase.enter(
-                new GradeUseCase.EnterGradeCommand(r.assessmentId(), r.studentId(), r.value()), currentUserId(jwt)));
+                new GradeUseCase.EnterGradeCommand(r.assessmentId(), r.studentId(), r.value(), r.valueA(), r.valueB()),
+                currentUserId(jwt)));
     }
 
     @Operation(summary = "Modifier la note d'un élève (uniquement si la période est ouverte et la note non validée). "
@@ -160,7 +162,7 @@ public class GradeController {
                                                   Authentication authentication) {
         ownershipGuard.requireOwnerOrAdmin(assessmentId, currentUserId(jwt), authentication);
         List<GradeUseCase.BulkGradeEntry> entries = request.grades().stream()
-                .map(e -> new GradeUseCase.BulkGradeEntry(e.studentId(), e.value()))
+                .map(e -> new GradeUseCase.BulkGradeEntry(e.studentId(), e.value(), e.valueA(), e.valueB()))
                 .toList();
         // Only ADMIN/DIRECTOR may overwrite an already-entered grade; teachers can only enter new ones.
         boolean allowOverwrite = AssessmentOwnershipGuard.isAdminOrDirector(authentication);

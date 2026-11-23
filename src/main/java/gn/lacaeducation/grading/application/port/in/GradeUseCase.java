@@ -7,15 +7,31 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 public interface GradeUseCase {
-    record EnterGradeCommand(Long assessmentId, Long studentId, BigDecimal value) {}
-    record BulkGradeEntry(Long studentId, BigDecimal value) {}
+    /** {@code valueA}/{@code valueB} : saisie en deux cases (Orale/Écrite, ou Dictée-Question/
+     * Rédaction pour le Français — voir {@code componentLabels} côté frontend). Quand renseignées,
+     * {@code value} est ignorée et recalculée côté serveur comme leur moyenne ; sinon {@code value}
+     * est utilisée telle quelle (comportement historique, une seule case). */
+    record EnterGradeCommand(Long assessmentId, Long studentId, BigDecimal value,
+                             BigDecimal valueA, BigDecimal valueB) {
+        public EnterGradeCommand(Long assessmentId, Long studentId, BigDecimal value) {
+            this(assessmentId, studentId, value, null, null);
+        }
+    }
+    record BulkGradeEntry(Long studentId, BigDecimal value, BigDecimal valueA, BigDecimal valueB) {
+        public BulkGradeEntry(Long studentId, BigDecimal value) {
+            this(studentId, value, null, null);
+        }
+    }
 
     /**
      * Ligne de la feuille de notes d'une évaluation : un élève de la classe, avec sa note saisie
      * ({@code value}/{@code validated}/{@code gradeId} à {@code null} si aucune note encore saisie).
+     * {@code valueA}/{@code valueB} : composantes de la saisie en deux cases si applicable, pour
+     * pouvoir réafficher/corriger chaque case séparément (sinon toutes deux {@code null}).
      */
     record GradeSheetRow(Long studentId, String studentNumber, String fullName,
-                         Long gradeId, BigDecimal value, Boolean validated) {}
+                         Long gradeId, BigDecimal value, Boolean validated,
+                         BigDecimal valueA, BigDecimal valueB) {}
 
     Grade enter(EnterGradeCommand command, Long changedBy);
     List<Grade> enterBulk(Long assessmentId, List<BulkGradeEntry> entries, boolean allowOverwrite, Long changedBy);
