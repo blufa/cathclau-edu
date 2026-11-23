@@ -68,7 +68,66 @@ public class AssessmentService implements AssessmentUseCase {
     @Override public void delete(Long id) {
         Assessment a = load(id);
         requireOpenPeriod(a.getPeriodId());
+        gradeRepository.deleteByAssessmentId(id);
         repo.deleteById(id);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DuplicateGroup> findDuplicateQuizGroups() {
+        Long tenantId = gn.lacaeducation.common.TenantContext.get();
+        Map<String, List<Assessment>> byKey = repo.findByTenantId(tenantId).stream()
+                .filter(a -> a.getType() == gn.lacaeducation.grading.domain.AssessmentType.QUIZ && a.getDate() != null)
+                .collect(java.util.stream.Collectors.groupingBy(
+                        a -> a.getClassId() + "|" + a.getSubjectId() + "|" + a.getPeriodId() + "|" + a.getDate()));
+        return byKey.values().stream()
+                .filter(group -> group.size() >= 2)
+                .map(group -> {
+                    Assessment first = group.get(0);
+                    return new DuplicateGroup(first.getClassId(), first.getSubjectId(), first.getPeriodId(), first.getDate(), group);
+                })
+                .toList();
+    }
+
+    @Override
+    public Assessment mergeDuplicates(Long keepAssessmentId, Long removeAssessmentId) {
+        if (keepAssessmentId.equals(removeAssessmentId)) {
+            throw new BusinessRuleException("Impossible de fusionner une évaluation avec elle-même.");
+        }
+        Assessment keep = load(keepAssessmentId);
+        Assessment remove = load(removeAssessmentId);
+        if (!keep.getClassId().equals(remove.getClassId()) || !keep.getSubjectId().equals(remove.getSubjectId())
+                || !keep.getPeriodId().equals(remove.getPeriodId())) {
+            throw new BusinessRuleException(
+                    "Ces deux évaluations ne sont pas sur la même classe/matière/période — fusion refusée.");
+        }
+        requireOpenPeriod(keep.getPeriodId());
+
+        Map<Long, Grade> keepByStudent = gradeRepository.findByAssessmentId(keepAssessmentId).stream()
+                .collect(java.util.stream.Collectors.toMap(Grade::getStudentId, g -> g, (x, y) -> x));
+        for (Grade removeGrade : gradeRepository.findByAssessmentId(removeAssessmentId)) {
+            Grade keepGrade = keepByStudent.get(removeGrade.getStudentId());
+            if (keepGrade != null) {
+                BigDecimal a = keepGrade.getValue();
+                BigDecimal b = removeGrade.getValue();
+                keepGrade.setValueA(a);
+                keepGrade.setValueB(b);
+                keepGrade.setValue(a.add(b).divide(BigDecimal.valueOf(2), 2, java.math.RoundingMode.HALF_UP));
+                gradeRepository.save(keepGrade);
+            } else {
+                // Élève noté uniquement sur l'évaluation supprimée — sa note est reportée en case B,
+                // jamais perdue (§retour utilisateur implicite : fusionner ne doit faire disparaître
+                // aucune note déjà saisie).
+                gradeRepository.save(Grade.builder()
+                        .assessmentId(keepAssessmentId).studentId(removeGrade.getStudentId())
+                        .value(removeGrade.getValue()).valueB(removeGrade.getValue())
+                        .validated(false).enteredAt(java.time.LocalDateTime.now())
+                        .build());
+            }
+        }
+        gradeRepository.deleteByAssessmentId(removeAssessmentId);
+        repo.deleteById(removeAssessmentId);
+        return load(keepAssessmentId);
     }
 
     @Override

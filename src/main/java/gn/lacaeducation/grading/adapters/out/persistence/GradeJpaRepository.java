@@ -6,6 +6,7 @@ import java.util.List;
 interface GradeJpaRepository extends JpaRepository<GradeJpaEntity, Long> {
     List<GradeJpaEntity> findByAssessmentId(Long assessmentId);
     List<GradeJpaEntity> findByStudentId(Long studentId);
+    void deleteByAssessmentId(Long assessmentId);
     @Query("SELECT g FROM GradeJpaEntity g WHERE g.studentId = :studentId " +
            "AND g.assessmentId IN (SELECT a.id FROM AssessmentJpaEntity a WHERE a.periodId = :periodId)")
     List<GradeJpaEntity> findByStudentIdAndPeriodId(@Param("studentId") Long studentId,
