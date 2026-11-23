@@ -10,4 +10,8 @@ public interface GradeRepository {
     List<Grade> findByStudentId(Long studentId);
     List<Grade> findByStudentIdAndPeriodId(Long studentId, Long periodId);
     void deleteById(Long id);
+    /** Supprime toutes les notes d'une évaluation — utilisé quand l'évaluation elle-même est
+     * supprimée (§retour utilisateur : "supprimer une évaluation même si les notes sont saisies") ou
+     * fusionnée dans une autre (voir {@code AssessmentUseCase#mergeDuplicates}). */
+    void deleteByAssessmentId(Long assessmentId);
 }

@@ -55,12 +55,34 @@ public class AssessmentController {
     @GetMapping("/period/{periodId}") public List<Assessment> findByPeriod(@PathVariable Long periodId) { return useCase.findByPeriod(periodId); }
 
 
-    @Operation(summary = "Supprimer une évaluation (réservé SCHOOL_ADMIN/DIRECTOR, même pour son créateur)")
+    @Operation(summary = "Supprimer une évaluation et ses notes déjà saisies le cas échéant "
+            + "(réservé SCHOOL_ADMIN/DIRECTOR, même pour son créateur)")
     @PreAuthorize("hasAuthority('evaluation:delete')")
     @DeleteMapping("/{id}") public ResponseEntity<Void> delete(@PathVariable Long id,
                                                                 Authentication authentication) {
         ownershipGuard.requireAdmin(authentication);
         useCase.delete(id); return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Lister les groupes d'interrogations créées en double (même classe/matière/"
+            + "période/date) avant l'introduction de la double saisie Orale/Écrite — candidats à une "
+            + "fusion manuelle via /duplicates/merge, jamais modifié automatiquement")
+    @PreAuthorize("hasAuthority('evaluation:read')")
+    @GetMapping("/duplicates")
+    public List<AssessmentUseCase.DuplicateGroup> findDuplicateQuizGroups() {
+        return useCase.findDuplicateQuizGroups();
+    }
+
+    public record MergeDuplicatesRequest(Long keepAssessmentId, Long removeAssessmentId) {}
+
+    @Operation(summary = "Fusionner deux interrogations en double : la note de keepAssessmentId devient "
+            + "la case A, celle de removeAssessmentId la case B (moyenne recalculée), puis "
+            + "removeAssessmentId et ses notes sont supprimées. Réservé SCHOOL_ADMIN/DIRECTOR.")
+    @PreAuthorize("hasAuthority('evaluation:delete')")
+    @PostMapping("/duplicates/merge")
+    public ResponseEntity<Assessment> mergeDuplicates(@RequestBody MergeDuplicatesRequest r, Authentication authentication) {
+        ownershipGuard.requireAdmin(authentication);
+        return ResponseEntity.ok(useCase.mergeDuplicates(r.keepAssessmentId(), r.removeAssessmentId()));
     }
 
     @Operation(summary = "Fiche de notes vierge (PDF) à imprimer et donner à l'enseignant : liste des élèves de la classe")

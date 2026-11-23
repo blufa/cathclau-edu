@@ -11,6 +11,7 @@ public interface AssessmentRepository {
     List<Assessment> findByPeriodId(Long periodId);
     List<Assessment> findByClassIdAndPeriodId(Long classId, Long periodId);
     List<Assessment> findByExamId(Long examId);
+    List<Assessment> findByTenantId(Long tenantId);
     void deleteById(Long id);
     /** Même classe/matière/période/type/libellé/date qu'une évaluation déjà existante — signe d'un
      * doublon accidentel (double clic, nouvelle tentative après un envoi qui semblait échoué...).

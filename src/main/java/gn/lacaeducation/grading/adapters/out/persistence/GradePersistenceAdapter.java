@@ -21,4 +21,5 @@ class GradePersistenceAdapter implements GradeRepository {
         return jpa.findByStudentIdAndPeriodId(studentId, periodId).stream().map(mapper::toDomain).toList();
     }
     @Override public void deleteById(Long id) { jpa.deleteById(id); }
+    @Override public void deleteByAssessmentId(Long assessmentId) { jpa.deleteByAssessmentId(assessmentId); }
 }
