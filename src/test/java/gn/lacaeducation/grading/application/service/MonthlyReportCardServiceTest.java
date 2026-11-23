@@ -6,10 +6,15 @@ import gn.lacaeducation.grading.application.port.out.AssessmentRepository;
 import gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort;
 import gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort.ClassSubjectInfo;
 import gn.lacaeducation.grading.application.port.out.GradeRepository;
+import gn.lacaeducation.academics.ClassPublicInfo;
+import gn.lacaeducation.grading.application.port.out.ClassCentralizerPdfGenerator.SubjectColumn;
+import gn.lacaeducation.grading.application.port.out.MonthlyClassCentralizerPdfGenerator;
+import gn.lacaeducation.grading.application.port.out.MonthlyClassCentralizerPdfGenerator.MonthlyCentralizer;
 import gn.lacaeducation.grading.application.port.out.MonthlyReportCardPdfGenerator;
 import gn.lacaeducation.grading.application.port.out.MonthlyReportCardRepository;
 import gn.lacaeducation.grading.domain.*;
 import gn.lacaeducation.students.StudentDataProvider;
+import gn.lacaeducation.students.StudentPublicInfo;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -46,6 +51,7 @@ class MonthlyReportCardServiceTest {
     @Mock TeacherNameProvider teacherNameProvider;
     @Mock StudentDataProvider studentDataProvider;
     @Mock MonthlyReportCardPdfGenerator pdfGenerator;
+    @Mock MonthlyClassCentralizerPdfGenerator centralizerGenerator;
     @InjectMocks MonthlyReportCardService service;
 
     private static final YearMonth MONTH = YearMonth.of(2026, 11);
@@ -156,5 +162,80 @@ class MonthlyReportCardServiceTest {
 
         assertThat(cards).hasSize(2);
         assertThat(cards).extracting(MonthlyReportCard::getStudentId).containsExactlyInAnyOrder(10L, 20L);
+    }
+
+    @Test
+    void classCentralizerPdf_buildsSubjectColumnsAndRowsSortedByRank_noNewComputation() {
+        Long classId = 1L;
+        MonthlyReportCard first = MonthlyReportCard.builder().id(50L).tenantId(9L).studentId(10L).classId(classId)
+                .yearMonth(MONTH).overallAverage(BigDecimal.valueOf(16)).rank(1).build();
+        MonthlyReportCard second = MonthlyReportCard.builder().id(51L).tenantId(9L).studentId(20L).classId(classId)
+                .yearMonth(MONTH).overallAverage(BigDecimal.valueOf(12)).rank(2).build();
+        // Volontairement renvoyés dans le désordre par le repository — le centralisateur doit les
+        // retrier par rang, jamais faire confiance à l'ordre du repository.
+        when(monthlyReportCardRepository.findByClassIdAndYearMonth(classId, MONTH)).thenReturn(List.of(second, first));
+        when(classSubjectQueryPort.findByClassId(classId))
+                .thenReturn(List.of(new ClassSubjectInfo(100L, BigDecimal.valueOf(3), 5L)));
+        when(academicsDataProvider.subjectLabels(any())).thenReturn(java.util.Map.of(100L, "Mathématiques"));
+        when(academicsDataProvider.findClass(classId))
+                .thenReturn(Optional.of(new ClassPublicInfo(classId, "6ème A", "Collège", "NORMALE", null, null, "COLLEGE")));
+        when(academicsDataProvider.currentAcademicYearLabel(9L)).thenReturn(Optional.of("2026-2027"));
+        when(studentDataProvider.findStudent(10L)).thenReturn(Optional.of(
+                new StudentPublicInfo(10L, 9L, "Awa", "Bah", null, null, "MAT-1", null, null, null, null)));
+        when(studentDataProvider.findStudent(20L)).thenReturn(Optional.of(
+                new StudentPublicInfo(20L, 9L, "Moussa", "Camara", null, null, "MAT-2", null, null, null, null)));
+        when(monthlyReportCardRepository.findLines(50L)).thenReturn(List.of(
+                MonthlyReportCardLine.builder().monthlyReportCardId(50L).subjectId(100L).subjectAverage(BigDecimal.valueOf(16)).build()));
+        when(monthlyReportCardRepository.findLines(51L)).thenReturn(List.of(
+                MonthlyReportCardLine.builder().monthlyReportCardId(51L).subjectId(100L).subjectAverage(BigDecimal.valueOf(12)).build()));
+        when(centralizerGenerator.generate(any())).thenReturn(new byte[]{1, 2, 3});
+
+        byte[] pdf = service.classCentralizerPdf(classId, MONTH);
+
+        assertThat(pdf).isEqualTo(new byte[]{1, 2, 3});
+        ArgumentCaptor<MonthlyCentralizer> captor = ArgumentCaptor.forClass(MonthlyCentralizer.class);
+        verify(centralizerGenerator).generate(captor.capture());
+        MonthlyCentralizer data = captor.getValue();
+
+        assertThat(data.tenantId()).isEqualTo(9L);
+        assertThat(data.className()).isEqualTo("6ème A (Collège)");
+        assertThat(data.levelLabel()).isEqualTo("Collège");
+        assertThat(data.schoolYear()).isEqualTo("2026-2027");
+        assertThat(data.monthLabel()).isEqualTo("Novembre 2026");
+        assertThat(data.subjects()).extracting(SubjectColumn::subjectName).containsExactly("Mathématiques");
+        assertThat(data.subjects().get(0).coefficient()).isEqualByComparingTo("3");
+
+        // Jamais de nouveau calcul de moyenne/rang : les valeurs des MonthlyReportCard existants sont
+        // reprises telles quelles, et l'ordre suit le rang (1 avant 2), pas l'ordre du repository.
+        assertThat(data.rows()).extracting(gn.lacaeducation.grading.application.port.out.MonthlyClassCentralizerPdfGenerator.MonthlyStudentBlock::studentId)
+                .containsExactly(10L, 20L);
+        assertThat(data.rows().get(0).studentName()).isEqualTo("BAH Awa");
+        assertThat(data.rows().get(0).overallAverage()).isEqualByComparingTo("16");
+        assertThat(data.rows().get(0).rank()).isEqualTo(1);
+        assertThat(data.rows().get(0).averageBySubject().get(100L)).isEqualByComparingTo("16");
+        verify(monthlyReportCardRepository, never()).save(any());
+    }
+
+    @Test
+    void classCentralizerPdf_studentWithoutLine_hasEmptyAverageMap() {
+        Long classId = 1L;
+        MonthlyReportCard card = MonthlyReportCard.builder().id(60L).tenantId(9L).studentId(30L).classId(classId)
+                .yearMonth(MONTH).overallAverage(null).rank(null).build();
+        when(monthlyReportCardRepository.findByClassIdAndYearMonth(classId, MONTH)).thenReturn(List.of(card));
+        when(classSubjectQueryPort.findByClassId(classId)).thenReturn(List.of());
+        when(academicsDataProvider.subjectLabels(any())).thenReturn(java.util.Map.of());
+        when(academicsDataProvider.findClass(classId)).thenReturn(Optional.empty());
+        when(studentDataProvider.findStudent(30L)).thenReturn(Optional.empty());
+        when(monthlyReportCardRepository.findLines(60L)).thenReturn(List.of());
+        when(centralizerGenerator.generate(any())).thenReturn(new byte[0]);
+
+        service.classCentralizerPdf(classId, MONTH);
+
+        ArgumentCaptor<MonthlyCentralizer> captor = ArgumentCaptor.forClass(MonthlyCentralizer.class);
+        verify(centralizerGenerator).generate(captor.capture());
+        MonthlyCentralizer data = captor.getValue();
+        assertThat(data.rows()).hasSize(1);
+        assertThat(data.rows().get(0).studentName()).isEqualTo("Élève #30");
+        assertThat(data.rows().get(0).averageBySubject()).isEmpty();
     }
 }

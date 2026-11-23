@@ -8,6 +8,10 @@ import gn.lacaeducation.grading.application.port.out.AssessmentRepository;
 import gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort;
 import gn.lacaeducation.grading.application.port.out.ClassSubjectQueryPort.ClassSubjectInfo;
 import gn.lacaeducation.grading.application.port.out.GradeRepository;
+import gn.lacaeducation.grading.application.port.out.ClassCentralizerPdfGenerator.SubjectColumn;
+import gn.lacaeducation.grading.application.port.out.MonthlyClassCentralizerPdfGenerator;
+import gn.lacaeducation.grading.application.port.out.MonthlyClassCentralizerPdfGenerator.MonthlyCentralizer;
+import gn.lacaeducation.grading.application.port.out.MonthlyClassCentralizerPdfGenerator.MonthlyStudentBlock;
 import gn.lacaeducation.grading.application.port.out.MonthlyReportCardPdfGenerator;
 import gn.lacaeducation.grading.application.port.out.MonthlyReportCardPdfGenerator.Line;
 import gn.lacaeducation.grading.application.port.out.MonthlyReportCardPdfGenerator.MonthlyReportCardDocument;
@@ -24,6 +28,7 @@ import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
+import java.util.Locale;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -53,6 +58,7 @@ public class MonthlyReportCardService {
     private final TeacherNameProvider teacherNameProvider;
     private final StudentDataProvider studentDataProvider;
     private final MonthlyReportCardPdfGenerator pdfGenerator;
+    private final MonthlyClassCentralizerPdfGenerator centralizerGenerator;
 
     private static final String[] MONTHS_FR = {"Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
             "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"};
@@ -259,4 +265,55 @@ public class MonthlyReportCardService {
         if (ym == null) return null;
         return MONTHS_FR[ym.getMonthValue() - 1] + " " + ym.getYear();
     }
+
+    /** Centralisateur de classe pour un mois (§censeur) : une mise en forme "classe entière" des
+     * bulletins mensuels déjà générés ({@link #generateForClass}) — aucun nouveau calcul de moyenne
+     * ni de rang, juste une lecture des {@link MonthlyReportCard}/{@link MonthlyReportCardLine}
+     * existants, triés par rang (déjà posé par {@link #updateRanks}). */
+    @Transactional(readOnly = true)
+    public byte[] classCentralizerPdf(Long classId, YearMonth month) {
+        List<MonthlyReportCard> cards = monthlyReportCardRepository.findByClassIdAndYearMonth(classId, month);
+
+        List<ClassSubjectInfo> subjectInfos = classSubjectQueryPort.findByClassId(classId);
+        Map<Long, String> subjectLabels = academicsDataProvider.subjectLabels(subjectInfos.stream()
+                .map(ClassSubjectInfo::subjectId).collect(Collectors.toSet()));
+        List<SubjectColumn> subjects = subjectInfos.stream()
+                .map(i -> new SubjectColumn(i.subjectId(), subjectLabels.getOrDefault(i.subjectId(), "Matière " + i.subjectId()), i.coefficient()))
+                .toList();
+
+        String levelLabel = academicsDataProvider.findClass(classId).map(c -> c.levelLabel()).orElse(null);
+        String className = academicsDataProvider.findClass(classId)
+                .map(c -> c.levelLabel() != null && !c.levelLabel().isBlank() ? c.label() + " (" + c.levelLabel() + ")" : c.label())
+                .orElse(null);
+
+        List<MonthlyStudentBlock> rows = cards.stream()
+                .sorted(java.util.Comparator.comparing((MonthlyReportCard c) -> c.getRank() == null ? Integer.MAX_VALUE : c.getRank()))
+                .map(card -> toMonthlyStudentBlock(card, levelLabel))
+                .toList();
+
+        Long tenantId = cards.stream().map(MonthlyReportCard::getTenantId)
+                .filter(java.util.Objects::nonNull).findFirst().orElseGet(TenantContext::get);
+        String schoolYear = tenantId == null ? null : academicsDataProvider.currentAcademicYearLabel(tenantId).orElse(null);
+
+        return centralizerGenerator.generate(new MonthlyCentralizer(
+                tenantId, className, levelLabel, schoolYear, monthLabel(month), subjects, rows));
+    }
+
+    private MonthlyStudentBlock toMonthlyStudentBlock(MonthlyReportCard card, String levelLabel) {
+        StudentPublicInfo student = studentDataProvider.findStudent(card.getStudentId()).orElse(null);
+        String fullName = student == null ? "Élève #" + card.getStudentId()
+                : (safeUpper(student.lastName()) + " " + safe(student.firstName())).trim();
+
+        Map<Long, BigDecimal> averageBySubject = new java.util.LinkedHashMap<>();
+        for (MonthlyReportCardLine line : monthlyReportCardRepository.findLines(card.getId())) {
+            if (line.getSubjectAverage() != null) averageBySubject.put(line.getSubjectId(), line.getSubjectAverage());
+        }
+
+        return new MonthlyStudentBlock(card.getStudentId(), student != null ? student.studentNumber() : null,
+                fullName, levelLabel, averageBySubject, card.getOverallAverage(), card.getRank());
+    }
+
+    private static String safe(String s) { return s == null ? "" : s; }
+
+    private static String safeUpper(String s) { return s == null ? "" : s.toUpperCase(Locale.FRENCH); }
 }

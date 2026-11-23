@@ -10,6 +10,8 @@ public class GradeJpaEntity {
     @Column(name = "assessment_id", nullable = false) private Long assessmentId;
     @Column(name = "student_id", nullable = false) private Long studentId;
     @Column(nullable = false, precision = 5, scale = 2) private BigDecimal value;
+    @Column(name = "value_a", precision = 5, scale = 2) private BigDecimal valueA;
+    @Column(name = "value_b", precision = 5, scale = 2) private BigDecimal valueB;
     @Column(nullable = false) private Boolean validated;
     @Column(name = "entered_at", nullable = false) private LocalDateTime enteredAt;
 }

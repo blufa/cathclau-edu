@@ -83,4 +83,16 @@ public class MonthlyReportCardController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"bulletin-mensuel-" + id + ".pdf\"")
                 .body(service.pdfBytes(id));
     }
+
+    @Operation(summary = "Centralisateur de classe (PDF) pour un mois : toutes les moyennes par "
+            + "matière des bulletins mensuels déjà générés pour cette classe/ce mois, classées par rang.")
+    @PreAuthorize("hasAuthority('bulletin:read')")
+    @GetMapping("/class/{classId}/month/{yearMonth}/centralisateur/download")
+    public ResponseEntity<byte[]> classCentralizerPdfDownload(@PathVariable Long classId, @PathVariable String yearMonth) {
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"centralisateur-classe-" + classId + "-" + yearMonth + ".pdf\"")
+                .body(service.classCentralizerPdf(classId, YearMonth.parse(yearMonth)));
+    }
 }
